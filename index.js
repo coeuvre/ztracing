@@ -5,6 +5,23 @@ class Memory {
   constructor(memory) {
     this.memory = memory;
     this.textDecoder = new TextDecoder();
+
+    this.nextObjectRef = 1;
+    this.objects = {};
+  }
+
+  storeObject(object) {
+    const ref = this.nextObjectRef++;
+    this.objects[ref] = object;
+    return ref;
+  }
+
+  loadObject(ref) {
+    return this.objects[ref];
+  }
+
+  freeObject(ref) {
+    this.objects[ref] = undefined;
   }
 
   loadString(ptr, len) {
@@ -41,6 +58,10 @@ const imports = {
       }
     },
 
+    destory: (ref) => {
+      app.memory.freeObject(ref);
+    },
+
     clearRect: (x, y, w, h) => {
       app.ctx.clearRect(x, y, w, h);
     },
@@ -48,6 +69,21 @@ const imports = {
     setFillStyleColor: (color_ptr, color_len) => {
       const color = app.memory.loadString(color_ptr, color_len);
       app.ctx.fillStyle = color;
+    },
+
+    createLinearGradient: (x0, y0, x1, y1) => {
+      const linearGradient = app.ctx.createLinearGradient(x0, y0, x1, y1);
+      return app.memory.storeObject(linearGradient);
+    },
+
+    addGradientColorStop: (ref, offset, color_ptr, color_len) => {
+      const gradient = app.memory.loadObject(ref);
+      const color = app.memory.loadString(color_ptr, color_len);
+      gradient.addColorStop(offset, color);
+    },
+
+    setFillStyleGradient: (ref) => {
+      app.ctx.fillStyle = app.memory.loadObject(ref);
     },
 
     fillRect: (x, y, w, h) => {
