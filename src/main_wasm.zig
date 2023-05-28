@@ -17,22 +17,38 @@ pub const std_options = struct {
 };
 
 const js = struct {
+    pub const JsObject = extern struct {
+        ref: i32,
+    };
+
     pub extern "js" fn log(level: u32, ptr: [*]const u8, len: usize) void;
 
-    pub extern "js" fn destory(ref: i32) void;
+    pub extern "js" fn destory(obj: JsObject) void;
 
     // canvas
     pub extern "js" fn clearRect(x: f32, y: f32, w: f32, h: f32) void;
 
     pub extern "js" fn setFillStyleColor(color_ptr: [*]const u8, color_len: usize) void;
 
-    pub extern "js" fn createLinearGradient(x0: f32, y0: f32, x1: f32, y1: f32) i32;
+    pub extern "js" fn createLinearGradient(x0: f32, y0: f32, x1: f32, y1: f32) JsObject;
 
-    pub extern "js" fn addGradientColorStop(ref: i32, offset: f32, color_ptr: [*]const u8, color_len: usize) void;
+    pub extern "js" fn addGradientColorStop(obj: JsObject, offset: f32, color_ptr: [*]const u8, color_len: usize) void;
 
-    pub extern "js" fn setFillStyleGradient(ref: i32) void;
+    pub extern "js" fn setFillStyleGradient(obj: JsObject) void;
 
     pub extern "js" fn fillRect(x: f32, y: f32, w: f32, h: f32) void;
+
+    pub extern "js" fn setLineWidth(width: f32) void;
+
+    pub extern "js" fn setStrokeStyleColor(color_ptr: [*]const u8, color_len: usize) void;
+
+    pub extern "js" fn strokeRect(x: f32, y: f32, w: f32, h: f32) void;
+
+    pub extern "js" fn beginPath() void;
+
+    pub extern "js" fn roundedRect(x: f32, y: f32, w: f32, h: f32, r: f32) void;
+
+    pub extern "js" fn stroke() void;
 };
 
 const canvas = struct {
@@ -44,19 +60,31 @@ const canvas = struct {
 
     pub const createLinearGradient = js.createLinearGradient;
 
-    pub fn addGradientColorStop(ref: i32, offset: f32, color: []const u8) void {
-        js.addGradientColorStop(ref, offset, color.ptr, color.len);
+    pub fn addGradientColorStop(obj: js.JsObject, offset: f32, color: []const u8) void {
+        js.addGradientColorStop(obj, offset, color.ptr, color.len);
     }
 
     pub const setFillStyleGradient = js.setFillStyleGradient;
 
     pub const fillRect = js.fillRect;
+
+    pub const setLineWidth = js.setLineWidth;
+
+    pub fn setStrokeStyleColor(color: []const u8) void {
+        js.setStrokeStyleColor(color.ptr, color.len);
+    }
+
+    pub const strokeRect = js.strokeRect;
+
+    pub const beginPath = js.beginPath;
+
+    pub const roundedRect = js.roundedRect;
+
+    pub const stroke = js.stroke;
 };
 
 fn drawControl(width: f32) void {
     const height = 26;
-    canvas.setFillStyleColor("#e6e6e6");
-    canvas.fillRect(0, 0, width, height);
 
     const gradient = canvas.createLinearGradient(0, 0, 0, height);
     defer js.destory(gradient);
@@ -64,6 +92,20 @@ fn drawControl(width: f32) void {
     canvas.addGradientColorStop(gradient, 1, "#d1d1d1");
     canvas.setFillStyleGradient(gradient);
     canvas.fillRect(0, 0, width, height);
+
+    drawButton(1, 2, 58.98, 21, 1, "#808080", "rgb(240, 240, 240)");
+}
+
+fn drawButton(x: f32, y: f32, w: f32, h: f32, border_width: f32, border_color: []const u8, background_color: []const u8) void {
+    const half_border_width = border_width / 2;
+    const double_border_width = border_width * 2;
+
+    canvas.setStrokeStyleColor(border_color);
+    canvas.setLineWidth(border_width);
+    canvas.strokeRect(x + half_border_width, y + half_border_width, w - border_width, h - border_width);
+
+    canvas.setFillStyleColor(background_color);
+    canvas.fillRect(x + border_width, y + border_width, w - double_border_width, h - double_border_width);
 }
 
 const App = struct {

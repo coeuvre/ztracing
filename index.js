@@ -89,6 +89,31 @@ const imports = {
     fillRect: (x, y, w, h) => {
       app.ctx.fillRect(x, y, w, h);
     },
+
+    setLineWidth: (width) => {
+      app.ctx.lineWidth = width;
+    },
+
+    setStrokeStyleColor: (color_ptr, color_len) => {
+      const color = app.memory.loadString(color_ptr, color_len);
+      app.ctx.strokeStyle = color;
+    },
+
+    strokeRect: (x, y, w, h) => {
+      app.ctx.strokeRect(x, y, w, h);
+    },
+
+    beginPath: () => {
+      app.ctx.beginPath();
+    },
+
+    roundedRect: (x, y, w, h, r) => {
+      app.ctx.roundRect(x, y, w, h, r);
+    },
+
+    stroke: () => {
+      app.ctx.stroke()
+    }
   },
 };
 
