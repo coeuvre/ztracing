@@ -10,7 +10,7 @@ pub const std_options = struct {
     ) void {
         const level = @enumToInt(message_level);
         const prefix2 = if (scope == .default) "" else "[" ++ @tagName(scope) ++ "] ";
-        var buf = [_]u8{0} ** 256;
+        var buf: [256]u8 = undefined;
         const msg = std.fmt.bufPrint(&buf, prefix2 ++ format ++ "\n", args) catch return;
         js.log(level, msg.ptr, msg.len);
     }
@@ -18,7 +18,7 @@ pub const std_options = struct {
 
 const js = struct {
     pub const JsObject = extern struct {
-        ref: i32,
+        ref: i64,
     };
 
     pub extern "js" fn log(level: u32, ptr: [*]const u8, len: usize) void;
@@ -49,6 +49,8 @@ const js = struct {
     pub extern "js" fn roundedRect(x: f32, y: f32, w: f32, h: f32, r: f32) void;
 
     pub extern "js" fn stroke() void;
+
+    pub extern "js" fn fillText(text_ptr: [*]const u8, text_len: usize, x: f32, y: f32) void;
 };
 
 const canvas = struct {
@@ -81,6 +83,10 @@ const canvas = struct {
     pub const roundedRect = js.roundedRect;
 
     pub const stroke = js.stroke;
+
+    pub fn fillText(text: []const u8, x: f32, y: f32) void {
+        js.fillText(text.ptr, text.len, x, y);
+    }
 };
 
 fn drawControl(width: f32) void {
@@ -94,6 +100,9 @@ fn drawControl(width: f32) void {
     canvas.fillRect(0, 0, width, height);
 
     drawButton(1, 2, 58.98, 21, 1, "#808080", "rgb(240, 240, 240)");
+
+    canvas.setFillStyleColor("#000000");
+    canvas.fillText("Load", 1, 12);
 }
 
 fn drawButton(x: f32, y: f32, w: f32, h: f32, border_width: f32, border_color: []const u8, background_color: []const u8) void {

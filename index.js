@@ -6,12 +6,13 @@ class Memory {
     this.memory = memory;
     this.textDecoder = new TextDecoder();
 
-    this.nextObjectRef = 1;
+    this.nextObjectRef = 1n;
     this.objects = {};
   }
 
   storeObject(object) {
-    const ref = this.nextObjectRef++;
+    const ref = this.nextObjectRef;
+    this.nextObjectRef = this.nextObjectRef + 1n;
     this.objects[ref] = object;
     return ref;
   }
@@ -112,8 +113,13 @@ const imports = {
     },
 
     stroke: () => {
-      app.ctx.stroke()
-    }
+      app.ctx.stroke();
+    },
+
+    fillText: (text_ptr, text_len, x, y) => {
+      const text = app.memory.loadString(text_ptr, text_len);
+      app.ctx.fillText(text, x, y);
+    },
   },
 };
 
