@@ -300,7 +300,13 @@ class App {
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    this.instance.exports.update();
+    const now = performance.now()
+    if (!this.last) {
+      this.last = now;
+    }
+    const dt = (now - this.last) / 1000;
+    this.last = now;
+    this.instance.exports.update(dt);
 
     requestAnimationFrame(() => this.update());
   }
