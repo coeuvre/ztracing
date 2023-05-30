@@ -15,6 +15,18 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
+    const cimgui = b.addStaticLibrary(.{
+        .name = "cimgui",
+        .target = target,
+        .optimize = .ReleaseSmall,
+    });
+    cimgui.addIncludePath("third_party");
+    cimgui.addCSourceFiles(&.{
+        "src/cimgui.cpp",
+    }, &.{});
+    cimgui.linkLibC();
+    cimgui.linkLibCpp();
+
     const rtracing = b.addSharedLibrary(.{
         .name = "ztracing",
         .root_source_file = .{ .path = "src/main_wasm.zig" },
@@ -22,6 +34,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     rtracing.rdynamic = true;
+    rtracing.linkLibrary(cimgui);
+    rtracing.addIncludePath("third_party/cimgui");
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
