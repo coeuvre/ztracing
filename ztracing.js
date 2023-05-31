@@ -133,22 +133,19 @@ const imports = {
 
 class App {
   /**
+   * @param {HTMLCanvasElement} canvas
    * @param {WebAssembly.Instance} instance
    * @param {Memory} memory
    */
-  constructor(instance, memory) {
+  constructor(canvas, instance, memory) {
     this.instance = instance;
     this.memory = memory;
-
-    /** @type HTMLCanvasElement */
-    this.canvas = document.getElementById("canvas");
+    this.canvas = canvas;
     /** @type WebGLRenderingContext */
     this.gl = this.canvas.getContext("webgl2");
   }
 
   init() {
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
     this.instance.exports.init(this.canvas.width, this.canvas.height);
 
     const gl = this.gl;
@@ -266,18 +263,9 @@ class App {
     );
   }
 
-  onresize() {
-    if (
-      this.canvas.width != window.innerWidth ||
-      this.canvas.height != window.innerHeight
-    ) {
-      this.canvas.width = window.innerWidth;
-      this.canvas.height = window.innerHeight;
-
-      this.setViewport(this.canvas.width, this.canvas.height);
-
-      this.instance.exports.onResize(this.canvas.width, this.canvas.height);
-    }
+  onResize() {
+    this.setViewport(this.canvas.width, this.canvas.height);
+    this.instance.exports.onResize(this.canvas.width, this.canvas.height);
   }
 
   onMouseMove(x, y) {
@@ -315,34 +303,47 @@ class App {
   }
 }
 
-WebAssembly.instantiateStreaming(
-  fetch("zig-out/lib/ztracing.wasm"),
-  imports
-).then((wasm) => {
-  const exports = wasm.instance.exports;
+/**
+ * @param {HTMLCanvasElement} canvas
+ * @param {(app: App) => void} callback
+ */
+function mount(canvas, callback) {
+  WebAssembly.instantiateStreaming(
+    fetch("zig-out/lib/ztracing.wasm"),
+    imports
+  ).then((wasm) => {
+    const exports = wasm.instance.exports;
 
-  app = new App(wasm.instance, new Memory(exports.memory));
-  app.init();
+    app = new App(canvas, wasm.instance, new Memory(exports.memory));
+    app.init();
 
-  window.onresize = () => app.onresize();
-  addEventListener("mousemove", (event) =>
-    app.onMouseMove(event.clientX, event.clientY)
-  );
-  addEventListener("mousedown", (event) => {
-    app.onMouseDown(event.button);
-    event.preventDefault();
-    return false;
-  });
-  addEventListener("mouseup", (event) => {
-    app.onMouseUp(event.button);
-    event.preventDefault();
-    return false;
-  });
-  addEventListener("wheel", (event) => {
-    app.onWheel(event.deltaX, event.deltaY);
-    return false;
-  });
-  addEventListener("contextmenu", (event) => event.preventDefault());
+    new ResizeObserver(() => app.onResize()).observe(canvas);
 
-  requestAnimationFrame(() => app.update());
-});
+    canvas.addEventListener("mousemove", (event) =>
+      app.onMouseMove(event.clientX, event.clientY)
+    );
+    canvas.addEventListener("mousedown", (event) => {
+      app.onMouseDown(event.button);
+      event.preventDefault();
+      return false;
+    });
+    canvas.addEventListener("mouseup", (event) => {
+      app.onMouseUp(event.button);
+      event.preventDefault();
+      return false;
+    });
+    canvas.addEventListener("wheel", (event) => {
+      app.onWheel(event.deltaX, event.deltaY);
+      return false;
+    });
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
+    requestAnimationFrame(() => app.update());
+
+    callback(app);
+  });
+}
+
+export default {
+  mount: mount,
+};

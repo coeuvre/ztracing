@@ -121,9 +121,10 @@ const App = struct {
         {
             c.igPushStyleVar_Vec2(c.ImGuiStyleVar_FramePadding, .{ .x = 10, .y = 4 });
             if (c.igBeginMainMenuBar()) {
-                if (c.igButton("Load", c.ImVec2{ .x = 0, .y = 0 })) {
+                if (c.igButton("Load", .{ .x = 0, .y = 0 })) {
                     log.debug("loading file...", .{});
                 }
+                c.igText("FPS: %.0f", self.io.Framerate);
                 c.igEndMainMenuBar();
             }
             c.igPopStyleVar(1);

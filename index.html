@@ -4,15 +4,28 @@
     <meta charset="UTF-8" />
     <title>ztracing</title>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-        }
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
     </style>
   </head>
   <body>
     <canvas id="canvas"></canvas>
-    <script src="index.js"></script>
+    <script type="module">
+      import ztracing from "./ztracing.js";
+      const canvas = document.getElementById("canvas");
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      window.onresize = () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      };
+      ztracing.mount(canvas, (app) => {
+        // Making debug easier
+        window.app = app;
+      });
+    </script>
   </body>
 </html>
