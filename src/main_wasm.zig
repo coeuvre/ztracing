@@ -26,6 +26,7 @@ const GL_STREAM_DRAW: i32 = 0x88E0;
 const GL_TEXTURE_2D: i32 = 0x0DE1;
 const GL_TRIANGLES: i32 = 0x0004;
 const GL_UNSIGNED_SHORT: i32 = 0x1403;
+const GL_UNSIGNED_INT: i32 = 0x1405;
 
 pub extern "js" fn glBufferData(target: i32, size: i32, data: [*]const u8, usage: i32) void;
 pub extern "js" fn glScissor(x: i32, y: i32, w: i32, h: i32) void;
@@ -113,8 +114,22 @@ const App = struct {
 
     pub fn update(self: *App, dt: f32) void {
         self.io.*.DeltaTime = dt;
-        
+
         c.igNewFrame();
+
+        // Main Menu Bar
+        {
+            c.igPushStyleVar_Vec2(c.ImGuiStyleVar_FramePadding, .{ .x = 10, .y = 4 });
+            if (c.igBeginMainMenuBar()) {
+                if (c.igButton("Load", c.ImVec2{ .x = 0, .y = 0 })) {
+                    log.debug("loading file...", .{});
+                }
+                c.igEndMainMenuBar();
+            }
+            c.igPopStyleVar(1);
+        }
+
+        _ = c.igDockSpaceOverViewport(c.igGetMainViewport(), c.ImGuiDockNodeFlags_PassthruCentralNode, null);
 
         c.igShowDemoWindow(null);
 
@@ -200,11 +215,19 @@ const App = struct {
                 };
                 glBindTexture(GL_TEXTURE_2D, tex_ref);
 
-                glDrawElements(GL_TRIANGLES, cmd.*.ElemCount, GL_UNSIGNED_SHORT, cmd.*.IdxOffset * @sizeOf(c.ImDrawIdx));
+                assert(@sizeOf(c.ImDrawIdx) == 4, "expect size of ImDrawIdx to be 4.");
+                glDrawElements(GL_TRIANGLES, cmd.*.ElemCount, GL_UNSIGNED_INT, cmd.*.IdxOffset * @sizeOf(c.ImDrawIdx));
             }
         }
     }
 };
+
+fn assert(ok: bool, msg: []const u8) void {
+    if (!ok) {
+        log.err("{s}", .{msg});
+        std.os.abort();
+    }
+}
 
 var app: *App = undefined;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};

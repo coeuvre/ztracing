@@ -20,9 +20,15 @@ static void my_debug_printf(const char *fmt, ...) {
 #define IMGUI_DISABLE_DEFAULT_ALLOCATORS 
 #define IMGUI_DEBUG_PRINTF(_FMT,...) my_debug_printf(_FMT, __VA_ARGS__)
 
+#define ImDrawIdx unsigned int
+
 #include "cimgui/imgui/imgui.cpp"
 #include "cimgui/imgui/imgui_demo.cpp"
 #include "cimgui/imgui/imgui_draw.cpp"
 #include "cimgui/imgui/imgui_tables.cpp"
 #include "cimgui/imgui/imgui_widgets.cpp"
+
+
+#define CIMGUI_API
+
 #include "cimgui/cimgui.cpp"

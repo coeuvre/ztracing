@@ -143,7 +143,7 @@ class App {
     /** @type HTMLCanvasElement */
     this.canvas = document.getElementById("canvas");
     /** @type WebGLRenderingContext */
-    this.gl = this.canvas.getContext("webgl");
+    this.gl = this.canvas.getContext("webgl2");
   }
 
   init() {
@@ -153,38 +153,38 @@ class App {
 
     const gl = this.gl;
 
-    const vertex_buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
-
-    const index_buffer = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
-
     const vertex_shader_code =
+      "#version 300 es\n" +
+      "precision highp float;\n" +
+      "layout (location = 0) in vec2 Position;\n" +
+      "layout (location = 1) in vec2 UV;\n" +
+      "layout (location = 2) in vec4 Color;\n" +
       "uniform mat4 ProjMtx;\n" +
-      "attribute vec2 Position;\n" +
-      "attribute vec2 UV;\n" +
-      "attribute vec4 Color;\n" +
-      "varying vec2 Frag_UV;\n" +
-      "varying vec4 Frag_Color;\n" +
+      "out vec2 Frag_UV;\n" +
+      "out vec4 Frag_Color;\n" +
       "void main()\n" +
       "{\n" +
       "    Frag_UV = UV;\n" +
       "    Frag_Color = Color;\n" +
       "    gl_Position = ProjMtx * vec4(Position.xy,0,1);\n" +
       "}\n";
+
     const vertex_shader = gl.createShader(gl.VERTEX_SHADER);
     gl.shaderSource(vertex_shader, vertex_shader_code);
     gl.compileShader(vertex_shader);
 
     const fragment_shader_code =
+      "#version 300 es\n" +
       "precision mediump float;\n" +
       "uniform sampler2D Texture;\n" +
-      "varying vec2 Frag_UV;\n" +
-      "varying vec4 Frag_Color;\n" +
+      "in vec2 Frag_UV;\n" +
+      "in vec4 Frag_Color;\n" +
+      "layout (location = 0) out vec4 Out_Color;\n" +
       "void main()\n" +
       "{\n" +
-      "    gl_FragColor = Frag_Color * texture2D(Texture, Frag_UV.st);\n" +
+      "    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n" +
       "}\n";
+
     const fragment_shader = gl.createShader(gl.FRAGMENT_SHADER);
     gl.shaderSource(fragment_shader, fragment_shader_code);
     gl.compileShader(fragment_shader);
@@ -200,6 +200,9 @@ class App {
     const attrib_position = gl.getAttribLocation(program, "Position");
     const attrib_uv = gl.getAttribLocation(program, "UV");
     const attrib_color = gl.getAttribLocation(program, "Color");
+
+    const vertex_buffer = gl.createBuffer();
+    const index_buffer = gl.createBuffer();
 
     gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
@@ -300,7 +303,7 @@ class App {
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    const now = performance.now()
+    const now = performance.now();
     if (!this.last) {
       this.last = now;
     }
