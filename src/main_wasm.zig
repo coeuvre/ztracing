@@ -122,7 +122,11 @@ const LoadFileState = struct {
         c.igSetNextWindowPos(center, c.ImGuiCond_Appearing, .{ .x = 0.5, .y = 0.5 });
 
         if (c.igBeginPopupModal(popup_id, null, c.ImGuiWindowFlags_AlwaysAutoResize | c.ImGuiWindowFlags_NoTitleBar | c.ImGuiWindowFlags_NoMove)) {
-            c.igText("Loading file .... (%d%%)", @floatToInt(usize, @round(@intToFloat(f32, self.content.items.len) / @intToFloat(f32, self.total) * 100.0)));
+            if (self.total > 0) {
+                c.igText("Loading file .... (%d%%)", @floatToInt(usize, @round(@intToFloat(f32, self.content.items.len) / @intToFloat(f32, self.total) * 100.0)));
+            } else {
+                c.igText("Loading file .... (%d)", self.content.items.len);
+            }
             c.igEndPopup();
         }
 

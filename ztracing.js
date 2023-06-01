@@ -139,8 +139,9 @@ const imports = {
       const firstPickedFile = pickedFiles[0];
 
       const file = await firstPickedFile.getFile();
-      readFile(
-        file,
+      const stream = file.stream();
+      loadFileFromStream(
+        stream,
         () => {
           app.loadingFile = firstPickedFile;
           app.instance.exports.onLoadFileStart(file.size);
@@ -165,15 +166,41 @@ const imports = {
   },
 };
 
+/** @type {URL} url */
+function loadFileFromUrl(url) {
+  if (app.loadingFile) {
+    return;
+  }
+
+  fetch(url)
+    .then((response) => response.body)
+    .then((stream) => {
+      loadFileFromStream(
+        stream,
+        () => {
+          app.loadingFile = url;
+          app.instance.exports.onLoadFileStart(0);
+        },
+        (chunk) => {
+          const chunkRef = app.memory.storeObject(chunk);
+          app.instance.exports.onLoadFileChunk(chunkRef, chunk.length);
+        },
+        () => {
+          app.loadingFile = undefined;
+          app.instance.exports.onLoadFileDone();
+        }
+      );
+    });
+}
+
 /**
- * @param {File} file
+ * @param {ReadableStream} stream
  * @param {() => void} onStart
  * @param {(chunk: Uint8Array) => void} onChunk
  * @param {() => void} onDone
  * */
-function readFile(file, onStart, onChunk, onDone) {
-  const readableStream = file.stream();
-  const reader = readableStream.getReader();
+function loadFileFromStream(stream, onStart, onChunk, onDone) {
+  const reader = stream.getReader();
   onStart();
   reader.read().then(function process({ done, value }) {
     if (done) {
@@ -358,7 +385,12 @@ class App {
 }
 
 /**
- * @param {{ ztracingWasmUrl: URL, canvas: HTMLCanvasElement, onMount: (app: App) => void }} options
+ * @param {{
+ *  ztracingWasmUrl: URL,
+ *  canvas: HTMLCanvasElement,
+ *  profileUrl: URL | undefined,
+ *  onMount: (app: App) => void,
+ * }} options
  */
 function mount(options) {
   const canvas = options.canvas;
@@ -396,6 +428,10 @@ function mount(options) {
     requestAnimationFrame((now) => app.update(now));
 
     options.onMount(app);
+
+    if (options.profileUrl) {
+      loadFileFromUrl(options.profileUrl);
+    }
   });
 }
 
