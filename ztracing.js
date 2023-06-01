@@ -309,7 +309,7 @@ class App {
  */
 function mount(canvas, callback) {
   WebAssembly.instantiateStreaming(
-    fetch("zig-out/lib/ztracing.wasm"),
+    fetch("ztracing.wasm"),
     imports
   ).then((wasm) => {
     const exports = wasm.instance.exports;
