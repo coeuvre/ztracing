@@ -57,9 +57,9 @@ fn imguiAlloc(size: usize, user_data: ?*anyopaque) callconv(.C) *anyopaque {
     return @ptrCast(*anyopaque, ptr + numUsize);
 }
 
-fn imguiFree(maybePtr: ?*anyopaque, user_data: ?*anyopaque) callconv(.C) void {
+fn imguiFree(maybe_ptr: ?*anyopaque, user_data: ?*anyopaque) callconv(.C) void {
     _ = user_data;
-    if (maybePtr) |ptr| {
+    if (maybe_ptr) |ptr| {
         var allocator = app.allocator;
         const raw = @ptrCast([*]usize, @alignCast(@alignOf([*]usize), ptr)) - numUsize;
         const totalSize = raw[0];

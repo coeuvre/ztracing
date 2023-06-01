@@ -304,12 +304,12 @@ class App {
 }
 
 /**
- * @param {HTMLCanvasElement} canvas
- * @param {(app: App) => void} callback
+ * @param {{ ztracingWasmUrl: URL, canvas: HTMLCanvasElement, onMount: (app: App) => void }} options
  */
-function mount(canvas, callback) {
+function mount(options) {
+  const canvas = options.canvas;
   WebAssembly.instantiateStreaming(
-    fetch("ztracing.wasm"),
+    fetch(options.ztracingWasmUrl),
     imports
   ).then((wasm) => {
     const exports = wasm.instance.exports;
@@ -340,7 +340,7 @@ function mount(canvas, callback) {
 
     requestAnimationFrame(() => app.update());
 
-    callback(app);
+    options.onMount(app);
   });
 }
 
