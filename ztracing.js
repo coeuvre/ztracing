@@ -1,4 +1,4 @@
-/** @type App */
+/** @type {App} */
 var app;
 
 class Memory {
@@ -128,8 +128,63 @@ const imports = {
     glDrawElements: (mode, count, type, offset) => {
       app.gl.drawElements(mode, count, type, offset);
     },
+
+    showOpenFilePicker: async () => {
+      if (app.loadingFile) {
+        return;
+      }
+
+      const pickedFiles = await window.showOpenFilePicker();
+      /** @type {FileSystemFileHandle} */
+      const firstPickedFile = pickedFiles[0];
+
+      const file = await firstPickedFile.getFile();
+      readFile(
+        file,
+        () => {
+          app.loadingFile = firstPickedFile;
+          app.instance.exports.onLoadFileStart(file.size);
+        },
+        (chunk) => {
+          const chunkRef = app.memory.storeObject(chunk);
+          app.instance.exports.onLoadFileChunk(chunkRef, chunk.length);
+        },
+        () => {
+          app.loadingFile = undefined;
+          app.instance.exports.onLoadFileDone();
+        }
+      );
+    },
+
+    copyChunk: (chunkRef, ptr, len) => {
+      /** @type {Uint8Array} */
+      const chunk = app.memory.loadObject(chunkRef);
+      const dst = new Uint8Array(app.memory.memory.buffer, ptr, len);
+      dst.set(chunk);
+    },
   },
 };
+
+/**
+ * @param {File} file
+ * @param {() => void} onStart
+ * @param {(chunk: Uint8Array) => void} onChunk
+ * @param {() => void} onDone
+ * */
+function readFile(file, onStart, onChunk, onDone) {
+  const readableStream = file.stream();
+  const reader = readableStream.getReader();
+  onStart();
+  reader.read().then(function process({ done, value }) {
+    if (done) {
+      onDone();
+      return;
+    }
+
+    onChunk(value);
+    return reader.read().then(process);
+  });
+}
 
 class App {
   /**
@@ -141,7 +196,7 @@ class App {
     this.instance = instance;
     this.memory = memory;
     this.canvas = canvas;
-    /** @type WebGLRenderingContext */
+    /** @type {WebGLRenderingContext} */
     this.gl = this.canvas.getContext("webgl2");
   }
 
@@ -284,14 +339,13 @@ class App {
     this.instance.exports.onWheel(dx, dy);
   }
 
-  update() {
+  update(now) {
     const gl = this.gl;
 
     gl.scissor(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    const now = performance.now();
     if (!this.last) {
       this.last = now;
     }
@@ -299,7 +353,7 @@ class App {
     this.last = now;
     this.instance.exports.update(dt);
 
-    requestAnimationFrame(() => this.update());
+    requestAnimationFrame((now) => this.update(now));
   }
 }
 
@@ -334,11 +388,12 @@ function mount(options) {
     });
     canvas.addEventListener("wheel", (event) => {
       app.onWheel(event.deltaX, event.deltaY);
+      event.preventDefault();
       return false;
     });
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
-    requestAnimationFrame(() => app.update());
+    requestAnimationFrame((now) => app.update(now));
 
     options.onMount(app);
   });

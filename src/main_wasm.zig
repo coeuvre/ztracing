@@ -42,6 +42,10 @@ const js = struct {
     pub extern "js" fn log(level: u32, ptr: [*]const u8, len: usize) void;
 
     pub extern "js" fn destory(obj: JsObject) void;
+
+    pub extern "js" fn showOpenFilePicker() void;
+
+    pub extern "js" fn copyChunk(chunk: JsObject, ptr: [*]const u8, len: usize) void;
 };
 
 const alignment = 8;
@@ -77,16 +81,102 @@ fn jsButtonToImguiButton(button: i32) i32 {
     };
 }
 
+const WelcomeState = struct {
+    allocator: Allocator,
+    show_demo_window: bool,
+
+    pub fn init(allocator: Allocator) WelcomeState {
+        return .{
+            .allocator = allocator,
+            .show_demo_window = false,
+        };
+    }
+
+    pub fn update(self: *WelcomeState, dt: f32) void {
+        _ = self;
+        _ = dt;
+    }
+
+    pub fn into_load_file_state(self: *WelcomeState, len: usize) LoadFileState {
+        return LoadFileState.init(self.allocator, len);
+    }
+};
+
+const LoadFileState = struct {
+    total: u64,
+    content: std.ArrayList(u8),
+
+    const popup_id = "LoadFilePopup";
+
+    pub fn init(allocator: Allocator, len: usize) LoadFileState {
+        var content = std.ArrayList(u8).init(allocator);
+        content.ensureTotalCapacity(len) catch unreachable;
+        return .{ .total = len, .content = content };
+    }
+
+    pub fn update(self: *LoadFileState, dt: f32) void {
+        _ = dt;
+
+        var center: c.ImVec2 = undefined;
+        c.ImGuiViewport_GetCenter(&center, c.igGetMainViewport());
+        c.igSetNextWindowPos(center, c.ImGuiCond_Appearing, .{ .x = 0.5, .y = 0.5 });
+
+        if (c.igBeginPopupModal(popup_id, null, c.ImGuiWindowFlags_AlwaysAutoResize | c.ImGuiWindowFlags_NoTitleBar | c.ImGuiWindowFlags_NoMove)) {
+            c.igText("Loading file .... (%d%%)", @floatToInt(usize, @round(@intToFloat(f32, self.content.items.len) / @intToFloat(f32, self.total) * 100.0)));
+            c.igEndPopup();
+        }
+
+        if (!c.igIsPopupOpen_Str(popup_id, 0)) {
+            c.igOpenPopup_Str(popup_id, 0);
+        }
+    }
+
+    pub fn on_chunk(self: *LoadFileState, chunk: js.JsObject, len: usize) void {
+        self.content.ensureUnusedCapacity(len) catch unreachable;
+        const dst = self.content.unusedCapacitySlice();
+        js.copyChunk(chunk, dst.ptr, len);
+        self.content.items.len += len;
+    }
+};
+
+const ViewState = struct {
+    io: *c.ImGuiIO,
+
+    pub fn update(self: *ViewState, dt: f32) void {
+        _ = self;
+        _ = dt;
+    }
+};
+
+const State = union(enum) {
+    welcome: WelcomeState,
+    load_file: LoadFileState,
+    view: ViewState,
+
+    pub fn update(self: *State, dt: f32) void {
+        switch (self.*) {
+            inline else => |*s| s.update(dt),
+        }
+    }
+};
+
 const App = struct {
     allocator: Allocator,
+    state: State,
+
     width: f32,
     height: f32,
+    show_demo_window: bool,
+
     io: *c.ImGuiIO,
 
     pub fn init(self: *App, allocator: Allocator, width: f32, height: f32) void {
         self.allocator = allocator;
+        self.state = .{ .welcome = WelcomeState.init(allocator) };
+
         self.width = width;
         self.height = height;
+        self.show_demo_window = false;
 
         c.igSetAllocatorFunctions(imguiAlloc, imguiFree, null);
 
@@ -122,9 +212,18 @@ const App = struct {
             c.igPushStyleVar_Vec2(c.ImGuiStyleVar_FramePadding, .{ .x = 10, .y = 4 });
             if (c.igBeginMainMenuBar()) {
                 if (c.igButton("Load", .{ .x = 0, .y = 0 })) {
-                    log.debug("loading file...", .{});
+                    js.showOpenFilePicker();
                 }
+
+                if (c.igBeginMenu("Help", true)) {
+                    if (c.igMenuItem_Bool("Show Demo Window", null, self.show_demo_window, true)) {
+                        self.show_demo_window = !self.show_demo_window;
+                    }
+                    c.igEndMenu();
+                }
+
                 c.igText("FPS: %.0f", self.io.Framerate);
+
                 c.igEndMainMenuBar();
             }
             c.igPopStyleVar(1);
@@ -132,7 +231,11 @@ const App = struct {
 
         _ = c.igDockSpaceOverViewport(c.igGetMainViewport(), c.ImGuiDockNodeFlags_PassthruCentralNode, null);
 
-        c.igShowDemoWindow(null);
+        if (self.show_demo_window) {
+            c.igShowDemoWindow(&self.show_demo_window);
+        }
+
+        self.state.update(dt);
 
         c.igEndFrame();
         c.igRender();
@@ -261,6 +364,34 @@ export fn onMouseUp(button: i32) void {
 
 export fn onWheel(dx: f32, dy: f32) void {
     app.onWheel(dx, dy);
+}
+
+export fn onLoadFileStart(len: usize) void {
+    switch (app.state) {
+        .welcome => |*welcome| {
+            app.state = .{ .load_file = welcome.into_load_file_state(len) };
+        },
+        else => {
+            log.err("Unexpected event onLoadFileStart, current state is {s}", .{@tagName(app.state)});
+        },
+    }
+}
+
+export fn onLoadFileChunk(chunk: js.JsObject, len: usize) void {
+    defer js.destory(chunk);
+
+    switch (app.state) {
+        .load_file => |*load_file| {
+            load_file.on_chunk(chunk, len);
+        },
+        else => {
+            log.err("Unexpected event onLoadFileChunk, current state is {s}", .{@tagName(app.state)});
+        },
+    }
+}
+
+export fn onLoadFileDone() void {
+    log.debug("onLoadFileDone", .{});
 }
 
 export fn main(argc: i32, argv: i32) i32 {
