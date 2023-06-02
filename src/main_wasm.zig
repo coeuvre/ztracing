@@ -97,21 +97,36 @@ const WelcomeState = struct {
         _ = dt;
     }
 
-    pub fn into_load_file_state(self: *WelcomeState, len: usize) LoadFileState {
-        return LoadFileState.init(self.allocator, len);
+    pub fn onLoadFileStart(self: *WelcomeState, len: usize) void {
+        const state = .{ .load_file = LoadFileState.init(self.allocator, len) };
+        switch_state(state);
     }
 };
 
+fn switch_state(new_state: State) void {
+    app.state.deinit();
+    app.state = new_state;
+}
+
 const LoadFileState = struct {
-    total: u64,
-    content: std.ArrayList(u8),
+    allocator: Allocator,
+    total: usize,
+    received: usize,
+    json_scanner: std.json.Scanner,
+    progress_message: ?[:0]u8,
+    error_message: ?[:0]u8,
 
     const popup_id = "LoadFilePopup";
 
     pub fn init(allocator: Allocator, len: usize) LoadFileState {
-        var content = std.ArrayList(u8).init(allocator);
-        content.ensureTotalCapacity(len) catch unreachable;
-        return .{ .total = len, .content = content };
+        return .{
+            .allocator = allocator,
+            .total = len,
+            .received = 0,
+            .json_scanner = std.json.Scanner.initStreaming(allocator),
+            .progress_message = null,
+            .error_message = null,
+        };
     }
 
     pub fn update(self: *LoadFileState, dt: f32) void {
@@ -122,11 +137,23 @@ const LoadFileState = struct {
         c.igSetNextWindowPos(center, c.ImGuiCond_Appearing, .{ .x = 0.5, .y = 0.5 });
 
         if (c.igBeginPopupModal(popup_id, null, c.ImGuiWindowFlags_AlwaysAutoResize | c.ImGuiWindowFlags_NoTitleBar | c.ImGuiWindowFlags_NoMove)) {
-            if (self.total > 0) {
-                c.igText("Loading file .... (%d%%)", @floatToInt(usize, @round(@intToFloat(f32, self.content.items.len) / @intToFloat(f32, self.total) * 100.0)));
+            if (self.error_message) |err| {
+                c.igTextUnformatted(err.ptr, null);
+
+                if (c.igButton("OK", .{ .x = 120, .y = 0 })) {
+                    c.igCloseCurrentPopup();
+                    switch_state(.{ .welcome = WelcomeState.init(self.allocator) });
+                }
             } else {
-                c.igText("Loading file .... (%d)", self.content.items.len);
+                if (self.total > 0) {
+                    self.setProgress("Loading file ... ({}%)", .{@floatToInt(usize, @round(@intToFloat(f32, self.received) / @intToFloat(f32, self.total) * 100.0))});
+                } else {
+                    self.setProgress("Loading file ... ({})", .{self.received});
+                }
+
+                c.igTextUnformatted(self.progress_message.?.ptr, null);
             }
+
             c.igEndPopup();
         }
 
@@ -135,11 +162,77 @@ const LoadFileState = struct {
         }
     }
 
-    pub fn on_chunk(self: *LoadFileState, chunk: js.JsObject, len: usize) void {
-        self.content.ensureUnusedCapacity(len) catch unreachable;
-        const dst = self.content.unusedCapacitySlice();
-        js.copyChunk(chunk, dst.ptr, len);
-        self.content.items.len += len;
+    pub fn deinit(self: *LoadFileState) void {
+        if (self.progress_message) |msg| {
+            self.allocator.free(msg);
+        }
+        if (self.error_message) |msg| {
+            self.allocator.free(msg);
+        }
+    }
+
+    fn setProgress(self: *LoadFileState, comptime fmt: []const u8, args: anytype) void {
+        if (self.progress_message) |msg| {
+            self.allocator.free(msg);
+        }
+        self.progress_message = std.fmt.allocPrintZ(self.allocator, fmt, args) catch unreachable;
+    }
+
+    fn setError(self: *LoadFileState, comptime fmt: []const u8, args: anytype) void {
+        assert(self.error_message == null, "Error has already been set");
+        self.error_message = std.fmt.allocPrintZ(self.allocator, fmt, args) catch unreachable;
+    }
+
+    pub fn shouldLoadFile(self: *const LoadFileState) bool {
+        return self.error_message == null;
+    }
+
+    pub fn onLoadFileChunk(self: *LoadFileState, chunk: js.JsObject, len: usize) void {
+        if (self.shouldLoadFile()) {
+            var buf = self.allocator.alloc(u8, len) catch unreachable;
+            defer self.allocator.free(buf);
+
+            js.copyChunk(chunk, buf.ptr, len);
+
+            self.json_scanner.feedInput(buf);
+            self.continueScan();
+
+            self.received += len;
+        }
+    }
+
+    pub fn onLoadFileDone(self: *LoadFileState) void {
+        if (self.shouldLoadFile()) {
+            self.json_scanner.endInput();
+            self.continueScan();
+        }
+    }
+
+    fn continueScan(self: *LoadFileState) void {
+        while (true) {
+            const token = self.json_scanner.next() catch |err| switch (err) {
+                error.BufferUnderrun => {
+                    if (self.json_scanner.is_end_of_input) {
+                        unreachable;
+                    }
+                    break;
+                },
+                else => {
+                    self.setError("Failed to parse file: {s}", .{@errorName(err)});
+                    return;
+                },
+            };
+            // log.debug("{s}", .{@tagName(token)});
+            switch (token) {
+                .end_of_document => {
+                    if (self.json_scanner.is_end_of_input) {
+                        break;
+                    }
+                    self.setError("Unexpected end of document", .{});
+                },
+                else => {},
+            }
+        }
     }
 };
 
@@ -160,6 +253,16 @@ const State = union(enum) {
     pub fn update(self: *State, dt: f32) void {
         switch (self.*) {
             inline else => |*s| s.update(dt),
+        }
+    }
+
+    pub fn deinit(self: *State) void {
+        switch (self.*) {
+            inline else => |*s| {
+                if (@hasDecl(@TypeOf(s.*), "deinit")) {
+                    s.deinit();
+                }
+            },
         }
     }
 };
@@ -215,6 +318,7 @@ const App = struct {
         {
             c.igPushStyleVar_Vec2(c.ImGuiStyleVar_FramePadding, .{ .x = 10, .y = 4 });
             if (c.igBeginMainMenuBar()) {
+                c.igSetCursorPosX(0);
                 if (c.igButton("Load", .{ .x = 0, .y = 0 })) {
                     js.showOpenFilePicker();
                 }
@@ -226,7 +330,15 @@ const App = struct {
                     c.igEndMenu();
                 }
 
-                c.igText("FPS: %.0f", self.io.Framerate);
+                if (self.io.Framerate < 1000) {
+                    const window_width = c.igGetWindowWidth();
+                    var buf: [32]u8 = .{};
+                    const text = std.fmt.bufPrintZ(&buf, "{d:.1} ", .{self.io.Framerate}) catch unreachable;
+                    var text_size: c.ImVec2 = undefined;
+                    c.igCalcTextSize(&text_size, text.ptr, null, false, -1.0);
+                    c.igSetCursorPosX(window_width - text_size.x);
+                    c.igTextUnformatted(text.ptr, null);
+                }
 
                 c.igEndMainMenuBar();
             }
@@ -370,10 +482,24 @@ export fn onWheel(dx: f32, dy: f32) void {
     app.onWheel(dx, dy);
 }
 
+export fn shouldLoadFile() bool {
+    switch (app.state) {
+        .welcome => {
+            return true;
+        },
+        .load_file => |*load_file| {
+            return load_file.shouldLoadFile();
+        },
+        else => {
+            return false;
+        },
+    }
+}
+
 export fn onLoadFileStart(len: usize) void {
     switch (app.state) {
         .welcome => |*welcome| {
-            app.state = .{ .load_file = welcome.into_load_file_state(len) };
+            welcome.onLoadFileStart(len);
         },
         else => {
             log.err("Unexpected event onLoadFileStart, current state is {s}", .{@tagName(app.state)});
@@ -386,7 +512,7 @@ export fn onLoadFileChunk(chunk: js.JsObject, len: usize) void {
 
     switch (app.state) {
         .load_file => |*load_file| {
-            load_file.on_chunk(chunk, len);
+            load_file.onLoadFileChunk(chunk, len);
         },
         else => {
             log.err("Unexpected event onLoadFileChunk, current state is {s}", .{@tagName(app.state)});
@@ -395,7 +521,14 @@ export fn onLoadFileChunk(chunk: js.JsObject, len: usize) void {
 }
 
 export fn onLoadFileDone() void {
-    log.debug("onLoadFileDone", .{});
+    switch (app.state) {
+        .load_file => |*load_file| {
+            load_file.onLoadFileDone();
+        },
+        else => {
+            log.err("Unexpected event onLoadFileDone, current state is {s}", .{@tagName(app.state)});
+        },
+    }
 }
 
 export fn main(argc: i32, argv: i32) i32 {

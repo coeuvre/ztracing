@@ -130,7 +130,7 @@ const imports = {
     },
 
     showOpenFilePicker: async () => {
-      if (app.loadingFile) {
+      if (app.loadingFile || !app.instance.exports.shouldLoadFile()) {
         return;
       }
 
@@ -139,22 +139,11 @@ const imports = {
       const firstPickedFile = pickedFiles[0];
 
       const file = await firstPickedFile.getFile();
+
+      app.instance.exports.onLoadFileStart(file.size);
+
       const stream = file.stream();
-      loadFileFromStream(
-        stream,
-        () => {
-          app.loadingFile = firstPickedFile;
-          app.instance.exports.onLoadFileStart(file.size);
-        },
-        (chunk) => {
-          const chunkRef = app.memory.storeObject(chunk);
-          app.instance.exports.onLoadFileChunk(chunkRef, chunk.length);
-        },
-        () => {
-          app.loadingFile = undefined;
-          app.instance.exports.onLoadFileDone();
-        }
-      );
+      loadFileFromStream(stream);
     },
 
     copyChunk: (chunkRef, ptr, len) => {
@@ -168,49 +157,50 @@ const imports = {
 
 /** @type {URL} url */
 function loadFileFromUrl(url) {
-  if (app.loadingFile) {
+  if (app.loadingFile || !app.instance.exports.shouldLoadFile()) {
     return;
   }
+
+  app.instance.exports.onLoadFileStart(0);
 
   fetch(url)
     .then((response) => response.body)
     .then((stream) => {
-      loadFileFromStream(
-        stream,
-        () => {
-          app.loadingFile = url;
-          app.instance.exports.onLoadFileStart(0);
-        },
-        (chunk) => {
-          const chunkRef = app.memory.storeObject(chunk);
-          app.instance.exports.onLoadFileChunk(chunkRef, chunk.length);
-        },
-        () => {
-          app.loadingFile = undefined;
-          app.instance.exports.onLoadFileDone();
-        }
-      );
+      loadFileFromStream(stream);
     });
 }
 
-/**
- * @param {ReadableStream} stream
- * @param {() => void} onStart
- * @param {(chunk: Uint8Array) => void} onChunk
- * @param {() => void} onDone
- * */
-function loadFileFromStream(stream, onStart, onChunk, onDone) {
-  const reader = stream.getReader();
-  onStart();
-  reader.read().then(function process({ done, value }) {
-    if (done) {
-      onDone();
-      return;
-    }
+/** @param {ReadableStream} stream */
+function loadFileFromStream(stream) {
+  if (app.loadingFile) {
+    return;
+  }
 
-    onChunk(value);
-    return reader.read().then(process);
-  });
+  app.loadingFile = new LoadingFile(stream);
+}
+
+class LoadingFile {
+  /**
+   * @param {ReadableStream} stream
+   */
+  constructor(stream) {
+    this.reader = stream.getReader();
+  }
+
+  /**
+   * @param {(chunk: Uint8Array) => void} onChunk
+   * @param {() => void} onDone
+   */
+  load(onChunk, onDone) {
+    this.reader.read().then(({ done, value }) => {
+      if (done) {
+        onDone();
+        return;
+      }
+
+      onChunk(value);
+    });
+  }
 }
 
 class App {
@@ -367,6 +357,23 @@ class App {
   }
 
   update(now) {
+    if (this.loadingFile) {
+      if (app.instance.exports.shouldLoadFile()) {
+        this.loadingFile.load(
+          (chunk) => {
+            const chunkRef = app.memory.storeObject(chunk);
+            app.instance.exports.onLoadFileChunk(chunkRef, chunk.length);
+          },
+          () => {
+            app.instance.exports.onLoadFileDone();
+            app.loadingFile = undefined;
+          }
+        );
+      } else {
+        this.loadingFile = undefined;
+      }
+    }
+
     const gl = this.gl;
 
     gl.scissor(0, 0, this.canvas.width, this.canvas.height);
