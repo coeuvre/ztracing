@@ -66,7 +66,8 @@ const imports = {
       const msg = app.memory.loadString(ptr, len);
       switch (level) {
         case 0: {
-          throw new Error(msg);
+          console.error(msg);
+          break;
         }
         case 1: {
           console.warn(msg);

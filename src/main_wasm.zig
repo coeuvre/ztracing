@@ -5,6 +5,8 @@ const Allocator = std.mem.Allocator;
 
 const c = @import("c.zig");
 
+const JsonProfileParser = @import("./json_profile_parser.zig").JsonProfileParser;
+
 pub const std_options = struct {
     pub fn logFn(
         comptime message_level: std.log.Level,
@@ -113,6 +115,7 @@ const LoadFileState = struct {
     total: usize,
     received: usize,
     json_scanner: std.json.Scanner,
+    json_parser: JsonProfileParser,
     progress_message: ?[:0]u8,
     error_message: ?[:0]u8,
 
@@ -124,6 +127,7 @@ const LoadFileState = struct {
             .total = len,
             .received = 0,
             .json_scanner = std.json.Scanner.initStreaming(allocator),
+            .json_parser = JsonProfileParser.init(allocator),
             .progress_message = null,
             .error_message = null,
         };
@@ -222,7 +226,16 @@ const LoadFileState = struct {
                     return;
                 },
             };
-            // log.debug("{s}", .{@tagName(token)});
+
+            const event = self.json_parser.parse(token) catch |err| {
+                self.setError("Failed to parse file: {s}", .{@errorName(err)});
+                return;
+            };
+            switch (event) {
+                .none => {},
+                else => log.debug("{s}", .{@tagName(event)}),
+            }
+
             switch (token) {
                 .end_of_document => {
                     if (self.json_scanner.is_end_of_input) {
