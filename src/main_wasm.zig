@@ -114,7 +114,6 @@ const LoadFileState = struct {
     allocator: Allocator,
     total: usize,
     received: usize,
-    json_scanner: std.json.Scanner,
     json_parser: JsonProfileParser,
     progress_message: ?[:0]u8,
     error_message: ?[:0]u8,
@@ -126,7 +125,6 @@ const LoadFileState = struct {
             .allocator = allocator,
             .total = len,
             .received = 0,
-            .json_scanner = std.json.Scanner.initStreaming(allocator),
             .json_parser = JsonProfileParser.init(allocator),
             .progress_message = null,
             .error_message = null,
@@ -198,7 +196,7 @@ const LoadFileState = struct {
 
             js.copyChunk(chunk, buf.ptr, len);
 
-            self.json_scanner.feedInput(buf);
+            self.json_parser.feedInput(buf);
             self.continueScan();
 
             self.received += len;
@@ -207,43 +205,24 @@ const LoadFileState = struct {
 
     pub fn onLoadFileDone(self: *LoadFileState) void {
         if (self.shouldLoadFile()) {
-            self.json_scanner.endInput();
+            self.json_parser.endInput();
             self.continueScan();
         }
     }
 
     fn continueScan(self: *LoadFileState) void {
         while (true) {
-            const token = self.json_scanner.next() catch |err| switch (err) {
-                error.BufferUnderrun => {
-                    if (self.json_scanner.is_end_of_input) {
-                        unreachable;
-                    }
-                    break;
-                },
-                else => {
-                    self.setError("Failed to parse file: {s}", .{@errorName(err)});
-                    return;
-                },
-            };
-
-            const event = self.json_parser.parse(token) catch |err| {
-                self.setError("Failed to parse file: {s}", .{@errorName(err)});
+            const event = self.json_parser.next() catch |err| {
+                self.setError("Failed to parse file: {}", .{err});
                 return;
             };
-            switch (event) {
-                .none => {},
-                else => log.debug("{s}", .{@tagName(event)}),
+
+            if (event == .none) {
+                return;
             }
 
-            switch (token) {
-                .end_of_document => {
-                    if (self.json_scanner.is_end_of_input) {
-                        break;
-                    }
-                    self.setError("Unexpected end of document", .{});
-                },
-                else => {},
+            switch (event) {
+                else => log.debug("{s}", .{@tagName(event)}),
             }
         }
     }
