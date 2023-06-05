@@ -6,7 +6,9 @@ const Token = std.json.Token;
 //   ctx, token
 //
 
-pub const TraceEvent = union(enum) {};
+pub const TraceEvent = union(enum) {
+    a,
+};
 
 pub const ParseError = anyerror;
 pub const ParseResult = union(enum) {
@@ -31,6 +33,14 @@ const Context = struct {
             .stack = StateStack.init(allocator),
             .result = null,
         };
+    }
+
+    pub fn deinit(self: *Context) void {
+        while (self.stack.items.len > 0) {
+            var state = self.stack.pop();
+            state.deinit();
+        }
+        self.stack.deinit();
     }
 
     pub fn consumeToken(self: *Context, result: ParseResult) void {
@@ -364,6 +374,11 @@ pub const JsonProfileParser = struct {
         };
     }
 
+    pub fn deinit(self: *JsonProfileParser) void {
+        self.scanner.deinit();
+        self.ctx.deinit();
+    }
+
     pub fn feedInput(self: *JsonProfileParser, input: []const u8) void {
         self.scanner.feedInput(input);
     }
@@ -428,3 +443,37 @@ pub const JsonProfileParser = struct {
         return .none;
     }
 };
+
+fn parseAll(input: []const u8) ParseError![]ParseResult {
+    var parser = JsonProfileParser.init(std.testing.allocator);
+    parser.feedInput(input);
+    parser.endInput();
+    defer parser.deinit();
+
+    var results = std.ArrayList(ParseResult).init(std.testing.allocator);
+    errdefer results.deinit();
+
+    while (true) {
+        const result = try parser.next();
+        if (result == .none) {
+            break;
+        }
+        try results.append(result);
+    }
+
+    return try results.toOwnedSlice();
+}
+
+test "invalid profile" {
+    try std.testing.expectError(error.SyntaxError, parseAll("}"));
+}
+
+test "empty profile" {
+    const results = try parseAll("{}");
+    try std.testing.expect(results.len == 0);
+}
+
+test "empty traceEvents profile" {
+    const results = try parseAll("{\"traceEvents\":[]}");
+    try std.testing.expect(results.len == 0);
+}
