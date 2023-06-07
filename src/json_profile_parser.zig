@@ -5,6 +5,63 @@ const Token = std.json.Token;
 // State
 //   ctx, token
 //
+//
+// var runtime = Runtime(ResumeType, YieldType)
+// const v: YieldType = runtime.resume(r: ResumeType);
+//
+// by resuming, or by poping
+// Step: resume(ctx) {
+//   ctx.args();
+//
+//   ctx.yield(v);
+//   ctx.push(State);
+//   ctx.pop();
+// }
+
+const Context = union(enum) {
+    run: Token,
+    pop: State,
+    push,
+};
+
+const StateMachine = struct {
+    const ControlFlow = union(enum) {
+        push: State,
+        pop,
+        yield: ParseResult,
+    };
+
+    stack: std.ArrayList(State),
+
+    pub fn run(self: *StateMachine, token: Token) ParseError!ParseResult {
+        var ctx = .{ .run = token };
+        while (true) {
+            switch (ctx) {
+                .pop => |state| {
+                    state.deinit();
+                },
+                else => {},
+            }
+
+            std.debug.assert(self.stack.items.len > 0);
+            var top = &self.stack.items[self.stack.items.len - 1];
+            const control_flow = try top.onResume(&ctx);
+            switch (control_flow) {
+                .push => |state| {
+                    self.stack.append(state);
+                    ctx = .push;
+                },
+                .pop => {
+                    const state = self.stack.pop();
+                    ctx = .{ .pop = state };
+                },
+                .yield => |result| {
+                    return result;
+                },
+            }
+        }
+    }
+};
 
 pub const TraceEvent = union(enum) {
     a,
@@ -43,7 +100,7 @@ const Context = struct {
         self.stack.deinit();
     }
 
-    pub fn consumeToken(self: *Context, result: ParseResult) void {
+    pub fn yield(self: *Context, result: ParseResult) void {
         self.result = result;
     }
 
@@ -69,7 +126,7 @@ const Start = struct {
         return .{ .allocator = allocator };
     }
 
-    fn parse(self: *Start, ctx: *Context, token: Token) ParseError!void {
+    fn onResume(self: *Start, ctx: *Context, token: Token) ParseError!void {
         switch (token) {
             .object_begin => {
                 var object_foramt = .{ .object_format = ObjectFormat.init(self.allocator) };
@@ -101,14 +158,14 @@ const ObjectFormat = struct {
         return .{ .allocator = allocator, .state = .begin };
     }
 
-    fn parse(self: *ObjectFormat, ctx: *Context, token: Token) ParseError!void {
+    fn onResume(self: *ObjectFormat, ctx: *Context, token: Token) ParseError!void {
         switch (self.state) {
             .begin => {
                 switch (token) {
                     .object_begin => {
                         ctx.push(.{ .object_key = ObjectKey.init(self.allocator) });
                         self.state = .wait_object_key;
-                        ctx.consumeToken(.none);
+                        ctx.yield(.none);
                     },
                     else => {
                         return error.unexpected_token;
@@ -161,14 +218,14 @@ const ArrayFormat = struct {
         return .{ .state = .begin };
     }
 
-    fn parse(self: *ArrayFormat, ctx: *Context, token: Token) ParseError!void {
+    fn onResume(self: *ArrayFormat, ctx: *Context, token: Token) ParseError!void {
         switch (self.state) {
             .begin => {
                 switch (token) {
                     .array_begin => {
                         ctx.push(.{ .array_value = ArrayValue.init() });
                         self.state = .wait_array_value;
-                        ctx.consumeToken(.none);
+                        ctx.yield(.none);
                     },
                     else => return error.unexpected_token,
                 }
@@ -209,13 +266,13 @@ const ObjectKey = struct {
         };
     }
 
-    fn parse(self: *ObjectKey, ctx: *Context, token: Token) ParseError!void {
+    fn onResume(self: *ObjectKey, ctx: *Context, token: Token) ParseError!void {
         switch (self.state) {
             .begin => {
                 switch (token) {
                     .object_end => {
                         try ctx.pop(.none);
-                        ctx.consumeToken(.none);
+                        ctx.yield(.none);
                     },
                     .string,
                     .partial_string,
@@ -236,29 +293,29 @@ const ObjectKey = struct {
                 switch (token) {
                     .partial_string => |str| {
                         try self.key.appendSlice(str);
-                        ctx.consumeToken(.none);
+                        ctx.yield(.none);
                     },
                     .partial_string_escaped_1 => |*str| {
                         try self.key.appendSlice(str);
-                        ctx.consumeToken(.none);
+                        ctx.yield(.none);
                     },
                     .partial_string_escaped_2 => |*str| {
                         try self.key.appendSlice(str);
-                        ctx.consumeToken(.none);
+                        ctx.yield(.none);
                     },
                     .partial_string_escaped_3 => |*str| {
                         try self.key.appendSlice(str);
-                        ctx.consumeToken(.none);
+                        ctx.yield(.none);
                     },
                     .partial_string_escaped_4 => |*str| {
                         try self.key.appendSlice(str);
-                        ctx.consumeToken(.none);
+                        ctx.yield(.none);
                     },
                     .string => |str| {
                         try self.key.appendSlice(str);
                         const buf = try self.key.toOwnedSlice();
                         try ctx.pop(.{ .string = buf });
-                        ctx.consumeToken(.none);
+                        ctx.yield(.none);
                     },
                     else => {
                         std.log.err("Unexpected token: {s}", .{@tagName(token)});
@@ -279,10 +336,10 @@ const JsonValue = struct {
         return .{};
     }
 
-    fn parse(self: *JsonValue, ctx: *Context, token: Token) ParseError!void {
+    fn onResume(self: *JsonValue, ctx: *Context, token: Token) ParseError!void {
         _ = token;
         _ = self;
-        ctx.consumeToken(.none);
+        ctx.yield(.none);
     }
 };
 
@@ -296,13 +353,13 @@ const ArrayValue = struct {
         return .{ .state = .begin };
     }
 
-    fn parse(self: *ArrayValue, ctx: *Context, token: Token) ParseError!void {
+    fn onResume(self: *ArrayValue, ctx: *Context, token: Token) ParseError!void {
         switch (self.state) {
             .begin => {
                 switch (token) {
                     .array_end => {
                         try ctx.pop(.none);
-                        ctx.consumeToken(.none);
+                        ctx.yield(.none);
                     },
                     else => {
                         ctx.push(.{ .json_value = JsonValue.init() });
@@ -342,9 +399,9 @@ const State = union(enum) {
         }
     }
 
-    pub fn parse(self: *State, ctx: *Context, token: Token) ParseError!void {
+    pub fn onResume(self: *State, ctx: *Context, token: Token) ParseError!void {
         switch (self.*) {
-            inline else => |*state| return state.parse(ctx, token),
+            inline else => |*state| return state.onResume(ctx, token),
         }
     }
 
@@ -425,7 +482,7 @@ pub const JsonProfileParser = struct {
         self.ctx.result = null;
         while (self.ctx.result == null and self.ctx.stack.items.len > 0) {
             var top_state = &self.ctx.stack.items[self.ctx.stack.items.len - 1];
-            try top_state.parse(&self.ctx, token);
+            try top_state.onResume(&self.ctx, token);
         }
 
         {
