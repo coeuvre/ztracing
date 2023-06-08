@@ -2,61 +2,127 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Token = std.json.Token;
 
-// State
-//   ctx, token
-//
-//
-// var runtime = Runtime(ResumeType, YieldType)
-// const v: YieldType = runtime.resume(r: ResumeType);
-//
-// by resuming, or by poping
-// Step: resume(ctx) {
-//   ctx.args();
-//
-//   ctx.yield(v);
-//   ctx.push(State);
-//   ctx.pop();
-// }
+const Context = struct {
+    allocator: Allocator,
+    state: union(enum) {
+        run: Token,
+        pop: State,
+    },
 
-const Context = union(enum) {
-    run: Token,
-    pop: State,
-    push,
+    pub fn forRun(allocator: Allocator, t: Token) Context {
+        return .{ .allocator = allocator, .state = .{ .run = t } };
+    }
+
+    pub fn forPop(allocator: Allocator, popped_state: State) Context {
+        return .{ .allocator = allocator, .state = .{ .pop = popped_state } };
+    }
+
+    fn deinit(self: *Context) void {
+        switch (self.state) {
+            .pop => |*state| {
+                state.deinit();
+            },
+            else => {},
+        }
+    }
+
+    pub fn push(self: *Context, state: State) ControlFlow {
+        _ = self;
+        return .{ .push = state };
+    }
+
+    pub fn pop(self: *Context) ControlFlow {
+        _ = self;
+        return .pop;
+    }
+
+    pub fn yield(self: *Context, result: ParseResult) ControlFlow {
+        _ = self;
+        return .{ .yield = result };
+    }
+
+    pub fn yieldPush(self: *Context, result: ParseResult, state: State) ControlFlow {
+        _ = self;
+        return .{ .yield_push = .{ .state = state, .result = result } };
+    }
+
+    pub fn token(self: *Context) *Token {
+        switch (self.state) {
+            .run => |*a| return a,
+            else => unreachable,
+        }
+    }
+
+    pub fn popped(self: *Context) *State {
+        switch (self.state) {
+            .pop => |*s| return s,
+            else => unreachable,
+        }
+    }
+};
+
+const ControlFlow = union(enum) {
+    push: State,
+    yield_push: struct {
+        state: State,
+        result: ParseResult,
+    },
+    pop,
+    yield: ParseResult,
 };
 
 const StateMachine = struct {
-    const ControlFlow = union(enum) {
-        push: State,
-        pop,
-        yield: ParseResult,
-    };
-
+    allocator: Allocator,
     stack: std.ArrayList(State),
 
+    pub fn init(allocator: Allocator, init_state: State) StateMachine {
+        var stack = std.ArrayList(State).init(allocator);
+        stack.append(init_state) catch unreachable;
+        return .{
+            .allocator = allocator,
+            .stack = stack,
+        };
+    }
+
+    pub fn deinit(self: *StateMachine) void {
+        while (self.stack.items.len > 0) {
+            var state = self.stack.pop();
+            state.deinit();
+        }
+    }
+
     pub fn run(self: *StateMachine, token: Token) ParseError!ParseResult {
-        var ctx = .{ .run = token };
+        var ctx = Context.forRun(self.allocator, token);
         while (true) {
-            switch (ctx) {
-                .pop => |state| {
-                    state.deinit();
-                },
-                else => {},
+            {
+                std.log.debug("Parsing token `{s}`", .{@tagName(token)});
+                for (0..self.stack.items.len) |i| {
+                    const at = self.stack.items.len - i - 1;
+                    const state = &self.stack.items[at];
+                    std.log.debug("    [{}] {s}", .{ at, @tagName(state.*) });
+                }
             }
 
             std.debug.assert(self.stack.items.len > 0);
             var top = &self.stack.items[self.stack.items.len - 1];
-            const control_flow = try top.onResume(&ctx);
-            switch (control_flow) {
+            const control_flow = top.onResume(&ctx);
+            ctx.deinit();
+
+            switch (try control_flow) {
                 .push => |state| {
-                    self.stack.append(state);
-                    ctx = .push;
+                    try self.stack.append(state);
+                    ctx = Context.forRun(self.allocator, token);
                 },
                 .pop => {
                     const state = self.stack.pop();
-                    ctx = .{ .pop = state };
+                    ctx = Context.forPop(self.allocator, state);
                 },
                 .yield => |result| {
                     return result;
+                },
+                .yield_push => |py| {
+                    try self.stack.append(py.state);
+                    return py.result;
                 },
             }
         }
@@ -73,135 +139,90 @@ pub const ParseResult = union(enum) {
     none,
 };
 
-const StateResult = union(enum) {
-    value: std.json.Value,
-    string: []u8,
-    none,
-};
-
-const Context = struct {
-    const StateStack = std.ArrayList(State);
-
-    stack: StateStack,
-    result: ?ParseResult,
-
-    pub fn init(allocator: Allocator) Context {
-        return .{
-            .stack = StateStack.init(allocator),
-            .result = null,
-        };
-    }
-
-    pub fn deinit(self: *Context) void {
-        while (self.stack.items.len > 0) {
-            var state = self.stack.pop();
-            state.deinit();
-        }
-        self.stack.deinit();
-    }
-
-    pub fn yield(self: *Context, result: ParseResult) void {
-        self.result = result;
-    }
-
-    pub fn push(self: *Context, state: State) void {
-        self.stack.append(state) catch unreachable;
-    }
-
-    pub fn pop(self: *Context, result: StateResult) ParseError!void {
-        {
-            var state = self.stack.pop();
-            state.deinit();
-        }
-        if (self.stack.items.len > 0) {
-            try self.stack.items[self.stack.items.len - 1].onPopResult(self, result);
-        }
-    }
-};
-
 const Start = struct {
-    allocator: Allocator,
+    state: enum {
+        begin,
+        wait,
+    },
 
-    fn init(allocator: Allocator) Start {
-        return .{ .allocator = allocator };
+    fn init() Start {
+        return .{ .state = .begin };
     }
 
-    fn onResume(self: *Start, ctx: *Context, token: Token) ParseError!void {
-        switch (token) {
-            .object_begin => {
-                var object_foramt = .{ .object_format = ObjectFormat.init(self.allocator) };
-                ctx.push(object_foramt);
+    fn onResume(self: *Start, ctx: *Context) ParseError!ControlFlow {
+        switch (self.state) {
+            .begin => {
+                switch (ctx.token().*) {
+                    .object_begin => {
+                        var object_foramt = .{ .object_format = ObjectFormat.init() };
+                        self.state = .wait;
+                        return ctx.push(object_foramt);
+                    },
+                    .array_begin => {
+                        var array_format = .{ .array_format = ArrayFormat.init() };
+                        self.state = .wait;
+                        return ctx.push(array_format);
+                    },
+                    else => return error.expected_token,
+                }
             },
-            .array_begin => {
-                var array_format = .{ .array_format = ArrayFormat.init() };
-                ctx.push(array_format);
+            .wait => {
+                // Parsing for ObjectFormat or ArrayFormat is done. Ignore remaining tokens.
+                return ctx.yield(.none);
             },
-            else => return error.expected_token,
         }
-    }
-
-    fn onPopResult(self: *@This(), ctx: *Context, result: StateResult) ParseError!void {
-        _ = self;
-        try ctx.pop(result);
     }
 };
 
 const ObjectFormat = struct {
-    allocator: Allocator,
     state: union(enum) {
         begin,
         wait_object_key,
         wait_json_value,
+        end,
     },
 
-    fn init(allocator: Allocator) ObjectFormat {
-        return .{ .allocator = allocator, .state = .begin };
+    fn init() ObjectFormat {
+        return .{
+            .state = .begin,
+        };
     }
 
-    fn onResume(self: *ObjectFormat, ctx: *Context, token: Token) ParseError!void {
+    fn onResume(self: *ObjectFormat, ctx: *Context) ParseError!ControlFlow {
         switch (self.state) {
             .begin => {
-                switch (token) {
+                switch (ctx.token().*) {
                     .object_begin => {
-                        ctx.push(.{ .object_key = ObjectKey.init(self.allocator) });
                         self.state = .wait_object_key;
-                        ctx.yield(.none);
+                        return ctx.yieldPush(.none, .{ .object_key = ObjectKey.init() });
                     },
-                    else => {
-                        return error.unexpected_token;
-                    },
+                    else => return error.unexpected_token,
                 }
             },
-            else => unreachable,
-        }
-    }
-
-    fn onPopResult(self: *ObjectFormat, ctx: *Context, result: StateResult) ParseError!void {
-        switch (self.state) {
             .wait_object_key => {
-                switch (result) {
-                    .string => |str| {
-                        defer self.allocator.free(str);
+                switch (ctx.popped().object_key.state) {
+                    .no_key => {
+                        self.state = .end;
+                        return ctx.pop();
+                    },
+                    .end => |result| {
+                        const str = result.key.items;
                         std.log.debug("{s}", .{str});
-
                         if (std.mem.eql(u8, str, "traceEvents")) {
-                            ctx.push(.{ .array_format = ArrayFormat.init() });
                             self.state = .wait_json_value;
+                            return ctx.yieldPush(.none, .{ .array_format = ArrayFormat.init() });
                         } else {
                             // Ignore unrecognized key
-                            ctx.push(.{ .json_value = JsonValue.init() });
                             self.state = .wait_json_value;
+                            return ctx.yieldPush(.none, .{ .json_value = JsonValue.init() });
                         }
-                    },
-                    .none => {
-                        try ctx.pop(.none);
                     },
                     else => unreachable,
                 }
             },
             .wait_json_value => {
-                ctx.push(.{ .object_key = ObjectKey.init(self.allocator) });
                 self.state = .wait_object_key;
+                return ctx.push(.{ .object_key = ObjectKey.init() });
             },
             else => unreachable,
         }
@@ -218,163 +239,164 @@ const ArrayFormat = struct {
         return .{ .state = .begin };
     }
 
-    fn onResume(self: *ArrayFormat, ctx: *Context, token: Token) ParseError!void {
+    fn onResume(self: *ArrayFormat, ctx: *Context) ParseError!ControlFlow {
         switch (self.state) {
             .begin => {
-                switch (token) {
+                switch (ctx.token().*) {
                     .array_begin => {
-                        ctx.push(.{ .array_value = ArrayValue.init() });
                         self.state = .wait_array_value;
-                        ctx.yield(.none);
+                        return ctx.yieldPush(.none, .{ .array_value = ArrayValue.init() });
                     },
                     else => return error.unexpected_token,
                 }
             },
-            else => unreachable,
-        }
-    }
-
-    fn onPopResult(self: *ArrayFormat, ctx: *Context, result: StateResult) ParseError!void {
-        switch (self.state) {
             .wait_array_value => {
-                switch (result) {
-                    .value => {
-                        ctx.push(.{ .array_value = ArrayValue.init() });
+                switch (ctx.popped().array_value.state) {
+                    .no_value => return ctx.pop(),
+                    .value => |value| {
+                        _ = value;
+                        return ctx.yieldPush(.none, .{ .array_value = ArrayValue.init() });
                     },
-                    .none => try ctx.pop(.none),
                     else => unreachable,
                 }
             },
-            else => unreachable,
         }
     }
 };
 
 const ObjectKey = struct {
-    allocator: Allocator,
-    key: std.ArrayList(u8),
-    state: enum {
+    state: union(enum) {
         begin,
-        parse_string,
+        parse_string: struct {
+            key: std.ArrayList(u8),
+        },
+        end: struct {
+            key: std.ArrayList(u8),
+        },
+        no_key,
     },
 
-    fn init(allocator: Allocator) ObjectKey {
+    fn init() ObjectKey {
         return .{
-            .allocator = allocator,
-            .key = std.ArrayList(u8).init(allocator),
             .state = .begin,
         };
     }
 
-    fn onResume(self: *ObjectKey, ctx: *Context, token: Token) ParseError!void {
-        switch (self.state) {
-            .begin => {
-                switch (token) {
-                    .object_end => {
-                        try ctx.pop(.none);
-                        ctx.yield(.none);
-                    },
-                    .string,
-                    .partial_string,
-                    .partial_string_escaped_1,
-                    .partial_string_escaped_2,
-                    .partial_string_escaped_3,
-                    .partial_string_escaped_4,
-                    => {
-                        self.state = .parse_string;
-                    },
-                    else => {
-                        std.log.err("Unexpected token: {s}", .{@tagName(token)});
-                        return error.unexpected_token;
-                    },
-                }
+    fn parseString(self: *ObjectKey, ctx: *Context) ParseError!ControlFlow {
+        var key = &self.state.parse_string.key;
+        const token = ctx.token().*;
+        switch (token) {
+            .partial_string => |str| {
+                try key.appendSlice(str);
+                return ctx.yield(.none);
             },
-            .parse_string => {
-                switch (token) {
-                    .partial_string => |str| {
-                        try self.key.appendSlice(str);
-                        ctx.yield(.none);
-                    },
-                    .partial_string_escaped_1 => |*str| {
-                        try self.key.appendSlice(str);
-                        ctx.yield(.none);
-                    },
-                    .partial_string_escaped_2 => |*str| {
-                        try self.key.appendSlice(str);
-                        ctx.yield(.none);
-                    },
-                    .partial_string_escaped_3 => |*str| {
-                        try self.key.appendSlice(str);
-                        ctx.yield(.none);
-                    },
-                    .partial_string_escaped_4 => |*str| {
-                        try self.key.appendSlice(str);
-                        ctx.yield(.none);
-                    },
-                    .string => |str| {
-                        try self.key.appendSlice(str);
-                        const buf = try self.key.toOwnedSlice();
-                        try ctx.pop(.{ .string = buf });
-                        ctx.yield(.none);
-                    },
-                    else => {
-                        std.log.err("Unexpected token: {s}", .{@tagName(token)});
-                        return error.unexpected_token;
-                    },
-                }
+            .partial_string_escaped_1 => |*str| {
+                try key.appendSlice(str);
+                return ctx.yield(.none);
+            },
+            .partial_string_escaped_2 => |*str| {
+                try key.appendSlice(str);
+                return ctx.yield(.none);
+            },
+            .partial_string_escaped_3 => |*str| {
+                try key.appendSlice(str);
+                return ctx.yield(.none);
+            },
+            .partial_string_escaped_4 => |*str| {
+                try key.appendSlice(str);
+                return ctx.yield(.none);
+            },
+            .string => |str| {
+                try key.appendSlice(str);
+                self.state = .{ .end = .{ .key = self.state.parse_string.key } };
+                return ctx.pop();
+            },
+            else => {
+                std.log.err("Unexpected token: {s}", .{@tagName(token)});
+                return error.unexpected_token;
             },
         }
     }
 
+    fn onResume(self: *ObjectKey, ctx: *Context) ParseError!ControlFlow {
+        switch (self.state) {
+            .begin => {
+                switch (ctx.token().*) {
+                    .object_end => {
+                        self.state = .no_key;
+                        return ctx.pop();
+                    },
+                    else => {
+                        self.state = .{
+                            .parse_string = .{
+                                .key = std.ArrayList(u8).init(ctx.allocator),
+                            },
+                        };
+                        return self.parseString(ctx);
+                    },
+                }
+            },
+            .parse_string => return self.parseString(ctx),
+            else => unreachable,
+        }
+    }
+
     fn deinit(self: *ObjectKey) void {
-        self.key.deinit();
+        switch (self.state) {
+            .parse_string => |ps| {
+                ps.key.deinit();
+            },
+            .end => |r| {
+                r.key.deinit();
+            },
+            else => {},
+        }
     }
 };
 
 const JsonValue = struct {
+    value: std.json.Value,
+
     fn init() JsonValue {
-        return .{};
+        return .{ .value = .null };
     }
 
-    fn onResume(self: *JsonValue, ctx: *Context, token: Token) ParseError!void {
-        _ = token;
+    fn onResume(self: *JsonValue, ctx: *Context) ParseError!ControlFlow {
         _ = self;
-        ctx.yield(.none);
+        return ctx.yield(.none);
     }
 };
 
 const ArrayValue = struct {
-    state: enum {
+    state: union(enum) {
         begin,
         wait_json_value,
+        value: std.json.Value,
+        no_value,
     },
 
     fn init() ArrayValue {
         return .{ .state = .begin };
     }
 
-    fn onResume(self: *ArrayValue, ctx: *Context, token: Token) ParseError!void {
+    fn onResume(self: *ArrayValue, ctx: *Context) ParseError!ControlFlow {
         switch (self.state) {
             .begin => {
-                switch (token) {
+                switch (ctx.token().*) {
                     .array_end => {
-                        try ctx.pop(.none);
-                        ctx.yield(.none);
+                        self.state = .no_value;
+                        return ctx.pop();
                     },
                     else => {
-                        ctx.push(.{ .json_value = JsonValue.init() });
                         self.state = .wait_json_value;
+                        return ctx.push(.{ .json_value = JsonValue.init() });
                     },
                 }
             },
-            else => unreachable,
-        }
-    }
-
-    fn onPopResult(self: *ArrayValue, ctx: *Context, result: StateResult) ParseError!void {
-        switch (self.state) {
             .wait_json_value => {
-                try ctx.pop(result);
+                const json_value = ctx.popped().json_value;
+                self.state = .{ .value = json_value.value };
+                return ctx.pop();
             },
             else => unreachable,
         }
@@ -399,19 +421,9 @@ const State = union(enum) {
         }
     }
 
-    pub fn onResume(self: *State, ctx: *Context, token: Token) ParseError!void {
+    pub fn onResume(self: *State, ctx: *Context) ParseError!ControlFlow {
         switch (self.*) {
-            inline else => |*state| return state.onResume(ctx, token),
-        }
-    }
-
-    pub fn onPopResult(self: *State, ctx: *Context, result: StateResult) ParseError!void {
-        switch (self.*) {
-            inline else => |*state| {
-                if (@hasDecl(@TypeOf(state.*), "onPopResult")) {
-                    return state.onPopResult(ctx, result);
-                }
-            },
+            inline else => |*state| return state.onResume(ctx),
         }
     }
 };
@@ -419,21 +431,19 @@ const State = union(enum) {
 pub const JsonProfileParser = struct {
     allocator: Allocator,
     scanner: std.json.Scanner,
-    ctx: Context,
+    state_machine: StateMachine,
 
     pub fn init(allocator: Allocator) JsonProfileParser {
-        var ctx = Context.init(allocator);
-        ctx.push(.{ .start = Start.init(allocator) });
         return .{
             .allocator = allocator,
             .scanner = std.json.Scanner.initStreaming(allocator),
-            .ctx = ctx,
+            .state_machine = StateMachine.init(allocator, .{ .start = Start.init() }),
         };
     }
 
     pub fn deinit(self: *JsonProfileParser) void {
         self.scanner.deinit();
-        self.ctx.deinit();
+        self.state_machine.deinit();
     }
 
     pub fn feedInput(self: *JsonProfileParser, input: []const u8) void {
@@ -455,7 +465,7 @@ pub const JsonProfileParser = struct {
                     return err;
                 },
             };
-            const result = try self.parseToken(token);
+            const result = try self.state_machine.run(token);
             if (result != .none) {
                 return result;
             }
@@ -469,35 +479,6 @@ pub const JsonProfileParser = struct {
                 else => {},
             }
         }
-    }
-
-    fn parseToken(self: *JsonProfileParser, token: Token) ParseError!ParseResult {
-        errdefer {
-            while (self.ctx.stack.items.len > 0) {
-                var state = self.ctx.stack.pop();
-                state.deinit();
-            }
-        }
-
-        self.ctx.result = null;
-        while (self.ctx.result == null and self.ctx.stack.items.len > 0) {
-            var top_state = &self.ctx.stack.items[self.ctx.stack.items.len - 1];
-            try top_state.onResume(&self.ctx, token);
-        }
-
-        {
-            std.log.debug("Parsing token `{s}`", .{@tagName(token)});
-            for (0..self.ctx.stack.items.len) |i| {
-                const at = self.ctx.stack.items.len - i - 1;
-                const state = &self.ctx.stack.items[at];
-                std.log.debug("    [{}] {s}", .{ at, @tagName(state.*) });
-            }
-        }
-
-        if (self.ctx.result) |result| {
-            return result;
-        }
-        return .none;
     }
 };
 
