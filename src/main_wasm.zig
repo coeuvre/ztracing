@@ -222,7 +222,11 @@ const LoadFileState = struct {
             }
 
             switch (event) {
-                else => log.debug("{s}", .{@tagName(event)}),
+                .trace_event => |trace_event| {
+                    var trace = trace_event;
+                    trace.deinit(self.allocator);
+                },
+                .none => return,
             }
         }
     }
