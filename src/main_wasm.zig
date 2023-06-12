@@ -112,20 +112,25 @@ fn switch_state(new_state: State) void {
 
 const LoadFileState = struct {
     allocator: Allocator,
+    trace_event_allocator: std.heap.ArenaAllocator,
     total: usize,
     received: usize,
     json_parser: JsonProfileParser,
+    buffer: std.ArrayList(u8),
     progress_message: ?[:0]u8,
     error_message: ?[:0]u8,
 
     const popup_id = "LoadFilePopup";
 
     pub fn init(allocator: Allocator, len: usize) LoadFileState {
+        var trace_event_allocator = std.heap.ArenaAllocator.init(allocator);
         return .{
             .allocator = allocator,
+            .trace_event_allocator = trace_event_allocator,
             .total = len,
             .received = 0,
             .json_parser = JsonProfileParser.init(allocator),
+            .buffer = std.ArrayList(u8).init(allocator),
             .progress_message = null,
             .error_message = null,
         };
@@ -199,6 +204,10 @@ const LoadFileState = struct {
             self.json_parser.feedInput(buf);
             self.continueScan();
 
+            // self.buffer.ensureUnusedCapacity(len) catch unreachable;
+            // js.copyChunk(chunk, self.buffer.items[self.buffer.items.len..].ptr, len);
+            // self.buffer.items.len += len;
+
             self.received += len;
         }
     }
@@ -207,12 +216,19 @@ const LoadFileState = struct {
         if (self.shouldLoadFile()) {
             self.json_parser.endInput();
             self.continueScan();
+            // var parser = std.json.Parser.init(self.allocator, .alloc_if_needed);
+            // _ = parser.parse(self.buffer.items) catch |err| {
+            //     log.err("{}", .{err});
+            //     unreachable;
+            // };
         }
     }
 
     fn continueScan(self: *LoadFileState) void {
+        defer _ = self.trace_event_allocator.reset(.retain_capacity);
+
         while (true) {
-            const event = self.json_parser.next() catch |err| {
+            const event = self.json_parser.next(self.trace_event_allocator.allocator()) catch |err| {
                 self.setError("Failed to parse file: {}", .{err});
                 return;
             };
@@ -224,7 +240,8 @@ const LoadFileState = struct {
             switch (event) {
                 .trace_event => |trace_event| {
                     var trace = trace_event;
-                    trace.deinit(self.allocator);
+                    _ = trace;
+                    // trace.deinit(self.allocator);
                 },
                 .none => return,
             }
@@ -545,7 +562,10 @@ export fn logFromC(level: i32, cstr: [*:0]const u8) void {
 
 pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     _ = ret_addr;
-    _ = error_return_trace;
-    log.err("{s}", .{msg});
+    if (error_return_trace) |trace| {
+        log.err("{s}\n{}", .{ msg, trace });
+    } else {
+        log.err("{s}", .{msg});
+    }
     std.os.abort();
 }
