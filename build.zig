@@ -42,6 +42,24 @@ pub fn build(b: *std.Build) void {
     // step when running `zig build`).
     b.installArtifact(rtracing);
 
+    const profile_gen = b.addExecutable(.{
+        .name = "profile_gen",
+        .root_source_file = .{ .path = "tools/profile_gen.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    const install_profile_gen = b.addInstallArtifact(profile_gen);
+    const install_profile_gen_step = b.step("profile_gen", "Install profile_gen");
+    install_profile_gen_step.dependOn(&install_profile_gen.step);
+
+    const run_profile_gen = b.addRunArtifact(profile_gen);
+    run_profile_gen.step.dependOn(install_profile_gen_step);
+    if (b.args) |args| {
+        run_profile_gen.addArgs(args);
+    }
+    const run_profile_gen_step = b.step("run_profile_gen", "Run profile_gen");
+    run_profile_gen_step.dependOn(&run_profile_gen.step);
+
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
