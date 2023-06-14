@@ -42,23 +42,23 @@ pub fn build(b: *std.Build) void {
     // step when running `zig build`).
     b.installArtifact(rtracing);
 
-    const profile_gen = b.addExecutable(.{
-        .name = "profile_gen",
-        .root_source_file = .{ .path = "tools/profile_gen.zig" },
+    const gen_profile = b.addExecutable(.{
+        .name = "gen_profile",
+        .root_source_file = .{ .path = "tools/gen_profile.zig" },
         .target = target,
         .optimize = optimize,
     });
-    const install_profile_gen = b.addInstallArtifact(profile_gen);
-    const install_profile_gen_step = b.step("profile_gen", "Install profile_gen");
-    install_profile_gen_step.dependOn(&install_profile_gen.step);
+    const install_gen_profile = b.addInstallArtifact(gen_profile);
+    const install_gen_profile_step = b.step("gen_profile", "Install gen_profile");
+    install_gen_profile_step.dependOn(&install_gen_profile.step);
 
-    const run_profile_gen = b.addRunArtifact(profile_gen);
-    run_profile_gen.step.dependOn(install_profile_gen_step);
+    const run_gen_profile = b.addRunArtifact(gen_profile);
+    run_gen_profile.step.dependOn(install_gen_profile_step);
     if (b.args) |args| {
-        run_profile_gen.addArgs(args);
+        run_gen_profile.addArgs(args);
     }
-    const run_profile_gen_step = b.step("run_profile_gen", "Run profile_gen");
-    run_profile_gen_step.dependOn(&run_profile_gen.step);
+    const run_gen_profile_step = b.step("run_gen_profile", "Run gen_profile");
+    run_gen_profile_step.dependOn(&run_gen_profile.step);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish

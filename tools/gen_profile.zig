@@ -13,20 +13,27 @@ const TraceEvent = struct {
     tdur: ?i64,
 };
 
-/// profile_gen [num_events]
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     const args = try std.process.argsAlloc(allocator);
-    if (args.len != 2) {
-        std.log.err("Usage: profile_gen [num_events]", .{});
+    if (!(args.len == 2 or args.len == 3)) {
+        std.log.err("Usage: gen_profile <num_events> [output]", .{});
         return;
     }
     const num_events = try std.fmt.parseInt(u64, args[1], 10);
 
-    const stdout_file = std.io.getStdOut();
-    const stdout = stdout_file.writer();
-    try stdout.print("{{\"traceEvents\":[\n", .{});
+    var file = blk: {
+        if (args.len == 3) {
+            break :blk try std.fs.cwd().createFile(args[2], .{});
+        } else {
+            break :blk std.io.getStdOut();
+        }
+    };
+    defer file.close();
+    var buffered_writer = std.io.bufferedWriter(file.writer());
+    const writer = buffered_writer.writer();
+    try writer.print("{{\"traceEvents\":[\n", .{});
     var buf: [512]u8 = undefined;
     for (0..num_events) |i| {
         const name = try std.fmt.bufPrint(&buf, "event{}", .{i});
@@ -42,14 +49,14 @@ pub fn main() !void {
             .dur = 10,
             .tdur = null,
         };
-        try writeTraceEvent(stdout, &trace_event);
+        try writeTraceEvent(writer, &trace_event);
         var maybe_comma: []const u8 = ",";
         if (i + 1 == num_events) {
             maybe_comma = "";
         }
-        try stdout.print("{s}\n", .{maybe_comma});
+        try writer.print("{s}\n", .{maybe_comma});
     }
-    try stdout.print("]}}\n", .{});
+    try writer.print("]}}\n", .{});
 }
 
 fn writeTraceEvent(writer: anytype, trace_event: *TraceEvent) !void {
