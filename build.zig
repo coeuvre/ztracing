@@ -1,5 +1,45 @@
 const std = @import("std");
 
+fn addGenProfile(b: *std.Build, target: std.zig.CrossTarget, optimize: std.builtin.Mode) void {
+    const gen_profile = b.addExecutable(.{
+        .name = "gen_profile",
+        .root_source_file = .{ .path = "tools/gen_profile.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    const install_gen_profile = b.addInstallArtifact(gen_profile);
+    const install_gen_profile_step = b.step("gen_profile", "Install gen_profile");
+    install_gen_profile_step.dependOn(&install_gen_profile.step);
+
+    const run_gen_profile = b.addRunArtifact(gen_profile);
+    run_gen_profile.step.dependOn(install_gen_profile_step);
+    if (b.args) |args| {
+        run_gen_profile.addArgs(args);
+    }
+    const run_gen_profile_step = b.step("run_gen_profile", "Run gen_profile");
+    run_gen_profile_step.dependOn(&run_gen_profile.step);
+}
+
+fn addBenchParser(b: *std.Build, target: std.zig.CrossTarget, optimize: std.builtin.Mode) void {
+    const bench_parser = b.addExecutable(.{
+        .name = "bench_parser",
+        .root_source_file = .{ .path = "tools/bench_parser.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    const install_bench_parser = b.addInstallArtifact(bench_parser);
+    const install_bench_parser_step = b.step("bench_parser", "Install bench_parser");
+    install_bench_parser_step.dependOn(&install_bench_parser.step);
+
+    const run_bench_parser = b.addRunArtifact(bench_parser);
+    run_bench_parser.step.dependOn(install_bench_parser_step);
+    if (b.args) |args| {
+        run_bench_parser.addArgs(args);
+    }
+    const run_bench_parser_step = b.step("run_bench_parser", "Run bench_parser");
+    run_bench_parser_step.dependOn(&run_bench_parser.step);
+}
+
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
@@ -42,23 +82,8 @@ pub fn build(b: *std.Build) void {
     // step when running `zig build`).
     b.installArtifact(rtracing);
 
-    const gen_profile = b.addExecutable(.{
-        .name = "gen_profile",
-        .root_source_file = .{ .path = "tools/gen_profile.zig" },
-        .target = target,
-        .optimize = optimize,
-    });
-    const install_gen_profile = b.addInstallArtifact(gen_profile);
-    const install_gen_profile_step = b.step("gen_profile", "Install gen_profile");
-    install_gen_profile_step.dependOn(&install_gen_profile.step);
-
-    const run_gen_profile = b.addRunArtifact(gen_profile);
-    run_gen_profile.step.dependOn(install_gen_profile_step);
-    if (b.args) |args| {
-        run_gen_profile.addArgs(args);
-    }
-    const run_gen_profile_step = b.step("run_gen_profile", "Run gen_profile");
-    run_gen_profile_step.dependOn(&run_gen_profile.step);
+    addGenProfile(b, target, optimize);
+    addBenchParser(b, target, optimize);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
