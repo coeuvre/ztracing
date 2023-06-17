@@ -17,6 +17,7 @@ pub fn main() !void {
 
     var timer = try std.time.Timer.start();
     var total_bytes: usize = 0;
+    var total_dur: i64 = 0;
     {
         var file = try std.fs.cwd().openFile(path, .{});
         defer file.close();
@@ -30,11 +31,20 @@ pub fn main() !void {
         var value = try parser.parse(input);
         defer value.deinit();
 
+        if (value.root.object.get("traceEvents")) |trace_events| {
+            for (trace_events.array.items) |trace_event| {
+                if (trace_event.object.get("dur")) |dur| {
+                    total_dur += dur.integer;
+                }
+            }
+        }
+
         total_bytes = input.len;
     }
     const delta_ns = timer.read();
     const stdout = std.io.getStdOut().writer();
 
-    const speed = @intToFloat(f64, total_bytes) * 1000000000.0 / 1024.0 / 1024.0 / @intToFloat(f64, delta_ns);
+    const speed = @intToFloat(f64, total_bytes) * (1000000000.0 / 1024.0 / 1024.0) / @intToFloat(f64, delta_ns);
+    try stdout.print("Total Duration: {}\n", .{total_dur});
     try stdout.print("{d:.0} MiB / s\n", .{speed});
 }
