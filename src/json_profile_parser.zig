@@ -1,25 +1,61 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Token = std.json.Token;
+const ArenaAllocator = std.heap.ArenaAllocator;
+
+const Buffer = std.ArrayList(u8);
+
+const BufOrRef = struct {
+    buf: Buffer,
+    ref: []const u8,
+
+    pub fn init(allocator: Allocator) BufOrRef {
+        return .{
+            .buf = Buffer.init(allocator),
+            .ref = &[_]u8{},
+        };
+    }
+
+    pub fn appendSlice(self: *BufOrRef, slice: []const u8) !void {
+        return self.buf.appendSlice(slice);
+    }
+
+    pub fn setRef(self: *BufOrRef, ref: []const u8) void {
+        std.debug.assert(self.buf.items.len == 0);
+        self.ref = ref;
+    }
+
+    pub fn deinit(self: *BufOrRef) void {
+        self.buf.deinit();
+    }
+
+    pub fn toOwnedSlice(self: *BufOrRef) ![]u8 {
+        if (self.buf.items.len > 0) {
+            return self.buf.toOwnedSlice();
+        }
+        return self.buf.allocator.dupe(u8, self.ref);
+    }
+
+    pub fn items(self: *const BufOrRef) []const u8 {
+        if (self.buf.items.len == 0) {
+            return self.ref;
+        }
+        return self.buf.items;
+    }
+};
 
 const Context = struct {
     state: union(enum) {
         run: Token,
         pop: State,
-        deinit,
     },
-    trace_event_allocator: ?Allocator,
 
-    pub fn forRun(t: Token, trace_event_allocator: Allocator) Context {
-        return .{ .state = .{ .run = t }, .trace_event_allocator = trace_event_allocator };
+    pub fn forRun(t: Token) Context {
+        return .{ .state = .{ .run = t } };
     }
 
-    pub fn forPop(popped_state: State, trace_event_allocator: Allocator) Context {
-        return .{ .state = .{ .pop = popped_state }, .trace_event_allocator = trace_event_allocator };
-    }
-
-    pub fn forDeinit() Context {
-        return .{ .state = .deinit, .trace_event_allocator = null };
+    pub fn forPop(popped_state: State) Context {
+        return .{ .state = .{ .pop = popped_state } };
     }
 
     pub fn push(self: *Context, state: State) ControlFlow {
@@ -83,23 +119,22 @@ const StateMachine = struct {
     pub fn deinit(self: *StateMachine) void {
         while (self.stack.items.len > 0) {
             var state = self.stack.pop();
-            var ctx = Context.forDeinit();
-            state.deinit(&ctx);
+            state.deinit();
         }
         self.stack.deinit();
     }
 
-    pub fn run(self: *StateMachine, token: Token, trace_event_allocator: Allocator) ParseError!ParseResult {
-        // defer {
-        //     std.log.debug("Parsing {}", .{token});
+    pub fn run(self: *StateMachine, token: Token) ParseError!ParseResult {
+        // {
+        //     std.log.info("Parsing {}", .{token});
         //     for (0..self.stack.items.len) |i| {
         //         const at = self.stack.items.len - i - 1;
         //         const state = &self.stack.items[at];
-        //         std.log.debug("    [{}] {s}", .{ at, @tagName(state.*) });
+        //         std.log.info("    [{}] {s}", .{ at, @tagName(state.*) });
         //     }
         // }
 
-        var ctx = Context.forRun(token, trace_event_allocator);
+        var ctx = Context.forRun(token);
         while (true) {
             std.debug.assert(self.stack.items.len > 0);
             var top = &self.stack.items[self.stack.items.len - 1];
@@ -107,8 +142,7 @@ const StateMachine = struct {
 
             switch (ctx.state) {
                 .pop => |*state| {
-                    ctx = Context.forDeinit();
-                    state.deinit(&ctx);
+                    state.deinit();
                 },
                 else => {},
             }
@@ -116,11 +150,11 @@ const StateMachine = struct {
             switch (try control_flow) {
                 .push => |state| {
                     try self.stack.append(state);
-                    ctx = Context.forRun(token, trace_event_allocator);
+                    ctx = Context.forRun(token);
                 },
                 .pop => {
                     const state = self.stack.pop();
-                    ctx = Context.forPop(state, trace_event_allocator);
+                    ctx = Context.forPop(state);
                 },
                 .yield => |result| {
                     return result;
@@ -135,33 +169,15 @@ const StateMachine = struct {
 };
 
 pub const TraceEvent = struct {
-    name: ?[]u8,
-    cat: ?[]u8,
-    ph: ?[]u8,
-    ts: ?i64,
-    tss: ?i64,
-    pid: ?i64,
-    tid: ?i64,
-    args: ?std.json.ObjectMap,
-    cname: ?[]u8,
-
-    pub fn deinit(self: *TraceEvent, allocator: Allocator) void {
-        if (self.name) |name| {
-            allocator.free(name);
-        }
-        if (self.cat) |cat| {
-            allocator.free(cat);
-        }
-        if (self.ph) |ph| {
-            allocator.free(ph);
-        }
-        if (self.args) |args| {
-            freeJsonValue(allocator, .{ .object = args });
-        }
-        if (self.cname) |cname| {
-            allocator.free(cname);
-        }
-    }
+    name: ?[]const u8 = null,
+    cat: ?[]u8 = null,
+    ph: ?[]u8 = null,
+    ts: ?i64 = null,
+    tss: ?i64 = null,
+    pid: ?i64 = null,
+    tid: ?i64 = null,
+    args: ?std.json.ObjectMap = null,
+    cname: ?[]u8 = null,
 };
 
 fn toTraceEvent(allocator: Allocator, object: std.json.ObjectMap) ParseError!TraceEvent {
@@ -266,12 +282,12 @@ const Start = struct {
             .begin => {
                 switch (ctx.token().*) {
                     .object_begin => {
-                        var object_foramt = .{ .object_format = ObjectFormat.init(self.allocator, ctx.trace_event_allocator.?) };
+                        var object_foramt = .{ .object_format = ObjectFormat.init(self.allocator) };
                         self.state = .wait;
                         return ctx.push(object_foramt);
                     },
                     .array_begin => {
-                        var array_format = .{ .array_format = ArrayFormat.init(ctx.trace_event_allocator.?) };
+                        var array_format = .{ .array_format = ArrayFormat.init(self.allocator) };
                         self.state = .wait;
                         return ctx.push(array_format);
                     },
@@ -292,7 +308,6 @@ const Start = struct {
 
 const ObjectFormat = struct {
     allocator: Allocator,
-    trace_event_allocator: Allocator,
     state: union(enum) {
         begin,
         wait_object_key,
@@ -301,10 +316,9 @@ const ObjectFormat = struct {
         end,
     },
 
-    fn init(allocator: Allocator, trace_event_allocator: Allocator) ObjectFormat {
+    fn init(allocator: Allocator) ObjectFormat {
         return .{
             .allocator = allocator,
-            .trace_event_allocator = trace_event_allocator,
             .state = .begin,
         };
     }
@@ -321,24 +335,28 @@ const ObjectFormat = struct {
                 }
             },
             .wait_object_key => {
-                switch (ctx.popped().object_key.state) {
+                var object_key = ctx.popped().object_key;
+                switch (object_key.state) {
                     .no_key => {
                         self.state = .end;
                         return ctx.pop();
                     },
-                    .key => |str| {
-                        defer self.allocator.free(str);
+                    .key => |*key| {
+                        defer key.deinit();
 
-                        if (std.mem.eql(u8, str, "traceEvents")) {
+                        // std.log.info("{s} ", .{key});
+                        if (std.mem.eql(u8, key.items(), "traceEvents")) {
                             self.state = .wait_array_format;
-                            return ctx.yieldPush(.none, .{ .array_format = ArrayFormat.init(self.trace_event_allocator) });
+                            return ctx.yieldPush(.none, .{ .array_format = ArrayFormat.init(self.allocator) });
                         } else {
                             // Ignore unrecognized key
                             self.state = .wait_json_value;
                             return ctx.yieldPush(.none, .{ .json_value = JsonValue.init(self.allocator) });
                         }
                     },
-                    else => unreachable,
+                    else => {
+                        unreachable;
+                    },
                 }
             },
             .wait_array_format => {
@@ -355,17 +373,91 @@ const ObjectFormat = struct {
     }
 };
 
-const ArrayFormat = struct {
-    trace_event_allocator: Allocator,
-    state: union(enum) {
+const TraceEventValue = struct {
+    state: enum {
         begin,
-        wait_array_item,
+        wait_object_key,
+        wait_name,
+        wait_json_value,
+        no_value,
+        value,
     },
+    allocator: Allocator,
+    value: TraceEvent,
 
-    fn init(trace_event_allocator: Allocator) ArrayFormat {
+    fn init(allocator: Allocator) TraceEventValue {
         return .{
             .state = .begin,
-            .trace_event_allocator = trace_event_allocator,
+            .allocator = allocator,
+            .value = TraceEvent{},
+        };
+    }
+
+    fn onResume(self: *TraceEventValue, ctx: *Context) ParseError!ControlFlow {
+        switch (self.state) {
+            .begin => {
+                switch (ctx.token().*) {
+                    .array_end => {
+                        self.state = .no_value;
+                        return ctx.pop();
+                    },
+                    .object_begin => {
+                        self.state = .wait_object_key;
+                        return ctx.yieldPush(.none, .{ .object_key = ObjectKey.init(self.allocator) });
+                    },
+                    else => return error.unexpected_token,
+                }
+            },
+            .wait_object_key => {
+                var object_key = ctx.popped().object_key;
+                switch (object_key.state) {
+                    .no_key => {
+                        self.state = .value;
+                        return ctx.pop();
+                    },
+                    .key => |*key| {
+                        defer key.deinit();
+
+                        if (std.mem.eql(u8, key.items(), "name")) {
+                            self.state = .wait_name;
+                            return ctx.yieldPush(.none, .{ .string_value = StringValue.init(self.allocator) });
+                        } else {
+                            self.state = .wait_json_value;
+                            return ctx.yieldPush(.none, .{ .json_value = JsonValue.init(self.allocator) });
+                        }
+                    },
+                    else => unreachable,
+                }
+            },
+            .wait_name => {
+                const val = ctx.popped().string_value.value();
+                self.value.name = val.items();
+                self.state = .wait_object_key;
+                return ctx.yieldPush(.none, .{ .object_key = ObjectKey.init(self.allocator) });
+            },
+            .wait_json_value => {
+                self.state = .wait_object_key;
+                return ctx.yieldPush(.none, .{ .object_key = ObjectKey.init(self.allocator) });
+            },
+            else => unreachable,
+        }
+    }
+};
+
+const ArrayFormat = struct {
+    state: union(enum) {
+        begin,
+        wait_trace_event,
+        cleanup,
+    },
+    allocator: Allocator,
+    arena: ArenaAllocator,
+
+    fn init(allocator: Allocator) ArrayFormat {
+        return .{
+            .state = .begin,
+            .allocator = allocator,
+            .arena = ArenaAllocator.init(allocator),
         };
     }
 
@@ -374,30 +466,33 @@ const ArrayFormat = struct {
             .begin => {
                 switch (ctx.token().*) {
                     .array_begin => {
-                        self.state = .wait_array_item;
-                        return ctx.yieldPush(.none, .{ .array_item = ArrayItem.init(self.trace_event_allocator) });
+                        self.state = .wait_trace_event;
+                        return ctx.yieldPush(.none, .{ .trace_event_value = TraceEventValue.init(self.arena.allocator()) });
                     },
                     else => return error.unexpected_token,
                 }
             },
-            .wait_array_item => {
-                switch (ctx.popped().array_item.state) {
+            .wait_trace_event => {
+                const trace_event_value = ctx.popped().trace_event_value;
+                switch (trace_event_value.state) {
                     .no_value => return ctx.pop(),
-                    .value => |value| {
-                        if (value == .object) {
-                            // // TODO: Handle value
-                            var trace_event = try toTraceEvent(self.trace_event_allocator, value.object);
-                            // std.log.debug("Trace Event: {any}", .{trace_event});
-                            return ctx.yieldPush(.{ .trace_event = trace_event }, .{ .array_item = ArrayItem.init(self.trace_event_allocator) });
-                        } else {
-                            freeJsonValue(self.trace_event_allocator, value);
-                            return ctx.yieldPush(.none, .{ .array_item = ArrayItem.init(self.trace_event_allocator) });
-                        }
+                    .value => {
+                        self.state = .cleanup;
+                        return ctx.yield(.{ .trace_event = trace_event_value.value });
                     },
                     else => unreachable,
                 }
             },
+            .cleanup => {
+                _ = self.arena.reset(.retain_capacity);
+                self.state = .wait_trace_event;
+                return ctx.push(.{ .trace_event_value = TraceEventValue.init(self.arena.allocator()) });
+            },
         }
+    }
+
+    pub fn deinit(self: *ArrayFormat) void {
+        self.arena.deinit();
     }
 };
 
@@ -435,18 +530,18 @@ fn freeJsonValue(allocator: Allocator, value: std.json.Value) void {
 }
 
 const ObjectKey = struct {
-    allocator: Allocator,
     state: union(enum) {
         begin,
         wait_string_value,
-        key: []u8,
+        key: BufOrRef,
         no_key,
     },
+    allocator: Allocator,
 
     fn init(allocator: Allocator) ObjectKey {
         return .{
-            .allocator = allocator,
             .state = .begin,
+            .allocator = allocator,
         };
     }
 
@@ -465,9 +560,8 @@ const ObjectKey = struct {
                 }
             },
             .wait_string_value => {
-                var string_value = ctx.popped().string_value;
-                const key = try string_value.str.toOwnedSlice();
-                self.state = .{ .key = key };
+                const val = ctx.popped().string_value.value();
+                self.state = .{ .key = val };
                 return ctx.pop();
             },
             else => unreachable,
@@ -476,38 +570,55 @@ const ObjectKey = struct {
 };
 
 const StringValue = struct {
-    str: std.ArrayList(u8),
+    val: BufOrRef,
+    partial: bool,
+    state: enum {
+        parsing,
+        value,
+    },
 
     fn init(allocator: Allocator) StringValue {
         return .{
-            .str = std.ArrayList(u8).init(allocator),
+            .val = BufOrRef.init(allocator),
+            .partial = false,
+            .state = .parsing,
         };
     }
 
     fn onResume(self: *StringValue, ctx: *Context) ParseError!ControlFlow {
         switch (ctx.token().*) {
             .partial_string => |str| {
-                try self.str.appendSlice(str);
+                try self.val.appendSlice(str);
+                self.partial = true;
                 return ctx.yield(.none);
             },
             .partial_string_escaped_1 => |*str| {
-                try self.str.appendSlice(str);
+                try self.val.appendSlice(str);
+                self.partial = true;
                 return ctx.yield(.none);
             },
             .partial_string_escaped_2 => |*str| {
-                try self.str.appendSlice(str);
+                try self.val.appendSlice(str);
+                self.partial = true;
                 return ctx.yield(.none);
             },
             .partial_string_escaped_3 => |*str| {
-                try self.str.appendSlice(str);
+                try self.val.appendSlice(str);
+                self.partial = true;
                 return ctx.yield(.none);
             },
             .partial_string_escaped_4 => |*str| {
-                try self.str.appendSlice(str);
+                try self.val.appendSlice(str);
+                self.partial = true;
                 return ctx.yield(.none);
             },
             .string => |str| {
-                try self.str.appendSlice(str);
+                if (self.partial) {
+                    try self.val.appendSlice(str);
+                } else {
+                    self.val.setRef(str);
+                }
+                self.state = .value;
                 return ctx.pop();
             },
             else => {
@@ -515,34 +626,45 @@ const StringValue = struct {
             },
         }
     }
+
+    pub fn value(self: *StringValue) BufOrRef {
+        return self.val;
+    }
+
+    pub fn deinit(self: *StringValue) void {
+        if (self.state == .parsing) {
+            self.val.deinit();
+        }
+    }
 };
 
 const NumberValue = struct {
-    num: std.ArrayList(u8),
+    buf: Buffer,
 
     fn init(allocator: Allocator) NumberValue {
-        return .{
-            .num = std.ArrayList(u8).init(allocator),
-        };
+        return .{ .buf = Buffer.init(allocator) };
     }
 
     fn onResume(self: *NumberValue, ctx: *Context) ParseError!ControlFlow {
         switch (ctx.token().*) {
             .partial_number => |num| {
-                try self.num.appendSlice(num);
+                try self.buf.appendSlice(num);
                 return ctx.yield(.none);
             },
             .number => |num| {
-                try self.num.appendSlice(num);
+                try self.buf.appendSlice(num);
                 return ctx.pop();
             },
             else => return error.unexpected_token,
         }
     }
 
-    fn deinit(self: *NumberValue, ctx: *Context) void {
-        _ = ctx;
-        self.num.deinit();
+    pub fn value(self: *NumberValue) ![]u8 {
+        return self.buf.toOwnedSlice();
+    }
+
+    pub fn deinit(self: *NumberValue) void {
+        self.buf.deinit();
     }
 };
 
@@ -551,7 +673,7 @@ const ObjectValue = struct {
         begin,
         wait_object_key,
         wait_json_value: struct {
-            key: []u8,
+            key: BufOrRef,
         },
         value,
     },
@@ -595,9 +717,9 @@ const ObjectValue = struct {
                     else => unreachable,
                 }
             },
-            .wait_json_value => |s| {
+            .wait_json_value => |*s| {
                 const json_value = ctx.popped().json_value;
-                try self.object.put(s.key, json_value.state.value);
+                try self.object.put(try s.key.toOwnedSlice(), json_value.state.value);
                 self.state = .wait_object_key;
                 return ctx.yieldPush(.none, .{ .object_key = ObjectKey.init(self.allocator) });
             },
@@ -605,11 +727,10 @@ const ObjectValue = struct {
         }
     }
 
-    fn deinit(self: *ObjectValue, ctx: *Context) void {
-        _ = ctx;
+    fn deinit(self: *ObjectValue) void {
         switch (self.state) {
-            .wait_json_value => |s| {
-                self.allocator.free(s.key);
+            .wait_json_value => |*s| {
+                s.key.deinit();
             },
             else => {
                 if (self.state != .value) {
@@ -685,8 +806,8 @@ const JsonValue = struct {
                 }
             },
             .wait_string_value => {
-                const str = try ctx.popped().string_value.str.toOwnedSlice();
-                self.state = .{ .value = .{ .string = str } };
+                var val = ctx.popped().string_value.value();
+                self.state = .{ .value = .{ .string = try val.toOwnedSlice() } };
                 return ctx.pop();
             },
             .wait_object_value => {
@@ -700,8 +821,8 @@ const JsonValue = struct {
                 return ctx.pop();
             },
             .wait_number_value => {
-                var num = ctx.popped().number_value.num;
-                self.state = .{ .value = .{ .number_string = try num.toOwnedSlice() } };
+                const str = try ctx.popped().number_value.value();
+                self.state = .{ .value = .{ .number_string = str } };
                 return ctx.pop();
             },
             else => unreachable,
@@ -792,8 +913,7 @@ const ArrayValue = struct {
         }
     }
 
-    fn deinit(self: *ArrayValue, ctx: *Context) void {
-        _ = ctx;
+    fn deinit(self: *ArrayValue) void {
         if (self.state != .value) {
             self.array.deinit();
         }
@@ -805,6 +925,7 @@ const State = union(enum) {
 
     object_format: ObjectFormat,
     array_format: ArrayFormat,
+    trace_event_value: TraceEventValue,
 
     json_value: JsonValue,
     array_value: ArrayValue,
@@ -814,11 +935,11 @@ const State = union(enum) {
     string_value: StringValue,
     number_value: NumberValue,
 
-    pub fn deinit(self: *State, ctx: *Context) void {
+    pub fn deinit(self: *State) void {
         switch (self.*) {
             inline else => |*state| {
                 if (@hasDecl(@TypeOf(state.*), "deinit")) {
-                    state.deinit(ctx);
+                    state.deinit();
                 }
             },
         }
@@ -857,7 +978,7 @@ pub const JsonProfileParser = struct {
         self.scanner.endInput();
     }
 
-    pub fn next(self: *JsonProfileParser, trace_event_allocator: Allocator) ParseError!ParseResult {
+    pub fn next(self: *JsonProfileParser) ParseError!ParseResult {
         while (true) {
             const token = self.scanner.next() catch |err| switch (err) {
                 error.BufferUnderrun => {
@@ -868,7 +989,7 @@ pub const JsonProfileParser = struct {
                     return err;
                 },
             };
-            const result = try self.state_machine.run(token, trace_event_allocator);
+            const result = try self.state_machine.run(token);
             if (result != .none) {
                 return result;
             }
@@ -895,10 +1016,8 @@ fn parseAll(input: []const u8) ParseError![]ParseResult {
     var results = std.ArrayList(ParseResult).init(std.testing.allocator);
     errdefer results.deinit();
 
-    var trace_event_allocator = std.heap.ArenaAllocator.init(allocator);
-    defer trace_event_allocator.deinit();
     while (true) {
-        const result = try parser.next(trace_event_allocator.allocator());
+        const result = try parser.next();
         if (result == .none) {
             break;
         }

@@ -5,6 +5,7 @@ const JsonProfileParser = @import("parser").JsonProfileParser;
 
 pub const Mode = enum {
     baseline,
+    parse_typed,
     scan_complete_input,
     scan_streaming,
     parser,
@@ -43,13 +44,14 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
     try stdout.print("{s}\n", .{mode_str});
     try stdout.print("Total Duration: {}\n", .{result.total_dur});
-    const speed = @intToFloat(f64, result.total_bytes) * (1000000000.0 / 1024.0 / 1024.0) / @intToFloat(f64, delta_ns);
+    const speed = @as(f64, @floatFromInt(result.total_bytes)) * (1000000000.0 / 1024.0 / 1024.0) / @as(f64, @floatFromInt(delta_ns));
     try stdout.print("{d:.0} MiB / s\n", .{speed});
 }
 
 fn parse(allocator: Allocator, mode: Mode, path: []const u8) !ParseResult {
     return switch (mode) {
         .baseline => baseline(allocator, path),
+        .parse_typed => parseTyped(allocator, path),
         .scan_complete_input => scanCompleteInput(allocator, path),
         .scan_streaming => scanStreaming(allocator, path),
         .parser => parseWithParser(allocator, path),
@@ -70,19 +72,48 @@ fn baseline(allocator: Allocator, path: []const u8) !ParseResult {
     defer allocator.free(input);
     result.total_bytes = input.len;
 
-    var parser = std.json.Parser.init(allocator, .alloc_if_needed);
-    defer parser.deinit();
+    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, input, .{});
+    defer parsed.deinit();
 
-    var value = try parser.parse(input);
-    defer value.deinit();
-
-    if (value.root.object.get("traceEvents")) |trace_events| {
+    if (parsed.value.object.get("traceEvents")) |trace_events| {
         for (trace_events.array.items) |trace_event| {
             if (trace_event.object.get("dur")) |dur| {
                 result.total_dur += dur.integer;
             }
         }
     }
+
+    return result;
+}
+
+const TraceEvent = struct {
+    name: ?[]u8 = null,
+    cat: ?[]u8 = null,
+    ph: ?[]u8 = null,
+    ts: ?i64 = null,
+    tss: ?i64 = null,
+    pid: ?i64 = null,
+    tid: ?i64 = null,
+    dur: ?i64 = null,
+    args: ?std.json.Value = null,
+    cname: ?[]u8 = null,
+};
+
+const ObjectFormat = struct {
+    traceEvents: []TraceEvent,
+};
+
+fn parseTyped(allocator: Allocator, path: []const u8) !ParseResult {
+    var result = ParseResult{};
+    var file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+
+    const input = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(input);
+    result.total_bytes = input.len;
+
+    var parsed = try std.json.parseFromSlice(ObjectFormat, allocator, input, .{});
+    defer parsed.deinit();
 
     return result;
 }
@@ -156,27 +187,24 @@ fn parseWithParser(allocator: Allocator, path: []const u8) !ParseResult {
     var parser = JsonProfileParser.init(allocator);
     defer parser.deinit();
 
-    var buffer: [1024 * 1024]u8 = undefined;
-
-    var trace_event_allocator = std.heap.ArenaAllocator.init(allocator);
-    defer trace_event_allocator.deinit();
+    var buf = try allocator.alloc(u8, 1024 * 1024);
+    defer allocator.free(buf);
 
     var eof = false;
     while (!eof) {
-        const nread = try file.read(&buffer);
-        parser.feedInput(buffer[0..nread]);
+        const nread = try file.read(buf);
+        parser.feedInput(buf[0..nread]);
         result.total_bytes += nread;
-        if (nread < buffer.len) {
+        if (nread < buf.len) {
             eof = true;
             parser.endInput();
         }
 
         while (true) {
-            const event = try parser.next(trace_event_allocator.allocator());
+            const event = try parser.next();
             if (event == .none) {
                 break;
             }
-            _ = trace_event_allocator.reset(.retain_capacity);
         }
     }
 
