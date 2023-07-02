@@ -44,8 +44,10 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
     try stdout.print("{s}\n", .{mode_str});
     try stdout.print("Total Duration: {}\n", .{result.total_dur});
-    const speed = @as(f64, @floatFromInt(result.total_bytes)) * (1000000000.0 / 1024.0 / 1024.0) / @as(f64, @floatFromInt(delta_ns));
-    try stdout.print("{d:.0} MiB / s\n", .{speed});
+    const delta_s = @as(f64, @floatFromInt(delta_ns)) / 1000000000.0;
+    const speed = @as(f64, @floatFromInt(result.total_bytes)) / (1024.0 * 1024.0) / delta_s;
+    try stdout.print("Wall time: {d:.1} s\n", .{delta_s});
+    try stdout.print("Speed: {d:.1} MiB / s\n", .{speed});
 }
 
 fn parse(allocator: Allocator, mode: Mode, path: []const u8) !ParseResult {
