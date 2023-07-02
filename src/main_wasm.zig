@@ -14,7 +14,7 @@ pub const std_options = struct {
         comptime format: []const u8,
         args: anytype,
     ) void {
-        const level = @enumToInt(message_level);
+        const level = @intFromEnum(message_level);
         const prefix2 = if (scope == .default) "" else "[" ++ @tagName(scope) ++ "] ";
         var buf: [256]u8 = undefined;
         const msg = std.fmt.bufPrint(&buf, prefix2 ++ format ++ "\n", args) catch return;
@@ -51,25 +51,28 @@ const js = struct {
 };
 
 const alignment = 8;
-const numUsize = alignment / @sizeOf(usize);
+const num_usize = alignment / @sizeOf(usize);
 
 fn imguiAlloc(size: usize, user_data: ?*anyopaque) callconv(.C) *anyopaque {
     _ = user_data;
-    const totalSize = @sizeOf(usize) * numUsize + size;
+    const total_size = @sizeOf(usize) * num_usize + size;
     var allocator = app.allocator;
-    const buf = allocator.alignedAlloc(u8, alignment, totalSize) catch unreachable;
-    var ptr = @ptrCast([*]usize, @alignCast(@alignOf([*]usize), buf.ptr));
-    ptr[0] = totalSize;
-    return @ptrCast(*anyopaque, ptr + numUsize);
+    const buf = allocator.alignedAlloc(u8, alignment, total_size) catch unreachable;
+    var ptr: [*]usize = @ptrCast(buf.ptr);
+    ptr[0] = total_size;
+    return @ptrCast(ptr + num_usize);
 }
 
 fn imguiFree(maybe_ptr: ?*anyopaque, user_data: ?*anyopaque) callconv(.C) void {
     _ = user_data;
     if (maybe_ptr) |ptr| {
         var allocator = app.allocator;
-        const raw = @ptrCast([*]usize, @alignCast(@alignOf([*]usize), ptr)) - numUsize;
-        const totalSize = raw[0];
-        allocator.free(@alignCast(alignment, @ptrCast([*]u8, raw)[0..totalSize]));
+        const ptr_after_num_usize: [*]usize = @ptrCast(@alignCast(ptr));
+        const base = ptr_after_num_usize - num_usize;
+        const total_size = base[0];
+
+        const raw: [*]align(alignment) u8 = @ptrCast(@alignCast(base));
+        allocator.free(raw[0..total_size]);
     }
 }
 
@@ -112,7 +115,6 @@ fn switch_state(new_state: State) void {
 
 const LoadFileState = struct {
     allocator: Allocator,
-    trace_event_allocator: std.heap.ArenaAllocator,
     total: usize,
     received: usize,
     json_parser: JsonProfileParser,
@@ -123,10 +125,8 @@ const LoadFileState = struct {
     const popup_id = "LoadFilePopup";
 
     pub fn init(allocator: Allocator, len: usize) LoadFileState {
-        var trace_event_allocator = std.heap.ArenaAllocator.init(allocator);
         return .{
             .allocator = allocator,
-            .trace_event_allocator = trace_event_allocator,
             .total = len,
             .received = 0,
             .json_parser = JsonProfileParser.init(allocator),
@@ -153,7 +153,10 @@ const LoadFileState = struct {
                 }
             } else {
                 if (self.total > 0) {
-                    self.setProgress("Loading file ... ({}%)", .{@floatToInt(usize, @round(@intToFloat(f32, self.received) / @intToFloat(f32, self.total) * 100.0))});
+                    const received: f32 = @floatFromInt(self.received);
+                    const total: f32 = @floatFromInt(self.total);
+                    const percentage: i32 = @intFromFloat(@round(received / total * 100.0));
+                    self.setProgress("Loading file ... ({}%)", .{percentage});
                 } else {
                     self.setProgress("Loading file ... ({})", .{self.received});
                 }
@@ -221,14 +224,13 @@ const LoadFileState = struct {
             //     log.err("{}", .{err});
             //     unreachable;
             // };
+            self.json_parser.deinit();
         }
     }
 
     fn continueScan(self: *LoadFileState) void {
-        defer _ = self.trace_event_allocator.reset(.retain_capacity);
-
         while (true) {
-            const event = self.json_parser.next(self.trace_event_allocator.allocator()) catch |err| {
+            const event = self.json_parser.next() catch |err| {
                 self.setError("Failed to parse file: {}", .{err});
                 return;
             };
@@ -318,7 +320,8 @@ const App = struct {
             c.ImFontAtlas_GetTexDataAsRGBA32(io.*.Fonts, &pixels, &w, &h, &bytes_per_pixel);
             std.debug.assert(bytes_per_pixel == 4);
             const tex = glCreateFontTexture(w, h, pixels);
-            c.ImFontAtlas_SetTexID(io.*.Fonts, @intToPtr(*anyopaque, @intCast(usize, tex.ref)));
+            const addr: usize = @intCast(tex.ref);
+            c.ImFontAtlas_SetTexID(io.*.Fonts, @ptrFromInt(addr));
         }
     }
 
@@ -415,16 +418,16 @@ const App = struct {
         const clip_scale_x = draw_data.*.FramebufferScale.x;
         const clip_scale_y = draw_data.*.FramebufferScale.y;
 
-        for (0..@intCast(usize, draw_data.CmdListsCount)) |cmd_list_index| {
+        for (0..@intCast(draw_data.CmdListsCount)) |cmd_list_index| {
             const cmd_list = draw_data.*.CmdLists[cmd_list_index];
 
             const vtx_buffer_size = cmd_list.*.VtxBuffer.Size * @sizeOf(c.ImDrawVert);
             const idx_buffer_size = cmd_list.*.IdxBuffer.Size * @sizeOf(c.ImDrawIdx);
 
-            glBufferData(GL_ARRAY_BUFFER, vtx_buffer_size, @ptrCast([*]const u8, cmd_list.*.VtxBuffer.Data), GL_STREAM_DRAW);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, idx_buffer_size, @ptrCast([*]const u8, cmd_list.*.IdxBuffer.Data), GL_STREAM_DRAW);
+            glBufferData(GL_ARRAY_BUFFER, vtx_buffer_size, @ptrCast(cmd_list.*.VtxBuffer.Data), GL_STREAM_DRAW);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, idx_buffer_size, @ptrCast(cmd_list.*.IdxBuffer.Data), GL_STREAM_DRAW);
 
-            for (0..@intCast(usize, cmd_list.*.CmdBuffer.Size)) |cmd_index| {
+            for (0..@intCast(cmd_list.*.CmdBuffer.Size)) |cmd_index| {
                 const cmd = &cmd_list.*.CmdBuffer.Data[cmd_index];
 
                 // Project scissor/clipping rectangles into framebuffer space
@@ -437,14 +440,14 @@ const App = struct {
                 }
                 // Apply scissor/clipping rectangle (Y is inverted in OpenGL)
                 glScissor(
-                    @floatToInt(i32, clip_min_x),
-                    @floatToInt(i32, fb_height - clip_max_y),
-                    @floatToInt(i32, clip_max_x - clip_min_x),
-                    @floatToInt(i32, clip_max_y - clip_min_y),
+                    @intFromFloat(clip_min_x),
+                    @intFromFloat(fb_height - clip_max_y),
+                    @intFromFloat(clip_max_x - clip_min_x),
+                    @intFromFloat(clip_max_y - clip_min_y),
                 );
 
                 const tex_ref = js.JsObject{
-                    .ref = @ptrToInt(c.ImDrawCmd_GetTexID(cmd)),
+                    .ref = @intFromPtr(c.ImDrawCmd_GetTexID(cmd)),
                 };
                 glBindTexture(GL_TEXTURE_2D, tex_ref);
 

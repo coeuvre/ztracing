@@ -170,14 +170,14 @@ const StateMachine = struct {
 
 pub const TraceEvent = struct {
     name: ?[]const u8 = null,
-    cat: ?[]u8 = null,
-    ph: ?[]u8 = null,
+    cat: ?[]const u8 = null,
+    ph: ?[]const u8 = null,
     ts: ?i64 = null,
     tss: ?i64 = null,
     pid: ?i64 = null,
     tid: ?i64 = null,
     args: ?std.json.ObjectMap = null,
-    cname: ?[]u8 = null,
+    cname: ?[]const u8 = null,
 };
 
 fn toTraceEvent(allocator: Allocator, object: std.json.ObjectMap) ParseError!TraceEvent {
