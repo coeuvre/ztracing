@@ -207,10 +207,6 @@ const LoadFileState = struct {
             self.json_parser.feedInput(buf);
             self.continueScan();
 
-            // self.buffer.ensureUnusedCapacity(len) catch unreachable;
-            // js.copyChunk(chunk, self.buffer.items[self.buffer.items.len..].ptr, len);
-            // self.buffer.items.len += len;
-
             self.received += len;
         }
     }
@@ -219,31 +215,21 @@ const LoadFileState = struct {
         if (self.shouldLoadFile()) {
             self.json_parser.endInput();
             self.continueScan();
-            // var parser = std.json.Parser.init(self.allocator, .alloc_if_needed);
-            // _ = parser.parse(self.buffer.items) catch |err| {
-            //     log.err("{}", .{err});
-            //     unreachable;
-            // };
             self.json_parser.deinit();
         }
     }
 
     fn continueScan(self: *LoadFileState) void {
-        while (true) {
+        while (!self.json_parser.done()) {
             const event = self.json_parser.next() catch |err| {
                 self.setError("Failed to parse file: {}", .{err});
                 return;
             };
 
-            if (event == .none) {
-                return;
-            }
-
             switch (event) {
                 .trace_event => |trace_event| {
                     var trace = trace_event;
                     _ = trace;
-                    // trace.deinit(self.allocator);
                 },
                 .none => return,
             }
