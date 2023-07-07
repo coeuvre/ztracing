@@ -369,7 +369,7 @@ const LoadFileState = struct {
                     var stream = std.io.fixedBufferStream(&buf);
                     try args.jsonStringify(.{}, stream.writer());
                     log.info("name: {s}, ts: {}, args: {s}", .{ name, trace_event.ts.?, stream.getWritten() });
-                    log.info("counter name: {s}, series number: {}", .{counter_lane.name, counter_lane.series.items.len});
+                    log.info("counter name: {s}, series number: {}", .{ counter_lane.name, counter_lane.series.items.len });
                 }
 
                 // counter_lane.?.*.values.append(.{
@@ -439,7 +439,8 @@ const App = struct {
 
     width: f32,
     height: f32,
-    show_demo_window: bool,
+    show_imgui_demo_window: bool,
+    show_implot_demo_window: bool,
 
     io: *c.ImGuiIO,
 
@@ -449,11 +450,13 @@ const App = struct {
 
         self.width = width;
         self.height = height;
-        self.show_demo_window = false;
+        self.show_imgui_demo_window = false;
+        self.show_implot_demo_window = false;
 
         c.igSetAllocatorFunctions(imguiAlloc, imguiFree, null);
 
         _ = c.igCreateContext(null);
+        _ = c.ImPlot_CreateContext();
 
         const io = c.igGetIO();
         self.io = io;
@@ -491,8 +494,11 @@ const App = struct {
                 }
 
                 if (c.igBeginMenu("Help", true)) {
-                    if (c.igMenuItem_Bool("Show Demo Window", null, self.show_demo_window, true)) {
-                        self.show_demo_window = !self.show_demo_window;
+                    if (c.igMenuItem_Bool("Show ImGui Demo Window", null, self.show_imgui_demo_window, true)) {
+                        self.show_imgui_demo_window = !self.show_imgui_demo_window;
+                    }
+                    if (c.igMenuItem_Bool("Show ImPlot Demo Window", null, self.show_implot_demo_window, true)) {
+                        self.show_implot_demo_window = !self.show_implot_demo_window;
                     }
                     c.igEndMenu();
                 }
@@ -522,8 +528,11 @@ const App = struct {
 
         _ = c.igDockSpaceOverViewport(c.igGetMainViewport(), c.ImGuiDockNodeFlags_PassthruCentralNode, null);
 
-        if (self.show_demo_window) {
-            c.igShowDemoWindow(&self.show_demo_window);
+        if (self.show_imgui_demo_window) {
+            c.igShowDemoWindow(&self.show_imgui_demo_window);
+        }
+        if (self.show_implot_demo_window) {
+            c.ImPlot_ShowDemoWindow(&self.show_implot_demo_window);
         }
 
         self.state.update(dt);

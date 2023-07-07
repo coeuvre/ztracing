@@ -65,8 +65,11 @@ pub fn build(b: *std.Build) void {
         .optimize = .ReleaseSmall,
     });
     cimgui.addIncludePath("third_party");
+    cimgui.addIncludePath("third_party/cimgui");
+    cimgui.addIncludePath("third_party/cimgui/imgui");
+    cimgui.addIncludePath("third_party/cimplot");
     cimgui.addCSourceFiles(&.{
-        "src/cimgui.cpp",
+        "src/cimgui_wrapper.cpp",
     }, &.{});
     cimgui.linkLibC();
     cimgui.linkLibCpp();
@@ -80,6 +83,7 @@ pub fn build(b: *std.Build) void {
     rtracing.rdynamic = true;
     rtracing.linkLibrary(cimgui);
     rtracing.addIncludePath("third_party/cimgui");
+    rtracing.addIncludePath("third_party/cimplot");
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

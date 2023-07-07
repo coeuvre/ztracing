@@ -1,3 +1,6 @@
 [submodule "third_party/cimgui"]
 	path = third_party/cimgui
 	url = https://github.com/cimgui/cimgui
+[submodule "third_party/cimplot"]
+	path = third_party/cimplot
+	url = https://github.com/cimgui/cimplot

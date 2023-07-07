@@ -61,6 +61,7 @@ const imports = {
     path_open: unreachble,
     proc_exit: unreachble,
     random_get: unreachble,
+    clock_time_get: unreachble,
   },
 
   js: {
