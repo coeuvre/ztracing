@@ -115,8 +115,9 @@ fn switch_state(new_state: State) void {
 
 const LoadFileState = struct {
     allocator: Allocator,
+    done: bool,
     total: usize,
-    received: usize,
+    offset: usize,
     json_parser: JsonProfileParser,
     buffer: std.ArrayList(u8),
     progress_message: ?[:0]u8,
@@ -127,8 +128,9 @@ const LoadFileState = struct {
     pub fn init(allocator: Allocator, len: usize) LoadFileState {
         return .{
             .allocator = allocator,
+            .done = false,
             .total = len,
-            .received = 0,
+            .offset = 0,
             .json_parser = JsonProfileParser.init(allocator),
             .buffer = std.ArrayList(u8).init(allocator),
             .progress_message = null,
@@ -153,12 +155,12 @@ const LoadFileState = struct {
                 }
             } else {
                 if (self.total > 0) {
-                    const received: f32 = @floatFromInt(self.received);
+                    const offset: f32 = @floatFromInt(self.offset);
                     const total: f32 = @floatFromInt(self.total);
-                    const percentage: i32 = @intFromFloat(@round(received / total * 100.0));
+                    const percentage: i32 = @intFromFloat(@round(offset / total * 100.0));
                     self.setProgress("Loading file ... ({}%)", .{percentage});
                 } else {
-                    self.setProgress("Loading file ... ({})", .{self.received});
+                    self.setProgress("Loading file ... ({})", .{self.offset});
                 }
 
                 c.igTextUnformatted(self.progress_message.?.ptr, null);
@@ -194,10 +196,10 @@ const LoadFileState = struct {
     }
 
     pub fn shouldLoadFile(self: *const LoadFileState) bool {
-        return self.error_message == null;
+        return self.error_message == null and !self.done;
     }
 
-    pub fn onLoadFileChunk(self: *LoadFileState, chunk: js.JsObject, len: usize) void {
+    pub fn onLoadFileChunk(self: *LoadFileState, offset: usize, chunk: js.JsObject, len: usize) void {
         if (self.shouldLoadFile()) {
             var buf = self.allocator.alloc(u8, len) catch unreachable;
             defer self.allocator.free(buf);
@@ -207,7 +209,11 @@ const LoadFileState = struct {
             self.json_parser.feedInput(buf);
             self.continueScan();
 
-            self.received += len;
+            if (self.total > 0) {
+                self.offset = offset;
+            } else {
+                self.offset += len;
+            }
         }
     }
 
@@ -216,6 +222,11 @@ const LoadFileState = struct {
             self.json_parser.endInput();
             self.continueScan();
             self.json_parser.deinit();
+
+            self.done = true;
+            if (self.total > 0) {
+                self.offset = self.total;
+            }
         }
     }
 
@@ -228,8 +239,8 @@ const LoadFileState = struct {
 
             switch (event) {
                 .trace_event => |trace_event| {
-                    var trace = trace_event;
-                    _ = trace;
+                    _ = trace_event;
+                    // std.log.info("{?s}", .{trace_event.name});
                 },
                 .none => return,
             }
@@ -509,12 +520,12 @@ export fn onLoadFileStart(len: usize) void {
     }
 }
 
-export fn onLoadFileChunk(chunk: js.JsObject, len: usize) void {
+export fn onLoadFileChunk(offset: usize, chunk: js.JsObject, len: usize) void {
     defer js.destory(chunk);
 
     switch (app.state) {
         .load_file => |*load_file| {
-            load_file.onLoadFileChunk(chunk, len);
+            load_file.onLoadFileChunk(offset, chunk, len);
         },
         else => {
             log.err("Unexpected event onLoadFileChunk, current state is {s}", .{@tagName(app.state)});

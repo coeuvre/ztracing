@@ -1,3 +1,5 @@
+import pako from "pako";
+
 /** @type {App} */
 var app;
 
@@ -186,21 +188,44 @@ class LoadingFile {
    */
   constructor(stream) {
     this.reader = stream.getReader();
+    this.offset = 0;
   }
 
-  /**
-   * @param {(chunk: Uint8Array) => void} onChunk
-   * @param {() => void} onDone
-   */
-  load(onChunk, onDone) {
+  load() {
     this.reader.read().then(({ done, value }) => {
       if (done) {
-        onDone();
+        if (!this.inflator) {
+          this.onDone();
+        }
         return;
       }
 
-      onChunk(value);
+      if (this.offset == 0) {
+        // gzip magic number
+        if (value[0] == 0x1f && value[1] == 0x8b) {
+          this.inflator = new pako.Inflate();
+          this.inflator.onData = this.onChunk;
+          this.inflator.onEnd = this.onDone;
+        }
+      }
+
+      if (this.inflator) {
+        this.inflator.push(value);
+      } else {
+        this.onChunk(value);
+      }
+
+      this.offset += value.length;
     });
+  }
+
+  onChunk(chunk) {
+    const chunkRef = app.memory.storeObject(chunk);
+    app.instance.exports.onLoadFileChunk(this.offset, chunkRef, chunk.length);
+  }
+
+  onDone() {
+    app.instance.exports.onLoadFileDone();
   }
 }
 
@@ -360,16 +385,7 @@ class App {
   update(now) {
     if (this.loadingFile) {
       if (app.instance.exports.shouldLoadFile()) {
-        this.loadingFile.load(
-          (chunk) => {
-            const chunkRef = app.memory.storeObject(chunk);
-            app.instance.exports.onLoadFileChunk(chunkRef, chunk.length);
-          },
-          () => {
-            app.instance.exports.onLoadFileDone();
-            app.loadingFile = undefined;
-          }
-        );
+        this.loadingFile.load();
       } else {
         this.loadingFile = undefined;
       }
