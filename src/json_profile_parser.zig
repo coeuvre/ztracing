@@ -7,8 +7,9 @@ const Buffer = std.ArrayList(u8);
 
 pub const TraceEvent = struct {
     name: ?[]const u8 = null,
+    id: ?[]const u8 = null,
     cat: ?[]const u8 = null,
-    ph: ?[]const u8 = null,
+    ph: u8 = 0,
     ts: ?i64 = null,
     tss: ?i64 = null,
     pid: ?i64 = null,
@@ -249,6 +250,8 @@ pub const JsonProfileParser = struct {
 
 fn parseTraceEvent(arena: *ArenaAllocator, complete_input: []const u8, trace_event: *TraceEvent) !void {
     trace_event.* = .{};
+    _ = arena.reset(.retain_capacity);
+
     var scanner = std.json.Scanner.initCompleteInput(arena.allocator(), complete_input);
     try expectToken(&scanner, .object_begin);
     while (true) {
@@ -261,10 +264,12 @@ fn parseTraceEvent(arena: *ArenaAllocator, complete_input: []const u8, trace_eve
             .string => |key| {
                 if (std.mem.eql(u8, key, "name")) {
                     trace_event.name = try parseString(&scanner);
+                } else if (std.mem.eql(u8, key, "id")) {
+                    trace_event.id = try parseString(&scanner);
                 } else if (std.mem.eql(u8, key, "cat")) {
                     trace_event.cat = try parseString(&scanner);
                 } else if (std.mem.eql(u8, key, "ph")) {
-                    trace_event.ph = try parseString(&scanner);
+                    trace_event.ph = (try parseString(&scanner))[0];
                 } else if (std.mem.eql(u8, key, "ts")) {
                     trace_event.ts = try parseInt(&scanner);
                 } else if (std.mem.eql(u8, key, "tss")) {
@@ -277,6 +282,8 @@ fn parseTraceEvent(arena: *ArenaAllocator, complete_input: []const u8, trace_eve
                     trace_event.dur = try parseInt(&scanner);
                 } else if (std.mem.eql(u8, key, "cname")) {
                     trace_event.cname = try parseString(&scanner);
+                } else if (std.mem.eql(u8, key, "args")) {
+                    trace_event.args = try parseObjectValue(&scanner, arena);
                 } else {
                     try skipJsonValue(&scanner, null);
                 }
@@ -284,7 +291,6 @@ fn parseTraceEvent(arena: *ArenaAllocator, complete_input: []const u8, trace_eve
             else => return error.unexpected_token,
         }
     }
-    _ = arena.reset(.retain_capacity);
 }
 
 fn expectToken(scanner: *std.json.Scanner, expected: std.json.Token) !void {
@@ -312,6 +318,17 @@ fn parseInt(scanner: *std.json.Scanner) !i64 {
         },
         else => return error.unexpected_token,
     }
+}
+
+fn parseObjectValue(scanner: *std.json.Scanner, arena: *ArenaAllocator) !std.json.Value {
+    var start = scanner.cursor;
+    // TODO: Properly skip the whitespace.
+    while (start < scanner.input.len and (scanner.input[start] == ':' or scanner.input[start] == ' ')) {
+        start += 1;
+    }
+    try skipJsonValue(scanner, null);
+    const end = scanner.cursor;
+    return try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), scanner.input[start..end], .{});
 }
 
 fn skipJsonValue(scanner: *std.json.Scanner, maybe_array_end: ?*bool) !void {

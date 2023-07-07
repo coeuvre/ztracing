@@ -6,6 +6,9 @@ const Allocator = std.mem.Allocator;
 const c = @import("c.zig");
 
 const JsonProfileParser = @import("./json_profile_parser.zig").JsonProfileParser;
+const TraceEvent = @import("./json_profile_parser.zig").TraceEvent;
+
+const eql = std.mem.eql;
 
 pub const std_options = struct {
     pub fn logFn(
@@ -113,6 +116,83 @@ fn switch_state(new_state: State) void {
     app.state = new_state;
 }
 
+const ProfileCounterSeriesValue = struct {
+    ts: i64,
+    val: f64,
+};
+
+const ProfileCounterSeries = struct {
+    name: []u8,
+    values: std.ArrayList(ProfileCounterSeriesValue),
+
+    pub fn addValue(self: *ProfileCounterSeries, ts: i64, val: f64) !void {
+        try self.values.append(.{ .ts = ts, .val = val });
+    }
+};
+
+const ProfileCounterLane = struct {
+    name: []u8,
+    series: std.ArrayList(ProfileCounterSeries),
+
+    fn init(allocator: Allocator, name: []const u8) ProfileCounterLane {
+        return .{
+            .name = allocator.dupe(u8, name) catch unreachable,
+            .series = std.ArrayList(ProfileCounterSeries).init(allocator),
+        };
+    }
+
+    fn getOrCreateSeries(self: *ProfileCounterLane, name: []const u8) !*ProfileCounterSeries {
+        for (self.series.items) |*series| {
+            if (eql(u8, series.name, name)) {
+                return series;
+            }
+        }
+
+        try self.series.append(.{
+            .name = try self.series.allocator.dupe(u8, name),
+            .values = std.ArrayList(ProfileCounterSeriesValue).init(self.series.allocator),
+        });
+
+        return &self.series.items[self.series.items.len - 1];
+    }
+
+    pub fn addSeriesValue(self: *ProfileCounterLane, name: []const u8, ts: i64, val: f64) !void {
+        var series = try self.getOrCreateSeries(name);
+        try series.addValue(ts, val);
+    }
+};
+
+const ProfileLane = union(enum) {
+    counter: ProfileCounterLane,
+    trace,
+};
+
+const Profile = struct {
+    lanes: std.ArrayList(ProfileLane),
+
+    pub fn init(allocator: Allocator) Profile {
+        return .{
+            .lanes = std.ArrayList(ProfileLane).init(allocator),
+        };
+    }
+
+    pub fn getOrCreateCounterLane(self: *Profile, name: []const u8) !*ProfileCounterLane {
+        for (self.lanes.items) |*lane| {
+            switch (lane.*) {
+                .counter => |*counter_lane| {
+                    if (eql(u8, counter_lane.name, name)) {
+                        return counter_lane;
+                    }
+                },
+                else => {},
+            }
+        }
+
+        try self.lanes.append(.{ .counter = ProfileCounterLane.init(self.lanes.allocator, name) });
+        return &self.lanes.items[self.lanes.items.len - 1].counter;
+    }
+};
+
 const LoadFileState = struct {
     allocator: Allocator,
     done: bool,
@@ -122,6 +202,7 @@ const LoadFileState = struct {
     buffer: std.ArrayList(u8),
     progress_message: ?[:0]u8,
     error_message: ?[:0]u8,
+    profile: Profile,
 
     const popup_id = "LoadFilePopup";
 
@@ -135,6 +216,7 @@ const LoadFileState = struct {
             .buffer = std.ArrayList(u8).init(allocator),
             .progress_message = null,
             .error_message = null,
+            .profile = Profile.init(allocator),
         };
     }
 
@@ -227,6 +309,8 @@ const LoadFileState = struct {
             if (self.total > 0) {
                 self.offset = self.total;
             }
+
+            switch_state(.{ .view = ViewState.init(self.allocator, self.profile) });
         }
     }
 
@@ -239,21 +323,91 @@ const LoadFileState = struct {
 
             switch (event) {
                 .trace_event => |trace_event| {
-                    _ = trace_event;
-                    // std.log.info("{?s}", .{trace_event.name});
+                    self.handleTraceEvent(trace_event) catch |err| {
+                        self.setError("Failed to handle trace event: {}", .{err});
+                        return;
+                    };
                 },
                 .none => return,
             }
         }
     }
+
+    fn handleTraceEvent(self: *LoadFileState, trace_event: *TraceEvent) !void {
+        switch (trace_event.ph) {
+            'C' => {
+                // TODO: handle trace_event.id
+                const name = trace_event.name.?;
+
+                var counter_lane = try self.profile.getOrCreateCounterLane(name);
+
+                if (trace_event.args) |args| {
+                    switch (args) {
+                        .object => |obj| {
+                            var iter = obj.iterator();
+                            while (iter.next()) |entry| {
+                                log.info("{s}", .{entry.key_ptr.*});
+                                switch (entry.value_ptr.*) {
+                                    .number_string => |num| {
+                                        const val = try std.fmt.parseFloat(f64, num);
+                                        try counter_lane.addSeriesValue(entry.key_ptr.*, trace_event.ts.?, val);
+                                    },
+                                    .float => |val| {
+                                        try counter_lane.addSeriesValue(entry.key_ptr.*, trace_event.ts.?, val);
+                                    },
+                                    .integer => |val| {
+                                        try counter_lane.addSeriesValue(entry.key_ptr.*, trace_event.ts.?, @floatFromInt(val));
+                                    },
+                                    else => {},
+                                }
+                            }
+                        },
+                        else => {},
+                    }
+
+                    var buf: [1024]u8 = .{};
+                    var stream = std.io.fixedBufferStream(&buf);
+                    try args.jsonStringify(.{}, stream.writer());
+                    log.info("name: {s}, ts: {}, args: {s}", .{ name, trace_event.ts.?, stream.getWritten() });
+                    log.info("counter name: {s}, series number: {}", .{counter_lane.name, counter_lane.series.items.len});
+                }
+
+                // counter_lane.?.*.values.append(.{
+                //     .ts = trace_event.ts.?,
+                //     .val = 0.0,
+                // });
+            },
+            'M' => {
+                // metadata event
+                // if (trace_event.name) |name| {
+                //     if (eql(u8, name, "thread_name")) {
+                //     }
+                // }
+            },
+            else => {},
+        }
+    }
 };
 
 const ViewState = struct {
-    io: *c.ImGuiIO,
+    allocator: Allocator,
+    profile: Profile,
+
+    pub fn init(allocator: Allocator, profile: Profile) ViewState {
+        return .{
+            .allocator = allocator,
+            .profile = profile,
+        };
+    }
 
     pub fn update(self: *ViewState, dt: f32) void {
         _ = self;
         _ = dt;
+    }
+
+    pub fn onLoadFileStart(self: *ViewState, len: usize) void {
+        const state = .{ .load_file = LoadFileState.init(self.allocator, len) };
+        switch_state(state);
     }
 };
 
@@ -343,9 +497,17 @@ const App = struct {
                     c.igEndMenu();
                 }
 
+                var buf: [32]u8 = .{};
+                {
+                    c.igSetCursorPosX(c.igGetCursorPosX() + 10.0);
+                    const allocated_bytes: f64 = @floatFromInt(global_counted_allocator.allocated_bytes);
+                    const allocated_bytes_mb = allocated_bytes / 1024.0 / 1024.0;
+                    const text = std.fmt.bufPrintZ(&buf, "Memory: {d:.1} MB", .{allocated_bytes_mb}) catch unreachable;
+                    c.igTextUnformatted(text.ptr, null);
+                }
+
                 if (self.io.Framerate < 1000) {
                     const window_width = c.igGetWindowWidth();
-                    var buf: [32]u8 = .{};
                     const text = std.fmt.bufPrintZ(&buf, "{d:.1} ", .{self.io.Framerate}) catch unreachable;
                     var text_size: c.ImVec2 = undefined;
                     c.igCalcTextSize(&text_size, text.ptr, null, false, -1.0);
@@ -464,9 +626,52 @@ fn assert(ok: bool, msg: []const u8) void {
 
 var app: *App = undefined;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+var global_counted_allocator = CountedAllocator.init(gpa.allocator());
+
+const CountedAllocator = struct {
+    underlying: Allocator,
+    allocated_bytes: usize,
+
+    fn init(underlying: Allocator) CountedAllocator {
+        return .{
+            .underlying = underlying,
+            .allocated_bytes = 0,
+        };
+    }
+
+    fn allocator(self: *CountedAllocator) Allocator {
+        return .{
+            .ptr = self,
+            .vtable = &.{
+                .alloc = alloc,
+                .resize = resize,
+                .free = free,
+            },
+        };
+    }
+
+    fn alloc(ctx: *anyopaque, len: usize, log2_ptr_align: u8, ret_addr: usize) ?[*]u8 {
+        const self: *CountedAllocator = @ptrCast(@alignCast(ctx));
+        self.allocated_bytes += len;
+        return self.underlying.rawAlloc(len, log2_ptr_align, ret_addr);
+    }
+
+    fn resize(ctx: *anyopaque, buf: []u8, buf_align: u8, new_len: usize, ret_addr: usize) bool {
+        const self: *CountedAllocator = @ptrCast(@alignCast(ctx));
+        self.allocated_bytes -= buf.len;
+        self.allocated_bytes += new_len;
+        return self.underlying.rawResize(buf, buf_align, new_len, ret_addr);
+    }
+
+    fn free(ctx: *anyopaque, buf: []u8, buf_align: u8, ret_addr: usize) void {
+        const self: *CountedAllocator = @ptrCast(@alignCast(ctx));
+        self.allocated_bytes -= buf.len;
+        self.underlying.rawFree(buf, buf_align, ret_addr);
+    }
+};
 
 export fn init(width: f32, height: f32) void {
-    var allocator = gpa.allocator();
+    var allocator = global_counted_allocator.allocator();
     app = allocator.create(App) catch unreachable;
     app.init(allocator, width, height);
 }
@@ -503,8 +708,8 @@ export fn shouldLoadFile() bool {
         .load_file => |*load_file| {
             return load_file.shouldLoadFile();
         },
-        else => {
-            return false;
+        .view => {
+            return true;
         },
     }
 }
@@ -513,6 +718,9 @@ export fn onLoadFileStart(len: usize) void {
     switch (app.state) {
         .welcome => |*welcome| {
             welcome.onLoadFileStart(len);
+        },
+        .view => |*view| {
+            view.onLoadFileStart(len);
         },
         else => {
             log.err("Unexpected event onLoadFileStart, current state is {s}", .{@tagName(app.state)});

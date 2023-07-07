@@ -189,6 +189,7 @@ class LoadingFile {
   constructor(stream) {
     this.reader = stream.getReader();
     this.offset = 0;
+    this.isDone = false;
   }
 
   load() {
@@ -225,6 +226,7 @@ class LoadingFile {
   }
 
   onDone() {
+    this.isDone = true;
     app.instance.exports.onLoadFileDone();
   }
 }
@@ -384,7 +386,7 @@ class App {
 
   update(now) {
     if (this.loadingFile) {
-      if (app.instance.exports.shouldLoadFile()) {
+      if (!this.loadingFile.isDone && app.instance.exports.shouldLoadFile()) {
         this.loadingFile.load();
       } else {
         this.loadingFile = undefined;
