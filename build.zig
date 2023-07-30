@@ -21,9 +21,7 @@ fn addGenProfile(b: *std.Build, target: std.zig.CrossTarget, optimize: std.built
 }
 
 fn addBenchParser(b: *std.Build, target: std.zig.CrossTarget, optimize: std.builtin.Mode) void {
-    const parser = b.createModule(.{
-        .source_file = .{ .path = "src/json_profile_parser.zig" }
-    });
+    const parser = b.createModule(.{ .source_file = .{ .path = "src/json_profile_parser.zig" } });
     const bench_parser = b.addExecutable(.{
         .name = "bench_parser",
         .root_source_file = .{ .path = "tools/bench_parser.zig" },
@@ -67,7 +65,6 @@ pub fn build(b: *std.Build) void {
     cimgui.addIncludePath("third_party");
     cimgui.addIncludePath("third_party/cimgui");
     cimgui.addIncludePath("third_party/cimgui/imgui");
-    cimgui.addIncludePath("third_party/cimplot");
     cimgui.addCSourceFiles(&.{
         "src/cimgui_wrapper.cpp",
     }, &.{});
@@ -80,10 +77,22 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    rtracing.rdynamic = true;
+    // rtracing.rdynamic = true;
+    rtracing.export_symbol_names = &[_][]const u8{
+        "init",
+        "update",
+        "onResize",
+        "onMouseMove",
+        "onMouseDown",
+        "onMouseUp",
+        "onWheel",
+        "shouldLoadFile",
+        "onLoadFileStart",
+        "onLoadFileChunk",
+        "onLoadFileDone",
+    };
     rtracing.linkLibrary(cimgui);
     rtracing.addIncludePath("third_party/cimgui");
-    rtracing.addIncludePath("third_party/cimplot");
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

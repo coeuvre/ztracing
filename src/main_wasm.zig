@@ -346,7 +346,6 @@ const LoadFileState = struct {
                         .object => |obj| {
                             var iter = obj.iterator();
                             while (iter.next()) |entry| {
-                                log.info("{s}", .{entry.key_ptr.*});
                                 switch (entry.value_ptr.*) {
                                     .number_string => |num| {
                                         const val = try std.fmt.parseFloat(f64, num);
@@ -364,18 +363,7 @@ const LoadFileState = struct {
                         },
                         else => {},
                     }
-
-                    var buf: [1024]u8 = .{};
-                    var stream = std.io.fixedBufferStream(&buf);
-                    try args.jsonStringify(.{}, stream.writer());
-                    log.info("name: {s}, ts: {}, args: {s}", .{ name, trace_event.ts.?, stream.getWritten() });
-                    log.info("counter name: {s}, series number: {}", .{ counter_lane.name, counter_lane.series.items.len });
                 }
-
-                // counter_lane.?.*.values.append(.{
-                //     .ts = trace_event.ts.?,
-                //     .val = 0.0,
-                // });
             },
             'M' => {
                 // metadata event
@@ -401,8 +389,18 @@ const ViewState = struct {
     }
 
     pub fn update(self: *ViewState, dt: f32) void {
-        _ = self;
         _ = dt;
+        var buf: [1024]u8 = .{};
+
+        for (self.profile.lanes.items) |lane| {
+            switch (lane) {
+                .counter => |counter_lane| {
+                    const text = std.fmt.bufPrintZ(&buf, "{s}", .{counter_lane.name}) catch unreachable;
+                    c.igSeparatorText(@as([*c]u8, @ptrCast(text)));
+                },
+                else => {},
+            }
+        }
     }
 
     pub fn onLoadFileStart(self: *ViewState, len: usize) void {
@@ -440,7 +438,6 @@ const App = struct {
     width: f32,
     height: f32,
     show_imgui_demo_window: bool,
-    show_implot_demo_window: bool,
 
     io: *c.ImGuiIO,
 
@@ -451,15 +448,18 @@ const App = struct {
         self.width = width;
         self.height = height;
         self.show_imgui_demo_window = false;
-        self.show_implot_demo_window = false;
 
         c.igSetAllocatorFunctions(imguiAlloc, imguiFree, null);
 
         _ = c.igCreateContext(null);
-        _ = c.ImPlot_CreateContext();
 
         const io = c.igGetIO();
         self.io = io;
+
+        {
+            var style = c.igGetStyle();
+            c.igStyleColorsLight(style);
+        }
 
         io.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
 
@@ -497,9 +497,6 @@ const App = struct {
                     if (c.igMenuItem_Bool("Show ImGui Demo Window", null, self.show_imgui_demo_window, true)) {
                         self.show_imgui_demo_window = !self.show_imgui_demo_window;
                     }
-                    if (c.igMenuItem_Bool("Show ImPlot Demo Window", null, self.show_implot_demo_window, true)) {
-                        self.show_implot_demo_window = !self.show_implot_demo_window;
-                    }
                     c.igEndMenu();
                 }
 
@@ -514,7 +511,7 @@ const App = struct {
 
                 if (self.io.Framerate < 1000) {
                     const window_width = c.igGetWindowWidth();
-                    const text = std.fmt.bufPrintZ(&buf, "{d:.1} ", .{self.io.Framerate}) catch unreachable;
+                    const text = std.fmt.bufPrintZ(&buf, "{d:.0} ", .{self.io.Framerate}) catch unreachable;
                     var text_size: c.ImVec2 = undefined;
                     c.igCalcTextSize(&text_size, text.ptr, null, false, -1.0);
                     c.igSetCursorPosX(window_width - text_size.x);
@@ -526,16 +523,28 @@ const App = struct {
             c.igPopStyleVar(1);
         }
 
-        _ = c.igDockSpaceOverViewport(c.igGetMainViewport(), c.ImGuiDockNodeFlags_PassthruCentralNode, null);
+        // Main Window
+        {
+            const window_flags =
+                c.ImGuiWindowFlags_NoDocking |
+                c.ImGuiWindowFlags_NoTitleBar |
+                c.ImGuiWindowFlags_NoCollapse |
+                c.ImGuiWindowFlags_NoResize |
+                c.ImGuiWindowFlags_NoMove |
+                c.ImGuiWindowFlags_NoBringToFrontOnFocus |
+                c.ImGuiWindowFlags_NoNavFocus;
+            const viewport = c.igGetMainViewport();
+            c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{ .x = 0, .y = 0 });
+            c.igSetNextWindowSize(viewport.*.WorkSize, 0);
+            _ = c.igBegin("MainWindow", null, window_flags);
+            self.state.update(dt);
+
+            c.igEnd();
+        }
 
         if (self.show_imgui_demo_window) {
             c.igShowDemoWindow(&self.show_imgui_demo_window);
         }
-        if (self.show_implot_demo_window) {
-            c.ImPlot_ShowDemoWindow(&self.show_implot_demo_window);
-        }
-
-        self.state.update(dt);
 
         c.igEndFrame();
         c.igRender();

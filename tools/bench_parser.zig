@@ -46,9 +46,11 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
     try stdout.print("{s}\n", .{mode_str});
     try stdout.print("Total Duration: {}\n", .{result.total_dur});
-    const delta_s = @as(f64, @floatFromInt(delta_ns)) / 1000000000.0;
-    const speed = @as(f64, @floatFromInt(result.total_bytes)) / (1024.0 * 1024.0) / delta_s;
-    try stdout.print("Wall time: {d:.1} s\n", .{delta_s});
+    const delta_ms = @as(f64, @floatFromInt(delta_ns)) / 1000000.0;
+    const total_mb = @as(f64, @floatFromInt(result.total_bytes)) / (1024.0 * 1024.0);
+    const speed = total_mb / delta_ms * 1000.0;
+    try stdout.print("Wall time: {d:.2} ms\n", .{delta_ms});
+    try stdout.print("Size: {d:.1} MiB\n", .{total_mb});
     try stdout.print("Speed: {d:.1} MiB / s\n", .{speed});
 }
 
@@ -89,7 +91,6 @@ fn baseline(allocator: Allocator, path: []const u8) !ParseResult {
 
     return result;
 }
-
 
 const ObjectFormat = struct {
     traceEvents: []TraceEvent,
@@ -187,7 +188,7 @@ fn parse2(allocator: Allocator, path: []const u8) !ParseResult {
         const nread = try file.read(buf);
         parser.feedInput(buf[0..nread]);
         result.total_bytes += nread;
-        if (nread < buf.len) {
+        if (nread == 0) {
             eof = true;
             parser.endInput();
         }

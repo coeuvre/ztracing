@@ -27,10 +27,4 @@ static void my_debug_printf(const char *fmt, ...) {
 #include "cimgui/imgui/imgui_draw.cpp"
 #include "cimgui/imgui/imgui_tables.cpp"
 #include "cimgui/imgui/imgui_widgets.cpp"
-
-#include "cimplot/implot/implot.cpp"
-#include "cimplot/implot/implot_items.cpp"
-#include "cimplot/implot/implot_demo.cpp"
-
 #include "cimgui/cimgui.cpp"
-#include "cimplot/cimplot.cpp"
