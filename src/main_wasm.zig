@@ -8,8 +8,6 @@ const Allocator = std.mem.Allocator;
 const JsonProfileParser = @import("./json_profile_parser.zig").JsonProfileParser;
 const TraceEvent = @import("./json_profile_parser.zig").TraceEvent;
 
-const eql = std.mem.eql;
-
 pub const std_options = struct {
     pub fn logFn(
         comptime message_level: std.log.Level,
@@ -223,36 +221,52 @@ const ProfileLane = union(enum) {
 const Profile = struct {
     min_time_us: i64,
     max_time_us: i64,
-    lanes: std.ArrayList(ProfileLane),
+    counter_lanes: std.ArrayList(ProfileCounterLane),
 
     pub fn init(allocator: Allocator) Profile {
         return .{
             .min_time_us = 0,
             .max_time_us = 0,
-            .lanes = std.ArrayList(ProfileLane).init(allocator),
+            .counter_lanes = std.ArrayList(ProfileCounterLane).init(allocator),
         };
     }
 
     pub fn getOrCreateCounterLane(self: *Profile, name: []const u8) !*ProfileCounterLane {
-        for (self.lanes.items) |*lane| {
-            switch (lane.*) {
-                .counter => |*counter_lane| {
-                    if (eql(u8, counter_lane.name, name)) {
-                        return counter_lane;
-                    }
-                },
-                else => {},
+        for (self.counter_lanes.items) |*counter_lane| {
+            if (std.mem.eql(u8, counter_lane.name, name)) {
+                return counter_lane;
             }
         }
 
-        try self.lanes.append(.{ .counter = ProfileCounterLane.init(self.lanes.allocator, name) });
-        return &self.lanes.items[self.lanes.items.len - 1].counter;
+        try self.counter_lanes.append(ProfileCounterLane.init(self.counter_lanes.allocator, name));
+        return &self.counter_lanes.items[self.counter_lanes.items.len - 1];
     }
 
     pub fn done(self: *Profile) void {
-        for (self.lanes.items) |*lane| {
-            lane.done();
+        std.sort.block(ProfileCounterLane, self.counter_lanes.items, {}, profileCounterLaneLessThan);
+
+        for (self.counter_lanes.items) |*counter_lane| {
+            counter_lane.done();
         }
+    }
+
+    fn toUpperCase(ch: u8) u8 {
+        if (ch >= 'a' and ch <= 'z') {
+            return 'A' + ch - 'a';
+        }
+        return ch;
+    }
+
+    fn profileCounterLaneLessThan(_: void, lhs: ProfileCounterLane, rhs: ProfileCounterLane) bool {
+        const len = @min(lhs.name.len, rhs.name.len);
+        for (0..len) |i| {
+            const a = lhs.name[i];
+            const b = rhs.name[i];
+            if (a != b) {
+                return toUpperCase(a) < toUpperCase(b);
+            }
+        }
+        return lhs.name.len < rhs.name.len;
     }
 };
 
@@ -421,7 +435,7 @@ const LoadFileState = struct {
                             while (iter.next()) |entry| {
                                 const value_name = entry.key_ptr.*;
                                 switch (entry.value_ptr.*) {
-                                    .number_string => |num| {
+                                    .string, .number_string => |num| {
                                         const val = try std.fmt.parseFloat(f64, num);
                                         try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
                                     },
@@ -492,119 +506,113 @@ const ViewState = struct {
         const duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
         const width_per_us = window_width / duration_us;
         const min_duration_us: i64 = @intFromFloat(@ceil(duration_us / window_width));
-        const lane_height: f32 = 200.0;
+        const lane_height: f32 = 30.0;
         const draw_lsit = c.igGetWindowDrawList();
 
         _ = dt;
         var buf: [1024]u8 = .{};
 
-        for (self.profile.lanes.items) |lane| {
-            switch (lane) {
-                .counter => |counter_lane| {
-                    const text = std.fmt.bufPrintZ(&buf, "{s}", .{counter_lane.name}) catch unreachable;
-                    c.igSeparatorText(@as([*c]u8, @ptrCast(text)));
+        for (self.profile.counter_lanes.items) |counter_lane| {
+            c.igSeparatorText(std.fmt.bufPrintZ(&buf, "{s}", .{counter_lane.name}) catch unreachable);
 
-                    const lane_left = window_pos.x + c.igGetCursorPosX();
-                    const lane_top = window_pos.y + c.igGetCursorPosY() - c.igGetScrollY();
+            const lane_left = window_pos.x + c.igGetCursorPosX();
+            const lane_top = window_pos.y + c.igGetCursorPosY() - c.igGetScrollY();
 
-                    const cols = [_]u32{
-                        c.igGetColorU32_Vec4(.{ .x = 1.0, .y = 0.0, .z = 0.0, .w = 1.0 }),
-                        c.igGetColorU32_Vec4(.{ .x = 0.0, .y = 1.0, .z = 0.0, .w = 1.0 }),
-                        c.igGetColorU32_Vec4(.{ .x = 0.0, .y = 0.0, .z = 1.0, .w = 1.0 }),
-                    };
+            const cols = [_]u32{
+                c.igGetColorU32_Vec4(.{ .x = 1.0, .y = 0.0, .z = 0.0, .w = 1.0 }),
+                c.igGetColorU32_Vec4(.{ .x = 0.0, .y = 1.0, .z = 0.0, .w = 1.0 }),
+                c.igGetColorU32_Vec4(.{ .x = 0.0, .y = 0.0, .z = 1.0, .w = 1.0 }),
+            };
 
-                    var maybe_hovered_counter: ?HoveredCounter = null;
+            var maybe_hovered_counter: ?HoveredCounter = null;
 
-                    {
-                        var iter = counter_lane.iter(self.start_time_us, min_duration_us);
+            {
+                var iter = counter_lane.iter(self.start_time_us, min_duration_us);
 
-                        var x1: f32 = 0;
-                        var x2: f32 = 0;
-                        var values: ?[]const ProfileCounterValue = null;
-                        var time_us: i64 = 0;
-                        if (iter.next()) |counter| {
-                            if (counter.time_us > self.start_time_us) {
-                                x2 = @max(lane_left, lane_left + @as(f32, @floatFromInt(counter.time_us - self.start_time_us)) * width_per_us);
-                                time_us = counter.time_us;
-                                values = counter.values.items;
-                            }
-                        }
+                var x1: f32 = 0;
+                var x2: f32 = 0;
+                var values: ?[]const ProfileCounterValue = null;
+                var time_us: i64 = 0;
+                if (iter.next()) |counter| {
+                    if (counter.time_us > self.start_time_us) {
+                        x2 = @max(lane_left, lane_left + @as(f32, @floatFromInt(counter.time_us - self.start_time_us)) * width_per_us);
+                        time_us = counter.time_us;
+                        values = counter.values.items;
+                    }
+                }
 
-                        while (iter.next()) |counter| {
-                            x1 = x2;
-                            x2 = lane_left + @as(f32, @floatFromInt(counter.time_us - self.start_time_us)) * width_per_us;
+                while (iter.next()) |counter| {
+                    x1 = x2;
+                    x2 = lane_left + @as(f32, @floatFromInt(counter.time_us - self.start_time_us)) * width_per_us;
 
-                            if (values.?.len > 0) {
-                                const bb = c.ImRect{
-                                    .Min = .{ .x = x1, .y = lane_top },
-                                    .Max = .{ .x = x2, .y = lane_top + lane_height },
+                    if (values.?.len > 0) {
+                        const bb = c.ImRect{
+                            .Min = .{ .x = x1, .y = lane_top },
+                            .Max = .{ .x = x2, .y = lane_top + lane_height },
+                        };
+                        c.igItemSize_Rect(bb, -1);
+                        const id = c.igGetID_Str(std.fmt.bufPrintZ(&buf, "##{s}_{}", .{ counter_lane.name, counter.time_us }) catch unreachable);
+                        if (c.igItemAdd(bb, id, null, 0)) {
+                            var hovered = false;
+                            var held = false;
+                            _ = c.igButtonBehavior(bb, id, &hovered, &held, 0);
+                            if (hovered) {
+                                maybe_hovered_counter = .{
+                                    .x1 = x1,
+                                    .x2 = x2,
+                                    .time_us = time_us,
+                                    .values = values.?,
                                 };
-                                c.igItemSize_Rect(bb, -1);
-                                const id = c.igGetID_Str(std.fmt.bufPrintZ(&buf, "##{s}_{}", .{ counter_lane.name, counter.time_us }) catch unreachable);
-                                if (c.igItemAdd(bb, id, null, 0)) {
-                                    var hovered = false;
-                                    var held = false;
-                                    _ = c.igButtonBehavior(bb, id, &hovered, &held, 0);
-                                    if (hovered) {
-                                        maybe_hovered_counter = .{
-                                            .x1 = x1,
-                                            .x2 = x2,
-                                            .time_us = time_us,
-                                            .values = values.?,
-                                        };
-                                    }
-
-                                    var y2 = bb.Max.y;
-                                    for (values.?, 0..) |value, i| {
-                                        const y1 = y2 - lane_height * @as(f32, @floatCast(value.value / counter_lane.max_value));
-                                        c.ImDrawList_AddRectFilled(draw_lsit, .{ .x = x1, .y = y1 }, .{ .x = x2, .y = y2 }, cols[i], 0, 0);
-                                        y2 = y1;
-                                    }
-                                }
-                                c.igSameLine(0, 0);
                             }
 
-                            time_us = counter.time_us;
-                            values = counter.values.items;
-
-                            if (x2 > window_content_bb.Max.x) {
-                                break;
+                            var y2 = bb.Max.y;
+                            for (values.?, 0..) |value, i| {
+                                const y1 = y2 - lane_height * @as(f32, @floatCast(value.value / counter_lane.max_value));
+                                c.ImDrawList_AddRectFilled(draw_lsit, .{ .x = x1, .y = y1 }, .{ .x = x2, .y = y2 }, cols[i], 0, 0);
+                                y2 = y1;
                             }
                         }
+                        c.igSameLine(0, 0);
                     }
 
-                    // Deferred rendering of hovered counter to avoid overlapping with other counters
-                    if (maybe_hovered_counter) |hovered_counter| {
-                        // TODO: Styling
-                        const rad = 4.0;
-                        const col = cols[0];
+                    time_us = counter.time_us;
+                    values = counter.values.items;
 
-                        var sum: f64 = 0;
-                        for (hovered_counter.values) |value| {
-                            sum += value.value;
-                        }
-                        const height: f32 = @floatCast(sum / counter_lane.max_value * lane_height);
-                        c.ImDrawList_AddCircleFilled(draw_lsit, .{ .x = hovered_counter.x1 + (hovered_counter.x2 - hovered_counter.x1) / 2.0, .y = lane_top + lane_height - height }, rad, col, 16);
-
-                        if (c.igBeginTooltip()) {
-                            c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "{}", .{hovered_counter.time_us}) catch unreachable, null);
-                            for (hovered_counter.values) |value| {
-                                c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "{s}: {d:.2}", .{ value.name, value.value }) catch unreachable, null);
-                            }
-                        }
-                        c.igEndTooltip();
+                    if (x2 > window_content_bb.Max.x) {
+                        break;
                     }
-
-                    c.igNewLine();
-                    // var time_us = self.start_time_us;
-                    // while (counter_lane.getNextSeries(time_us)) |series| {
-
-                    // }
-                    // counter_lane.getNextData(start_time_us);
-                },
-                else => {},
+                }
             }
-            // break;
+
+            // Deferred rendering of hovered counter to avoid overlapping with other counters
+            if (maybe_hovered_counter) |hovered_counter| {
+                // TODO: Styling
+                const rad = 4.0;
+                const col = cols[0];
+
+                var sum: f64 = 0;
+                for (hovered_counter.values) |value| {
+                    sum += value.value;
+                }
+                const height: f32 = @floatCast(sum / counter_lane.max_value * lane_height);
+                c.ImDrawList_AddCircleFilled(draw_lsit, .{ .x = hovered_counter.x1, .y = lane_top + lane_height - height }, rad, col, 16);
+
+                if (c.igBeginTooltip()) {
+                    c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "{}", .{hovered_counter.time_us}) catch unreachable, null);
+                    for (hovered_counter.values) |value| {
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "{s}: {d:.2}", .{ value.name, value.value }) catch unreachable, null);
+                    }
+                }
+                c.igEndTooltip();
+            }
+
+            c.igNewLine();
+            // var time_us = self.start_time_us;
+            // while (counter_lane.getNextSeries(time_us)) |series| {
+
+            // }
+            // counter_lane.getNextData(start_time_us);
+
         }
     }
 
