@@ -57,19 +57,19 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const cimgui = b.addStaticLibrary(.{
-        .name = "cimgui",
+    const imgui = b.addStaticLibrary(.{
+        .name = "imgui",
         .target = target,
         .optimize = .ReleaseSmall,
     });
-    cimgui.addIncludePath("third_party");
-    cimgui.addIncludePath("third_party/cimgui");
-    cimgui.addIncludePath("third_party/cimgui/imgui");
-    cimgui.addCSourceFiles(&.{
-        "src/cimgui_wrapper.cpp",
+    imgui.addIncludePath("third_party");
+    imgui.addIncludePath("third_party/cimgui");
+    imgui.addIncludePath("third_party/cimgui/imgui");
+    imgui.addCSourceFiles(&.{
+        "src/imgui_wrapper.cpp",
     }, &.{});
-    cimgui.linkLibC();
-    cimgui.linkLibCpp();
+    imgui.linkLibC();
+    imgui.linkLibCpp();
 
     const rtracing = b.addSharedLibrary(.{
         .name = "ztracing",
@@ -91,7 +91,7 @@ pub fn build(b: *std.Build) void {
         "onLoadFileChunk",
         "onLoadFileDone",
     };
-    rtracing.linkLibrary(cimgui);
+    rtracing.linkLibrary(imgui);
     rtracing.addIncludePath("third_party/cimgui");
 
     // This declares intent for the executable to be installed into the

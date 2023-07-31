@@ -1,9 +1,9 @@
 const std = @import("std");
-const log = std.log;
-
-const Allocator = std.mem.Allocator;
-
 const c = @import("c.zig");
+const ig = @import("imgui.zig");
+
+const log = std.log;
+const Allocator = std.mem.Allocator;
 
 const JsonProfileParser = @import("./json_profile_parser.zig").JsonProfileParser;
 const TraceEvent = @import("./json_profile_parser.zig").TraceEvent;
@@ -116,50 +116,35 @@ fn switch_state(new_state: State) void {
     app.state = new_state;
 }
 
-const ProfileCounterSeriesValue = struct {
-    ts: i64,
-    val: f64,
+const ProfileCounterValue = struct {
+    name: []u8,
+    value: f64,
 };
 
-const ProfileCounterSeries = struct {
-    name: []u8,
-    values: std.ArrayList(ProfileCounterSeriesValue),
-
-    pub fn addValue(self: *ProfileCounterSeries, ts: i64, val: f64) !void {
-        try self.values.append(.{ .ts = ts, .val = val });
-    }
+const ProfileCounter = struct {
+    time_us: i64,
+    values: std.ArrayList(ProfileCounterValue),
 };
 
 const ProfileCounterLane = struct {
     name: []u8,
-    series: std.ArrayList(ProfileCounterSeries),
+    counters: std.ArrayList(ProfileCounter),
 
     fn init(allocator: Allocator, name: []const u8) ProfileCounterLane {
         return .{
             .name = allocator.dupe(u8, name) catch unreachable,
-            .series = std.ArrayList(ProfileCounterSeries).init(allocator),
+            .counters = std.ArrayList(ProfileCounter).init(allocator),
         };
     }
 
-    fn getOrCreateSeries(self: *ProfileCounterLane, name: []const u8) !*ProfileCounterSeries {
-        for (self.series.items) |*series| {
-            if (eql(u8, series.name, name)) {
-                return series;
-            }
-        }
-
-        try self.series.append(.{
-            .name = try self.series.allocator.dupe(u8, name),
-            .values = std.ArrayList(ProfileCounterSeriesValue).init(self.series.allocator),
-        });
-
-        return &self.series.items[self.series.items.len - 1];
+    pub fn addCounter(self: *ProfileCounterLane, time_us: i64, values: std.ArrayList(ProfileCounterValue)) !void {
+        try self.counters.append(.{.time_us = time_us, .values = values});
     }
 
-    pub fn addSeriesValue(self: *ProfileCounterLane, name: []const u8, ts: i64, val: f64) !void {
-        var series = try self.getOrCreateSeries(name);
-        try series.addValue(ts, val);
-    }
+    // pub fn getNextSeries(self: *ProfileCounterLane, time_us: i64) ?*ProfileCounter {
+    //     // TODO: Optimize
+
+    // }
 };
 
 const ProfileLane = union(enum) {
@@ -168,10 +153,14 @@ const ProfileLane = union(enum) {
 };
 
 const Profile = struct {
+    min_time_us: i64,
+    max_time_us: i64,
     lanes: std.ArrayList(ProfileLane),
 
     pub fn init(allocator: Allocator) Profile {
         return .{
+            .min_time_us = 0,
+            .max_time_us = 0,
             .lanes = std.ArrayList(ProfileLane).init(allocator),
         };
     }
@@ -334,6 +323,13 @@ const LoadFileState = struct {
     }
 
     fn handleTraceEvent(self: *LoadFileState, trace_event: *TraceEvent) !void {
+        var profile = &self.profile;
+
+        if (trace_event.ts) |ts| {
+            profile.min_time_us = @min(profile.min_time_us, ts);
+            profile.max_time_us = @max(profile.max_time_us, ts);
+        }
+
         switch (trace_event.ph) {
             'C' => {
                 // TODO: handle trace_event.id
@@ -345,21 +341,24 @@ const LoadFileState = struct {
                     switch (args) {
                         .object => |obj| {
                             var iter = obj.iterator();
+                            var values = std.ArrayList(ProfileCounterValue).init(self.allocator);
                             while (iter.next()) |entry| {
+                                const value_name = entry.key_ptr.*;
                                 switch (entry.value_ptr.*) {
                                     .number_string => |num| {
                                         const val = try std.fmt.parseFloat(f64, num);
-                                        try counter_lane.addSeriesValue(entry.key_ptr.*, trace_event.ts.?, val);
+                                        try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
                                     },
                                     .float => |val| {
-                                        try counter_lane.addSeriesValue(entry.key_ptr.*, trace_event.ts.?, val);
+                                        try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
                                     },
                                     .integer => |val| {
-                                        try counter_lane.addSeriesValue(entry.key_ptr.*, trace_event.ts.?, @floatFromInt(val));
+                                        try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = @floatFromInt(val) });
                                     },
                                     else => {},
                                 }
                             }
+                            try counter_lane.addCounter(trace_event.ts.?, values);
                         },
                         else => {},
                     }
@@ -377,18 +376,38 @@ const LoadFileState = struct {
     }
 };
 
+fn getWindowContentRegion() c.ImRect {
+    const pos = ig.getWindowPos();
+    var min = ig.getWindowContentRegionMin();
+    min.x += pos.x;
+    min.y += pos.y;
+    var max = ig.getWindowContentRegionMax();
+    max.x += pos.x;
+    max.y += pos.y;
+    return .{ .Min = min, .Max = max };
+}
+
 const ViewState = struct {
     allocator: Allocator,
     profile: Profile,
+    start_time_us: i64,
+    end_time_us: i64,
 
     pub fn init(allocator: Allocator, profile: Profile) ViewState {
         return .{
             .allocator = allocator,
             .profile = profile,
+            .start_time_us = profile.min_time_us,
+            .end_time_us = profile.max_time_us,
         };
     }
 
     pub fn update(self: *ViewState, dt: f32) void {
+        const window_content_bb = getWindowContentRegion();
+        const window_width = window_content_bb.Max.x - window_content_bb.Min.x;
+        const width_per_us = window_width / @as(f32, @floatFromInt((self.end_time_us - self.start_time_us)));
+        _ = width_per_us;
+
         _ = dt;
         var buf: [1024]u8 = .{};
 
@@ -397,6 +416,12 @@ const ViewState = struct {
                 .counter => |counter_lane| {
                     const text = std.fmt.bufPrintZ(&buf, "{s}", .{counter_lane.name}) catch unreachable;
                     c.igSeparatorText(@as([*c]u8, @ptrCast(text)));
+
+                    // var time_us = self.start_time_us;
+                    // while (counter_lane.getNextSeries(time_us)) |series| {
+
+                    // }
+                    // counter_lane.getNextData(start_time_us);
                 },
                 else => {},
             }
