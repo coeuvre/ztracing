@@ -8,6 +8,75 @@ const Allocator = std.mem.Allocator;
 const JsonProfileParser = @import("./json_profile_parser.zig").JsonProfileParser;
 const TraceEvent = @import("./json_profile_parser.zig").TraceEvent;
 
+fn normalize(v: f32, min: f32, max: f32) @TypeOf(v, min, max) {
+    return (v - min) / (max - min);
+}
+
+fn hashString(s: []const u8) u64 {
+    return std.hash.Wyhash.hash(0, s);
+}
+
+const Color = c.ImVec4;
+
+// https://chromium.googlesource.com/catapult/+/refs/heads/main/tracing/tracing/base/sinebow_color_generator.html
+pub const SinebowColorGenerator = struct {
+    // [0, 1]
+    alpha: f32,
+    // [0, 2]
+    brightness: f32,
+    color_index: u32 = 0,
+
+    pub fn init(alpha: f32, brightness: f32) SinebowColorGenerator {
+        return .{
+            .alpha = alpha,
+            .brightness = brightness,
+        };
+    }
+
+    pub fn nextColor(self: *SinebowColorGenerator) Color {
+        const col = nthColor(self.color_index);
+        self.color_index += 1;
+        return calculateColor(col[0], col[1], col[2], self.alpha, self.brightness);
+    }
+
+    fn calculateColor(r: f32, g: f32, b: f32, a: f32, brightness: f32) Color {
+        var color = .{ .x = r, .y = g, .z = b, .w = a };
+        if (brightness <= 1) {
+            color.x *= brightness;
+            color.y *= brightness;
+            color.z *= brightness;
+        } else {
+            color.x = std.math.lerp(normalize(brightness, 1, 2), color.x, 1);
+            color.y = std.math.lerp(normalize(brightness, 1, 2), color.y, 1);
+            color.z = std.math.lerp(normalize(brightness, 1, 2), color.z, 1);
+        }
+        return color;
+    }
+
+    fn sinebow(h: f32) [3]f32 {
+        var hh = h;
+        hh += 0.5;
+        hh = -hh;
+        var r = @sin(std.math.pi * hh);
+        var g = @sin(std.math.pi * (hh + 1.0 / 3.0));
+        var b = @sin(std.math.pi * (hh + 2.0 / 3.0));
+        r *= r;
+        g *= g;
+        b *= b;
+        return [_]f32{ r, g, b };
+    }
+
+    fn nthColor(n: u32) [3]f32 {
+        return sinebow(@as(f32, @floatFromInt(n)) * std.math.phi);
+    }
+};
+
+var general_purpose_colors: [23]Color = undefined;
+
+fn getImColorU32(color: Color) u32 {
+    return c.igGetColorU32_Vec4(color);
+}
+
 pub const std_options = struct {
     pub fn logFn(
         comptime message_level: std.log.Level,
@@ -128,16 +197,19 @@ const ProfileCounterLane = struct {
     name: []u8,
     max_value: f64,
     counters: std.ArrayList(ProfileCounter),
+    num_series: usize,
 
     fn init(allocator: Allocator, name: []const u8) ProfileCounterLane {
         return .{
             .name = allocator.dupe(u8, name) catch unreachable,
             .max_value = 0,
             .counters = std.ArrayList(ProfileCounter).init(allocator),
+            .num_series = 0,
         };
     }
 
     pub fn addCounter(self: *ProfileCounterLane, time_us: i64, values: std.ArrayList(ProfileCounterValue)) !void {
+        self.num_series = @max(self.num_series, values.items.len);
         try self.counters.append(.{ .time_us = time_us, .values = values });
         var sum: f64 = 0;
         for (values.items) |value| {
@@ -145,11 +217,6 @@ const ProfileCounterLane = struct {
         }
         self.max_value = @max(self.max_value, sum);
     }
-
-    // pub fn getNextSeries(self: *ProfileCounterLane, time_us: i64) ?*ProfileCounter {
-    //     // TODO: Optimize
-
-    // }
 
     pub fn done(self: *ProfileCounterLane) void {
         std.sort.block(ProfileCounter, self.counters.items, {}, profileCounterLessThan);
@@ -518,12 +585,6 @@ const ViewState = struct {
             const lane_left = window_pos.x + c.igGetCursorPosX();
             const lane_top = window_pos.y + c.igGetCursorPosY() - c.igGetScrollY();
 
-            const cols = [_]u32{
-                c.igGetColorU32_Vec4(.{ .x = 1.0, .y = 0.0, .z = 0.0, .w = 1.0 }),
-                c.igGetColorU32_Vec4(.{ .x = 0.0, .y = 1.0, .z = 0.0, .w = 1.0 }),
-                c.igGetColorU32_Vec4(.{ .x = 0.0, .y = 0.0, .z = 1.0, .w = 1.0 }),
-            };
-
             var maybe_hovered_counter: ?HoveredCounter = null;
 
             {
@@ -545,6 +606,8 @@ const ViewState = struct {
                     x1 = x2;
                     x2 = lane_left + @as(f32, @floatFromInt(counter.time_us - self.start_time_us)) * width_per_us;
 
+                    const color_index_base: usize = @truncate(hashString(counter_lane.name));
+
                     if (values.?.len > 0) {
                         const bb = c.ImRect{
                             .Min = .{ .x = x1, .y = lane_top },
@@ -564,11 +627,11 @@ const ViewState = struct {
                                     .values = values.?,
                                 };
                             }
-
                             var y2 = bb.Max.y;
                             for (values.?, 0..) |value, i| {
                                 const y1 = y2 - lane_height * @as(f32, @floatCast(value.value / counter_lane.max_value));
-                                c.ImDrawList_AddRectFilled(draw_lsit, .{ .x = x1, .y = y1 }, .{ .x = x2, .y = y2 }, cols[i], 0, 0);
+                                const col = general_purpose_colors[(color_index_base + i) % general_purpose_colors.len];
+                                c.ImDrawList_AddRectFilled(draw_lsit, .{ .x = x1, .y = y1 }, .{ .x = x2, .y = y2 }, getImColorU32(col), 0, 0);
                                 y2 = y1;
                             }
                         }
@@ -588,7 +651,7 @@ const ViewState = struct {
             if (maybe_hovered_counter) |hovered_counter| {
                 // TODO: Styling
                 const rad = 4.0;
-                const col = cols[0];
+                const col = getImColorU32(general_purpose_colors[0]);
 
                 var sum: f64 = 0;
                 for (hovered_counter.values) |value| {
@@ -607,12 +670,6 @@ const ViewState = struct {
             }
 
             c.igNewLine();
-            // var time_us = self.start_time_us;
-            // while (counter_lane.getNextSeries(time_us)) |series| {
-
-            // }
-            // counter_lane.getNextData(start_time_us);
-
         }
     }
 
@@ -651,6 +708,7 @@ const App = struct {
     width: f32,
     height: f32,
     show_imgui_demo_window: bool,
+    show_color_palette: bool,
 
     io: *c.ImGuiIO,
 
@@ -661,6 +719,7 @@ const App = struct {
         self.width = width;
         self.height = height;
         self.show_imgui_demo_window = false;
+        self.show_color_palette = false;
 
         c.igSetAllocatorFunctions(imguiAlloc, imguiFree, null);
 
@@ -695,6 +754,8 @@ const App = struct {
     pub fn update(self: *App, dt: f32) void {
         self.io.*.DeltaTime = dt;
 
+        var buf: [256]u8 = .{};
+
         c.igNewFrame();
 
         // Main Menu Bar
@@ -710,10 +771,12 @@ const App = struct {
                     if (c.igMenuItem_Bool("Show ImGui Demo Window", null, self.show_imgui_demo_window, true)) {
                         self.show_imgui_demo_window = !self.show_imgui_demo_window;
                     }
+                    if (c.igMenuItem_Bool("Color Pattle", null, self.show_color_palette, true)) {
+                        self.show_color_palette = !self.show_color_palette;
+                    }
                     c.igEndMenu();
                 }
 
-                var buf: [32]u8 = .{};
                 {
                     c.igSetCursorPosX(c.igGetCursorPosX() + 10.0);
                     const allocated_bytes: f64 = @floatFromInt(global_counted_allocator.allocated_bytes);
@@ -757,6 +820,21 @@ const App = struct {
 
         if (self.show_imgui_demo_window) {
             c.igShowDemoWindow(&self.show_imgui_demo_window);
+        }
+
+        if (self.show_color_palette) {
+            if (c.igBegin("Color Palette", &self.show_color_palette, 0)) {
+                c.igTextUnformatted("General Purpose Colors:", null);
+                c.igPushID_Str("GeneralPurposeColors");
+                for (&general_purpose_colors, 0..) |*color, index| {
+                    const label = std.fmt.bufPrintZ(&buf, "[{}]:", .{index}) catch unreachable;
+                    c.igTextUnformatted(label.ptr, null);
+                    c.igSameLine(0, 0);
+                    _ = c.igColorEdit4(label, @ptrCast(color), c.ImGuiColorEditFlags_NoLabel);
+                }
+                c.igPopID();
+            }
+            c.igEnd();
         }
 
         c.igEndFrame();
@@ -902,6 +980,13 @@ const CountedAllocator = struct {
 };
 
 export fn init(width: f32, height: f32) void {
+    {
+        var generator = SinebowColorGenerator.init(1.0, 1.5);
+        for (&general_purpose_colors) |*color| {
+            color.* = generator.nextColor();
+        }
+    }
+
     var allocator = global_counted_allocator.allocator();
     app = allocator.create(App) catch unreachable;
     app.init(allocator, width, height);

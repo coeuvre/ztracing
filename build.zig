@@ -7,7 +7,7 @@ fn addGenProfile(b: *std.Build, target: std.zig.CrossTarget, optimize: std.built
         .target = target,
         .optimize = optimize,
     });
-    const install_gen_profile = b.addInstallArtifact(gen_profile);
+    const install_gen_profile = b.addInstallArtifact(gen_profile, .{});
     const install_gen_profile_step = b.step("gen_profile", "Install gen_profile");
     install_gen_profile_step.dependOn(&install_gen_profile.step);
 
@@ -29,7 +29,7 @@ fn addBenchParser(b: *std.Build, target: std.zig.CrossTarget, optimize: std.buil
         .optimize = optimize,
     });
     bench_parser.addModule("parser", parser);
-    const install_bench_parser = b.addInstallArtifact(bench_parser);
+    const install_bench_parser = b.addInstallArtifact(bench_parser, .{});
     const install_bench_parser_step = b.step("bench_parser", "Install bench_parser");
     install_bench_parser_step.dependOn(&install_bench_parser.step);
 
@@ -62,9 +62,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = .ReleaseSmall,
     });
-    imgui.addIncludePath("third_party");
-    imgui.addIncludePath("third_party/cimgui");
-    imgui.addIncludePath("third_party/cimgui/imgui");
+    imgui.addIncludePath(.{ .path = "third_party" });
+    imgui.addIncludePath(.{ .path = "third_party/cimgui" });
+    imgui.addIncludePath(.{ .path = "third_party/cimgui/imgui" });
     imgui.addCSourceFiles(&.{
         "src/imgui_wrapper.cpp",
     }, &.{});
@@ -92,7 +92,7 @@ pub fn build(b: *std.Build) void {
         "onLoadFileDone",
     };
     rtracing.linkLibrary(imgui);
-    rtracing.addIncludePath("third_party/cimgui");
+    rtracing.addIncludePath(.{ .path = "third_party/cimgui" });
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
