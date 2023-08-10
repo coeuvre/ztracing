@@ -25,6 +25,33 @@ pub const ParseResult = union(enum) {
     trace_event: *TraceEvent,
 };
 
+const Diagnostic = struct {
+    stack: std.ArrayList([]const u8),
+    last_token: ?Token = null,
+    input: ?[]const u8 = null,
+
+    pub fn init(allocator: Allocator) Diagnostic {
+        return .{
+            .stack = std.ArrayList([]const u8).init(allocator),
+        };
+    }
+
+    pub fn format(self: *const Diagnostic, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = options;
+        _ = fmt;
+        for (self.stack.items) |item| {
+            try writer.print("{s}", .{item});
+        }
+        try writer.print(" {?}", .{self.last_token});
+
+        try writer.print("\n{?s}", .{self.input});
+    }
+
+    pub fn deinit(self: *Diagnostic) void {
+        self.stack.deinit();
+    }
+};
+
 pub const JsonProfileParser = struct {
     arena: std.heap.ArenaAllocator,
     buf: std.ArrayList(u8),
@@ -44,6 +71,7 @@ pub const JsonProfileParser = struct {
         done,
     },
     scanner: std.json.Scanner,
+    diagnostic: Diagnostic,
 
     pub fn init(allocator: Allocator) JsonProfileParser {
         return .{
@@ -52,6 +80,7 @@ pub const JsonProfileParser = struct {
             .state = .{ .init = .{ .has_object_format = false } },
             .trace_event = .{},
             .scanner = std.json.Scanner.initStreaming(allocator),
+            .diagnostic = Diagnostic.init(allocator),
         };
     }
 
@@ -80,14 +109,20 @@ pub const JsonProfileParser = struct {
                     switch (token) {
                         .object_begin => {
                             if (s.has_object_format) {
+                                self.diagnostic.last_token = token;
                                 return error.unexpected_token;
                             }
                             self.state = .object_format;
+                            self.diagnostic.stack.append(".") catch unreachable;
                         },
                         .array_begin => {
                             self.state = .{ .array_format = .{ .has_object_format = s.has_object_format } };
+                            self.diagnostic.stack.append("[]") catch unreachable;
                         },
-                        else => return error.unexpected_token,
+                        else => {
+                            self.diagnostic.last_token = token;
+                            return error.unexpected_token;
+                        },
                     }
                 },
 
@@ -100,6 +135,7 @@ pub const JsonProfileParser = struct {
                     switch (token) {
                         .object_end => {
                             self.state = .done;
+                            _ = self.diagnostic.stack.pop();
                             return .none;
                         },
 
@@ -130,13 +166,17 @@ pub const JsonProfileParser = struct {
 
                             if (std.mem.eql(u8, key, "traceEvents")) {
                                 self.state = .{ .init = .{ .has_object_format = true } };
+                                self.diagnostic.stack.append("traceEvents") catch unreachable;
                             } else {
                                 try skipJsonValue(&self.scanner, null);
                             }
 
                             self.buf.clearRetainingCapacity();
                         },
-                        else => return error.unexpected_token,
+                        else => {
+                            self.diagnostic.last_token = token;
+                            return error.unexpected_token;
+                        },
                     }
                 },
 
@@ -163,6 +203,7 @@ pub const JsonProfileParser = struct {
                         } else {
                             self.state = .done;
                         }
+                        _ = self.diagnostic.stack.pop();
                         continue :loop;
                     }
 
@@ -200,7 +241,7 @@ pub const JsonProfileParser = struct {
                         const input = scanner.input[begin..end];
                         scanner.cursor = end;
 
-                        try parseTraceEvent(&self.arena, input, &self.trace_event);
+                        try parseTraceEvent(&self.arena, input, &self.trace_event, &self.diagnostic);
                         return .{ .trace_event = &self.trace_event };
                     }
                 },
@@ -226,7 +267,7 @@ pub const JsonProfileParser = struct {
                         try self.buf.appendSlice(scanner.input[0..end]);
                         scanner.cursor = end;
                         const input = self.buf.items;
-                        try parseTraceEvent(&self.arena, input, &self.trace_event);
+                        try parseTraceEvent(&self.arena, input, &self.trace_event, &self.diagnostic);
                         self.buf.clearRetainingCapacity();
                         self.state = .{ .array_format = .{ .has_object_format = s.has_object_format } };
                         return .{ .trace_event = &self.trace_event };
@@ -245,15 +286,18 @@ pub const JsonProfileParser = struct {
         self.buf.deinit();
         self.scanner.deinit();
         self.state = .done;
+        self.diagnostic.deinit();
     }
 };
 
-fn parseTraceEvent(arena: *ArenaAllocator, complete_input: []const u8, trace_event: *TraceEvent) !void {
+fn parseTraceEvent(arena: *ArenaAllocator, complete_input: []const u8, trace_event: *TraceEvent, diagnostic: *Diagnostic) !void {
     trace_event.* = .{};
     _ = arena.reset(.retain_capacity);
 
+    diagnostic.input = complete_input;
+
     var scanner = std.json.Scanner.initCompleteInput(arena.allocator(), complete_input);
-    try expectToken(&scanner, .object_begin);
+    try expectToken(&scanner, .object_begin, diagnostic);
     while (true) {
         const token = try scanner.next();
         if (token == .object_end) {
@@ -263,60 +307,115 @@ fn parseTraceEvent(arena: *ArenaAllocator, complete_input: []const u8, trace_eve
         switch (token) {
             .string => |key| {
                 if (std.mem.eql(u8, key, "name")) {
-                    trace_event.name = try parseString(&scanner);
+                    diagnostic.stack.append(".name") catch unreachable;
+                    trace_event.name = try parseString(arena, &scanner, diagnostic);
+                    _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "id")) {
-                    trace_event.id = try parseString(&scanner);
+                    diagnostic.stack.append(".id") catch unreachable;
+                    trace_event.id = try parseString(arena, &scanner, diagnostic);
+                    _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "cat")) {
-                    trace_event.cat = try parseString(&scanner);
+                    diagnostic.stack.append(".cat") catch unreachable;
+                    trace_event.cat = try parseString(arena, &scanner, diagnostic);
+                    _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "ph")) {
-                    trace_event.ph = (try parseString(&scanner))[0];
+                    diagnostic.stack.append(".ph") catch unreachable;
+                    trace_event.ph = (try parseString(arena, &scanner, diagnostic))[0];
+                    _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "ts")) {
-                    trace_event.ts = try parseInt(&scanner);
+                    diagnostic.stack.append(".ts") catch unreachable;
+                    trace_event.ts = try parseInt(&scanner, diagnostic);
+                    _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "tss")) {
-                    trace_event.tss = try parseInt(&scanner);
+                    diagnostic.stack.append(".tss") catch unreachable;
+                    trace_event.tss = try parseInt(&scanner, diagnostic);
+                    _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "pid")) {
-                    trace_event.pid = try parseInt(&scanner);
+                    diagnostic.stack.append(".pid") catch unreachable;
+                    trace_event.pid = try parseInt(&scanner, diagnostic);
+                    _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "tid")) {
-                    trace_event.tid = try parseInt(&scanner);
+                    diagnostic.stack.append(".tid") catch unreachable;
+                    trace_event.tid = try parseInt(&scanner, diagnostic);
+                    _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "dur")) {
-                    trace_event.dur = try parseInt(&scanner);
+                    diagnostic.stack.append(".dur") catch unreachable;
+                    trace_event.dur = try parseInt(&scanner, diagnostic);
+                    _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "cname")) {
-                    trace_event.cname = try parseString(&scanner);
+                    diagnostic.stack.append(".cname") catch unreachable;
+                    trace_event.cname = try parseString(arena, &scanner, diagnostic);
+                    _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "args")) {
+                    diagnostic.stack.append(".args") catch unreachable;
                     trace_event.args = try parseObjectValue(&scanner, arena);
+                    _ = diagnostic.stack.pop();
                 } else {
                     try skipJsonValue(&scanner, null);
                 }
             },
-            else => return error.unexpected_token,
+            else => {
+                diagnostic.last_token = token;
+                return error.unexpected_token;
+            },
         }
     }
+
+    diagnostic.input = null;
 }
 
-fn expectToken(scanner: *std.json.Scanner, expected: std.json.Token) !void {
+fn expectToken(scanner: *std.json.Scanner, expected: std.json.Token, diagnostic: *Diagnostic) !void {
     const token = try scanner.next();
     if (@intFromEnum(token) != @intFromEnum(expected)) {
+        diagnostic.last_token = token;
         return error.unexpected_token;
     }
 }
 
-fn parseString(scanner: *std.json.Scanner) ![]const u8 {
-    const token = try scanner.next();
-    switch (token) {
-        .string => |str| {
-            return str;
-        },
-        else => return error.unexpected_token,
+fn parseString(arena: *ArenaAllocator, scanner: *std.json.Scanner, diagnostic: *Diagnostic) ![]const u8 {
+    var buf: std.ArrayList(u8) = std.ArrayList(u8).init(arena.allocator());
+    while (true) {
+        const token = try scanner.next();
+        switch (token) {
+            .partial_string => |s| {
+                buf.appendSlice(s) catch unreachable;
+            },
+            .partial_string_escaped_1 => |s| {
+                buf.appendSlice(&s) catch unreachable;
+            },
+            .partial_string_escaped_2 => |s| {
+                buf.appendSlice(&s) catch unreachable;
+            },
+            .partial_string_escaped_3 => |s| {
+                buf.appendSlice(&s) catch unreachable;
+            },
+            .partial_string_escaped_4 => |s| {
+                buf.appendSlice(&s) catch unreachable;
+            },
+            .string => |str| {
+                if (buf.items.len > 0) {
+                    return buf.items;
+                }
+                return str;
+            },
+            else => {
+                diagnostic.last_token = token;
+                return error.unexpected_token;
+            },
+        }
     }
 }
 
-fn parseInt(scanner: *std.json.Scanner) !i64 {
+fn parseInt(scanner: *std.json.Scanner, diagnostic: *Diagnostic) !i64 {
     const token = try scanner.next();
     switch (token) {
         .number => |str| {
             return try std.fmt.parseInt(i64, str, 10);
         },
-        else => return error.unexpected_token,
+        else => {
+            diagnostic.last_token = token;
+            return error.unexpected_token;
+        },
     }
 }
 

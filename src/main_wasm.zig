@@ -373,7 +373,7 @@ const LoadFileState = struct {
 
         if (c.igBeginPopupModal(popup_id, null, c.ImGuiWindowFlags_AlwaysAutoResize | c.ImGuiWindowFlags_NoTitleBar | c.ImGuiWindowFlags_NoMove)) {
             if (self.error_message) |err| {
-                c.igTextUnformatted(err.ptr, null);
+                c.igTextWrapped("%s", err.ptr);
 
                 if (c.igButton("OK", .{ .x = 120, .y = 0 })) {
                     c.igCloseCurrentPopup();
@@ -463,7 +463,7 @@ const LoadFileState = struct {
     fn continueScan(self: *LoadFileState) void {
         while (!self.json_parser.done()) {
             const event = self.json_parser.next() catch |err| {
-                self.setError("Failed to parse file: {}", .{err});
+                self.setError("Failed to parse file: {}\n{}", .{err, self.json_parser.diagnostic});
                 return;
             };
 
