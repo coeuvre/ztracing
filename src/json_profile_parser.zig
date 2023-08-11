@@ -394,6 +394,7 @@ fn parseString(arena: *ArenaAllocator, scanner: *std.json.Scanner, diagnostic: *
             },
             .string => |str| {
                 if (buf.items.len > 0) {
+                    buf.appendSlice(str) catch unreachable;
                     return buf.items;
                 }
                 return str;
@@ -465,56 +466,136 @@ fn skipJsonValue(scanner: *std.json.Scanner, maybe_array_end: ?*bool) !void {
     }
 }
 
-fn parseAll(input: []const u8) ParseError![]ParseResult {
+fn expectOptional(expected: anytype, actual: @TypeOf(expected)) !bool {
+    switch (@typeInfo(@TypeOf(expected))) {
+        .Optional => {
+            if (expected) |_| {
+                if (actual) |_| {
+                    return true;
+                } else {
+                    std.debug.print("expected not null, found null\n", .{});
+                    return error.TestExpectedEqual;
+                }
+            } else {
+                if (actual) |_| {
+                    std.debug.print("expected null, found not null\n", .{});
+                    return error.TestExpectedEqual;
+                } else {
+                    return false;
+                }
+            }
+        },
+        else => @compileError("value of type " ++ @typeName(@TypeOf(expected)) ++ " encountered"),
+    }
+}
+
+fn expectEqualTraceEvent(expected: *const TraceEvent, actual: *const TraceEvent) !void {
+    if (try expectOptional(expected.name, actual.name)) {
+        try std.testing.expectEqualStrings(expected.name.?, actual.name.?);
+    }
+}
+
+const ExpectedParseResult = struct {
+    trace_events: []const TraceEvent = &[_]TraceEvent{},
+};
+
+fn testParser(input: []const u8, expected: ExpectedParseResult) ParseError!void {
     var allocator = std.testing.allocator;
     var parser = JsonProfileParser.init(allocator);
     parser.feedInput(input);
     parser.endInput();
     defer parser.deinit();
 
-    var results = std.ArrayList(ParseResult).init(std.testing.allocator);
-    errdefer results.deinit();
+    var trace_event_index: usize = 0;
 
     while (true) {
         const result = try parser.next();
+        switch (result) {
+            .trace_event => |trace_event| {
+                try std.testing.expect(trace_event_index < expected.trace_events.len);
+                const expected_trace_event = &expected.trace_events[trace_event_index];
+                try expectEqualTraceEvent(expected_trace_event, trace_event);
+                trace_event_index += 1;
+            },
+            .none => {},
+        }
         if (result == .none) {
             break;
         }
-        try results.append(result);
     }
-
-    return try results.toOwnedSlice();
 }
 
 test "invalid profile" {
-    try std.testing.expectError(error.SyntaxError, parseAll("}"));
+    try std.testing.expectError(error.SyntaxError, testParser(
+        \\}
+    , .{
+        .trace_events = &[_]TraceEvent{},
+    }));
+}
+
+test "unexpected eof" {
+    try std.testing.expectError(error.UnexpectedEndOfInput, testParser(
+        \\{
+    , .{
+        .trace_events = &[_]TraceEvent{},
+    }));
 }
 
 test "invalid trace events" {
-    const results = try parseAll(
+    try testParser(
         \\{
-        \\    "traceEvents": [
-        \\        "a"
-        \\    ]
+        \\  "traceEvents": [
+        \\    "a"
+        \\  ]
         \\}
-        \\
-    );
-    try std.testing.expect(results.len == 0);
+    , .{
+        .trace_events = &[_]TraceEvent{},
+    });
 }
 
 test "empty profile" {
-    const results = try parseAll("{}");
-    try std.testing.expect(results.len == 0);
+    try testParser(
+        \\{
+        \\}
+    , .{
+        .trace_events = &[_]TraceEvent{},
+    });
 }
 
 test "empty traceEvents profile" {
-    const results = try parseAll("{\"traceEvents\":[]}");
-    try std.testing.expect(results.len == 0);
+    try testParser(
+        \\{
+        \\  "traceEvents": []
+        \\}
+    , .{
+        .trace_events = &[_]TraceEvent{},
+    });
 }
 
 test "simple traceEvents profile" {
-    const results = try parseAll("{\"traceEvents\":[{\"a\":\"b\"}]}");
-    defer std.testing.allocator.free(results);
+    try testParser(
+        \\{
+        \\  "traceEvents": [
+        \\    { "name":"test" }
+        \\  ]
+        \\}
+    , .{
+        .trace_events = &[_]TraceEvent{
+            .{ .name = "test" },
+        },
+    });
+}
 
-    try std.testing.expect(results.len == 1);
+test "escaped name" {
+    try testParser(
+        \\{
+        \\  "traceEvents": [
+        \\    { "name": "\"test\"" }
+        \\  ]
+        \\}
+    , .{
+        .trace_events = &[_]TraceEvent{
+            .{ .name = "\"test\"" },
+        },
+    });
 }
