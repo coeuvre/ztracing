@@ -272,30 +272,65 @@ const ProfileCounterIter = struct {
     }
 };
 
-const ProfileLane = union(enum) {
-    counter: ProfileCounterLane,
-    trace,
+const Span = struct {
+    name: []u8,
+    start_time_us: i64,
+    duration_us: i64,
+};
 
-    pub fn done(self: *ProfileLane) void {
-        switch (self.*) {
-            .counter => |*counter_lane| {
-                counter_lane.done();
-            },
-            else => {},
+const ThreadLane = struct {
+    allocator: Allocator,
+    tid: i64,
+    spans: std.ArrayList(Span),
+
+    name: ?[]u8 = null,
+
+    pub fn init(allocator: Allocator, tid: i64) ThreadLane {
+        return .{
+            .allocator = allocator,
+            .tid = tid,
+            .spans = std.ArrayList(Span).init(allocator),
+        };
+    }
+
+    pub fn setName(self: *ThreadLane, name: []const u8) !void {
+        if (self.name) |n| {
+            self.allocator.free(n);
         }
+        self.name = try self.allocator.dupe(u8, name);
+    }
+
+    pub fn addSpan(self: *ThreadLane, name: []const u8, start_time_us: i64, duration_us: i64) !void {
+        try self.spans.append(.{
+            .name = try self.allocator.dupe(u8, name),
+            .start_time_us = start_time_us,
+            .duration_us = duration_us,
+        });
+    }
+
+    pub fn done(self: *ThreadLane) void {
+        std.sort.block(Span, self.spans.items, {}, spanLessThan);
+    }
+
+    fn spanLessThan(_: void, lhs: Span, rhs: Span) bool {
+        return lhs.start_time_us < rhs.start_time_us;
     }
 };
 
 const Profile = struct {
+    allocator: Allocator,
     min_time_us: i64,
     max_time_us: i64,
     counter_lanes: std.ArrayList(ProfileCounterLane),
+    thread_lanes: std.ArrayList(ThreadLane),
 
     pub fn init(allocator: Allocator) Profile {
         return .{
+            .allocator = allocator,
             .min_time_us = 0,
             .max_time_us = 0,
             .counter_lanes = std.ArrayList(ProfileCounterLane).init(allocator),
+            .thread_lanes = std.ArrayList(ThreadLane).init(allocator),
         };
     }
 
@@ -306,8 +341,19 @@ const Profile = struct {
             }
         }
 
-        try self.counter_lanes.append(ProfileCounterLane.init(self.counter_lanes.allocator, name));
+        try self.counter_lanes.append(ProfileCounterLane.init(self.allocator, name));
         return &self.counter_lanes.items[self.counter_lanes.items.len - 1];
+    }
+
+    pub fn getOrCreateThreadLane(self: *Profile, tid: i64) !*ThreadLane {
+        for (self.thread_lanes.items) |*thread_lane| {
+            if (thread_lane.tid == tid) {
+                return thread_lane;
+            }
+        }
+
+        try self.thread_lanes.append(ThreadLane.init(self.allocator, tid));
+        return &self.thread_lanes.items[self.thread_lanes.items.len - 1];
     }
 
     pub fn done(self: *Profile) void {
@@ -315,6 +361,10 @@ const Profile = struct {
 
         for (self.counter_lanes.items) |*counter_lane| {
             counter_lane.done();
+        }
+
+        for (self.thread_lanes.items) |*thread_lane| {
+            thread_lane.done();
         }
     }
 
@@ -490,45 +540,78 @@ const LoadFileState = struct {
 
         if (trace_event.ph) |ph| {
             switch (ph) {
+                // Counter event
                 'C' => {
                     // TODO: handle trace_event.id
-                    const name = trace_event.name.?;
+                    if (trace_event.name) |name| {
+                        var counter_lane = try self.profile.getOrCreateCounterLane(name);
 
-                    var counter_lane = try self.profile.getOrCreateCounterLane(name);
-
-                    if (trace_event.args) |args| {
-                        switch (args) {
-                            .object => |obj| {
-                                var iter = obj.iterator();
-                                var values = std.ArrayList(ProfileCounterValue).init(self.allocator);
-                                while (iter.next()) |entry| {
-                                    const value_name = entry.key_ptr.*;
-                                    switch (entry.value_ptr.*) {
-                                        .string, .number_string => |num| {
-                                            const val = try std.fmt.parseFloat(f64, num);
-                                            try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
-                                        },
-                                        .float => |val| {
-                                            try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
-                                        },
-                                        .integer => |val| {
-                                            try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = @floatFromInt(val) });
+                        if (trace_event.args) |args| {
+                            switch (args) {
+                                .object => |obj| {
+                                    var iter = obj.iterator();
+                                    var values = std.ArrayList(ProfileCounterValue).init(self.allocator);
+                                    while (iter.next()) |entry| {
+                                        const value_name = entry.key_ptr.*;
+                                        switch (entry.value_ptr.*) {
+                                            .string, .number_string => |num| {
+                                                const val = try std.fmt.parseFloat(f64, num);
+                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
+                                            },
+                                            .float => |val| {
+                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
+                                            },
+                                            .integer => |val| {
+                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = @floatFromInt(val) });
+                                            },
+                                            else => {},
+                                        }
+                                    }
+                                    try counter_lane.addCounter(trace_event.ts.?, values);
+                                },
+                                else => {},
+                            }
+                        }
+                    }
+                },
+                // Complete event
+                'X' => {
+                    // TODO: handle pid
+                    if (trace_event.tid) |tid| {
+                        var thread_lane = try self.profile.getOrCreateThreadLane(tid);
+                        if (trace_event.name) |name| {
+                            if (trace_event.ts) |ts| {
+                                if (trace_event.dur) |dur| {
+                                    try thread_lane.addSpan(name, ts, dur);
+                                }
+                            }
+                        }
+                    }
+                },
+                // Metadata event
+                'M' => {
+                    if (trace_event.name) |name| {
+                        if (std.mem.eql(u8, name, "thread_name")) {
+                            if (trace_event.tid) |tid| {
+                                if (trace_event.args) |args| {
+                                    switch (args) {
+                                        .object => |obj| {
+                                            if (obj.get("name")) |val| {
+                                                switch (val) {
+                                                    .string => |str| {
+                                                        var thread_lane = try self.profile.getOrCreateThreadLane(tid);
+                                                        try thread_lane.setName(str);
+                                                    },
+                                                    else => {},
+                                                }
+                                            }
                                         },
                                         else => {},
                                     }
                                 }
-                                try counter_lane.addCounter(trace_event.ts.?, values);
-                            },
-                            else => {},
+                            }
                         }
                     }
-                },
-                'M' => {
-                    // metadata event
-                    // if (trace_event.name) |name| {
-                    //     if (eql(u8, name, "thread_name")) {
-                    //     }
-                    // }
                 },
                 else => {},
             }
@@ -692,6 +775,17 @@ const ViewState = struct {
 
             c.igNewLine();
         }
+
+        for (self.profile.thread_lanes.items) |thread_lane| {
+            const name = blk: {
+                if (thread_lane.name) |name| {
+                    break :blk std.fmt.bufPrintZ(&buf, "{s}", .{name}) catch unreachable;
+                } else {
+                    break :blk std.fmt.bufPrintZ(&buf, "Thread {}", .{thread_lane.tid}) catch unreachable;
+                }
+            };
+            c.igSeparatorText(name);
+        }
     }
 
     pub fn onLoadFileStart(self: *ViewState, len: usize) void {
@@ -833,7 +927,7 @@ const App = struct {
             const viewport = c.igGetMainViewport();
             c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{ .x = 0, .y = 0 });
             c.igSetNextWindowSize(viewport.*.WorkSize, 0);
-            _ = c.igBegin("MainWindow", null, window_flags | c.ImGuiWindowFlags_AlwaysVerticalScrollbar | c.ImGuiWindowFlags_NoScrollWithMouse);
+            _ = c.igBegin("MainWindow", null, window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
             self.state.update(dt);
 
             c.igEnd();
