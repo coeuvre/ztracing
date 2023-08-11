@@ -877,9 +877,11 @@ const App = struct {
         {
             c.igPushStyleVar_Vec2(c.ImGuiStyleVar_FramePadding, .{ .x = 10, .y = 4 });
             if (c.igBeginMainMenuBar()) {
-                c.igSetCursorPosX(0);
-                if (c.igButton("Load", .{ .x = 0, .y = 0 })) {
-                    js.showOpenFilePicker();
+                if (shouldLoadFile()) {
+                    c.igSetCursorPosX(0);
+                    if (c.igButton("Load", .{ .x = 0, .y = 0 })) {
+                        js.showOpenFilePicker();
+                    }
                 }
 
                 if (c.igBeginMenu("Help", true)) {
@@ -1098,7 +1100,7 @@ export fn shouldLoadFile() bool {
             return load_file.shouldLoadFile();
         },
         .view => {
-            return true;
+            return false;
         },
     }
 }
