@@ -3,7 +3,7 @@ const std = @import("std");
 fn addGenProfile(b: *std.Build, target: std.zig.CrossTarget, optimize: std.builtin.Mode) void {
     const gen_profile = b.addExecutable(.{
         .name = "gen_profile",
-        .root_source_file = .{ .path = "tools/gen_profile.zig" },
+        .root_source_file = .{ .path = "src/gen_profile.zig" },
         .target = target,
         .optimize = optimize,
     });
@@ -21,14 +21,12 @@ fn addGenProfile(b: *std.Build, target: std.zig.CrossTarget, optimize: std.built
 }
 
 fn addBenchParser(b: *std.Build, target: std.zig.CrossTarget, optimize: std.builtin.Mode) void {
-    const parser = b.createModule(.{ .source_file = .{ .path = "src/json_profile_parser.zig" } });
     const bench_parser = b.addExecutable(.{
         .name = "bench_parser",
-        .root_source_file = .{ .path = "tools/bench_parser.zig" },
+        .root_source_file = .{ .path = "src/bench_parser.zig" },
         .target = target,
         .optimize = optimize,
     });
-    bench_parser.addModule("parser", parser);
     const install_bench_parser = b.addInstallArtifact(bench_parser, .{});
     const install_bench_parser_step = b.step("bench_parser", "Install bench_parser");
     install_bench_parser_step.dependOn(&install_bench_parser.step);

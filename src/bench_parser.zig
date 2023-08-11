@@ -1,9 +1,12 @@
 const std = @import("std");
+const json_profile_parser = @import("./json_profile_parser.zig");
+const count_alloc = @import("./count_alloc.zig");
+
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
-
-const JsonProfileParser = @import("parser").JsonProfileParser;
-const TraceEvent = @import("parser").TraceEvent;
+const JsonProfileParser = json_profile_parser.JsonProfileParser;
+const TraceEvent = json_profile_parser.TraceEvent;
+const CountAllocator = count_alloc.CountAllocator;
 
 pub const Mode = enum {
     baseline,
@@ -16,7 +19,8 @@ pub const Mode = enum {
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    var count_allocator = CountAllocator.init(gpa.allocator());
+    const allocator = count_allocator.allocator();
 
     var args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
@@ -50,6 +54,7 @@ pub fn main() !void {
     const total_mb = @as(f64, @floatFromInt(result.total_bytes)) / (1024.0 * 1024.0);
     const speed = total_mb / delta_ms * 1000.0;
     try stdout.print("Wall time: {d:.2} ms\n", .{delta_ms});
+    try stdout.print("Peek Memory: {d:.1} MiB\n", .{@as(f64, @floatFromInt(count_allocator.peekAllocatedBytes())) / (1024.0 * 1024.0)});
     try stdout.print("Size: {d:.1} MiB\n", .{total_mb});
     try stdout.print("Speed: {d:.1} MiB / s\n", .{speed});
 }

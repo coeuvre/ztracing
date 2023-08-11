@@ -1,6 +1,7 @@
 const std = @import("std");
 const c = @import("c.zig");
 const ig = @import("imgui.zig");
+const CountAllocator = @import("./count_alloc.zig").CountAllocator;
 
 const log = std.log;
 const Allocator = std.mem.Allocator;
@@ -463,7 +464,7 @@ const LoadFileState = struct {
     fn continueScan(self: *LoadFileState) void {
         while (!self.json_parser.done()) {
             const event = self.json_parser.next() catch |err| {
-                self.setError("Failed to parse file: {}\n{}", .{err, self.json_parser.diagnostic});
+                self.setError("Failed to parse file: {}\n{}", .{ err, self.json_parser.diagnostic });
                 return;
             };
 
@@ -487,48 +488,50 @@ const LoadFileState = struct {
             profile.max_time_us = @max(profile.max_time_us, ts);
         }
 
-        switch (trace_event.ph) {
-            'C' => {
-                // TODO: handle trace_event.id
-                const name = trace_event.name.?;
+        if (trace_event.ph) |ph| {
+            switch (ph) {
+                'C' => {
+                    // TODO: handle trace_event.id
+                    const name = trace_event.name.?;
 
-                var counter_lane = try self.profile.getOrCreateCounterLane(name);
+                    var counter_lane = try self.profile.getOrCreateCounterLane(name);
 
-                if (trace_event.args) |args| {
-                    switch (args) {
-                        .object => |obj| {
-                            var iter = obj.iterator();
-                            var values = std.ArrayList(ProfileCounterValue).init(self.allocator);
-                            while (iter.next()) |entry| {
-                                const value_name = entry.key_ptr.*;
-                                switch (entry.value_ptr.*) {
-                                    .string, .number_string => |num| {
-                                        const val = try std.fmt.parseFloat(f64, num);
-                                        try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
-                                    },
-                                    .float => |val| {
-                                        try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
-                                    },
-                                    .integer => |val| {
-                                        try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = @floatFromInt(val) });
-                                    },
-                                    else => {},
+                    if (trace_event.args) |args| {
+                        switch (args) {
+                            .object => |obj| {
+                                var iter = obj.iterator();
+                                var values = std.ArrayList(ProfileCounterValue).init(self.allocator);
+                                while (iter.next()) |entry| {
+                                    const value_name = entry.key_ptr.*;
+                                    switch (entry.value_ptr.*) {
+                                        .string, .number_string => |num| {
+                                            const val = try std.fmt.parseFloat(f64, num);
+                                            try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
+                                        },
+                                        .float => |val| {
+                                            try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
+                                        },
+                                        .integer => |val| {
+                                            try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = @floatFromInt(val) });
+                                        },
+                                        else => {},
+                                    }
                                 }
-                            }
-                            try counter_lane.addCounter(trace_event.ts.?, values);
-                        },
-                        else => {},
+                                try counter_lane.addCounter(trace_event.ts.?, values);
+                            },
+                            else => {},
+                        }
                     }
-                }
-            },
-            'M' => {
-                // metadata event
-                // if (trace_event.name) |name| {
-                //     if (eql(u8, name, "thread_name")) {
-                //     }
-                // }
-            },
-            else => {},
+                },
+                'M' => {
+                    // metadata event
+                    // if (trace_event.name) |name| {
+                    //     if (eql(u8, name, "thread_name")) {
+                    //     }
+                    // }
+                },
+                else => {},
+            }
         }
     }
 };
@@ -797,7 +800,7 @@ const App = struct {
 
                 {
                     c.igSetCursorPosX(c.igGetCursorPosX() + 10.0);
-                    const allocated_bytes: f64 = @floatFromInt(global_counted_allocator.allocated_bytes);
+                    const allocated_bytes: f64 = @floatFromInt(global_count_allocator.allocatedBytes());
                     const allocated_bytes_mb = allocated_bytes / 1024.0 / 1024.0;
                     const text = std.fmt.bufPrintZ(&buf, "Memory: {d:.1} MB", .{allocated_bytes_mb}) catch unreachable;
                     c.igTextUnformatted(text.ptr, null);
@@ -953,49 +956,7 @@ fn assert(ok: bool, msg: []const u8) void {
 
 var app: *App = undefined;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-var global_counted_allocator = CountedAllocator.init(gpa.allocator());
-
-const CountedAllocator = struct {
-    underlying: Allocator,
-    allocated_bytes: usize,
-
-    fn init(underlying: Allocator) CountedAllocator {
-        return .{
-            .underlying = underlying,
-            .allocated_bytes = 0,
-        };
-    }
-
-    fn allocator(self: *CountedAllocator) Allocator {
-        return .{
-            .ptr = self,
-            .vtable = &.{
-                .alloc = alloc,
-                .resize = resize,
-                .free = free,
-            },
-        };
-    }
-
-    fn alloc(ctx: *anyopaque, len: usize, log2_ptr_align: u8, ret_addr: usize) ?[*]u8 {
-        const self: *CountedAllocator = @ptrCast(@alignCast(ctx));
-        self.allocated_bytes += len;
-        return self.underlying.rawAlloc(len, log2_ptr_align, ret_addr);
-    }
-
-    fn resize(ctx: *anyopaque, buf: []u8, buf_align: u8, new_len: usize, ret_addr: usize) bool {
-        const self: *CountedAllocator = @ptrCast(@alignCast(ctx));
-        self.allocated_bytes -= buf.len;
-        self.allocated_bytes += new_len;
-        return self.underlying.rawResize(buf, buf_align, new_len, ret_addr);
-    }
-
-    fn free(ctx: *anyopaque, buf: []u8, buf_align: u8, ret_addr: usize) void {
-        const self: *CountedAllocator = @ptrCast(@alignCast(ctx));
-        self.allocated_bytes -= buf.len;
-        self.underlying.rawFree(buf, buf_align, ret_addr);
-    }
-};
+var global_count_allocator = CountAllocator.init(gpa.allocator());
 
 export fn init(width: f32, height: f32) void {
     {
@@ -1005,7 +966,7 @@ export fn init(width: f32, height: f32) void {
         }
     }
 
-    var allocator = global_counted_allocator.allocator();
+    var allocator = global_count_allocator.allocator();
     app = allocator.create(App) catch unreachable;
     app.init(allocator, width, height);
 }
