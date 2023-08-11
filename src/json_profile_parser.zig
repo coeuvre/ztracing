@@ -9,7 +9,7 @@ pub const TraceEvent = struct {
     name: ?[]const u8 = null,
     id: ?[]const u8 = null,
     cat: ?[]const u8 = null,
-    ph: u8 = 0,
+    ph: ?u8 = null,
     ts: ?i64 = null,
     tss: ?i64 = null,
     pid: ?i64 = null,
@@ -113,11 +113,11 @@ pub const JsonProfileParser = struct {
                                 return error.unexpected_token;
                             }
                             self.state = .object_format;
-                            self.diagnostic.stack.append(".") catch unreachable;
+                            try self.diagnostic.stack.append(".");
                         },
                         .array_begin => {
                             self.state = .{ .array_format = .{ .has_object_format = s.has_object_format } };
-                            self.diagnostic.stack.append("[]") catch unreachable;
+                            try self.diagnostic.stack.append("[]");
                         },
                         else => {
                             self.diagnostic.last_token = token;
@@ -166,7 +166,7 @@ pub const JsonProfileParser = struct {
 
                             if (std.mem.eql(u8, key, "traceEvents")) {
                                 self.state = .{ .init = .{ .has_object_format = true } };
-                                self.diagnostic.stack.append("traceEvents") catch unreachable;
+                                try self.diagnostic.stack.append("traceEvents");
                             } else {
                                 try skipJsonValue(&self.scanner, null);
                             }
@@ -307,47 +307,47 @@ fn parseTraceEvent(arena: *ArenaAllocator, complete_input: []const u8, trace_eve
         switch (token) {
             .string => |key| {
                 if (std.mem.eql(u8, key, "name")) {
-                    diagnostic.stack.append(".name") catch unreachable;
+                    try diagnostic.stack.append(".name");
                     trace_event.name = try parseString(arena, &scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "id")) {
-                    diagnostic.stack.append(".id") catch unreachable;
+                    try diagnostic.stack.append(".id");
                     trace_event.id = try parseString(arena, &scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "cat")) {
-                    diagnostic.stack.append(".cat") catch unreachable;
+                    try diagnostic.stack.append(".cat");
                     trace_event.cat = try parseString(arena, &scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "ph")) {
-                    diagnostic.stack.append(".ph") catch unreachable;
+                    try diagnostic.stack.append(".ph");
                     trace_event.ph = (try parseString(arena, &scanner, diagnostic))[0];
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "ts")) {
-                    diagnostic.stack.append(".ts") catch unreachable;
+                    try diagnostic.stack.append(".ts");
                     trace_event.ts = try parseInt(&scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "tss")) {
-                    diagnostic.stack.append(".tss") catch unreachable;
+                    try diagnostic.stack.append(".tss");
                     trace_event.tss = try parseInt(&scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "pid")) {
-                    diagnostic.stack.append(".pid") catch unreachable;
+                    try diagnostic.stack.append(".pid");
                     trace_event.pid = try parseInt(&scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "tid")) {
-                    diagnostic.stack.append(".tid") catch unreachable;
+                    try diagnostic.stack.append(".tid");
                     trace_event.tid = try parseInt(&scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "dur")) {
-                    diagnostic.stack.append(".dur") catch unreachable;
+                    try diagnostic.stack.append(".dur");
                     trace_event.dur = try parseInt(&scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "cname")) {
-                    diagnostic.stack.append(".cname") catch unreachable;
+                    try diagnostic.stack.append(".cname");
                     trace_event.cname = try parseString(arena, &scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "args")) {
-                    diagnostic.stack.append(".args") catch unreachable;
+                    try diagnostic.stack.append(".args");
                     trace_event.args = try parseObjectValue(&scanner, arena);
                     _ = diagnostic.stack.pop();
                 } else {
@@ -576,7 +576,7 @@ test "simple traceEvents profile" {
     try testParser(
         \\{
         \\  "traceEvents": [
-        \\    { "name":"test" }
+        \\    { "name": "test" }
         \\  ]
         \\}
     , .{
@@ -586,7 +586,7 @@ test "simple traceEvents profile" {
     });
 }
 
-test "escaped name" {
+test "escaped string" {
     try testParser(
         \\{
         \\  "traceEvents": [
