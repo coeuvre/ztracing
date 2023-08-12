@@ -2,6 +2,8 @@ const std = @import("std");
 
 const Allocator = std.mem.Allocator;
 
+const ArrayList = std.ArrayList;
+
 pub const ProfileCounterValue = struct {
     name: []u8,
     value: f64,
@@ -9,25 +11,25 @@ pub const ProfileCounterValue = struct {
 
 pub const ProfileCounter = struct {
     time_us: i64,
-    values: std.ArrayList(ProfileCounterValue),
+    values: ArrayList(ProfileCounterValue),
 };
 
 const ProfileCounterLane = struct {
     name: []u8,
     max_value: f64,
-    counters: std.ArrayList(ProfileCounter),
+    counters: ArrayList(ProfileCounter),
     num_series: usize,
 
     fn init(allocator: Allocator, name: []const u8) ProfileCounterLane {
         return .{
             .name = allocator.dupe(u8, name) catch unreachable,
             .max_value = 0,
-            .counters = std.ArrayList(ProfileCounter).init(allocator),
+            .counters = ArrayList(ProfileCounter).init(allocator),
             .num_series = 0,
         };
     }
 
-    pub fn addCounter(self: *ProfileCounterLane, time_us: i64, values: std.ArrayList(ProfileCounterValue)) !void {
+    pub fn addCounter(self: *ProfileCounterLane, time_us: i64, values: ArrayList(ProfileCounterValue)) !void {
         self.num_series = @max(self.num_series, values.items.len);
         try self.counters.append(.{ .time_us = time_us, .values = values });
         var sum: f64 = 0;
@@ -90,16 +92,74 @@ const ProfileCounterIter = struct {
     }
 };
 
-const Span = struct {
+pub const Span = struct {
     name: []u8,
     start_time_us: i64,
     duration_us: i64,
 };
 
+pub const ThreadSubLane = struct {
+    spans: ArrayList(*Span),
+
+    pub fn init(allocator: Allocator) ThreadSubLane {
+        return .{
+            .spans = ArrayList(*Span).init(allocator),
+        };
+    }
+
+    pub fn addSpan(self: *ThreadSubLane, span: *Span) !void {
+        try self.spans.append(span);
+    }
+
+    pub fn iter(self: *const ThreadSubLane, start_time_us: i64, min_duration_us: i64) ThreadSubLaneIter {
+        // TODO: binary search
+        var index: usize = 0;
+        while (index < self.spans.items.len) {
+            const span = self.spans.items[index];
+            const end_time_us = span.start_time_us + span.duration_us;
+            if (start_time_us < end_time_us) {
+                break;
+            }
+            index += 1;
+        }
+        return .{
+            .spans = self.spans.items,
+            .index = index,
+            .min_duration_us = min_duration_us,
+        };
+    }
+};
+
+pub const ThreadSubLaneIter = struct {
+    spans: []const *Span,
+    index: usize,
+    min_duration_us: i64,
+
+    pub fn next(self: *ThreadSubLaneIter) ?*const Span {
+        if (self.index >= self.spans.len) {
+            return null;
+        }
+
+        const prev_span = self.spans[self.index];
+
+        self.index += 1;
+        while (self.index < self.spans.len) {
+            const next_span = self.spans[self.index];
+            if (next_span.start_time_us - prev_span.start_time_us >= self.min_duration_us) {
+                break;
+            }
+            self.index += 1;
+        }
+
+        return prev_span;
+    }
+};
+
 const ThreadLane = struct {
     allocator: Allocator,
     tid: i64,
-    spans: std.ArrayList(Span),
+    spans: ArrayList(Span),
+    sub_lanes: ArrayList(ThreadSubLane),
 
     name: ?[]u8 = null,
 
@@ -107,7 +167,8 @@ const ThreadLane = struct {
         return .{
             .allocator = allocator,
             .tid = tid,
-            .spans = std.ArrayList(Span).init(allocator),
+            .spans = ArrayList(Span).init(allocator),
+            .sub_lanes = ArrayList(ThreadSubLane).init(allocator),
         };
     }
 
@@ -118,16 +179,51 @@ const ThreadLane = struct {
         self.name = try self.allocator.dupe(u8, name);
     }
 
-    pub fn addSpan(self: *ThreadLane, name: []const u8, start_time_us: i64, duration_us: i64) !void {
+    pub fn addSpan(self: *ThreadLane, name: ?[]const u8, start_time_us: i64, duration_us: i64) !void {
         try self.spans.append(.{
-            .name = try self.allocator.dupe(u8, name),
+            .name = try self.allocator.dupe(u8, name orelse ""),
             .start_time_us = start_time_us,
             .duration_us = duration_us,
         });
     }
 
-    pub fn done(self: *ThreadLane) void {
+    fn getOrCreateSubLane(self: *ThreadLane, level: usize) !*ThreadSubLane {
+        while (level >= self.sub_lanes.items.len) {
+            try self.sub_lanes.append(ThreadSubLane.init(self.allocator));
+        }
+        return &self.sub_lanes.items[level];
+    }
+
+    pub fn done(self: *ThreadLane) !void {
         std.sort.block(Span, self.spans.items, {}, spanLessThan);
+
+        if (self.spans.items.len > 0) {
+            const first_span = self.spans.items[0];
+            const start_time_us = first_span.start_time_us;
+            var end_time_us = start_time_us;
+            for (self.spans.items) |span| {
+                end_time_us = @max(end_time_us, span.start_time_us + span.duration_us);
+            }
+            _ = try self.mergeSpans(0, start_time_us, end_time_us, 0);
+        }
+    }
+
+    fn mergeSpans(self: *ThreadLane, level: usize, start_time_us: i64, end_time_us: i64, span_start_index: usize) !usize {
+        var index = span_start_index;
+        while (index < self.spans.items.len) {
+            const span = &self.spans.items[index];
+            if (span.start_time_us >= start_time_us and span.start_time_us < end_time_us) {
+                var sub_lane = try self.getOrCreateSubLane(level);
+                try sub_lane.addSpan(span);
+                if (self.tid == 875 and level == 0) {
+                    std.log.info("{?s}({}), level: {}, start: {}, end: {}, span: {}, dur: {}, total: {}", .{ self.name, self.tid, level, start_time_us, end_time_us, span.start_time_us, span.duration_us, sub_lane.spans.items.len });
+                }
+                index = try mergeSpans(self, level + 1, span.start_time_us, @min(span.start_time_us + span.duration_us, end_time_us), index + 1);
+            } else {
+                break;
+            }
+        }
+        return index;
     }
 
     fn spanLessThan(_: void, lhs: Span, rhs: Span) bool {
@@ -139,16 +235,16 @@ pub const Profile = struct {
     allocator: Allocator,
     min_time_us: i64,
     max_time_us: i64,
-    counter_lanes: std.ArrayList(ProfileCounterLane),
-    thread_lanes: std.ArrayList(ThreadLane),
+    counter_lanes: ArrayList(ProfileCounterLane),
+    thread_lanes: ArrayList(ThreadLane),
 
     pub fn init(allocator: Allocator) Profile {
         return .{
             .allocator = allocator,
             .min_time_us = 0,
             .max_time_us = 0,
-            .counter_lanes = std.ArrayList(ProfileCounterLane).init(allocator),
-            .thread_lanes = std.ArrayList(ThreadLane).init(allocator),
+            .counter_lanes = ArrayList(ProfileCounterLane).init(allocator),
+            .thread_lanes = ArrayList(ThreadLane).init(allocator),
         };
     }
 
@@ -174,15 +270,15 @@ pub const Profile = struct {
         return &self.thread_lanes.items[self.thread_lanes.items.len - 1];
     }
 
-    pub fn done(self: *Profile) void {
+    pub fn done(self: *Profile) !void {
         std.sort.block(ProfileCounterLane, self.counter_lanes.items, {}, profileCounterLaneLessThan);
-
         for (self.counter_lanes.items) |*counter_lane| {
             counter_lane.done();
         }
 
+        std.sort.block(ThreadLane, self.thread_lanes.items, {}, threadLaneLessThan);
         for (self.thread_lanes.items) |*thread_lane| {
-            thread_lane.done();
+            try thread_lane.done();
         }
     }
 
@@ -194,14 +290,31 @@ pub const Profile = struct {
     }
 
     fn profileCounterLaneLessThan(_: void, lhs: ProfileCounterLane, rhs: ProfileCounterLane) bool {
-        const len = @min(lhs.name.len, rhs.name.len);
+        return nameLessThan(lhs.name, rhs.name);
+    }
+
+    fn threadLaneLessThan(_: void, lhs: ThreadLane, rhs: ThreadLane) bool {
+        if (lhs.name == null and rhs.name == null) {
+            return lhs.tid < rhs.tid;
+        } else if (lhs.name == null and rhs.name != null) {
+            return false;
+        } else if (lhs.name != null and rhs.name == null) {
+            return true;
+        }
+
+        // TODO: thread sort index
+        return nameLessThan(lhs.name.?, rhs.name.?);
+    }
+
+    fn nameLessThan(lhs_name: []const u8, rhs_name: []const u8) bool {
+        const len = @min(lhs_name.len, rhs_name.len);
         for (0..len) |i| {
-            const a = lhs.name[i];
-            const b = rhs.name[i];
+            const a = lhs_name[i];
+            const b = rhs_name[i];
             if (a != b) {
                 return toUpperCase(a) < toUpperCase(b);
             }
         }
-        return lhs.name.len < rhs.name.len;
+        return lhs_name.len < rhs_name.len;
     }
 };

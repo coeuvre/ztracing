@@ -12,6 +12,7 @@ const TraceEvent = json_profile_parser.TraceEvent;
 
 const Profile = @import("profile.zig").Profile;
 const ProfileCounterValue = @import("profile.zig").ProfileCounterValue;
+const Span = @import("profile.zig").Span;
 
 fn normalize(v: f32, min: f32, max: f32) @TypeOf(v, min, max) {
     return (v - min) / (max - min);
@@ -188,7 +189,6 @@ fn switch_state(new_state: State) void {
     app.state = new_state;
 }
 
-
 const LoadFileState = struct {
     allocator: Allocator,
     done: bool,
@@ -301,7 +301,10 @@ const LoadFileState = struct {
             self.continueScan();
             self.json_parser.deinit();
 
-            self.profile.done();
+            self.profile.done() catch |err| {
+                self.setError("Failed to finalize profile: {}", .{err});
+                return;
+            };
 
             self.done = true;
             if (self.total > 0) {
@@ -336,7 +339,11 @@ const LoadFileState = struct {
 
         if (trace_event.ts) |ts| {
             profile.min_time_us = @min(profile.min_time_us, ts);
-            profile.max_time_us = @max(profile.max_time_us, ts);
+            var end = ts;
+            if (trace_event.dur) |dur| {
+                end += dur;
+            }
+            profile.max_time_us = @max(profile.max_time_us, end);
         }
 
         if (trace_event.ph) |ph| {
@@ -379,12 +386,10 @@ const LoadFileState = struct {
                 'X' => {
                     // TODO: handle pid
                     if (trace_event.tid) |tid| {
-                        var thread_lane = try self.profile.getOrCreateThreadLane(tid);
-                        if (trace_event.name) |name| {
-                            if (trace_event.ts) |ts| {
-                                if (trace_event.dur) |dur| {
-                                    try thread_lane.addSpan(name, ts, dur);
-                                }
+                        if (trace_event.ts) |ts| {
+                            if (trace_event.dur) |dur| {
+                                var thread_lane = try self.profile.getOrCreateThreadLane(tid);
+                                try thread_lane.addSpan(trace_event.name, ts, dur);
                             }
                         }
                     }
@@ -455,30 +460,31 @@ const ViewState = struct {
 
     pub fn update(self: *ViewState, dt: f32) void {
         const io = c.igGetIO();
+        _ = io;
         const window_pos = ig.getWindowPos();
         const window_content_bb = getWindowContentRegion();
         const window_width = window_content_bb.Max.x - window_content_bb.Min.x;
 
-        const wheel = io.*.MouseWheel;
-        if (wheel != 0) {
-            const mouse = io.*.MousePos.x - window_content_bb.Min.x;
-            const p = mouse / window_width;
-            var duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
-            const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
-            // TODO: Smooth zooming
-            if (wheel > 0) {
-                duration_us = duration_us * 0.9;
-            } else {
-                duration_us = duration_us * 1.1;
-            }
-            self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
-            self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
-        }
+        // const wheel = io.*.MouseWheel;
+        // if (wheel != 0) {
+        //     const mouse = io.*.MousePos.x - window_content_bb.Min.x;
+        //     const p = mouse / window_width;
+        //     var duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
+        //     const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
+        //     // TODO: Smooth zooming
+        //     if (wheel > 0) {
+        //         duration_us = duration_us * 0.9;
+        //     } else {
+        //         duration_us = duration_us * 1.1;
+        //     }
+        //     self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
+        //     self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
+        // }
 
+        const lane_width = window_width;
         const duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
-        const width_per_us = window_width / duration_us;
-        const min_duration_us: i64 = @intFromFloat(@ceil(duration_us / window_width));
-        const lane_height: f32 = 30.0;
+        const width_per_us = lane_width / duration_us;
+        const min_duration_us: i64 = @intFromFloat(@ceil(duration_us / lane_width));
         const draw_lsit = c.igGetWindowDrawList();
 
         _ = dt;
@@ -489,6 +495,7 @@ const ViewState = struct {
 
             const lane_left = window_pos.x + c.igGetCursorPosX();
             const lane_top = window_pos.y + c.igGetCursorPosY() - c.igGetScrollY();
+            const lane_height: f32 = 30.0;
 
             var maybe_hovered_counter: ?HoveredCounter = null;
 
@@ -577,7 +584,12 @@ const ViewState = struct {
             c.igNewLine();
         }
 
+        const sub_lane_height: f32 = 10;
         for (self.profile.thread_lanes.items) |thread_lane| {
+            if (thread_lane.sub_lanes.items.len == 0) {
+                continue;
+            }
+
             const name = blk: {
                 if (thread_lane.name) |name| {
                     break :blk std.fmt.bufPrintZ(&buf, "{s}", .{name}) catch unreachable;
@@ -586,6 +598,28 @@ const ViewState = struct {
                 }
             };
             c.igSeparatorText(name);
+
+            const lane_left = window_pos.x + c.igGetCursorPosX();
+            const lane_top = window_pos.y + c.igGetCursorPosY() - c.igGetScrollY();
+            const lane_height = @as(f32, @floatFromInt(thread_lane.sub_lanes.items.len)) * sub_lane_height;
+            const lane_bb = c.ImRect{
+                .Min = .{ .x = lane_left, .y = lane_top },
+                .Max = .{ .x = lane_left + lane_width, .y = lane_top + lane_height },
+            };
+            c.igItemSize_Rect(lane_bb, -1);
+            // const id = c.igGetID_Str(std.fmt.bufPrintZ(&buf, "##{s}", .{name}) catch unreachable);
+            if (c.igItemAdd(lane_bb, 0, null, 0)) {
+                for (thread_lane.sub_lanes.items, 0..) |sub_lane, sub_lane_index| {
+                    var iter = sub_lane.iter(self.start_time_us, min_duration_us);
+                    var sub_lane_top = lane_top + @as(f32, @floatFromInt(sub_lane_index)) * sub_lane_height;
+                    while (iter.next()) |span| {
+                        const x1 = lane_left + @as(f32, @floatFromInt(@max(span.start_time_us, self.start_time_us))) * width_per_us;
+                        const x2 = lane_left + @as(f32, @floatFromInt(span.start_time_us + @max(span.duration_us, min_duration_us))) * width_per_us;
+                        const col = getColorForSpan(span);
+                        c.ImDrawList_AddRectFilled(draw_lsit, .{ .x = x1, .y = sub_lane_top }, .{ .x = x2, .y = sub_lane_top + sub_lane_height }, col, 0, 0);
+                    }
+                }
+            }
         }
     }
 
@@ -594,6 +628,11 @@ const ViewState = struct {
         switch_state(state);
     }
 };
+
+fn getColorForSpan(span: *const Span) u32 {
+    const color_index: usize = @truncate(hashString(span.name));
+    return getImColorU32(general_purpose_colors[color_index % general_purpose_colors.len]);
+}
 
 const State = union(enum) {
     welcome: WelcomeState,
@@ -730,7 +769,7 @@ const App = struct {
             const viewport = c.igGetMainViewport();
             c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{ .x = 0, .y = 0 });
             c.igSetNextWindowSize(viewport.*.WorkSize, 0);
-            _ = c.igBegin("MainWindow", null, window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
+            _ = c.igBegin("MainWindow", null, window_flags);
             self.state.update(dt);
 
             c.igEnd();
