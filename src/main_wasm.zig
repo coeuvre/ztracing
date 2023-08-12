@@ -446,13 +446,17 @@ const HoveredCounter = struct {
 const ViewState = struct {
     allocator: Allocator,
     profile: Profile,
+    text_size: c.ImVec2,
     start_time_us: i64,
     end_time_us: i64,
 
     pub fn init(allocator: Allocator, profile: Profile) ViewState {
+        var text_size: c.ImVec2 = undefined;
+        c.igCalcTextSize(&text_size, "A", null, false, 0);
         return .{
             .allocator = allocator,
             .profile = profile,
+            .text_size = text_size,
             .start_time_us = profile.min_time_us,
             .end_time_us = profile.max_time_us,
         };
@@ -460,26 +464,25 @@ const ViewState = struct {
 
     pub fn update(self: *ViewState, dt: f32) void {
         const io = c.igGetIO();
-        _ = io;
         const window_pos = ig.getWindowPos();
         const window_content_bb = getWindowContentRegion();
         const window_width = window_content_bb.Max.x - window_content_bb.Min.x;
 
-        // const wheel = io.*.MouseWheel;
-        // if (wheel != 0) {
-        //     const mouse = io.*.MousePos.x - window_content_bb.Min.x;
-        //     const p = mouse / window_width;
-        //     var duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
-        //     const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
-        //     // TODO: Smooth zooming
-        //     if (wheel > 0) {
-        //         duration_us = duration_us * 0.9;
-        //     } else {
-        //         duration_us = duration_us * 1.1;
-        //     }
-        //     self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
-        //     self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
-        // }
+        const wheel = io.*.MouseWheel;
+        if (wheel != 0) {
+            const mouse = io.*.MousePos.x - window_content_bb.Min.x;
+            const p = mouse / window_width;
+            var duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
+            const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
+            // TODO: Smooth zooming
+            if (wheel > 0) {
+                duration_us = duration_us * 0.9;
+            } else {
+                duration_us = duration_us * 1.1;
+            }
+            self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
+            self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
+        }
 
         const lane_width = window_width;
         const duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
@@ -584,7 +587,9 @@ const ViewState = struct {
             c.igNewLine();
         }
 
-        const sub_lane_height: f32 = 10;
+        const text_padding_x: f32 = self.text_size.x;
+        const text_padding_y: f32 = self.text_size.y / 4.0;
+        const sub_lane_height: f32 = 2 * text_padding_y + self.text_size.y;
         for (self.profile.thread_lanes.items) |thread_lane| {
             if (thread_lane.sub_lanes.items.len == 0) {
                 continue;
@@ -607,16 +612,59 @@ const ViewState = struct {
                 .Max = .{ .x = lane_left + lane_width, .y = lane_top + lane_height },
             };
             c.igItemSize_Rect(lane_bb, -1);
-            // const id = c.igGetID_Str(std.fmt.bufPrintZ(&buf, "##{s}", .{name}) catch unreachable);
-            if (c.igItemAdd(lane_bb, 0, null, 0)) {
+            const id = c.igGetID_Str(std.fmt.bufPrintZ(&buf, "##thread-{}", .{thread_lane.tid}) catch unreachable);
+            if (c.igItemAdd(lane_bb, id, null, 0)) {
                 for (thread_lane.sub_lanes.items, 0..) |sub_lane, sub_lane_index| {
                     var iter = sub_lane.iter(self.start_time_us, min_duration_us);
                     var sub_lane_top = lane_top + @as(f32, @floatFromInt(sub_lane_index)) * sub_lane_height;
                     while (iter.next()) |span| {
-                        const x1 = lane_left + @as(f32, @floatFromInt(@max(span.start_time_us, self.start_time_us))) * width_per_us;
-                        const x2 = lane_left + @as(f32, @floatFromInt(span.start_time_us + @max(span.duration_us, min_duration_us))) * width_per_us;
+                        var x1 = lane_left + @as(f32, @floatFromInt(span.start_time_us - self.start_time_us)) * width_per_us;
+                        var x2 = x1 + @as(f32, @floatFromInt(@max(span.duration_us, min_duration_us))) * width_per_us;
+
+                        x1 = @max(lane_left, x1);
+                        x2 = @min(lane_left + lane_width, x2);
+
                         const col = getColorForSpan(span);
-                        c.ImDrawList_AddRectFilled(draw_lsit, .{ .x = x1, .y = sub_lane_top }, .{ .x = x2, .y = sub_lane_top + sub_lane_height }, col, 0, 0);
+                        c.ImDrawList_AddRectFilled(
+                            draw_lsit,
+                            .{ .x = x1, .y = sub_lane_top },
+                            .{ .x = x2, .y = sub_lane_top + sub_lane_height },
+                            col,
+                            0,
+                            0,
+                        );
+
+                        if (x2 - x1 > 2 * text_padding_x + self.text_size.x) {
+                            const text_min_x = x1 + text_padding_x;
+                            const text_max_x = x2 - text_padding_x;
+
+                            const text = std.fmt.bufPrintZ(&buf, "{s}", .{span.name}) catch unreachable;
+                            var text_size: c.ImVec2 = undefined;
+                            c.igCalcTextSize(&text_size, text, null, false, 0);
+                            const center_y = sub_lane_top + sub_lane_height / 2.0;
+
+                            if (text_max_x - text_min_x >= text_size.x) {
+                                const center_x = text_min_x + (text_max_x - text_min_x) / 2.0;
+                                c.ImDrawList_AddText_Vec2(
+                                    draw_lsit,
+                                    .{ .x = center_x - text_size.x / 2.0, .y = center_y - self.text_size.y / 2.0 },
+                                    getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
+                                    text,
+                                    null,
+                                );
+                            } else {
+                                c.igRenderTextEllipsis(
+                                    draw_lsit,
+                                    .{ .x = text_min_x, .y = center_y - self.text_size.y / 2.0 },
+                                    .{ .x = text_max_x, .y = sub_lane_top + sub_lane_height },
+                                    text_max_x,
+                                    text_max_x,
+                                    text,
+                                    null,
+                                    null,
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -631,7 +679,7 @@ const ViewState = struct {
 
 fn getColorForSpan(span: *const Span) u32 {
     const color_index: usize = @truncate(hashString(span.name));
-    return getImColorU32(general_purpose_colors[color_index % general_purpose_colors.len]);
+    return getImColorU32(general_purpose_colors[color_index % 7]);
 }
 
 const State = union(enum) {
@@ -769,7 +817,7 @@ const App = struct {
             const viewport = c.igGetMainViewport();
             c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{ .x = 0, .y = 0 });
             c.igSetNextWindowSize(viewport.*.WorkSize, 0);
-            _ = c.igBegin("MainWindow", null, window_flags);
+            _ = c.igBegin("MainWindow", null, window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
             self.state.update(dt);
 
             c.igEnd();

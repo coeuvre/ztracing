@@ -112,19 +112,10 @@ pub const ThreadSubLane = struct {
     }
 
     pub fn iter(self: *const ThreadSubLane, start_time_us: i64, min_duration_us: i64) ThreadSubLaneIter {
-        // TODO: binary search
-        var index: usize = 0;
-        while (index < self.spans.items.len) {
-            const span = self.spans.items[index];
-            const end_time_us = span.start_time_us + span.duration_us;
-            if (start_time_us < end_time_us) {
-                break;
-            }
-            index += 1;
-        }
         return .{
             .spans = self.spans.items,
-            .index = index,
+            .prev_index = null,
+            .cursor = start_time_us,
             .min_duration_us = min_duration_us,
         };
     }
@@ -132,26 +123,29 @@ pub const ThreadSubLane = struct {
 
 pub const ThreadSubLaneIter = struct {
     spans: []const *Span,
-    index: usize,
+    prev_index: ?usize,
+    cursor: i64,
     min_duration_us: i64,
 
     pub fn next(self: *ThreadSubLaneIter) ?*const Span {
-        if (self.index >= self.spans.len) {
-            return null;
-        }
-
-        const prev_span = self.spans[self.index];
-
-        self.index += 1;
-        while (self.index < self.spans.len) {
-            const next_span = self.spans[self.index];
-            if (next_span.start_time_us - prev_span.start_time_us >= self.min_duration_us) {
+        var index = self.prev_index orelse 0;
+        while (index < self.spans.len) {
+            const span = self.spans[index];
+            const end_time_us = span.start_time_us + span.duration_us;
+            if (self.cursor < end_time_us)
+            {
+                self.cursor = @max(end_time_us, self.cursor + self.min_duration_us);
                 break;
             }
-            self.index += 1;
+            index += 1;
         }
+        self.prev_index = index;
 
-        return prev_span;
+        if (index < self.spans.len) {
+            return self.spans[index];
+        } else {
+            return null;
+        }
     }
 };
 
@@ -215,9 +209,6 @@ const ThreadLane = struct {
             if (span.start_time_us >= start_time_us and span.start_time_us < end_time_us) {
                 var sub_lane = try self.getOrCreateSubLane(level);
                 try sub_lane.addSpan(span);
-                if (self.tid == 875 and level == 0) {
-                    std.log.info("{?s}({}), level: {}, start: {}, end: {}, span: {}, dur: {}, total: {}", .{ self.name, self.tid, level, start_time_us, end_time_us, span.start_time_us, span.duration_us, sub_lane.spans.items.len });
-                }
                 index = try mergeSpans(self, level + 1, span.start_time_us, @min(span.start_time_us + span.duration_us, end_time_us), index + 1);
             } else {
                 break;
