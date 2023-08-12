@@ -440,7 +440,7 @@ function mount(options) {
       event.preventDefault();
       return false;
     });
-    canvas.addEventListener("mouseup", (event) => {
+    window.addEventListener("mouseup", (event) => {
       app.onMouseUp(event.button);
       event.preventDefault();
       return false;

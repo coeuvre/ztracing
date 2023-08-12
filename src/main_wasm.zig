@@ -674,8 +674,8 @@ const ViewState = struct {
                         if (bb.Max.x - bb.Min.x > 2) {
                             c.ImDrawList_AddRect(
                                 draw_lsit,
-                                bb.Min,
-                                bb.Max,
+                                .{ .x = bb.Min.x + 0.5, .y = bb.Min.y + 0.5 },
+                                .{ .x = bb.Max.x - 0.5, .y = bb.Max.y - 0.5 },
                                 getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
                                 0,
                                 0,
@@ -686,8 +686,8 @@ const ViewState = struct {
                         if (is_window_hovered and !is_mouse_dragging and c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
                             c.ImDrawList_AddRect(
                                 draw_lsit,
-                                bb.Min,
-                                bb.Max,
+                                .{ .x = bb.Min.x + 1, .y = bb.Min.y + 1 },
+                                .{ .x = bb.Max.x - 1, .y = bb.Max.y - 1 },
                                 getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
                                 0,
                                 0,
