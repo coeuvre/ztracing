@@ -475,21 +475,21 @@ const ViewState = struct {
         var window_content_bb = getWindowContentRegion();
         const window_width = window_content_bb.Max.x - window_content_bb.Min.x;
 
-        const wheel = io.*.MouseWheel;
-        if (wheel != 0) {
-            const mouse = io.*.MousePos.x - window_content_bb.Min.x;
-            const p = mouse / window_width;
-            var duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
-            const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
-            // TODO: Smooth zooming
-            if (wheel > 0) {
-                duration_us = duration_us * 0.9;
-            } else {
-                duration_us = duration_us * 1.1;
-            }
-            self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
-            self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
-        }
+        // const wheel = io.*.MouseWheel;
+        // if (wheel != 0) {
+        //     const mouse = io.*.MousePos.x - window_content_bb.Min.x;
+        //     const p = mouse / window_width;
+        //     var duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
+        //     const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
+        //     // TODO: Smooth zooming
+        //     if (wheel > 0) {
+        //         duration_us = duration_us * 0.9;
+        //     } else {
+        //         duration_us = duration_us * 1.1;
+        //     }
+        //     self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
+        //     self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
+        // }
 
         const lane_left = window_pos.x + c.igGetCursorPosX();
         const lane_width = window_width;
@@ -888,7 +888,7 @@ const App = struct {
             const viewport = c.igGetMainViewport();
             c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{ .x = 0, .y = 0 });
             c.igSetNextWindowSize(viewport.*.WorkSize, 0);
-            _ = c.igBegin("MainWindow", null, window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
+            _ = c.igBegin("MainWindow", null, window_flags);
             self.state.update(dt);
 
             c.igEnd();
