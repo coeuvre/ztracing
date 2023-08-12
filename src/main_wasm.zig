@@ -802,6 +802,9 @@ const App = struct {
         {
             var style = c.igGetStyle();
             c.igStyleColorsLight(style);
+
+            style.*.ScrollbarRounding = 0.0;
+            style.*.ScrollbarSize = 18.0;
         }
 
         io.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
@@ -1021,6 +1024,9 @@ export fn init(width: f32, height: f32) void {
     var allocator = global_count_allocator.allocator();
     app = allocator.create(App) catch unreachable;
     app.init(allocator, width, height);
+
+    // HACK: Force ImGui to update the mosue cursor
+    app.onMouseMove(0, 0);
 }
 
 export fn update(dt: f32) void {
