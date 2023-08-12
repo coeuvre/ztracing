@@ -469,7 +469,7 @@ const ViewState = struct {
     pub fn update(self: *ViewState, dt: f32) void {
         const io = c.igGetIO();
         const mouse_pos = io.*.MousePos;
-        _ = mouse_pos;
+        const is_window_hovered = c.igIsWindowHovered(0);
 
         const window_pos = ig.getWindowPos();
         var window_content_bb = getWindowContentRegion();
@@ -514,7 +514,7 @@ const ViewState = struct {
                 self.was_mouse_dragging = false;
             }
         } else {
-            if (is_mouse_dragging and c.igIsWindowHovered(0)) {
+            if (is_window_hovered and is_mouse_dragging) {
                 self.was_mouse_dragging = true;
                 self.mouse_down_start_time_us = self.start_time_us;
                 self.mouse_down_duration_us = self.end_time_us - self.start_time_us;
@@ -658,14 +658,49 @@ const ViewState = struct {
                         x2 = @min(lane_left + lane_width, x2);
 
                         const col = getColorForSpan(span);
+                        var bb = c.ImRect{
+                            .Min = .{ .x = x1, .y = sub_lane_top },
+                            .Max = .{ .x = x2, .y = sub_lane_top + sub_lane_height },
+                        };
                         c.ImDrawList_AddRectFilled(
                             draw_lsit,
-                            .{ .x = x1, .y = sub_lane_top },
-                            .{ .x = x2, .y = sub_lane_top + sub_lane_height },
+                            bb.Min,
+                            bb.Max,
                             col,
                             0,
                             0,
                         );
+
+                        if (bb.Max.x - bb.Min.x > 2) {
+                            c.ImDrawList_AddRect(
+                                draw_lsit,
+                                bb.Min,
+                                bb.Max,
+                                getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
+                                0,
+                                0,
+                                1,
+                            );
+                        }
+
+                        if (is_window_hovered and !is_mouse_dragging and c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
+                            c.ImDrawList_AddRect(
+                                draw_lsit,
+                                bb.Min,
+                                bb.Max,
+                                getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
+                                0,
+                                0,
+                                2,
+                            );
+
+                            if (c.igBeginTooltip()) {
+                                c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "{s}", .{span.name}) catch unreachable, null);
+                                c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "Start: {}", .{span.start_time_us}) catch unreachable, null);
+                                c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "Duration: {}", .{span.duration_us}) catch unreachable, null);
+                            }
+                            c.igEndTooltip();
+                        }
 
                         if (x2 - x1 > 2 * text_padding_x + character_size.x) {
                             const text_min_x = x1 + text_padding_x;
@@ -712,7 +747,7 @@ const ViewState = struct {
 
 fn getColorForSpan(span: *const Span) u32 {
     const color_index: usize = @truncate(hashString(span.name));
-    return getImColorU32(general_purpose_colors[color_index % 7]);
+    return getImColorU32(general_purpose_colors[color_index % general_purpose_colors.len]);
 }
 
 const State = union(enum) {
