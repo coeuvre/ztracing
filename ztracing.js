@@ -385,6 +385,10 @@ class App {
     this.instance.exports.onWheel(dx, dy);
   }
 
+  onFocusChange(focused) {
+    this.instance.exports.onFocusChange(focused);
+  }
+
   update(now) {
     if (this.loadingFile) {
       if (!this.loadingFile.isDone && app.instance.exports.shouldLoadFile()) {
@@ -451,6 +455,9 @@ function mount(options) {
       return false;
     });
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
+    window.addEventListener("blur", () => app.onFocusChange(false));
+    window.addEventListener("focus", () => app.onFocusChange(true));
 
     requestAnimationFrame((now) => app.update(now));
 

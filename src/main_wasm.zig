@@ -686,8 +686,8 @@ const ViewState = struct {
                         if (is_window_hovered and !is_mouse_dragging and c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
                             c.ImDrawList_AddRect(
                                 draw_lsit,
-                                .{ .x = bb.Min.x + 1, .y = bb.Min.y + 1 },
-                                .{ .x = bb.Max.x - 1, .y = bb.Max.y - 1 },
+                                bb.Min,
+                                bb.Max,
                                 getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
                                 0,
                                 0,
@@ -943,6 +943,10 @@ const App = struct {
         c.ImGuiIO_AddMouseWheelEvent(self.io, dx / self.width * 10.0, -dy / self.height * 10.0);
     }
 
+    pub fn onFocusChange(self: *App, focused: bool) void {
+        c.ImGuiIO_AddFocusEvent(self.io, focused);
+    }
+
     fn renderImgui(self: *App, draw_data: *c.ImDrawData) void {
         _ = self;
         if (!draw_data.*.Valid) {
@@ -1051,6 +1055,10 @@ export fn onMouseUp(button: i32) void {
 
 export fn onWheel(dx: f32, dy: f32) void {
     app.onWheel(dx, dy);
+}
+
+export fn onFocusChange(focused: bool) void {
+    app.onFocusChange(focused);
 }
 
 export fn shouldLoadFile() bool {

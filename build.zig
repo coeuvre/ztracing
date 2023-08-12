@@ -75,7 +75,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    // rtracing.rdynamic = true;
     rtracing.export_symbol_names = &[_][]const u8{
         "init",
         "update",
@@ -84,6 +83,7 @@ pub fn build(b: *std.Build) void {
         "onMouseDown",
         "onMouseUp",
         "onWheel",
+        "onFocusChange",
         "shouldLoadFile",
         "onLoadFileStart",
         "onLoadFileChunk",
