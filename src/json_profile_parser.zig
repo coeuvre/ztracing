@@ -1,9 +1,11 @@
 const std = @import("std");
+const test_utils = @import("./test_utils.zig");
+
 const Allocator = std.mem.Allocator;
 const Token = std.json.Token;
 const ArenaAllocator = std.heap.ArenaAllocator;
-
 const Buffer = std.ArrayList(u8);
+const expectOptional = test_utils.expectOptional;
 
 pub const TraceEvent = struct {
     name: ?[]const u8 = null,
@@ -466,30 +468,7 @@ fn skipJsonValue(scanner: *std.json.Scanner, maybe_array_end: ?*bool) !void {
     }
 }
 
-fn expectOptional(expected: anytype, actual: @TypeOf(expected)) !bool {
-    switch (@typeInfo(@TypeOf(expected))) {
-        .Optional => {
-            if (expected) |_| {
-                if (actual) |_| {
-                    return true;
-                } else {
-                    std.debug.print("expected not null, found null\n", .{});
-                    return error.TestExpectedEqual;
-                }
-            } else {
-                if (actual) |_| {
-                    std.debug.print("expected null, found not null\n", .{});
-                    return error.TestExpectedEqual;
-                } else {
-                    return false;
-                }
-            }
-        },
-        else => @compileError("value of type " ++ @typeName(@TypeOf(expected)) ++ " encountered"),
-    }
-}
-
-fn expectEqualTraceEvent(expected: *const TraceEvent, actual: *const TraceEvent) !void {
+fn expectEqualTraceEvents(expected: *const TraceEvent, actual: *const TraceEvent) !void {
     if (try expectOptional(expected.name, actual.name)) {
         try std.testing.expectEqualStrings(expected.name.?, actual.name.?);
     }
@@ -514,7 +493,7 @@ fn testParser(input: []const u8, expected: ExpectedParseResult) ParseError!void 
             .trace_event => |trace_event| {
                 try std.testing.expect(trace_event_index < expected.trace_events.len);
                 const expected_trace_event = &expected.trace_events[trace_event_index];
-                try expectEqualTraceEvent(expected_trace_event, trace_event);
+                try expectEqualTraceEvents(expected_trace_event, trace_event);
                 trace_event_index += 1;
             },
             .none => {},

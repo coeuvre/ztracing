@@ -1,8 +1,11 @@
 const std = @import("std");
+const test_utils = @import("./test_utils.zig");
+const json_profile_parser = @import("./json_profile_parser.zig");
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const TraceEvent = @import("./json_profile_parser.zig").TraceEvent;
+const TraceEvent = json_profile_parser.TraceEvent;
+const expectOptional = test_utils.expectOptional;
 
 pub const ProfileCounterValue = struct {
     name: []u8,
@@ -107,6 +110,14 @@ pub const Span = struct {
     name: []u8,
     start_time_us: i64,
     duration_us: i64,
+
+    fn lessThan(_: void, lhs: Span, rhs: Span) bool {
+        if (lhs.start_time_us == rhs.start_time_us) {
+            return rhs.duration_us < lhs.duration_us;
+        }
+
+        return lhs.start_time_us < rhs.start_time_us;
+    }
 };
 
 pub const ThreadSubLane = struct {
@@ -170,6 +181,7 @@ const ThreadLane = struct {
     sub_lanes: ArrayList(ThreadSubLane),
 
     name: ?[]u8 = null,
+    sort_index: ?i64 = null,
 
     pub fn init(allocator: Allocator, tid: i64) ThreadLane {
         return .{
@@ -219,7 +231,7 @@ const ThreadLane = struct {
     }
 
     pub fn done(self: *ThreadLane) !void {
-        std.sort.block(Span, self.spans.items, {}, spanLessThan);
+        std.sort.block(Span, self.spans.items, {}, Span.lessThan);
 
         if (self.spans.items.len > 0) {
             const first_span = self.spans.items[0];
@@ -247,14 +259,49 @@ const ThreadLane = struct {
         return index;
     }
 
-    fn spanLessThan(_: void, lhs: Span, rhs: Span) bool {
-        if (lhs.start_time_us == rhs.start_time_us) {
-            return rhs.duration_us < lhs.duration_us;
+    fn lessThan(_: void, lhs: ThreadLane, rhs: ThreadLane) bool {
+        if (lhs.sort_index != null or rhs.sort_index != null) {
+            if (lhs.sort_index != null and rhs.sort_index == null) {
+                return true;
+            } else if (lhs.sort_index == null and rhs.sort_index != null) {
+                return false;
+            } else if (lhs.sort_index.? != rhs.sort_index.?) {
+                return lhs.sort_index.? < rhs.sort_index.?;
+            }
         }
 
-        return lhs.start_time_us < rhs.start_time_us;
+        if (lhs.name != null or rhs.name != null) {
+            if (lhs.name != null and rhs.name == null) {
+                return true;
+            } else if (lhs.name == null and rhs.name != null) {
+                return false;
+            } else if (!std.mem.eql(u8, lhs.name.?, rhs.name.?)) {
+                return nameLessThan(lhs.name.?, rhs.name.?);
+            }
+        }
+
+        return lhs.tid < rhs.tid;
     }
 };
+
+fn toUpperCase(ch: u8) u8 {
+    if (ch >= 'a' and ch <= 'z') {
+        return 'A' + ch - 'a';
+    }
+    return ch;
+}
+
+fn nameLessThan(lhs_name: []const u8, rhs_name: []const u8) bool {
+    const len = @min(lhs_name.len, rhs_name.len);
+    for (0..len) |i| {
+        const a = lhs_name[i];
+        const b = rhs_name[i];
+        if (a != b) {
+            return toUpperCase(a) < toUpperCase(b);
+        }
+    }
+    return lhs_name.len < rhs_name.len;
+}
 
 pub const Profile = struct {
     allocator: Allocator,
@@ -387,6 +434,28 @@ pub const Profile = struct {
                                     }
                                 }
                             }
+                        } else if (std.mem.eql(u8, name, "thread_sort_index")) {
+                            if (trace_event.tid) |tid| {
+                                if (trace_event.args) |args| {
+                                    switch (args) {
+                                        .object => |obj| {
+                                            if (obj.get("sort_index")) |val| {
+                                                switch (val) {
+                                                    .number_string, .string => |str| {
+                                                        const sort_index = try std.fmt.parseInt(i64, str, 10);
+                                                        try self.handleThreadSortIndex(tid, sort_index);
+                                                    },
+                                                    .integer => |sort_index| {
+                                                        try self.handleThreadSortIndex(tid, sort_index);
+                                                    },
+                                                    else => {},
+                                                }
+                                            }
+                                        },
+                                        else => {},
+                                    }
+                                }
+                            }
                         }
                     }
                 },
@@ -395,52 +464,25 @@ pub const Profile = struct {
         }
     }
 
+    fn handleThreadSortIndex(self: *Profile, tid: i64, sort_index: i64) !void {
+        var thread_lane = try self.getOrCreateThreadLane(tid);
+        thread_lane.sort_index = sort_index;
+    }
+
     pub fn done(self: *Profile) !void {
         std.sort.block(ProfileCounterLane, self.counter_lanes.items, {}, profileCounterLaneLessThan);
         for (self.counter_lanes.items) |*counter_lane| {
             counter_lane.done();
         }
 
-        std.sort.block(ThreadLane, self.thread_lanes.items, {}, threadLaneLessThan);
+        std.sort.block(ThreadLane, self.thread_lanes.items, {}, ThreadLane.lessThan);
         for (self.thread_lanes.items) |*thread_lane| {
             try thread_lane.done();
         }
     }
 
-    fn toUpperCase(ch: u8) u8 {
-        if (ch >= 'a' and ch <= 'z') {
-            return 'A' + ch - 'a';
-        }
-        return ch;
-    }
-
     fn profileCounterLaneLessThan(_: void, lhs: ProfileCounterLane, rhs: ProfileCounterLane) bool {
         return nameLessThan(lhs.name, rhs.name);
-    }
-
-    fn threadLaneLessThan(_: void, lhs: ThreadLane, rhs: ThreadLane) bool {
-        if (lhs.name == null and rhs.name == null) {
-            return lhs.tid < rhs.tid;
-        } else if (lhs.name == null and rhs.name != null) {
-            return false;
-        } else if (lhs.name != null and rhs.name == null) {
-            return true;
-        }
-
-        // TODO: thread sort index
-        return nameLessThan(lhs.name.?, rhs.name.?);
-    }
-
-    fn nameLessThan(lhs_name: []const u8, rhs_name: []const u8) bool {
-        const len = @min(lhs_name.len, rhs_name.len);
-        for (0..len) |i| {
-            const a = lhs_name[i];
-            const b = rhs_name[i];
-            if (a != b) {
-                return toUpperCase(a) < toUpperCase(b);
-            }
-        }
-        return lhs_name.len < rhs_name.len;
     }
 };
 
@@ -450,7 +492,9 @@ const ExpectedProfile = struct {
 
 const ExpectedThreadLane = struct {
     tid: i64,
-    sub_lanes: []const ExpectedSubLane,
+    name: ?[]const u8 = null,
+    sort_index: ?i64 = null,
+    sub_lanes: ?[]const ExpectedSubLane = null,
 };
 
 const ExpectedSubLane = struct {
@@ -484,10 +528,23 @@ fn testParse(trace_events: []const TraceEvent, expected_profile: ExpectedProfile
 
 fn expectEqualThreadLanes(expected: ExpectedThreadLane, actual: ThreadLane) !void {
     try std.testing.expectEqual(expected.tid, actual.tid);
-    try std.testing.expectEqual(expected.sub_lanes.len, actual.sub_lanes.items.len);
 
-    for (expected.sub_lanes, actual.sub_lanes.items) |expected_sub_lane, actual_sub_lane| {
-        try expectEqualSubLanes(expected_sub_lane, actual_sub_lane);
+    if (try expectOptional(expected.name, actual.name)) {
+        try std.testing.expectEqualStrings(expected.name.?, actual.name.?);
+    }
+
+    if (try expectOptional(expected.sort_index, actual.sort_index)) {
+        try std.testing.expectEqual(expected.sort_index.?, actual.sort_index.?);
+    }
+
+    if (expected.sub_lanes) |expected_sub_lanes| {
+        try std.testing.expectEqual(expected_sub_lanes.len, actual.sub_lanes.items.len);
+
+        for (expected_sub_lanes, actual.sub_lanes.items) |expected_sub_lane, actual_sub_lane| {
+            try expectEqualSubLanes(expected_sub_lane, actual_sub_lane);
+        }
+    } else {
+        try std.testing.expectEqual(@as(usize, 0), actual.sub_lanes.items.len);
     }
 }
 
@@ -518,6 +575,110 @@ test "parse, spans have equal start time, sort by duration descending" {
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 3 }} },
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 1 }} },
+                },
+            },
+        },
+    });
+}
+
+fn initArgsSortIndex(sort_index: i64) !std.json.Value {
+    var object = std.json.ObjectMap.init(std.testing.allocator);
+    try object.put("sort_index", .{ .integer = sort_index });
+    return .{ .object = object };
+}
+
+fn deinitArgs(sort_index: *std.json.Value) void {
+    sort_index.object.deinit();
+}
+
+fn createArgsName(name: []const u8) !std.json.Value {
+    var object = std.json.ObjectMap.init(std.testing.allocator);
+    try object.put("name", .{ .string = name });
+    return .{ .object = object };
+}
+
+test "parse, thread_sort_index, sorted" {
+    var sort_index_1 = try initArgsSortIndex(1);
+    defer deinitArgs(&sort_index_1);
+    var sort_index_3 = try initArgsSortIndex(3);
+    defer deinitArgs(&sort_index_3);
+
+    try testParse(&[_]TraceEvent{
+        .{ .ph = 'M', .name = "thread_sort_index", .tid = 1, .args = sort_index_3 },
+        .{ .ph = 'M', .name = "thread_sort_index", .tid = 3, .args = sort_index_1 },
+        .{ .ph = 'X', .name = "a", .tid = 1, .ts = 0, .dur = 1 },
+        .{ .ph = 'X', .name = "b", .tid = 2, .ts = 0, .dur = 2 },
+        .{ .ph = 'X', .name = "c", .tid = 3, .ts = 0, .dur = 3 },
+    }, .{
+        .thread_lanes = &[_]ExpectedThreadLane{
+            .{
+                .tid = 3,
+                .sort_index = 1,
+                .sub_lanes = &[_]ExpectedSubLane{
+                    .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 3 }} },
+                },
+            },
+            .{
+                .tid = 1,
+                .sort_index = 3,
+                .sub_lanes = &[_]ExpectedSubLane{
+                    .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 1 }} },
+                },
+            },
+            .{
+                .tid = 2,
+                .sub_lanes = &[_]ExpectedSubLane{
+                    .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
+                },
+            },
+        },
+    });
+}
+
+test "parse, thread_sort_index equal, sort by name" {
+    var sort_index_1 = try initArgsSortIndex(1);
+    defer deinitArgs(&sort_index_1);
+    var name_a = try createArgsName("thread a");
+    defer deinitArgs(&name_a);
+    var name_b = try createArgsName("thread b");
+    defer deinitArgs(&name_b);
+    var name_c = try createArgsName("thread c");
+    defer deinitArgs(&name_c);
+
+    try testParse(&[_]TraceEvent{
+        .{ .ph = 'M', .name = "thread_name", .tid = 1, .args = name_c },
+        .{ .ph = 'M', .name = "thread_sort_index", .tid = 1, .args = sort_index_1 },
+        .{ .ph = 'M', .name = "thread_name", .tid = 2, .args = name_b },
+        .{ .ph = 'M', .name = "thread_sort_index", .tid = 2, .args = sort_index_1 },
+        .{ .ph = 'M', .name = "thread_name", .tid = 3, .args = name_a },
+        .{ .ph = 'M', .name = "thread_sort_index", .tid = 3, .args = sort_index_1 },
+        .{ .ph = 'X', .name = "c", .tid = 1, .ts = 0, .dur = 1 },
+        .{ .ph = 'X', .name = "b", .tid = 2, .ts = 0, .dur = 2 },
+        .{ .ph = 'X', .name = "a", .tid = 3, .ts = 0, .dur = 3 },
+    }, .{
+        .thread_lanes = &[_]ExpectedThreadLane{
+            .{
+                .tid = 3,
+                .name = "thread a",
+                .sort_index = 1,
+                .sub_lanes = &[_]ExpectedSubLane{
+                    .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 3 }} },
+                },
+            },
+            .{
+                .tid = 2,
+                .name = "thread b",
+                .sort_index = 1,
+                .sub_lanes = &[_]ExpectedSubLane{
+                    .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
+                },
+            },
+            .{
+                .tid = 1,
+                .name = "thread c",
+                .sort_index = 1,
+                .sub_lanes = &[_]ExpectedSubLane{
+                    .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 1 }} },
                 },
             },
         },
