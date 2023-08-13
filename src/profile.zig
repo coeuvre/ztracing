@@ -218,6 +218,10 @@ const ThreadLane = struct {
     }
 
     fn spanLessThan(_: void, lhs: Span, rhs: Span) bool {
+        if (lhs.start_time_us == rhs.start_time_us) {
+            return rhs.duration_us < lhs.duration_us;
+        }
+
         return lhs.start_time_us < rhs.start_time_us;
     }
 };
