@@ -402,7 +402,7 @@ const ViewState = struct {
                     duration_us = duration_us * 1.25;
                 }
                 duration_us = @min(duration_us, @as(f32, @floatFromInt(self.profile.max_time_us - self.profile.min_time_us)));
-                duration_us = @max(0, duration_us);
+                duration_us = @max(1, duration_us);
                 self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
                 self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
             } else {
@@ -699,6 +699,7 @@ const App = struct {
     show_color_palette: bool,
 
     io: *c.ImGuiIO,
+    mouse_pos_before_blur: c.ImVec2 = undefined,
 
     pub fn init(self: *App, allocator: Allocator, width: f32, height: f32) void {
         self.allocator = allocator;
@@ -759,11 +760,11 @@ const App = struct {
                 }
 
                 if (c.igBeginMenu("Misc", true)) {
-                    if (c.igMenuItem_Bool("Show ImGui Demo Window", null, self.show_imgui_demo_window, true)) {
-                        self.show_imgui_demo_window = !self.show_imgui_demo_window;
-                    }
                     if (c.igMenuItem_Bool("Color Pattle", null, self.show_color_palette, true)) {
                         self.show_color_palette = !self.show_color_palette;
+                    }
+                    if (c.igMenuItem_Bool("Dear ImGui Demo", null, self.show_imgui_demo_window, true)) {
+                        self.show_imgui_demo_window = !self.show_imgui_demo_window;
                     }
                     c.igEndMenu();
                 }
@@ -865,7 +866,14 @@ const App = struct {
     }
 
     pub fn onFocus(self: *App, focused: bool) void {
+        if (!focused) {
+            self.mouse_pos_before_blur = self.io.*.MousePos;
+        }
         c.ImGuiIO_AddFocusEvent(self.io, focused);
+
+        if (focused) {
+            self.onMousePos(self.mouse_pos_before_blur.x, self.mouse_pos_before_blur.y);
+        }
     }
 
     fn renderImgui(self: *App, draw_data: *c.ImDrawData) void {

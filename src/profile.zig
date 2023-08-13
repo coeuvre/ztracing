@@ -463,7 +463,7 @@ const ExpectedSpan = struct {
     duration_us: i64,
 };
 
-fn testProfile(trace_events: []const TraceEvent, expected_profile: ExpectedProfile) !void {
+fn testParse(trace_events: []const TraceEvent, expected_profile: ExpectedProfile) !void {
     var profile = Profile.init(std.testing.allocator);
     defer profile.deinit();
 
@@ -505,8 +505,8 @@ fn expectEqualSpans(expected: ExpectedSpan, actual: *Span) !void {
     try std.testing.expectEqual(expected.duration_us, actual.duration_us);
 }
 
-test "spans have equal start time, sort by duration descending" {
-    try testProfile(&[_]TraceEvent{
+test "parse, spans have equal start time, sort by duration descending" {
+    try testParse(&[_]TraceEvent{
         .{ .ph = 'X', .name = "a", .tid = 1, .ts = 0, .dur = 1 },
         .{ .ph = 'X', .name = "b", .tid = 1, .ts = 0, .dur = 2 },
         .{ .ph = 'X', .name = "c", .tid = 1, .ts = 0, .dur = 3 },
