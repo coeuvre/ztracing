@@ -1,7 +1,14 @@
 import pako from "pako";
 
 const keyCodeMap = {
+  ControlLeft: 527,
+  ShiftLeft: 528,
   AltLeft: 529,
+  MetaLeft: 530,
+  ControlRight: 531,
+  ShiftRight: 532,
+  AltRight: 533,
+  MetaRight: 534,
 };
 
 /** @type {App} */
@@ -460,6 +467,7 @@ function mount(options) {
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     window.addEventListener("keydown", (event) => {
       const key = keyCodeMap[event.code];
+      console.log(event.code, key);
       if (key) {
         app.onKey(key, true);
         event.preventDefault();

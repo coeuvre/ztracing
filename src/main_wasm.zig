@@ -334,7 +334,6 @@ const LoadFileState = struct {
             }
         }
     }
-
 };
 
 // Returns current window content region in screen space
@@ -390,7 +389,7 @@ const ViewState = struct {
 
         const wheel = io.*.MouseWheel;
         if (is_window_hovered and wheel != 0) {
-            if (io.*.KeyAlt) {
+            if (io.*.KeyCtrl) {
                 // Zoom
                 const mouse = io.*.MousePos.x - window_content_bb.Min.x;
                 const p = mouse / window_width;
@@ -858,10 +857,15 @@ const App = struct {
 
     pub fn onKey(self: *App, key: u32, down: bool) bool {
         c.ImGuiIO_AddKeyEvent(self.io, key, down);
-        if (key == c.ImGuiKey_LeftAlt or key == c.ImGuiKey_RightAlt) {
+        if (key == c.ImGuiKey_LeftCtrl or key == c.ImGuiKey_RightCtrl) {
+            c.ImGuiIO_AddKeyEvent(self.io, c.ImGuiMod_Ctrl, down);
+        } else if (key == c.ImGuiKey_LeftShift or key == c.ImGuiKey_RightShift) {
+            c.ImGuiIO_AddKeyEvent(self.io, c.ImGuiMod_Shift, down);
+        } else if (key == c.ImGuiKey_LeftAlt or key == c.ImGuiKey_RightAlt) {
             c.ImGuiIO_AddKeyEvent(self.io, c.ImGuiMod_Alt, down);
+        } else if (key == c.ImGuiKey_LeftSuper or key == c.ImGuiKey_RightSuper) {
+            c.ImGuiIO_AddKeyEvent(self.io, c.ImGuiMod_Super, down);
         }
-
         return self.io.*.WantCaptureKeyboard;
     }
 
