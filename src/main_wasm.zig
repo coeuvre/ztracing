@@ -460,7 +460,8 @@ const ViewState = struct {
 
     is_scrolling: bool = false,
     scroll_y_start: f32 = 0,
-    scroll_y_t: f32 = 0,
+    scroll_y_time_s: f32 = 0,
+    scroll_y_total_time_s: f32 = 0,
     scroll_y_end: f32 = 0,
 
     pub fn init(allocator: Allocator, profile: Profile) ViewState {
@@ -486,26 +487,30 @@ const ViewState = struct {
         if (is_window_hovered and wheel != 0) {
             var remaining: f32 = 0;
             if (self.is_scrolling) {
-                const t = easing.easeOutQuint(self.scroll_y_t);
+                const t = easing.easeOutQuint(self.scroll_y_time_s / self.scroll_y_total_time_s);
                 const scroll_y = std.math.lerp(self.scroll_y_start, self.scroll_y_end, t);
                 remaining = self.scroll_y_end - scroll_y;
             }
 
             self.scroll_y_start = c.igGetScrollY();
-            self.scroll_y_t = 0;
+            self.scroll_y_time_s = 0;
+            self.scroll_y_total_time_s = 0.6;
             self.scroll_y_end = self.scroll_y_start - 100 * wheel + remaining;
             self.is_scrolling = true;
         }
 
         if (self.is_scrolling) {
-            self.scroll_y_t += 2 * dt;
-            if (self.scroll_y_t >= 1) {
+            self.scroll_y_time_s += dt;
+
+            var t: f32 = 1.0;
+            if (self.scroll_y_time_s >= self.scroll_y_total_time_s) {
                 self.is_scrolling = false;
             } else {
-                const t = easing.easeOutQuint(self.scroll_y_t);
-                const scroll_y = std.math.lerp(self.scroll_y_start, self.scroll_y_end, t);
-                c.igSetScrollY_Float(scroll_y);
+                t = easing.easeOutQuint(self.scroll_y_time_s / self.scroll_y_total_time_s);
             }
+
+            const scroll_y = std.math.lerp(self.scroll_y_start, self.scroll_y_end, t);
+            c.igSetScrollY_Float(scroll_y);
         }
 
         // Zoom
