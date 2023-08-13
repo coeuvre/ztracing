@@ -3,6 +3,7 @@ const c = @import("c.zig");
 const ig = @import("imgui.zig");
 const CountAllocator = @import("./count_alloc.zig").CountAllocator;
 const json_profile_parser = @import("./json_profile_parser.zig");
+const easing = @import("./easing.zig");
 
 const log = std.log;
 const Allocator = std.mem.Allocator;
@@ -457,6 +458,11 @@ const ViewState = struct {
     mouse_down_duration_us: i64 = 0,
     mouse_down_scroll_y: f32 = 0,
 
+    is_scrolling: bool = false,
+    scroll_y_start: f32 = 0,
+    scroll_y_t: f32 = 0,
+    scroll_y_end: f32 = 0,
+
     pub fn init(allocator: Allocator, profile: Profile) ViewState {
         return .{
             .allocator = allocator,
@@ -475,7 +481,34 @@ const ViewState = struct {
         var window_content_bb = getWindowContentRegion();
         const window_width = window_content_bb.Max.x - window_content_bb.Min.x;
 
-        // const wheel = io.*.MouseWheel;
+        const wheel = io.*.MouseWheel;
+
+        if (is_window_hovered and wheel != 0) {
+            var remaining: f32 = 0;
+            if (self.is_scrolling) {
+                const t = easing.easeOutQuint(self.scroll_y_t);
+                const scroll_y = std.math.lerp(self.scroll_y_start, self.scroll_y_end, t);
+                remaining = self.scroll_y_end - scroll_y;
+            }
+
+            self.scroll_y_start = c.igGetScrollY();
+            self.scroll_y_t = 0;
+            self.scroll_y_end = self.scroll_y_start - 100 * wheel + remaining;
+            self.is_scrolling = true;
+        }
+
+        if (self.is_scrolling) {
+            if (self.scroll_y_t >= 0 and self.scroll_y_t <= 1) {
+                const t = easing.easeOutQuint(self.scroll_y_t);
+                const scroll_y = std.math.lerp(self.scroll_y_start, self.scroll_y_end, t);
+                c.igSetScrollY_Float(scroll_y);
+                self.scroll_y_t += 2 * dt;
+            } else {
+                self.is_scrolling = false;
+            }
+        }
+
+        // Zoom
         // if (wheel != 0) {
         //     const mouse = io.*.MousePos.x - window_content_bb.Min.x;
         //     const p = mouse / window_width;
@@ -487,6 +520,8 @@ const ViewState = struct {
         //     } else {
         //         duration_us = duration_us * 1.1;
         //     }
+        //     duration_us = @min(duration_us, @as(f32, @floatFromInt(self.profile.max_time_us - self.profile.min_time_us)));
+        //     duration_us = @max(0, duration_us);
         //     self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
         //     self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
         // }
@@ -525,11 +560,8 @@ const ViewState = struct {
         var character_size: c.ImVec2 = undefined;
         c.igCalcTextSize(&character_size, "A", null, false, 0);
 
-        _ = dt;
-        var buf: [1024]u8 = .{};
-
         for (self.profile.counter_lanes.items) |counter_lane| {
-            c.igSeparatorText(std.fmt.bufPrintZ(&buf, "{s}", .{counter_lane.name}) catch unreachable);
+            c.igSeparatorText(std.fmt.bufPrintZ(&global_buf, "{s}", .{counter_lane.name}) catch unreachable);
 
             const lane_top = window_pos.y + c.igGetCursorPosY() - c.igGetScrollY();
             const lane_height: f32 = 30.0;
@@ -563,7 +595,7 @@ const ViewState = struct {
                             .Max = .{ .x = x2, .y = lane_top + lane_height },
                         };
                         c.igItemSize_Rect(bb, -1);
-                        const id = c.igGetID_Str(std.fmt.bufPrintZ(&buf, "##{s}_{}", .{ counter_lane.name, counter.time_us }) catch unreachable);
+                        const id = c.igGetID_Str(std.fmt.bufPrintZ(&global_buf, "##{s}_{}", .{ counter_lane.name, counter.time_us }) catch unreachable);
                         if (c.igItemAdd(bb, id, null, 0)) {
                             var hovered = false;
                             var held = false;
@@ -610,9 +642,9 @@ const ViewState = struct {
                 c.ImDrawList_AddCircleFilled(draw_lsit, .{ .x = hovered_counter.x1, .y = lane_top + lane_height - height }, rad, col, 16);
 
                 if (c.igBeginTooltip()) {
-                    c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "{}", .{hovered_counter.time_us}) catch unreachable, null);
+                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{hovered_counter.time_us}) catch unreachable, null);
                     for (hovered_counter.values) |value| {
-                        c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "{s}: {d:.2}", .{ value.name, value.value }) catch unreachable, null);
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{s}: {d:.2}", .{ value.name, value.value }) catch unreachable, null);
                     }
                 }
                 c.igEndTooltip();
@@ -631,9 +663,9 @@ const ViewState = struct {
 
             const name = blk: {
                 if (thread_lane.name) |name| {
-                    break :blk std.fmt.bufPrintZ(&buf, "{s}", .{name}) catch unreachable;
+                    break :blk std.fmt.bufPrintZ(&global_buf, "{s}", .{name}) catch unreachable;
                 } else {
-                    break :blk std.fmt.bufPrintZ(&buf, "Thread {}", .{thread_lane.tid}) catch unreachable;
+                    break :blk std.fmt.bufPrintZ(&global_buf, "Thread {}", .{thread_lane.tid}) catch unreachable;
                 }
             };
             c.igSeparatorText(name);
@@ -645,7 +677,7 @@ const ViewState = struct {
                 .Max = .{ .x = lane_left + lane_width, .y = lane_top + lane_height },
             };
             c.igItemSize_Rect(lane_bb, -1);
-            const id = c.igGetID_Str(std.fmt.bufPrintZ(&buf, "##thread-{}", .{thread_lane.tid}) catch unreachable);
+            const id = c.igGetID_Str(std.fmt.bufPrintZ(&global_buf, "##thread-{}", .{thread_lane.tid}) catch unreachable);
             if (c.igItemAdd(lane_bb, id, null, 0)) {
                 for (thread_lane.sub_lanes.items, 0..) |sub_lane, sub_lane_index| {
                     var iter = sub_lane.iter(self.start_time_us, min_duration_us);
@@ -695,9 +727,9 @@ const ViewState = struct {
                             );
 
                             if (c.igBeginTooltip()) {
-                                c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "{s}", .{span.name}) catch unreachable, null);
-                                c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "Start: {}", .{span.start_time_us}) catch unreachable, null);
-                                c.igTextUnformatted(std.fmt.bufPrintZ(&buf, "Duration: {}", .{span.duration_us}) catch unreachable, null);
+                                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{s}", .{span.name}) catch unreachable, null);
+                                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Start: {}", .{span.start_time_us}) catch unreachable, null);
+                                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Duration: {}", .{span.duration_us}) catch unreachable, null);
                             }
                             c.igEndTooltip();
                         }
@@ -706,7 +738,7 @@ const ViewState = struct {
                             const text_min_x = x1 + text_padding_x;
                             const text_max_x = x2 - text_padding_x;
 
-                            const text = std.fmt.bufPrintZ(&buf, "{s}", .{span.name}) catch unreachable;
+                            const text = std.fmt.bufPrintZ(&global_buf, "{s}", .{span.name}) catch unreachable;
                             var text_size: c.ImVec2 = undefined;
                             c.igCalcTextSize(&text_size, text, null, false, 0);
                             const center_y = sub_lane_top + sub_lane_height / 2.0;
@@ -828,8 +860,6 @@ const App = struct {
     pub fn update(self: *App, dt: f32) void {
         self.io.*.DeltaTime = dt;
 
-        var buf: [256]u8 = .{};
-
         c.igNewFrame();
 
         // Main Menu Bar
@@ -843,7 +873,7 @@ const App = struct {
                     }
                 }
 
-                if (c.igBeginMenu("Help", true)) {
+                if (c.igBeginMenu("Misc", true)) {
                     if (c.igMenuItem_Bool("Show ImGui Demo Window", null, self.show_imgui_demo_window, true)) {
                         self.show_imgui_demo_window = !self.show_imgui_demo_window;
                     }
@@ -857,13 +887,13 @@ const App = struct {
                     c.igSetCursorPosX(c.igGetCursorPosX() + 10.0);
                     const allocated_bytes: f64 = @floatFromInt(global_count_allocator.allocatedBytes());
                     const allocated_bytes_mb = allocated_bytes / 1024.0 / 1024.0;
-                    const text = std.fmt.bufPrintZ(&buf, "Memory: {d:.1} MB", .{allocated_bytes_mb}) catch unreachable;
+                    const text = std.fmt.bufPrintZ(&global_buf, "Memory: {d:.1} MB", .{allocated_bytes_mb}) catch unreachable;
                     c.igTextUnformatted(text.ptr, null);
                 }
 
                 if (self.io.Framerate < 1000) {
                     const window_width = c.igGetWindowWidth();
-                    const text = std.fmt.bufPrintZ(&buf, "{d:.0} ", .{self.io.Framerate}) catch unreachable;
+                    const text = std.fmt.bufPrintZ(&global_buf, "{d:.0} ", .{self.io.Framerate}) catch unreachable;
                     var text_size: c.ImVec2 = undefined;
                     c.igCalcTextSize(&text_size, text.ptr, null, false, -1.0);
                     c.igSetCursorPosX(window_width - text_size.x);
@@ -888,7 +918,7 @@ const App = struct {
             const viewport = c.igGetMainViewport();
             c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{ .x = 0, .y = 0 });
             c.igSetNextWindowSize(viewport.*.WorkSize, 0);
-            _ = c.igBegin("MainWindow", null, window_flags);
+            _ = c.igBegin("MainWindow", null, window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
             self.state.update(dt);
 
             c.igEnd();
@@ -903,7 +933,7 @@ const App = struct {
                 c.igTextUnformatted("General Purpose Colors:", null);
                 c.igPushID_Str("GeneralPurposeColors");
                 for (&general_purpose_colors, 0..) |*color, index| {
-                    const label = std.fmt.bufPrintZ(&buf, "[{}]:", .{index}) catch unreachable;
+                    const label = std.fmt.bufPrintZ(&global_buf, "[{}]:", .{index}) catch unreachable;
                     c.igTextUnformatted(label.ptr, null);
                     c.igSameLine(0, 0);
                     _ = c.igColorEdit4(label, @ptrCast(color), c.ImGuiColorEditFlags_NoLabel);
@@ -1016,6 +1046,7 @@ fn assert(ok: bool, msg: []const u8) void {
 var app: *App = undefined;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var global_count_allocator = CountAllocator.init(gpa.allocator());
+var global_buf: [1024]u8 = [_]u8{0} ** 1024;
 
 export fn init(width: f32, height: f32) void {
     {
