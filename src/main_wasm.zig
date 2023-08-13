@@ -458,12 +458,6 @@ const ViewState = struct {
     mouse_down_duration_us: i64 = 0,
     mouse_down_scroll_y: f32 = 0,
 
-    is_scrolling: bool = false,
-    scroll_y_start: f32 = 0,
-    scroll_y_time_s: f32 = 0,
-    scroll_y_total_time_s: f32 = 0,
-    scroll_y_end: f32 = 0,
-
     pub fn init(allocator: Allocator, profile: Profile) ViewState {
         return .{
             .allocator = allocator,
@@ -474,6 +468,7 @@ const ViewState = struct {
     }
 
     pub fn update(self: *ViewState, dt: f32) void {
+        _ = dt;
         const io = c.igGetIO();
         const mouse_pos = io.*.MousePos;
         const is_window_hovered = c.igIsWindowHovered(0);
@@ -485,51 +480,26 @@ const ViewState = struct {
         const wheel = io.*.MouseWheel;
 
         if (is_window_hovered and wheel != 0) {
-            var remaining: f32 = 0;
-            if (self.is_scrolling) {
-                const t = easing.easeOutQuint(self.scroll_y_time_s / self.scroll_y_total_time_s);
-                const scroll_y = std.math.lerp(self.scroll_y_start, self.scroll_y_end, t);
-                remaining = self.scroll_y_end - scroll_y;
-            }
-
-            self.scroll_y_start = c.igGetScrollY();
-            self.scroll_y_time_s = 0;
-            self.scroll_y_total_time_s = 0.6;
-            self.scroll_y_end = self.scroll_y_start - 100 * wheel + remaining;
-            self.is_scrolling = true;
-        }
-
-        if (self.is_scrolling) {
-            self.scroll_y_time_s += dt;
-
-            var t: f32 = 1.0;
-            if (self.scroll_y_time_s >= self.scroll_y_total_time_s) {
-                self.is_scrolling = false;
+            if (io.KeyAlt) {
+                // Zoom
+                const mouse = io.*.MousePos.x - window_content_bb.Min.x;
+                const p = mouse / window_width;
+                var duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
+                const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
+                if (wheel > 0) {
+                    duration_us = duration_us * 0.9;
+                } else {
+                    duration_us = duration_us * 1.1;
+                }
+                duration_us = @min(duration_us, @as(f32, @floatFromInt(self.profile.max_time_us - self.profile.min_time_us)));
+                duration_us = @max(0, duration_us);
+                self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
+                self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
             } else {
-                t = easing.easeOutQuint(self.scroll_y_time_s / self.scroll_y_total_time_s);
+                // Scroll
+                c.igSetScrollY_Float(c.igGetScrollY() - 100 * wheel);
             }
-
-            const scroll_y = std.math.lerp(self.scroll_y_start, self.scroll_y_end, t);
-            c.igSetScrollY_Float(scroll_y);
         }
-
-        // Zoom
-        // if (wheel != 0) {
-        //     const mouse = io.*.MousePos.x - window_content_bb.Min.x;
-        //     const p = mouse / window_width;
-        //     var duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
-        //     const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
-        //     // TODO: Smooth zooming
-        //     if (wheel > 0) {
-        //         duration_us = duration_us * 0.9;
-        //     } else {
-        //         duration_us = duration_us * 1.1;
-        //     }
-        //     duration_us = @min(duration_us, @as(f32, @floatFromInt(self.profile.max_time_us - self.profile.min_time_us)));
-        //     duration_us = @max(0, duration_us);
-        //     self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
-        //     self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
-        // }
 
         const lane_left = window_pos.x + c.igGetCursorPosX();
         const lane_width = window_width;
