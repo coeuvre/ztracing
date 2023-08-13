@@ -498,13 +498,13 @@ const ViewState = struct {
         }
 
         if (self.is_scrolling) {
-            if (self.scroll_y_t >= 0 and self.scroll_y_t <= 1) {
+            self.scroll_y_t += 2 * dt;
+            if (self.scroll_y_t >= 1) {
+                self.is_scrolling = false;
+            } else {
                 const t = easing.easeOutQuint(self.scroll_y_t);
                 const scroll_y = std.math.lerp(self.scroll_y_start, self.scroll_y_end, t);
                 c.igSetScrollY_Float(scroll_y);
-                self.scroll_y_t += 2 * dt;
-            } else {
-                self.is_scrolling = false;
             }
         }
 
