@@ -1,5 +1,9 @@
 import pako from "pako";
 
+const keyCodeMap = {
+  AltLeft: 529,
+};
+
 /** @type {App} */
 var app;
 
@@ -369,24 +373,24 @@ class App {
     this.instance.exports.onResize(this.canvas.width, this.canvas.height);
   }
 
-  onMouseMove(x, y) {
-    this.instance.exports.onMouseMove(x, y);
+  onMousePos(x, y) {
+    this.instance.exports.onMousePos(x, y);
   }
 
-  onMouseDown(button) {
-    this.instance.exports.onMouseDown(button);
+  onMouseButton(button, down) {
+    return this.instance.exports.onMouseButton(button, down);
   }
 
-  onMouseUp(button) {
-    this.instance.exports.onMouseUp(button);
+  onMouseWheel(dx, dy) {
+    this.instance.exports.onMouseWheel(dx, dy);
   }
 
-  onWheel(dx, dy) {
-    this.instance.exports.onWheel(dx, dy);
+  onKey(key, down) {
+    return this.instance.exports.onKey(key, down);
   }
 
-  onFocusChange(focused) {
-    this.instance.exports.onFocusChange(focused);
+  onFocus(focused) {
+    this.instance.exports.onFocus(focused);
   }
 
   update(now) {
@@ -437,27 +441,40 @@ function mount(options) {
     new ResizeObserver(() => app.onResize()).observe(canvas);
 
     canvas.addEventListener("mousemove", (event) =>
-      app.onMouseMove(event.clientX, event.clientY)
+      app.onMousePos(event.clientX, event.clientY)
     );
     canvas.addEventListener("mousedown", (event) => {
-      app.onMouseDown(event.button);
-      event.preventDefault();
-      return false;
+      if (app.onMouseButton(event.button, true)) {
+        event.preventDefault();
+        return false;
+      }
     });
     window.addEventListener("mouseup", (event) => {
-      app.onMouseUp(event.button);
-      event.preventDefault();
-      return false;
+      app.onMouseButton(event.button, false);
     });
     canvas.addEventListener("wheel", (event) => {
-      app.onWheel(event.deltaX, event.deltaY);
+      app.onMouseWheel(event.deltaX, event.deltaY);
       event.preventDefault();
       return false;
     });
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+    window.addEventListener("keydown", (event) => {
+      const key = keyCodeMap[event.code];
+      if (key) {
+        app.onKey(key, true);
+        event.preventDefault();
+        return false;
+      }
+    });
+    window.addEventListener("keyup", (event) => {
+      const key = keyCodeMap[event.code];
+      if (key) {
+        app.onKey(key, false);
+      }
+    });
 
-    window.addEventListener("blur", () => app.onFocusChange(false));
-    window.addEventListener("focus", () => app.onFocusChange(true));
+    window.addEventListener("blur", () => app.onFocus(false));
+    window.addEventListener("focus", () => app.onFocus(true));
 
     requestAnimationFrame((now) => app.update(now));
 

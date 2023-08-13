@@ -478,7 +478,6 @@ const ViewState = struct {
         const window_width = window_content_bb.Max.x - window_content_bb.Min.x;
 
         const wheel = io.*.MouseWheel;
-
         if (is_window_hovered and wheel != 0) {
             if (io.*.KeyAlt) {
                 // Zoom
@@ -487,9 +486,9 @@ const ViewState = struct {
                 var duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
                 const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
                 if (wheel > 0) {
-                    duration_us = duration_us * 0.9;
+                    duration_us = duration_us * 0.8;
                 } else {
-                    duration_us = duration_us * 1.1;
+                    duration_us = duration_us * 1.25;
                 }
                 duration_us = @min(duration_us, @as(f32, @floatFromInt(self.profile.max_time_us - self.profile.min_time_us)));
                 duration_us = @max(0, duration_us);
@@ -932,23 +931,29 @@ const App = struct {
         self.io.*.DisplaySize.y = height;
     }
 
-    pub fn onMouseMove(self: *App, x: f32, y: f32) void {
+    pub fn onMousePos(self: *App, x: f32, y: f32) void {
         c.ImGuiIO_AddMousePosEvent(self.io, x, y);
     }
 
-    pub fn onMouseDown(self: *App, button: i32) void {
-        c.ImGuiIO_AddMouseButtonEvent(self.io, button, true);
+    pub fn onMouseButton(self: *App, button: i32, down: bool) bool {
+        c.ImGuiIO_AddMouseButtonEvent(self.io, button, down);
+        return self.io.*.WantCaptureMouse;
     }
 
-    pub fn onMouseUp(self: *App, button: i32) void {
-        c.ImGuiIO_AddMouseButtonEvent(self.io, button, false);
-    }
-
-    pub fn onWheel(self: *App, dx: f32, dy: f32) void {
+    pub fn onMouseWheel(self: *App, dx: f32, dy: f32) void {
         c.ImGuiIO_AddMouseWheelEvent(self.io, dx / self.width * 10.0, -dy / self.height * 10.0);
     }
 
-    pub fn onFocusChange(self: *App, focused: bool) void {
+    pub fn onKey(self: *App, key: u32, down: bool) bool {
+        c.ImGuiIO_AddKeyEvent(self.io, key, down);
+        if (key == c.ImGuiKey_LeftAlt or key == c.ImGuiKey_RightAlt) {
+            c.ImGuiIO_AddKeyEvent(self.io, c.ImGuiMod_Alt, down);
+        }
+
+        return self.io.*.WantCaptureKeyboard;
+    }
+
+    pub fn onFocus(self: *App, focused: bool) void {
         c.ImGuiIO_AddFocusEvent(self.io, focused);
     }
 
@@ -1035,8 +1040,8 @@ export fn init(width: f32, height: f32) void {
     app = allocator.create(App) catch unreachable;
     app.init(allocator, width, height);
 
-    // HACK: Force ImGui to update the mosue cursor
-    app.onMouseMove(0, 0);
+    // HACK: Force ImGui to update the mosue cursor, otherwise it's in uninitialized state.
+    app.onMousePos(0, 0);
 }
 
 export fn update(dt: f32) void {
@@ -1047,24 +1052,24 @@ export fn onResize(width: f32, height: f32) void {
     app.onResize(width, height);
 }
 
-export fn onMouseMove(x: f32, y: f32) void {
-    app.onMouseMove(x, y);
+export fn onMousePos(x: f32, y: f32) void {
+    app.onMousePos(x, y);
 }
 
-export fn onMouseDown(button: i32) void {
-    app.onMouseDown(jsButtonToImguiButton(button));
+export fn onMouseButton(button: i32, down: bool) bool {
+    return app.onMouseButton(jsButtonToImguiButton(button), down);
 }
 
-export fn onMouseUp(button: i32) void {
-    app.onMouseUp(jsButtonToImguiButton(button));
+export fn onMouseWheel(dx: f32, dy: f32) void {
+    app.onMouseWheel(dx, dy);
 }
 
-export fn onWheel(dx: f32, dy: f32) void {
-    app.onWheel(dx, dy);
+export fn onKey(key: u32, down: bool) bool {
+    return app.onKey(key, down);
 }
 
-export fn onFocusChange(focused: bool) void {
-    app.onFocusChange(focused);
+export fn onFocus(focused: bool) void {
+    app.onFocus(focused);
 }
 
 export fn shouldLoadFile() bool {
