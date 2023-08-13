@@ -325,7 +325,7 @@ const LoadFileState = struct {
 
             switch (event) {
                 .trace_event => |trace_event| {
-                    self.handleTraceEvent(trace_event) catch |err| {
+                    self.profile.handleTraceEvent(trace_event) catch |err| {
                         self.setError("Failed to handle trace event: {}", .{err});
                         return;
                     };
@@ -335,95 +335,6 @@ const LoadFileState = struct {
         }
     }
 
-    fn handleTraceEvent(self: *LoadFileState, trace_event: *TraceEvent) !void {
-        var profile = &self.profile;
-
-        if (trace_event.ts) |ts| {
-            profile.min_time_us = @min(profile.min_time_us, ts);
-            var end = ts;
-            if (trace_event.dur) |dur| {
-                end += dur;
-            }
-            profile.max_time_us = @max(profile.max_time_us, end);
-        }
-
-        if (trace_event.ph) |ph| {
-            switch (ph) {
-                // Counter event
-                'C' => {
-                    // TODO: handle trace_event.id
-                    if (trace_event.name) |name| {
-                        var counter_lane = try self.profile.getOrCreateCounterLane(name);
-
-                        if (trace_event.args) |args| {
-                            switch (args) {
-                                .object => |obj| {
-                                    var iter = obj.iterator();
-                                    var values = std.ArrayList(ProfileCounterValue).init(self.allocator);
-                                    while (iter.next()) |entry| {
-                                        const value_name = entry.key_ptr.*;
-                                        switch (entry.value_ptr.*) {
-                                            .string, .number_string => |num| {
-                                                const val = try std.fmt.parseFloat(f64, num);
-                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
-                                            },
-                                            .float => |val| {
-                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
-                                            },
-                                            .integer => |val| {
-                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = @floatFromInt(val) });
-                                            },
-                                            else => {},
-                                        }
-                                    }
-                                    try counter_lane.addCounter(trace_event.ts.?, values);
-                                },
-                                else => {},
-                            }
-                        }
-                    }
-                },
-                // Complete event
-                'X' => {
-                    // TODO: handle pid
-                    if (trace_event.tid) |tid| {
-                        if (trace_event.ts) |ts| {
-                            if (trace_event.dur) |dur| {
-                                var thread_lane = try self.profile.getOrCreateThreadLane(tid);
-                                try thread_lane.addSpan(trace_event.name, ts, dur);
-                            }
-                        }
-                    }
-                },
-                // Metadata event
-                'M' => {
-                    if (trace_event.name) |name| {
-                        if (std.mem.eql(u8, name, "thread_name")) {
-                            if (trace_event.tid) |tid| {
-                                if (trace_event.args) |args| {
-                                    switch (args) {
-                                        .object => |obj| {
-                                            if (obj.get("name")) |val| {
-                                                switch (val) {
-                                                    .string => |str| {
-                                                        var thread_lane = try self.profile.getOrCreateThreadLane(tid);
-                                                        try thread_lane.setName(str);
-                                                    },
-                                                    else => {},
-                                                }
-                                            }
-                                        },
-                                        else => {},
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                else => {},
-            }
-        }
-    }
 };
 
 // Returns current window content region in screen space

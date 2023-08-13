@@ -1,8 +1,8 @@
 const std = @import("std");
 
 const Allocator = std.mem.Allocator;
-
 const ArrayList = std.ArrayList;
+const TraceEvent = @import("./json_profile_parser.zig").TraceEvent;
 
 pub const ProfileCounterValue = struct {
     name: []u8,
@@ -27,6 +27,17 @@ const ProfileCounterLane = struct {
             .counters = ArrayList(ProfileCounter).init(allocator),
             .num_series = 0,
         };
+    }
+
+    fn deinit(self: *ProfileCounterLane) void {
+        for (self.counters.items) |*counter| {
+            for (counter.values.items) |value| {
+                self.counters.allocator.free(value.name);
+            }
+            counter.values.deinit();
+        }
+        self.counters.deinit();
+        self.counters.allocator.free(self.name);
     }
 
     pub fn addCounter(self: *ProfileCounterLane, time_us: i64, values: ArrayList(ProfileCounterValue)) !void {
@@ -107,6 +118,10 @@ pub const ThreadSubLane = struct {
         };
     }
 
+    pub fn deinit(self: *ThreadSubLane) void {
+        self.spans.deinit();
+    }
+
     pub fn addSpan(self: *ThreadSubLane, span: *Span) !void {
         try self.spans.append(span);
     }
@@ -132,8 +147,7 @@ pub const ThreadSubLaneIter = struct {
         while (index < self.spans.len) {
             const span = self.spans[index];
             const end_time_us = span.start_time_us + span.duration_us;
-            if (self.cursor < end_time_us)
-            {
+            if (self.cursor < end_time_us) {
                 self.cursor = @max(end_time_us, self.cursor + self.min_duration_us);
                 break;
             }
@@ -164,6 +178,22 @@ const ThreadLane = struct {
             .spans = ArrayList(Span).init(allocator),
             .sub_lanes = ArrayList(ThreadSubLane).init(allocator),
         };
+    }
+
+    pub fn deinit(self: *ThreadLane) void {
+        for (self.sub_lanes.items) |*sub_lane| {
+            sub_lane.deinit();
+        }
+        self.sub_lanes.deinit();
+
+        for (self.spans.items) |*span| {
+            self.allocator.free(span.name);
+        }
+        self.spans.deinit();
+
+        if (self.name) |name| {
+            self.allocator.free(name);
+        }
     }
 
     pub fn setName(self: *ThreadLane, name: []const u8) !void {
@@ -243,6 +273,18 @@ pub const Profile = struct {
         };
     }
 
+    pub fn deinit(self: *Profile) void {
+        for (self.counter_lanes.items) |*counter_lane| {
+            counter_lane.deinit();
+        }
+        self.counter_lanes.deinit();
+
+        for (self.thread_lanes.items) |*thread_lane| {
+            thread_lane.deinit();
+        }
+        self.thread_lanes.deinit();
+    }
+
     pub fn getOrCreateCounterLane(self: *Profile, name: []const u8) !*ProfileCounterLane {
         for (self.counter_lanes.items) |*counter_lane| {
             if (std.mem.eql(u8, counter_lane.name, name)) {
@@ -263,6 +305,94 @@ pub const Profile = struct {
 
         try self.thread_lanes.append(ThreadLane.init(self.allocator, tid));
         return &self.thread_lanes.items[self.thread_lanes.items.len - 1];
+    }
+
+    pub fn handleTraceEvent(self: *Profile, trace_event: *const TraceEvent) !void {
+        if (trace_event.ts) |ts| {
+            self.min_time_us = @min(self.min_time_us, ts);
+            var end = ts;
+            if (trace_event.dur) |dur| {
+                end += dur;
+            }
+            self.max_time_us = @max(self.max_time_us, end);
+        }
+
+        if (trace_event.ph) |ph| {
+            switch (ph) {
+                // Counter event
+                'C' => {
+                    // TODO: handle trace_event.id
+                    if (trace_event.name) |name| {
+                        var counter_lane = try self.getOrCreateCounterLane(name);
+
+                        if (trace_event.args) |args| {
+                            switch (args) {
+                                .object => |obj| {
+                                    var iter = obj.iterator();
+                                    var values = std.ArrayList(ProfileCounterValue).init(self.allocator);
+                                    while (iter.next()) |entry| {
+                                        const value_name = entry.key_ptr.*;
+                                        switch (entry.value_ptr.*) {
+                                            .string, .number_string => |num| {
+                                                const val = try std.fmt.parseFloat(f64, num);
+                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
+                                            },
+                                            .float => |val| {
+                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
+                                            },
+                                            .integer => |val| {
+                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = @floatFromInt(val) });
+                                            },
+                                            else => {},
+                                        }
+                                    }
+                                    try counter_lane.addCounter(trace_event.ts.?, values);
+                                },
+                                else => {},
+                            }
+                        }
+                    }
+                },
+                // Complete event
+                'X' => {
+                    // TODO: handle pid
+                    if (trace_event.tid) |tid| {
+                        if (trace_event.ts) |ts| {
+                            if (trace_event.dur) |dur| {
+                                var thread_lane = try self.getOrCreateThreadLane(tid);
+                                try thread_lane.addSpan(trace_event.name, ts, dur);
+                            }
+                        }
+                    }
+                },
+                // Metadata event
+                'M' => {
+                    if (trace_event.name) |name| {
+                        if (std.mem.eql(u8, name, "thread_name")) {
+                            if (trace_event.tid) |tid| {
+                                if (trace_event.args) |args| {
+                                    switch (args) {
+                                        .object => |obj| {
+                                            if (obj.get("name")) |val| {
+                                                switch (val) {
+                                                    .string => |str| {
+                                                        var thread_lane = try self.getOrCreateThreadLane(tid);
+                                                        try thread_lane.setName(str);
+                                                    },
+                                                    else => {},
+                                                }
+                                            }
+                                        },
+                                        else => {},
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                else => {},
+            }
+        }
     }
 
     pub fn done(self: *Profile) !void {
@@ -313,3 +443,83 @@ pub const Profile = struct {
         return lhs_name.len < rhs_name.len;
     }
 };
+
+const ExpectedProfile = struct {
+    thread_lanes: ?[]const ExpectedThreadLane = null,
+};
+
+const ExpectedThreadLane = struct {
+    tid: i64,
+    sub_lanes: []const ExpectedSubLane,
+};
+
+const ExpectedSubLane = struct {
+    spans: []const ExpectedSpan,
+};
+
+const ExpectedSpan = struct {
+    name: []const u8,
+    start_time_us: i64,
+    duration_us: i64,
+};
+
+fn testProfile(trace_events: []const TraceEvent, expected_profile: ExpectedProfile) !void {
+    var profile = Profile.init(std.testing.allocator);
+    defer profile.deinit();
+
+    for (trace_events) |*trace_event| {
+        try profile.handleTraceEvent(trace_event);
+    }
+
+    try profile.done();
+
+    if (expected_profile.thread_lanes) |expected_thread_lanes| {
+        try std.testing.expectEqual(expected_thread_lanes.len, profile.thread_lanes.items.len);
+
+        for (expected_thread_lanes, profile.thread_lanes.items) |expected_thread_lane, actual_thread_lane| {
+            try expectEqualThreadLanes(expected_thread_lane, actual_thread_lane);
+        }
+    }
+}
+
+fn expectEqualThreadLanes(expected: ExpectedThreadLane, actual: ThreadLane) !void {
+    try std.testing.expectEqual(expected.tid, actual.tid);
+    try std.testing.expectEqual(expected.sub_lanes.len, actual.sub_lanes.items.len);
+
+    for (expected.sub_lanes, actual.sub_lanes.items) |expected_sub_lane, actual_sub_lane| {
+        try expectEqualSubLanes(expected_sub_lane, actual_sub_lane);
+    }
+}
+
+fn expectEqualSubLanes(expected: ExpectedSubLane, actual: ThreadSubLane) !void {
+    try std.testing.expectEqual(expected.spans.len, actual.spans.items.len);
+
+    for (expected.spans, actual.spans.items) |expected_span, actual_span| {
+        try expectEqualSpans(expected_span, actual_span);
+    }
+}
+
+fn expectEqualSpans(expected: ExpectedSpan, actual: *Span) !void {
+    try std.testing.expectEqualStrings(expected.name, actual.name);
+    try std.testing.expectEqual(expected.start_time_us, actual.start_time_us);
+    try std.testing.expectEqual(expected.duration_us, actual.duration_us);
+}
+
+test "spans have equal start time, sort by duration descending" {
+    try testProfile(&[_]TraceEvent{
+        .{ .ph = 'X', .name = "a", .tid = 1, .ts = 0, .dur = 1 },
+        .{ .ph = 'X', .name = "b", .tid = 1, .ts = 0, .dur = 2 },
+        .{ .ph = 'X', .name = "c", .tid = 1, .ts = 0, .dur = 3 },
+    }, .{
+        .thread_lanes = &[_]ExpectedThreadLane{
+            .{
+                .tid = 1,
+                .sub_lanes = &[_]ExpectedSubLane{
+                    .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 3 }} },
+                    .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
+                    .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 1 }} },
+                },
+            },
+        },
+    });
+}
