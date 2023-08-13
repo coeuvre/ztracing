@@ -480,7 +480,7 @@ const ViewState = struct {
         const wheel = io.*.MouseWheel;
 
         if (is_window_hovered and wheel != 0) {
-            if (io.KeyAlt) {
+            if (io.*.KeyAlt) {
                 // Zoom
                 const mouse = io.*.MousePos.x - window_content_bb.Min.x;
                 const p = mouse / window_width;
