@@ -7,6 +7,10 @@ const ArrayList = std.ArrayList;
 const TraceEvent = json_profile_parser.TraceEvent;
 const expectOptional = test_utils.expectOptional;
 
+pub const UiState = struct {
+    open: bool = true,
+};
+
 pub const SeriesValue = struct {
     time_us: i64,
     value: f64,
@@ -94,6 +98,8 @@ const ProfileCounterLane = struct {
     name: []u8,
     max_value: f64,
     series: ArrayList(Series),
+
+    ui: UiState = .{},
 
     fn init(allocator: Allocator, name: []const u8) ProfileCounterLane {
         return .{
@@ -210,6 +216,8 @@ const ThreadLane = struct {
 
     name: ?[]u8 = null,
     sort_index: ?i64 = null,
+
+    ui: UiState = .{},
 
     pub fn init(allocator: Allocator, tid: i64) ThreadLane {
         return .{
