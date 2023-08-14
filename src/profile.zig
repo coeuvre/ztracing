@@ -290,14 +290,8 @@ const ThreadLane = struct {
     fn mergeSpans(self: *ThreadLane, level: usize, start_time_us: i64, end_time_us: i64, span_start_index: usize) !MergeResult {
         var index = span_start_index;
         var total: i64 = 0;
-        var last_end_time_us = start_time_us;
         while (index < self.spans.items.len) {
             const span = &self.spans.items[index];
-            if (span.start_time_us < last_end_time_us) {
-                index += 1;
-                continue;
-            }
-
             const span_end_time_us = span.start_time_us + span.duration_us;
             if (span.start_time_us >= start_time_us and span_end_time_us <= end_time_us) {
                 var sub_lane = try self.getOrCreateSubLane(level);
@@ -306,7 +300,6 @@ const ThreadLane = struct {
                 index = result.index;
                 span.self_duration_us = @max(span.duration_us - result.total_duration_us, 0);
                 total += span.duration_us;
-                last_end_time_us = span_end_time_us;
             } else {
                 break;
             }
@@ -632,7 +625,7 @@ fn createArgsName(name: []const u8) !std.json.Value {
     return .{ .object = object };
 }
 
-test "parse, spans overlap, ignore latter" {
+test "parse, spans overlap, place at same level" {
     try testParse(&[_]TraceEvent{
         .{ .ph = 'X', .name = "a", .tid = 1, .ts = 0, .dur = 3 },
         .{ .ph = 'X', .name = "b", .tid = 1, .ts = 1, .dur = 4 },
@@ -643,6 +636,7 @@ test "parse, spans overlap, ignore latter" {
                 .sub_lanes = &[_]ExpectedSubLane{
                     .{ .spans = &[_]ExpectedSpan{
                         .{ .name = "a", .start_time_us = 0, .duration_us = 3 },
+                        .{ .name = "b", .start_time_us = 1, .duration_us = 4 },
                     } },
                 },
             },
