@@ -25,6 +25,62 @@ fn hashString(s: []const u8) u64 {
 
 const Color = c.ImVec4;
 
+const Timestamp = struct {
+    us: i64,
+
+    pub fn format(self: *const Timestamp, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = options;
+        _ = fmt;
+
+        const us = @rem(self.us, 1_000_000);
+        const s = @divTrunc(self.us, 1_000_000);
+
+        if (s != 0) {
+            try writer.print("{}s ", .{Number{ .num = s }});
+        }
+        try writer.print("{}us", .{Number{ .num = us }});
+    }
+};
+
+const Number = struct {
+    num: i64,
+
+    pub fn format(self: *const Number, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = fmt;
+        _ = options;
+
+        if (self.num == 0) {
+            try writer.print("0", .{});
+            return;
+        }
+
+        var base: i64 = 1;
+        const abs = std.math.absInt(self.num) catch unreachable;
+        while (base <= abs) {
+            base *= 1000;
+        }
+        base = @divTrunc(base, 1000);
+
+        var leading = true;
+        var val = self.num;
+        while (base != 0) {
+            const digits = @divTrunc(val, base);
+            val = @rem(val, base);
+            base = @divTrunc(base, 1000);
+
+            if (leading) {
+                try writer.print("{}", .{digits});
+            } else {
+                const h = @divTrunc(digits, 100);
+                const t = @divTrunc(@rem(digits, 100), 10);
+                const o = @rem(digits, 10);
+                try writer.print(",{}{}{}", .{ h, t, o });
+            }
+            leading = false;
+        }
+    }
+};
+
 // https://chromium.googlesource.com/catapult/+/refs/heads/main/tracing/tracing/base/sinebow_color_generator.html
 pub const SinebowColorGenerator = struct {
     // [0, 1]
@@ -587,7 +643,7 @@ const ViewState = struct {
                     }
 
                     if (c.igBeginTooltip()) {
-                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{max_hovered_time}) catch unreachable, null);
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Time: {}", .{Timestamp{ .us = max_hovered_time }}) catch unreachable, null);
 
                         for (self.hovered_counters.items, 0..) |hovered, index| {
                             _ = index;
@@ -766,8 +822,9 @@ const ViewState = struct {
                 );
                 if (c.igBeginTooltip()) {
                     c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{s}", .{span.name}) catch unreachable, null);
-                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Start: {}", .{span.start_time_us}) catch unreachable, null);
-                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Duration: {}", .{span.duration_us}) catch unreachable, null);
+                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Start: {}", .{Timestamp{ .us = span.start_time_us }}) catch unreachable, null);
+                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Duration: {}", .{Timestamp{ .us = span.duration_us }}) catch unreachable, null);
+                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Self: {}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
                 }
                 c.igEndTooltip();
             }
@@ -813,39 +870,9 @@ fn drawLaneHeader(lane_bb: c.ImRect, title: [:0]const u8, character_size_y: f32,
         1,
     );
 
-    // Arrow
-    // {
-    //     const px = lane_bb.Min.x;
-
-    //     const h = character_size_y;
-    //     const x = px + h * 0.5;
-    //     const r = h * 0.40;
-    //     if (open.*) {
-    //         const p1 = c.ImVec2{ .x = x + 0.000 * r, .y = center_y + 0.750 * r };
-    //         const p2 = c.ImVec2{ .x = x - 0.866 * r, .y = center_y - 0.750 * r };
-    //         const p3 = c.ImVec2{ .x = x + 0.866 * r, .y = center_y - 0.750 * r };
-    //         c.ImDrawList_AddTriangleFilled(
-    //             draw_list,
-    //             p1,
-    //             p2,
-    //             p3,
-    //             getImColorU32(.{ .x = 0.4, .y = 0.4, .z = 0.4, .w = 1.0 }),
-    //         );
-    //     } else {
-    //         const p1 = c.ImVec2{ .x = x + 0.750 * r, .y = center_y };
-    //         const p2 = c.ImVec2{ .x = x - 0.750 * r, .y = center_y + 0.866 * r };
-    //         const p3 = c.ImVec2{ .x = x - 0.750 * r, .y = center_y - 0.866 * r };
-    //         c.ImDrawList_AddTriangleFilled(
-    //             draw_list,
-    //             p1,
-    //             p2,
-    //             p3,
-    //             getImColorU32(.{ .x = 0.4, .y = 0.4, .z = 0.4, .w = 1.0 }),
-    //         );
-    //     }
-    // }
-
-    c.igPushStyleColor_U32(c.ImGuiCol_Text, col);
+    if (!open.*) {
+        c.igPushStyleColor_U32(c.ImGuiCol_Text, col);
+    }
     c.igRenderTextEllipsis(
         draw_list,
         .{ .x = text_min_x, .y = center_y - character_size_y / 2.0 },
@@ -856,7 +883,9 @@ fn drawLaneHeader(lane_bb: c.ImRect, title: [:0]const u8, character_size_y: f32,
         null,
         null,
     );
-    c.igPopStyleColor(1);
+    if (!open.*) {
+        c.igPopStyleColor(1);
+    }
 
     const header_right = text_max_x + text_padding_x;
     var header_bb = c.ImRect{

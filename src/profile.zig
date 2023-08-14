@@ -145,6 +145,8 @@ pub const Span = struct {
     start_time_us: i64,
     duration_us: i64,
 
+    self_duration_us: i64 = 0,
+
     fn lessThan(_: void, lhs: Span, rhs: Span) bool {
         if (lhs.start_time_us == rhs.start_time_us) {
             return rhs.duration_us < lhs.duration_us;
@@ -280,19 +282,28 @@ const ThreadLane = struct {
         }
     }
 
-    fn mergeSpans(self: *ThreadLane, level: usize, start_time_us: i64, end_time_us: i64, span_start_index: usize) !usize {
+    const MergeResult = struct {
+        index: usize,
+        total_duration_us: i64,
+    };
+
+    fn mergeSpans(self: *ThreadLane, level: usize, start_time_us: i64, end_time_us: i64, span_start_index: usize) !MergeResult {
         var index = span_start_index;
+        var total: i64 = 0;
         while (index < self.spans.items.len) {
             const span = &self.spans.items[index];
             if (span.start_time_us >= start_time_us and span.start_time_us < end_time_us) {
                 var sub_lane = try self.getOrCreateSubLane(level);
                 try sub_lane.addSpan(span);
-                index = try mergeSpans(self, level + 1, span.start_time_us, @min(span.start_time_us + span.duration_us, end_time_us), index + 1);
+                const result = try mergeSpans(self, level + 1, span.start_time_us, @min(span.start_time_us + span.duration_us, end_time_us), index + 1);
+                index = result.index;
+                span.self_duration_us = @max(span.duration_us - result.total_duration_us, 0);
+                total += span.duration_us;
             } else {
                 break;
             }
         }
-        return index;
+        return .{ .index = index, .total_duration_us = total };
     }
 
     fn lessThan(_: void, lhs: ThreadLane, rhs: ThreadLane) bool {
