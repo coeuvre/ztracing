@@ -110,7 +110,7 @@ const ProfileCounterLane = struct {
     }
 
     fn deinit(self: *ProfileCounterLane) void {
-        for (self.series.items) |series| {
+        for (self.series.items) |*series| {
             series.deinit();
         }
         self.series.deinit();
@@ -290,15 +290,23 @@ const ThreadLane = struct {
     fn mergeSpans(self: *ThreadLane, level: usize, start_time_us: i64, end_time_us: i64, span_start_index: usize) !MergeResult {
         var index = span_start_index;
         var total: i64 = 0;
+        var last_end_time_us = start_time_us;
         while (index < self.spans.items.len) {
             const span = &self.spans.items[index];
-            if (span.start_time_us >= start_time_us and span.start_time_us < end_time_us) {
+            if (span.start_time_us < last_end_time_us) {
+                index += 1;
+                continue;
+            }
+
+            const span_end_time_us = span.start_time_us + span.duration_us;
+            if (span.start_time_us >= start_time_us and span_end_time_us <= end_time_us) {
                 var sub_lane = try self.getOrCreateSubLane(level);
                 try sub_lane.addSpan(span);
-                const result = try mergeSpans(self, level + 1, span.start_time_us, @min(span.start_time_us + span.duration_us, end_time_us), index + 1);
+                const result = try mergeSpans(self, level + 1, span.start_time_us, span_end_time_us, index + 1);
                 index = result.index;
                 span.self_duration_us = @max(span.duration_us - result.total_duration_us, 0);
                 total += span.duration_us;
+                last_end_time_us = span_end_time_us;
             } else {
                 break;
             }
@@ -608,6 +616,40 @@ fn expectEqualSpans(expected: ExpectedSpan, actual: *Span) !void {
     try std.testing.expectEqual(expected.duration_us, actual.duration_us);
 }
 
+fn initArgsSortIndex(sort_index: i64) !std.json.Value {
+    var object = std.json.ObjectMap.init(std.testing.allocator);
+    try object.put("sort_index", .{ .integer = sort_index });
+    return .{ .object = object };
+}
+
+fn deinitArgs(sort_index: *std.json.Value) void {
+    sort_index.object.deinit();
+}
+
+fn createArgsName(name: []const u8) !std.json.Value {
+    var object = std.json.ObjectMap.init(std.testing.allocator);
+    try object.put("name", .{ .string = name });
+    return .{ .object = object };
+}
+
+test "parse, spans overlap, ignore latter" {
+    try testParse(&[_]TraceEvent{
+        .{ .ph = 'X', .name = "a", .tid = 1, .ts = 0, .dur = 3 },
+        .{ .ph = 'X', .name = "b", .tid = 1, .ts = 1, .dur = 4 },
+    }, .{
+        .thread_lanes = &[_]ExpectedThreadLane{
+            .{
+                .tid = 1,
+                .sub_lanes = &[_]ExpectedSubLane{
+                    .{ .spans = &[_]ExpectedSpan{
+                        .{ .name = "a", .start_time_us = 0, .duration_us = 3 },
+                    } },
+                },
+            },
+        },
+    });
+}
+
 test "parse, spans have equal start time, sort by duration descending" {
     try testParse(&[_]TraceEvent{
         .{ .ph = 'X', .name = "a", .tid = 1, .ts = 0, .dur = 1 },
@@ -625,22 +667,6 @@ test "parse, spans have equal start time, sort by duration descending" {
             },
         },
     });
-}
-
-fn initArgsSortIndex(sort_index: i64) !std.json.Value {
-    var object = std.json.ObjectMap.init(std.testing.allocator);
-    try object.put("sort_index", .{ .integer = sort_index });
-    return .{ .object = object };
-}
-
-fn deinitArgs(sort_index: *std.json.Value) void {
-    sort_index.object.deinit();
-}
-
-fn createArgsName(name: []const u8) !std.json.Value {
-    var object = std.json.ObjectMap.init(std.testing.allocator);
-    try object.put("name", .{ .string = name });
-    return .{ .object = object };
 }
 
 test "parse, thread_sort_index, sorted" {
