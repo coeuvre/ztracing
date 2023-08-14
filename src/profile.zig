@@ -52,7 +52,7 @@ pub const SeriesIter = struct {
 
     prev_index: ?usize = null,
 
-    pub fn next(self: *SeriesIter) ?SeriesValue {
+    pub fn next(self: *SeriesIter) ?*const SeriesValue {
         if (self.prev_index) |prev| {
             var index = prev + 1;
             while (index < self.values.len) {
@@ -66,7 +66,7 @@ pub const SeriesIter = struct {
             self.prev_index = index;
         } else {
             // Find the largest value that is less than the cursor.
-            
+
             // TODO: Optimize with binary search.
             var index_larger_or_equal = self.values.len;
             for (self.values, 0..) |value, index| {
@@ -83,7 +83,7 @@ pub const SeriesIter = struct {
         }
 
         if (self.prev_index.? < self.values.len) {
-            return self.values[self.prev_index.?];
+            return &self.values[self.prev_index.?];
         } else {
             return null;
         }
@@ -399,29 +399,30 @@ pub const Profile = struct {
                     // TODO: handle trace_event.id
                     if (trace_event.name) |name| {
                         var counter_lane = try self.getOrCreateCounterLane(name);
-
-                        if (trace_event.args) |args| {
-                            switch (args) {
-                                .object => |obj| {
-                                    var iter = obj.iterator();
-                                    while (iter.next()) |entry| {
-                                        const value_name = entry.key_ptr.*;
-                                        switch (entry.value_ptr.*) {
-                                            .string, .number_string => |num| {
-                                                const val = try std.fmt.parseFloat(f64, num);
-                                                try counter_lane.addCounter(trace_event.ts.?, value_name, val);
-                                            },
-                                            .float => |val| {
-                                                try counter_lane.addCounter(trace_event.ts.?, value_name, val);
-                                            },
-                                            .integer => |val| {
-                                                try counter_lane.addCounter(trace_event.ts.?, value_name, @floatFromInt(val));
-                                            },
-                                            else => {},
+                        if (trace_event.ts) |ts| {
+                            if (trace_event.args) |args| {
+                                switch (args) {
+                                    .object => |obj| {
+                                        var iter = obj.iterator();
+                                        while (iter.next()) |entry| {
+                                            const value_name = entry.key_ptr.*;
+                                            switch (entry.value_ptr.*) {
+                                                .string, .number_string => |num| {
+                                                    const val = try std.fmt.parseFloat(f64, num);
+                                                    try counter_lane.addCounter(ts, value_name, val);
+                                                },
+                                                .float => |val| {
+                                                    try counter_lane.addCounter(ts, value_name, val);
+                                                },
+                                                .integer => |val| {
+                                                    try counter_lane.addCounter(ts, value_name, @floatFromInt(val));
+                                                },
+                                                else => {},
+                                            }
                                         }
-                                    }
-                                },
-                                else => {},
+                                    },
+                                    else => {},
+                                }
                             }
                         }
                     }
