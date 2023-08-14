@@ -7,102 +7,130 @@ const ArrayList = std.ArrayList;
 const TraceEvent = json_profile_parser.TraceEvent;
 const expectOptional = test_utils.expectOptional;
 
-pub const ProfileCounterValue = struct {
-    name: []u8,
-    value: f64,
-};
-
-pub const ProfileCounter = struct {
+pub const SeriesValue = struct {
     time_us: i64,
-    values: ArrayList(ProfileCounterValue),
+    value: f64,
+
+    fn lessThan(_: void, lhs: SeriesValue, rhs: SeriesValue) bool {
+        return lhs.time_us < rhs.time_us;
+    }
 };
 
-const ProfileCounterLane = struct {
+pub const Series = struct {
     name: []u8,
-    max_value: f64,
-    counters: ArrayList(ProfileCounter),
-    num_series: usize,
+    values: ArrayList(SeriesValue),
 
-    fn init(allocator: Allocator, name: []const u8) ProfileCounterLane {
+    pub fn init(allocator: Allocator, name: []const u8) !Series {
         return .{
-            .name = allocator.dupe(u8, name) catch unreachable,
-            .max_value = 0,
-            .counters = ArrayList(ProfileCounter).init(allocator),
-            .num_series = 0,
+            .name = try allocator.dupe(u8, name),
+            .values = ArrayList(SeriesValue).init(allocator),
         };
     }
 
-    fn deinit(self: *ProfileCounterLane) void {
-        for (self.counters.items) |*counter| {
-            for (counter.values.items) |value| {
-                self.counters.allocator.free(value.name);
-            }
-            counter.values.deinit();
-        }
-        self.counters.deinit();
-        self.counters.allocator.free(self.name);
+    pub fn done(self: *Series) void {
+        std.sort.block(SeriesValue, self.values.items, {}, SeriesValue.lessThan);
     }
 
-    pub fn addCounter(self: *ProfileCounterLane, time_us: i64, values: ArrayList(ProfileCounterValue)) !void {
-        self.num_series = @max(self.num_series, values.items.len);
-        try self.counters.append(.{ .time_us = time_us, .values = values });
-        var sum: f64 = 0;
-        for (values.items) |value| {
-            sum += value.value;
-        }
-        self.max_value = @max(self.max_value, sum);
+    pub fn deinit(self: *Series) void {
+        self.values.allocator.free(self.name);
+        self.values.deinit();
     }
 
-    pub fn done(self: *ProfileCounterLane) void {
-        std.sort.block(ProfileCounter, self.counters.items, {}, profileCounterLessThan);
-    }
-
-    fn profileCounterLessThan(_: void, lhs: ProfileCounter, rhs: ProfileCounter) bool {
-        return lhs.time_us < rhs.time_us;
-    }
-
-    pub fn iter(self: *const ProfileCounterLane, start_time_us: i64, min_duration_us: i64) ProfileCounterIter {
-        const counters = self.counters.items;
-        var index = counters.len;
-        // TODO: Optimize with binary search
-        for (counters, 0..) |counter, i| {
-            if (counter.time_us > start_time_us) {
-                index = if (i > 0) i - 1 else 0;
-                break;
-            }
-        }
+    pub fn iter(self: *const Series, start_time_us: i64, min_duration_us: i64) SeriesIter {
         return .{
-            .counters = counters,
-            .index = index,
+            .values = self.values.items,
+            .cursor = start_time_us,
             .min_duration_us = min_duration_us,
         };
     }
 };
 
-const ProfileCounterIter = struct {
-    counters: []const ProfileCounter,
-    index: usize,
+pub const SeriesIter = struct {
+    values: []const SeriesValue,
+    cursor: i64,
     min_duration_us: i64,
 
-    pub fn next(self: *ProfileCounterIter) ?ProfileCounter {
-        if (self.index >= self.counters.len) {
-            return null;
-        }
-        const counter_to_return = self.counters[self.index];
-        var has_next = false;
-        const start_time_us = counter_to_return.time_us;
-        for (self.counters[self.index..], self.index..) |counter, i| {
-            if (counter.time_us - start_time_us >= self.min_duration_us) {
-                self.index = i;
-                has_next = true;
-                break;
+    prev_index: ?usize = null,
+
+    pub fn next(self: *SeriesIter) ?SeriesValue {
+        if (self.prev_index) |prev| {
+            var index = prev + 1;
+            while (index < self.values.len) {
+                const value = self.values[index];
+                if (value.time_us >= self.cursor) {
+                    self.cursor = @max(value.time_us, self.cursor + self.min_duration_us);
+                    break;
+                }
+                index += 1;
+            }
+            self.prev_index = index;
+        } else {
+            // Find the largest value that is less than the cursor.
+            
+            // TODO: Optimize with binary search.
+            var index_larger_or_equal = self.values.len;
+            for (self.values, 0..) |value, index| {
+                if (value.time_us >= self.cursor) {
+                    index_larger_or_equal = index;
+                    break;
+                }
+            }
+            if (index_larger_or_equal > 0) {
+                self.prev_index = index_larger_or_equal - 1;
+            } else {
+                self.prev_index = 0;
             }
         }
 
-        if (!has_next) {
-            self.index = self.counters.len;
+        if (self.prev_index.? < self.values.len) {
+            return self.values[self.prev_index.?];
+        } else {
+            return null;
         }
-        return counter_to_return;
+    }
+};
+
+const ProfileCounterLane = struct {
+    name: []u8,
+    max_value: f64,
+    series: ArrayList(Series),
+
+    fn init(allocator: Allocator, name: []const u8) ProfileCounterLane {
+        return .{
+            .name = allocator.dupe(u8, name) catch unreachable,
+            .max_value = 0,
+            .series = ArrayList(Series).init(allocator),
+        };
+    }
+
+    fn deinit(self: *ProfileCounterLane) void {
+        for (self.series.items) |series| {
+            series.deinit();
+        }
+        self.series.deinit();
+    }
+
+    pub fn addCounter(self: *ProfileCounterLane, time_us: i64, name: []const u8, value: f64) !void {
+        self.max_value = @max(self.max_value, value);
+        var series = try self.getOrCreateSeries(name);
+        try series.values.append(.{ .time_us = time_us, .value = value });
+    }
+
+    fn getOrCreateSeries(self: *ProfileCounterLane, name: []const u8) !*Series {
+        for (self.series.items) |*series| {
+            if (std.mem.eql(u8, series.name, name)) {
+                return series;
+            }
+        }
+
+        try self.series.append(try Series.init(self.series.allocator, name));
+        return &self.series.items[self.series.items.len - 1];
+    }
+
+    pub fn done(self: *ProfileCounterLane) void {
+        for (self.series.items) |*series| {
+            series.done();
+        }
     }
 };
 
@@ -154,7 +182,7 @@ pub const ThreadSubLaneIter = struct {
     min_duration_us: i64,
 
     pub fn next(self: *ThreadSubLaneIter) ?*const Span {
-        var index = self.prev_index orelse 0;
+        var index = if (self.prev_index) |prev| prev + 1 else 0;
         while (index < self.spans.len) {
             const span = self.spans[index];
             const end_time_us = span.start_time_us + span.duration_us;
@@ -376,24 +404,22 @@ pub const Profile = struct {
                             switch (args) {
                                 .object => |obj| {
                                     var iter = obj.iterator();
-                                    var values = std.ArrayList(ProfileCounterValue).init(self.allocator);
                                     while (iter.next()) |entry| {
                                         const value_name = entry.key_ptr.*;
                                         switch (entry.value_ptr.*) {
                                             .string, .number_string => |num| {
                                                 const val = try std.fmt.parseFloat(f64, num);
-                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
+                                                try counter_lane.addCounter(trace_event.ts.?, value_name, val);
                                             },
                                             .float => |val| {
-                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = val });
+                                                try counter_lane.addCounter(trace_event.ts.?, value_name, val);
                                             },
                                             .integer => |val| {
-                                                try values.append(.{ .name = try self.allocator.dupe(u8, value_name), .value = @floatFromInt(val) });
+                                                try counter_lane.addCounter(trace_event.ts.?, value_name, @floatFromInt(val));
                                             },
                                             else => {},
                                         }
                                     }
-                                    try counter_lane.addCounter(trace_event.ts.?, values);
                                 },
                                 else => {},
                             }

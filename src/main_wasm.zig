@@ -415,7 +415,7 @@ const ViewState = struct {
         const duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
         const width_per_us = lane_width / duration_us;
         const min_duration_us: i64 = @intFromFloat(@ceil(duration_us / lane_width));
-        const draw_lsit = c.igGetWindowDrawList();
+        const draw_list = c.igGetWindowDrawList();
 
         const is_mouse_dragging = c.igIsMouseDragging(c.ImGuiMouseButton_Left, 1);
         if (self.was_mouse_dragging) {
@@ -444,97 +444,84 @@ const ViewState = struct {
         var character_size: c.ImVec2 = undefined;
         c.igCalcTextSize(&character_size, "A", null, false, 0);
 
+        c.ImDrawList_PushClipRect(
+            draw_list,
+            window_content_bb.Min,
+            window_content_bb.Max,
+            true,
+        );
+
         for (self.profile.counter_lanes.items) |counter_lane| {
-            c.igSeparatorText(std.fmt.bufPrintZ(&global_buf, "{s}", .{counter_lane.name}) catch unreachable);
+            const name = std.fmt.bufPrintZ(&global_buf, "{s}", .{counter_lane.name}) catch unreachable;
+            c.igSeparatorText(name);
 
             const lane_top = window_pos.y + c.igGetCursorPosY() - c.igGetScrollY();
             const lane_height: f32 = 30.0;
+            const lane_bottom = lane_top + lane_height;
+            const lane_right = lane_left + lane_width;
+            const lane_bb = c.ImRect{
+                .Min = .{ .x = lane_left, .y = lane_top },
+                .Max = .{ .x = lane_right, .y = lane_bottom },
+            };
+            c.igItemSize_Rect(lane_bb, -1);
+            const id = c.igGetID_Str(name);
+            if (c.igItemAdd(lane_bb, id, null, 0)) {
+                const color_index_base: usize = @truncate(hashString(counter_lane.name));
 
-            var maybe_hovered_counter: ?HoveredCounter = null;
+                for (counter_lane.series.items, 0..) |series, series_index| {
+                    const col_v4 = general_purpose_colors[(color_index_base + series_index) % general_purpose_colors.len];
+                    const col_bg_v4 = c.ImVec4{ .x = col_v4.x, .y = col_v4.y, .z = col_v4.z, .w = 0.5 };
+                    const col = getImColorU32(col_v4);
+                    const col_bg = getImColorU32(col_bg_v4);
+                    _ = col_bg;
 
-            {
-                var iter = counter_lane.iter(self.start_time_us, min_duration_us);
-
-                var x1: f32 = 0;
-                var x2: f32 = 0;
-                var values: ?[]const ProfileCounterValue = null;
-                var time_us: i64 = 0;
-                if (iter.next()) |counter| {
-                    if (counter.time_us > self.start_time_us) {
-                        x2 = @max(lane_left, lane_left + @as(f32, @floatFromInt(counter.time_us - self.start_time_us)) * width_per_us);
-                        time_us = counter.time_us;
-                        values = counter.values.items;
-                    }
-                }
-
-                while (iter.next()) |counter| {
-                    x1 = x2;
-                    x2 = lane_left + @as(f32, @floatFromInt(counter.time_us - self.start_time_us)) * width_per_us;
-
-                    const color_index_base: usize = @truncate(hashString(counter_lane.name));
-
-                    if (values != null and values.?.len > 0) {
-                        const bb = c.ImRect{
-                            .Min = .{ .x = x1, .y = lane_top },
-                            .Max = .{ .x = x2, .y = lane_top + lane_height },
+                    var iter = series.iter(self.start_time_us, min_duration_us);
+                    var prev_pos: ?c.ImVec2 = null;
+                    while (iter.next()) |value| {
+                        var pos = c.ImVec2{
+                            .x = lane_left + @as(f32, @floatFromInt(value.time_us - self.start_time_us)) * width_per_us,
+                            .y = lane_bottom - @as(f32, @floatCast((value.value / counter_lane.max_value))) * lane_height,
                         };
-                        c.igItemSize_Rect(bb, -1);
-                        const id = c.igGetID_Str(std.fmt.bufPrintZ(&global_buf, "##{s}_{}", .{ counter_lane.name, counter.time_us }) catch unreachable);
-                        if (c.igItemAdd(bb, id, null, 0)) {
-                            var hovered = false;
-                            var held = false;
-                            _ = c.igButtonBehavior(bb, id, &hovered, &held, 0);
-                            if (hovered) {
-                                maybe_hovered_counter = .{
-                                    .x1 = x1,
-                                    .x2 = x2,
-                                    .time_us = time_us,
-                                    .values = values.?,
-                                };
-                            }
-                            var y2 = bb.Max.y;
-                            for (values.?, 0..) |value, i| {
-                                const y1 = y2 - lane_height * @as(f32, @floatCast(value.value / counter_lane.max_value));
-                                const col = general_purpose_colors[(color_index_base + i) % general_purpose_colors.len];
-                                c.ImDrawList_AddRectFilled(draw_lsit, .{ .x = x1, .y = y1 }, .{ .x = x2, .y = y2 }, getImColorU32(col), 0, 0);
-                                y2 = y1;
-                            }
+
+                        if (prev_pos) |pp| {
+                            c.ImDrawList_AddQuadFilled(
+                                draw_list,
+                                .{ .x = pp.x, .y = lane_bottom },
+                                .{ .x = pos.x, .y = lane_bottom },
+                                pos,
+                                pp,
+                                col,
+                            );
+
+                            c.ImDrawList_AddLine(
+                                draw_list,
+                                .{ .x = pp.x - 1, .y = pp.y },
+                                .{ .x = pos.x + 1, .y = pos.y },
+                                getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
+                                1,
+                            );
                         }
-                        c.igSameLine(0, 0);
-                    }
 
-                    time_us = counter.time_us;
-                    values = counter.values.items;
+                        // if (pos.x >= lane_left and pos.x < lane_right) {
+                        //     c.ImDrawList_AddRect(
+                        //         draw_list,
+                        //         .{ .x = pos.x - 2, .y = pos.y - 2 },
+                        //         .{ .x = pos.x + 2, .y = pos.y + 2 },
+                        //         getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
+                        //         0,
+                        //         0,
+                        //         1,
+                        //     );
+                        // }
 
-                    if (x2 > window_content_bb.Max.x) {
-                        break;
+                        prev_pos = pos;
+
+                        if (value.time_us > self.end_time_us) {
+                            break;
+                        }
                     }
                 }
             }
-
-            // Deferred rendering of hovered counter to avoid overlapping with other counters
-            if (maybe_hovered_counter) |hovered_counter| {
-                // TODO: Styling
-                const rad = 4.0;
-                const col = getImColorU32(general_purpose_colors[0]);
-
-                var sum: f64 = 0;
-                for (hovered_counter.values) |value| {
-                    sum += value.value;
-                }
-                const height: f32 = @floatCast(sum / counter_lane.max_value * lane_height);
-                c.ImDrawList_AddCircleFilled(draw_lsit, .{ .x = hovered_counter.x1, .y = lane_top + lane_height - height }, rad, col, 16);
-
-                if (c.igBeginTooltip()) {
-                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{hovered_counter.time_us}) catch unreachable, null);
-                    for (hovered_counter.values) |value| {
-                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{s}: {d:.2}", .{ value.name, value.value }) catch unreachable, null);
-                    }
-                }
-                c.igEndTooltip();
-            }
-
-            c.igNewLine();
         }
 
         const text_padding_x: f32 = character_size.x;
@@ -567,6 +554,10 @@ const ViewState = struct {
                     var iter = sub_lane.iter(self.start_time_us, min_duration_us);
                     var sub_lane_top = lane_top + @as(f32, @floatFromInt(sub_lane_index)) * sub_lane_height;
                     while (iter.next()) |span| {
+                        if (span.start_time_us > self.end_time_us) {
+                            break;
+                        }
+
                         var x1 = lane_left + @as(f32, @floatFromInt(span.start_time_us - self.start_time_us)) * width_per_us;
                         var x2 = x1 + @as(f32, @floatFromInt(@max(span.duration_us, min_duration_us))) * width_per_us;
 
@@ -579,7 +570,7 @@ const ViewState = struct {
                             .Max = .{ .x = x2, .y = sub_lane_top + sub_lane_height },
                         };
                         c.ImDrawList_AddRectFilled(
-                            draw_lsit,
+                            draw_list,
                             bb.Min,
                             bb.Max,
                             col,
@@ -589,7 +580,7 @@ const ViewState = struct {
 
                         if (bb.Max.x - bb.Min.x > 2) {
                             c.ImDrawList_AddRect(
-                                draw_lsit,
+                                draw_list,
                                 .{ .x = bb.Min.x + 0.5, .y = bb.Min.y + 0.5 },
                                 .{ .x = bb.Max.x - 0.5, .y = bb.Max.y - 0.5 },
                                 getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
@@ -601,7 +592,7 @@ const ViewState = struct {
 
                         if (is_window_hovered and !is_mouse_dragging and c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
                             c.ImDrawList_AddRect(
-                                draw_lsit,
+                                draw_list,
                                 bb.Min,
                                 bb.Max,
                                 getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
@@ -630,7 +621,7 @@ const ViewState = struct {
                             if (text_max_x - text_min_x >= text_size.x) {
                                 const center_x = text_min_x + (text_max_x - text_min_x) / 2.0;
                                 c.ImDrawList_AddText_Vec2(
-                                    draw_lsit,
+                                    draw_list,
                                     .{ .x = center_x - text_size.x / 2.0, .y = center_y - character_size.y / 2.0 },
                                     getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
                                     text,
@@ -638,7 +629,7 @@ const ViewState = struct {
                                 );
                             } else {
                                 c.igRenderTextEllipsis(
-                                    draw_lsit,
+                                    draw_list,
                                     .{ .x = text_min_x, .y = center_y - character_size.y / 2.0 },
                                     .{ .x = text_max_x, .y = sub_lane_top + sub_lane_height },
                                     text_max_x,
@@ -653,6 +644,8 @@ const ViewState = struct {
                 }
             }
         }
+
+        c.ImDrawList_PopClipRect(draw_list);
     }
 
     pub fn onLoadFileStart(self: *ViewState, len: usize) void {
