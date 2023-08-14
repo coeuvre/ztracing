@@ -357,6 +357,11 @@ const HoveredCounter = struct {
     values: []const ProfileCounterValue,
 };
 
+const HoveredSpan = struct {
+    span: *const Span,
+    bb: c.ImRect,
+};
+
 const ViewState = struct {
     allocator: Allocator,
     profile: Profile,
@@ -495,8 +500,8 @@ const ViewState = struct {
 
                             c.ImDrawList_AddLine(
                                 draw_list,
-                                .{ .x = pp.x - 1, .y = pp.y },
-                                .{ .x = pos.x + 1, .y = pos.y },
+                                .{ .x = pp.x - 1, .y = pp.y - 1 },
+                                .{ .x = pos.x, .y = pos.y - 1 },
                                 getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
                                 1,
                             );
@@ -527,6 +532,7 @@ const ViewState = struct {
         const text_padding_x: f32 = character_size.x;
         const text_padding_y: f32 = character_size.y / 4.0;
         const sub_lane_height: f32 = 2 * text_padding_y + character_size.y;
+        var hovered_span: ?HoveredSpan = null;
         for (self.profile.thread_lanes.items) |thread_lane| {
             if (thread_lane.sub_lanes.items.len == 0) {
                 continue;
@@ -591,22 +597,10 @@ const ViewState = struct {
                         }
 
                         if (is_window_hovered and !is_mouse_dragging and c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
-                            c.ImDrawList_AddRect(
-                                draw_list,
-                                bb.Min,
-                                bb.Max,
-                                getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
-                                0,
-                                0,
-                                2,
-                            );
-
-                            if (c.igBeginTooltip()) {
-                                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{s}", .{span.name}) catch unreachable, null);
-                                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Start: {}", .{span.start_time_us}) catch unreachable, null);
-                                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Duration: {}", .{span.duration_us}) catch unreachable, null);
-                            }
-                            c.igEndTooltip();
+                            hovered_span = .{
+                                .span = span,
+                                .bb = bb,
+                            };
                         }
 
                         if (x2 - x1 > 2 * text_padding_x + character_size.x) {
@@ -643,6 +637,25 @@ const ViewState = struct {
                     }
                 }
             }
+        }
+
+        if (hovered_span) |hovered| {
+            const span = hovered.span;
+            c.ImDrawList_AddRect(
+                draw_list,
+                hovered.bb.Min,
+                hovered.bb.Max,
+                getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
+                0,
+                0,
+                2,
+            );
+            if (c.igBeginTooltip()) {
+                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{s}", .{span.name}) catch unreachable, null);
+                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Start: {}", .{span.start_time_us}) catch unreachable, null);
+                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Duration: {}", .{span.duration_us}) catch unreachable, null);
+            }
+            c.igEndTooltip();
         }
 
         c.ImDrawList_PopClipRect(draw_list);
