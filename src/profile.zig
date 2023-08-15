@@ -94,7 +94,7 @@ pub const SeriesIter = struct {
     }
 };
 
-const ProfileCounterLane = struct {
+pub const ProfileCounterLane = struct {
     name: []u8,
     max_value: f64,
     series: ArrayList(Series),
@@ -210,7 +210,7 @@ pub const ThreadSubLaneIter = struct {
     }
 };
 
-const ThreadLane = struct {
+pub const ThreadLane = struct {
     allocator: Allocator,
     tid: i64,
     spans: ArrayList(Span),
