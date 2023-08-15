@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build --base=/ztracing",
     "preview": "vite preview"
   },
   "devDependencies": {
