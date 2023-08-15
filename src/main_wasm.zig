@@ -418,7 +418,7 @@ const HoveredSpan = struct {
 };
 
 const ViewPos = struct {
-    time_us: f64,
+    time_us: i64,
     scroll_y: f32,
 };
 
@@ -460,11 +460,10 @@ const ViewState = struct {
                 var drag_delta: c.ImVec2 = undefined;
                 c.igGetMouseDragDelta(&drag_delta, c.ImGuiMouseButton_Left, 0);
 
-                const width_per_us = lane_width / @as(f64, @floatFromInt((self.end_time_us - self.start_time_us)));
-                const delta_us = @as(f64, drag_delta.x) / width_per_us;
+                const delta_us: i64 = @intFromFloat(drag_delta.x * @as(f64, @floatFromInt(self.end_time_us - self.start_time_us)) / lane_width);
 
                 const duration_us = self.end_time_us - self.start_time_us;
-                self.start_time_us = @as(i64, @intFromFloat(@round(self.drag_start.time_us - delta_us)));
+                self.start_time_us = self.drag_start.time_us - delta_us;
                 self.end_time_us = self.start_time_us + duration_us;
 
                 c.igSetScrollY_Float(self.drag_start.scroll_y - drag_delta.y);
@@ -475,7 +474,7 @@ const ViewState = struct {
             if (is_window_hovered and is_mouse_dragging) {
                 self.is_dragging = true;
                 self.drag_start = .{
-                    .time_us = @floatFromInt(self.start_time_us),
+                    .time_us = self.start_time_us,
                     .scroll_y = c.igGetScrollY(),
                 };
             }
@@ -488,18 +487,17 @@ const ViewState = struct {
                 if (is_window_hovered and wheel_y != 0) {
                     // Zoom
                     const mouse = io.*.MousePos.x - window_content_bb.Min.x;
-                    const p = mouse / window_width;
-                    var duration_us: f32 = @floatFromInt((self.end_time_us - self.start_time_us));
+                    const p: f64 = mouse / window_width;
+                    var duration_us: f64 = @floatFromInt((self.end_time_us - self.start_time_us));
                     const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
                     if (wheel_y > 0) {
                         duration_us = duration_us * 0.8;
                     } else {
                         duration_us = duration_us * 1.25;
                     }
-                    duration_us = @min(duration_us, @as(f32, @floatFromInt(self.profile.max_time_us - self.profile.min_time_us)));
                     duration_us = @max(1, duration_us);
                     self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
-                    self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
+                    self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(duration_us));
                 }
             } else {
                 if (is_window_hovered and (wheel_y != 0 or wheel_x != 0)) {
