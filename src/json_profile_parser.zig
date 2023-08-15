@@ -171,7 +171,7 @@ pub const JsonProfileParser = struct {
                                 try self.diagnostic.stack.append("traceEvents");
                             } else {
                                 try self.diagnostic.stack.append(key);
-                                try skipJsonValue(&self.scanner, &self.arena, null, &self.diagnostic);
+                                try skipJsonValue(&self.scanner, null, &self.diagnostic);
                                 _ = self.diagnostic.stack.pop();
                             }
 
@@ -328,23 +328,23 @@ fn parseTraceEvent(arena: *ArenaAllocator, complete_input: []const u8, trace_eve
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "ts")) {
                     try diagnostic.stack.append(".ts");
-                    trace_event.ts = try parseInt(&scanner, diagnostic);
+                    trace_event.ts = try parseInt(arena, &scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "tss")) {
                     try diagnostic.stack.append(".tss");
-                    trace_event.tss = try parseInt(&scanner, diagnostic);
+                    trace_event.tss = try parseInt(arena, &scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "pid")) {
                     try diagnostic.stack.append(".pid");
-                    trace_event.pid = try parseInt(&scanner, diagnostic);
+                    trace_event.pid = try parseInt(arena, &scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "tid")) {
                     try diagnostic.stack.append(".tid");
-                    trace_event.tid = try parseInt(&scanner, diagnostic);
+                    trace_event.tid = try parseInt(arena, &scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "dur")) {
                     try diagnostic.stack.append(".dur");
-                    trace_event.dur = try parseInt(&scanner, diagnostic);
+                    trace_event.dur = try parseInt(arena, &scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "cname")) {
                     try diagnostic.stack.append(".cname");
@@ -352,11 +352,11 @@ fn parseTraceEvent(arena: *ArenaAllocator, complete_input: []const u8, trace_eve
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "args")) {
                     try diagnostic.stack.append(".args");
-                    trace_event.args = try parseObjectValue(&scanner, arena, diagnostic);
+                    trace_event.args = try parseObjectValue(arena, &scanner, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else {
                     try diagnostic.stack.append(key);
-                    try skipJsonValue(&scanner, arena, null, diagnostic);
+                    try skipJsonValue(&scanner, null, diagnostic);
                     _ = diagnostic.stack.pop();
                 }
             },
@@ -405,10 +405,10 @@ fn parseString(arena: *ArenaAllocator, scanner: *std.json.Scanner, diagnostic: *
     }
 }
 
-fn parseInt(scanner: *std.json.Scanner, diagnostic: *Diagnostic) !i64 {
-    const token = try scanner.next();
+fn parseInt(arena: *ArenaAllocator, scanner: *std.json.Scanner, diagnostic: *Diagnostic) !i64 {
+    const token = try scanner.nextAlloc(arena.allocator(), .alloc_if_needed);
     switch (token) {
-        .number => |str| {
+        .allocated_number, .number => |str| {
             return try std.fmt.parseInt(i64, str, 10);
         },
         else => {
@@ -418,28 +418,38 @@ fn parseInt(scanner: *std.json.Scanner, diagnostic: *Diagnostic) !i64 {
     }
 }
 
-fn parseObjectValue(scanner: *std.json.Scanner, arena: *ArenaAllocator, diagnostic: *Diagnostic) !std.json.Value {
+fn parseObjectValue(arena: *ArenaAllocator, scanner: *std.json.Scanner, diagnostic: *Diagnostic) !std.json.Value {
     var start = scanner.cursor;
     // TODO: Properly skip the whitespace.
     while (start < scanner.input.len and (scanner.input[start] == ':' or scanner.input[start] == ' ')) {
         start += 1;
     }
-    try skipJsonValue(scanner, arena, null, diagnostic);
+    try skipJsonValue(scanner, null, diagnostic);
     const end = scanner.cursor;
     diagnostic.input = scanner.input[start..end];
     return try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), scanner.input[start..end], .{});
 }
 
-fn skipJsonValue(scanner: *std.json.Scanner, arena: *ArenaAllocator, maybe_array_end: ?*bool, diagnostic: *Diagnostic) !void {
-    const token = try scanner.nextAlloc(arena.allocator(), .alloc_if_needed);
+fn skipJsonValue(scanner: *std.json.Scanner, maybe_array_end: ?*bool, diagnostic: *Diagnostic) !void {
+    const token = try scanner.next();
     switch (token) {
         .object_begin => {
             while (true) {
-                const token2 = try scanner.nextAlloc(arena.allocator(), .alloc_if_needed);
+                const token2 = try scanner.next();
                 switch (token2) {
                     .object_end => break,
 
-                    .allocated_string, .string => try skipJsonValue(scanner, arena, null, diagnostic),
+                    .partial_string,
+                    .partial_string_escaped_1,
+                    .partial_string_escaped_2,
+                    .partial_string_escaped_3,
+                    .partial_string_escaped_4,
+                    => {
+                        try skipString(scanner);
+                        try skipJsonValue(scanner, null, diagnostic);
+                    },
+
+                    .string => try skipJsonValue(scanner, null, diagnostic),
 
                     else => {
                         diagnostic.last_token = token2;
@@ -452,7 +462,7 @@ fn skipJsonValue(scanner: *std.json.Scanner, arena: *ArenaAllocator, maybe_array
         .array_begin => {
             var array_end = false;
             while (true) {
-                try skipJsonValue(scanner, arena, &array_end, diagnostic);
+                try skipJsonValue(scanner, &array_end, diagnostic);
                 if (array_end) {
                     break;
                 }
@@ -468,6 +478,15 @@ fn skipJsonValue(scanner: *std.json.Scanner, arena: *ArenaAllocator, maybe_array
             }
         },
 
+        .partial_string,
+        .partial_string_escaped_1,
+        .partial_string_escaped_2,
+        .partial_string_escaped_3,
+        .partial_string_escaped_4,
+        => {
+            try skipString(scanner);
+        },
+
         .true,
         .false,
         .null,
@@ -481,6 +500,24 @@ fn skipJsonValue(scanner: *std.json.Scanner, arena: *ArenaAllocator, maybe_array
             diagnostic.last_token = token;
             return error.unexpected_token;
         },
+    }
+}
+
+fn skipString(scanner: *std.json.Scanner) !void {
+    while (true) {
+        const token = try scanner.next();
+        switch (token) {
+            .partial_string,
+            .partial_string_escaped_1,
+            .partial_string_escaped_2,
+            .partial_string_escaped_3,
+            .partial_string_escaped_4,
+            .string,
+            => {
+                break;
+            },
+            else => return error.unexpected_token,
+        }
     }
 }
 
