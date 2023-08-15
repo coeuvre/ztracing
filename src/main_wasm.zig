@@ -429,6 +429,12 @@ const ViewState = struct {
     mouse_down_duration_us: i64 = 0,
     mouse_down_scroll_y: f32 = 0,
 
+    is_scrolling: bool = false,
+    scroll_duration_s: f32 = 0.3,
+    scroll_time: f32 = 0,
+    scroll_start: f32 = 0,
+    scroll_end: f32 = 0,
+
     pub fn init(allocator: Allocator, profile: Profile) ViewState {
         return .{
             .allocator = allocator,
@@ -440,7 +446,6 @@ const ViewState = struct {
     }
 
     pub fn update(self: *ViewState, dt: f32) void {
-        _ = dt;
         const io = c.igGetIO();
         const mouse_pos = io.*.MousePos;
         const is_window_hovered = c.igIsWindowHovered(0);
@@ -468,7 +473,27 @@ const ViewState = struct {
                 self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(@round(duration_us)));
             } else {
                 // Scroll
-                c.igSetScrollY_Float(c.igGetScrollY() - 100 * wheel);
+                if (self.is_scrolling) {
+                    self.scroll_time = 0;
+                    self.scroll_start = self.scroll_end;
+                    self.scroll_end = self.scroll_start - 100 * wheel;
+                } else {
+                    self.is_scrolling = true;
+                    self.scroll_time = 0;
+                    self.scroll_start = c.igGetScrollY();
+                    self.scroll_end = self.scroll_start - 100 * wheel;
+                }
+            }
+        }
+
+        if (self.is_scrolling) {
+            self.scroll_time += dt;
+            var t = easing.easeOutQuint(self.scroll_time / self.scroll_duration_s);
+            t = @min(t, 1);
+            t = @max(t, 0);
+            c.igSetScrollY_Float(std.math.lerp(self.scroll_start, self.scroll_end, t));
+            if (self.scroll_time >= self.scroll_duration_s) {
+                self.is_scrolling = false;
             }
         }
 
