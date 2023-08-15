@@ -170,7 +170,9 @@ pub const JsonProfileParser = struct {
                                 self.state = .{ .init = .{ .has_object_format = true } };
                                 try self.diagnostic.stack.append("traceEvents");
                             } else {
-                                try skipJsonValue(&self.scanner, null);
+                                try self.diagnostic.stack.append(key);
+                                try skipJsonValue(&self.scanner, &self.arena, null, &self.diagnostic);
+                                _ = self.diagnostic.stack.pop();
                             }
 
                             self.buf.clearRetainingCapacity();
@@ -350,10 +352,12 @@ fn parseTraceEvent(arena: *ArenaAllocator, complete_input: []const u8, trace_eve
                     _ = diagnostic.stack.pop();
                 } else if (std.mem.eql(u8, key, "args")) {
                     try diagnostic.stack.append(".args");
-                    trace_event.args = try parseObjectValue(&scanner, arena);
+                    trace_event.args = try parseObjectValue(&scanner, arena, diagnostic);
                     _ = diagnostic.stack.pop();
                 } else {
-                    try skipJsonValue(&scanner, null);
+                    try diagnostic.stack.append(key);
+                    try skipJsonValue(&scanner, arena, null, diagnostic);
+                    _ = diagnostic.stack.pop();
                 }
             },
             else => {
@@ -375,32 +379,24 @@ fn expectToken(scanner: *std.json.Scanner, expected: std.json.Token, diagnostic:
 }
 
 fn parseString(arena: *ArenaAllocator, scanner: *std.json.Scanner, diagnostic: *Diagnostic) ![]const u8 {
-    var buf: std.ArrayList(u8) = std.ArrayList(u8).init(arena.allocator());
     while (true) {
-        const token = try scanner.next();
+        const token = try scanner.nextAlloc(arena.allocator(), .alloc_if_needed);
         switch (token) {
-            .partial_string => |s| {
-                buf.appendSlice(s) catch unreachable;
-            },
-            .partial_string_escaped_1 => |s| {
-                buf.appendSlice(&s) catch unreachable;
-            },
-            .partial_string_escaped_2 => |s| {
-                buf.appendSlice(&s) catch unreachable;
-            },
-            .partial_string_escaped_3 => |s| {
-                buf.appendSlice(&s) catch unreachable;
-            },
-            .partial_string_escaped_4 => |s| {
-                buf.appendSlice(&s) catch unreachable;
-            },
-            .string => |str| {
-                if (buf.items.len > 0) {
-                    buf.appendSlice(str) catch unreachable;
-                    return buf.items;
-                }
+            .allocated_string => |str| {
                 return str;
             },
+            .string => |str| {
+                return str;
+            },
+
+            .allocated_number => |str| {
+                return str;
+            },
+
+            .number => |str| {
+                return str;
+            },
+
             else => {
                 diagnostic.last_token = token;
                 return error.unexpected_token;
@@ -422,25 +418,33 @@ fn parseInt(scanner: *std.json.Scanner, diagnostic: *Diagnostic) !i64 {
     }
 }
 
-fn parseObjectValue(scanner: *std.json.Scanner, arena: *ArenaAllocator) !std.json.Value {
+fn parseObjectValue(scanner: *std.json.Scanner, arena: *ArenaAllocator, diagnostic: *Diagnostic) !std.json.Value {
     var start = scanner.cursor;
     // TODO: Properly skip the whitespace.
     while (start < scanner.input.len and (scanner.input[start] == ':' or scanner.input[start] == ' ')) {
         start += 1;
     }
-    try skipJsonValue(scanner, null);
+    try skipJsonValue(scanner, arena, null, diagnostic);
     const end = scanner.cursor;
+    diagnostic.input = scanner.input[start..end];
     return try std.json.parseFromSliceLeaky(std.json.Value, arena.allocator(), scanner.input[start..end], .{});
 }
 
-fn skipJsonValue(scanner: *std.json.Scanner, maybe_array_end: ?*bool) !void {
-    switch (try scanner.next()) {
+fn skipJsonValue(scanner: *std.json.Scanner, arena: *ArenaAllocator, maybe_array_end: ?*bool, diagnostic: *Diagnostic) !void {
+    const token = try scanner.nextAlloc(arena.allocator(), .alloc_if_needed);
+    switch (token) {
         .object_begin => {
             while (true) {
-                switch (try scanner.next()) {
+                const token2 = try scanner.nextAlloc(arena.allocator(), .alloc_if_needed);
+                switch (token2) {
                     .object_end => break,
-                    .string => try skipJsonValue(scanner, null),
-                    else => return error.unexpected_token,
+
+                    .allocated_string, .string => try skipJsonValue(scanner, arena, null, diagnostic),
+
+                    else => {
+                        diagnostic.last_token = token2;
+                        return error.unexpected_token;
+                    },
                 }
             }
         },
@@ -448,7 +452,7 @@ fn skipJsonValue(scanner: *std.json.Scanner, maybe_array_end: ?*bool) !void {
         .array_begin => {
             var array_end = false;
             while (true) {
-                try skipJsonValue(scanner, &array_end);
+                try skipJsonValue(scanner, arena, &array_end, diagnostic);
                 if (array_end) {
                     break;
                 }
@@ -459,12 +463,24 @@ fn skipJsonValue(scanner: *std.json.Scanner, maybe_array_end: ?*bool) !void {
             if (maybe_array_end) |array_end| {
                 array_end.* = true;
             } else {
+                diagnostic.last_token = token;
                 return error.unexpected_token;
             }
         },
 
-        .true, .false, .null, .number, .string => {},
-        else => return error.unexpected_token,
+        .true,
+        .false,
+        .null,
+        .number,
+        .allocated_number,
+        .string,
+        .allocated_string,
+        => {},
+
+        else => {
+            diagnostic.last_token = token;
+            return error.unexpected_token;
+        },
     }
 }
 
@@ -576,5 +592,25 @@ test "escaped string" {
         .trace_events = &[_]TraceEvent{
             .{ .name = "\"test\"" },
         },
+    });
+}
+
+test "skip escaped object key" {
+    try testParser(
+        \\{
+        \\  "a": { "\"a\"": "b" }
+        \\}
+    , .{
+        .trace_events = &[_]TraceEvent{},
+    });
+}
+
+test "skip escaped object value" {
+    try testParser(
+        \\{
+        \\  "a": { "a": "\"b\"" }
+        \\}
+    , .{
+        .trace_events = &[_]TraceEvent{},
     });
 }

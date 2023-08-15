@@ -426,7 +426,7 @@ pub const Profile = struct {
     pub fn init(allocator: Allocator) Profile {
         return .{
             .allocator = allocator,
-            .min_time_us = 0,
+            .min_time_us = std.math.maxInt(i64),
             .max_time_us = 0,
             .processes = ArrayList(Process).init(allocator),
         };
@@ -451,15 +451,6 @@ pub const Profile = struct {
     }
 
     pub fn handleTraceEvent(self: *Profile, trace_event: *const TraceEvent) !void {
-        if (trace_event.ts) |ts| {
-            self.min_time_us = @min(self.min_time_us, ts);
-            var end = ts;
-            if (trace_event.dur) |dur| {
-                end += dur;
-            }
-            self.max_time_us = @max(self.max_time_us, end);
-        }
-
         if (trace_event.ph) |ph| {
             switch (ph) {
                 // Counter event
@@ -471,25 +462,7 @@ pub const Profile = struct {
                                 if (trace_event.args) |args| {
                                     switch (args) {
                                         .object => |obj| {
-                                            var process = try self.getOrCreateProcess(pid);
-                                            var counter = try process.getOrCreateCounter(name);
-                                            var iter = obj.iterator();
-                                            while (iter.next()) |entry| {
-                                                const value_name = entry.key_ptr.*;
-                                                switch (entry.value_ptr.*) {
-                                                    .string, .number_string => |num| {
-                                                        const val = try std.fmt.parseFloat(f64, num);
-                                                        try counter.addSample(ts, value_name, val);
-                                                    },
-                                                    .float => |val| {
-                                                        try counter.addSample(ts, value_name, val);
-                                                    },
-                                                    .integer => |val| {
-                                                        try counter.addSample(ts, value_name, @floatFromInt(val));
-                                                    },
-                                                    else => {},
-                                                }
-                                            }
+                                            try self.handleCounterEvent(trace_event, pid, name, ts, obj);
                                         },
                                         else => {},
                                     }
@@ -505,9 +478,7 @@ pub const Profile = struct {
                         if (trace_event.tid) |tid| {
                             if (trace_event.ts) |ts| {
                                 if (trace_event.dur) |dur| {
-                                    var process = try self.getOrCreateProcess(pid);
-                                    var thread = try process.getOrCreateThread(tid);
-                                    try thread.addSpan(trace_event.name, ts, dur);
+                                    try self.handleCompleteEvent(trace_event, pid, tid, ts, dur);
                                 }
                             }
                         }
@@ -525,9 +496,7 @@ pub const Profile = struct {
                                                 if (obj.get("name")) |val| {
                                                     switch (val) {
                                                         .string => |str| {
-                                                            var process = try self.getOrCreateProcess(pid);
-                                                            var thread = try process.getOrCreateThread(tid);
-                                                            try thread.setName(str);
+                                                            try self.handleThreadName(pid, tid, str);
                                                         },
                                                         else => {},
                                                     }
@@ -570,16 +539,66 @@ pub const Profile = struct {
         }
     }
 
+    fn handleCounterEvent(self: *Profile, trace_event: *const TraceEvent, pid: i64, name: []const u8, ts: i64, args: std.json.ObjectMap) !void {
+        var process = try self.getOrCreateProcess(pid);
+        var counter = try process.getOrCreateCounter(name);
+        var iter = args.iterator();
+        while (iter.next()) |entry| {
+            const value_name = entry.key_ptr.*;
+            switch (entry.value_ptr.*) {
+                .string, .number_string => |num| {
+                    const val = try std.fmt.parseFloat(f64, num);
+                    try counter.addSample(ts, value_name, val);
+                    self.maybeUpdateMinMax(trace_event);
+                },
+                .float => |val| {
+                    try counter.addSample(ts, value_name, val);
+                    self.maybeUpdateMinMax(trace_event);
+                },
+                .integer => |val| {
+                    try counter.addSample(ts, value_name, @floatFromInt(val));
+                    self.maybeUpdateMinMax(trace_event);
+                },
+                else => {},
+            }
+        }
+    }
+
+    fn handleCompleteEvent(self: *Profile, trace_event: *const TraceEvent, pid: i64, tid: i64, ts: i64, dur: i64) !void {
+        var process = try self.getOrCreateProcess(pid);
+        var thread = try process.getOrCreateThread(tid);
+        try thread.addSpan(trace_event.name, ts, dur);
+        self.maybeUpdateMinMax(trace_event);
+    }
+
+    fn handleThreadName(self: *Profile, pid: i64, tid: i64, name: []const u8) !void {
+        var process = try self.getOrCreateProcess(pid);
+        var thread = try process.getOrCreateThread(tid);
+        try thread.setName(name);
+    }
+
     fn handleThreadSortIndex(self: *Profile, pid: i64, tid: i64, sort_index: i64) !void {
         var process = try self.getOrCreateProcess(pid);
         var thread = try process.getOrCreateThread(tid);
         thread.sort_index = sort_index;
     }
 
+    fn maybeUpdateMinMax(self: *Profile, trace_event: *const TraceEvent) void {
+        if (trace_event.ts) |ts| {
+            self.min_time_us = @min(self.min_time_us, ts);
+            var end = ts;
+            if (trace_event.dur) |dur| {
+                end += dur;
+            }
+            self.max_time_us = @max(self.max_time_us, end);
+        }
+    }
+
     pub fn done(self: *Profile) !void {
         for (self.processes.items) |*process| {
             try process.done();
         }
+        self.min_time_us = @min(self.min_time_us, self.max_time_us);
     }
 };
 
@@ -609,9 +628,8 @@ const ExpectedSpan = struct {
     duration_us: i64,
 };
 
-fn testParse(trace_events: []const TraceEvent, expected_profile: ExpectedProfile) !void {
+fn parse(trace_events: []const TraceEvent) !Profile {
     var profile = Profile.init(std.testing.allocator);
-    defer profile.deinit();
 
     for (trace_events) |*trace_event| {
         try profile.handleTraceEvent(trace_event);
@@ -619,6 +637,12 @@ fn testParse(trace_events: []const TraceEvent, expected_profile: ExpectedProfile
 
     try profile.done();
 
+    return profile;
+}
+
+fn testParse(trace_events: []const TraceEvent, expected_profile: ExpectedProfile) !void {
+    var profile = try parse(trace_events);
+    defer profile.deinit();
     try expectEqualProfiles(expected_profile, profile);
 }
 
@@ -844,4 +868,25 @@ test "parse, thread_sort_index equal, sort by name" {
             },
         },
     });
+}
+
+test "parse, set min/max" {
+    var profile = try parse(&[_]TraceEvent{
+        .{ .ph = 'X', .name = "a", .pid = 1, .tid = 3, .ts = 8, .dur = 5 },
+    });
+    defer profile.deinit();
+
+    try std.testing.expectEqual(@as(i64, 8), profile.min_time_us);
+    try std.testing.expectEqual(@as(i64, 13), profile.max_time_us);
+}
+
+test "parse, incomplete event, ignore for min/max" {
+    var profile = try parse(&[_]TraceEvent{
+        .{ .ph = 'X', .name = "a", .ts = 1, .dur = 20 },
+        .{ .ph = 'X', .name = "a", .pid = 1, .tid = 3, .ts = 8, .dur = 5 },
+    });
+    defer profile.deinit();
+
+    try std.testing.expectEqual(@as(i64, 8), profile.min_time_us);
+    try std.testing.expectEqual(@as(i64, 13), profile.max_time_us);
 }
