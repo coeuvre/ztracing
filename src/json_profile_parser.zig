@@ -90,6 +90,10 @@ pub const JsonProfileParser = struct {
         self.scanner.feedInput(input);
     }
 
+    pub fn cursor(self: *JsonProfileParser) usize {
+        return self.scanner.cursor;
+    }
+
     pub fn endInput(self: *JsonProfileParser) void {
         self.scanner.endInput();
     }

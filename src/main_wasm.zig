@@ -38,10 +38,18 @@ const Timestamp = struct {
         const us = @rem(self.us, 1_000_000);
         const s = @divTrunc(self.us, 1_000_000);
 
-        if (s != 0) {
-            try writer.print("{}s ", .{Number{ .num = s }});
+        if (s == 0 and us == 0) {
+            try writer.print("0", .{});
+        } else {
+            if (s != 0) {
+                try writer.print("{}s", .{Number{ .num = s }});
+                if (us != 0) {
+                    try writer.print(" {}us", .{Number{ .num = std.math.absInt(us) catch unreachable }});
+                }
+            } else {
+                try writer.print("{}us", .{Number{ .num = us }});
+            }
         }
-        try writer.print("{}us", .{Number{ .num = us }});
     }
 };
 
@@ -239,6 +247,15 @@ fn jsButtonToImguiButton(button: i32) i32 {
     };
 }
 
+const container_window_flags =
+    c.ImGuiWindowFlags_NoDocking |
+    c.ImGuiWindowFlags_NoTitleBar |
+    c.ImGuiWindowFlags_NoCollapse |
+    c.ImGuiWindowFlags_NoResize |
+    c.ImGuiWindowFlags_NoMove |
+    c.ImGuiWindowFlags_NoBringToFrontOnFocus |
+    c.ImGuiWindowFlags_NoNavFocus;
+
 const WelcomeState = struct {
     allocator: Allocator,
     show_demo_window: bool,
@@ -253,6 +270,11 @@ const WelcomeState = struct {
     pub fn update(self: *WelcomeState, dt: f32) void {
         _ = self;
         _ = dt;
+        const viewport = c.igGetMainViewport();
+        c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{ .x = 0, .y = 0 });
+        c.igSetNextWindowSize(viewport.*.WorkSize, 0);
+        _ = c.igBegin("MainWindow", null, container_window_flags);
+        c.igEnd();
     }
 
     pub fn onLoadFileStart(self: *WelcomeState, len: usize) void {
@@ -295,38 +317,31 @@ const LoadFileState = struct {
 
     pub fn update(self: *LoadFileState, dt: f32) void {
         _ = dt;
+        const viewport = c.igGetMainViewport();
+        c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{ .x = 0, .y = 0 });
+        c.igSetNextWindowSize(viewport.*.WorkSize, 0);
+        _ = c.igBegin("MainWindow", null, container_window_flags);
+        if (self.error_message) |err| {
+            c.igTextWrapped("%s", err.ptr);
 
-        var center: c.ImVec2 = undefined;
-        c.ImGuiViewport_GetCenter(&center, c.igGetMainViewport());
-        c.igSetNextWindowPos(center, c.ImGuiCond_Appearing, .{ .x = 0.5, .y = 0.5 });
-
-        if (c.igBeginPopupModal(popup_id, null, c.ImGuiWindowFlags_AlwaysAutoResize | c.ImGuiWindowFlags_NoTitleBar | c.ImGuiWindowFlags_NoMove)) {
-            if (self.error_message) |err| {
-                c.igTextWrapped("%s", err.ptr);
-
-                if (c.igButton("OK", .{ .x = 120, .y = 0 })) {
-                    c.igCloseCurrentPopup();
-                    switch_state(.{ .welcome = WelcomeState.init(self.allocator) });
-                }
+            if (c.igButton("OK", .{ .x = 120, .y = 0 })) {
+                c.igCloseCurrentPopup();
+                switch_state(.{ .welcome = WelcomeState.init(self.allocator) });
+            }
+        } else {
+            if (self.total > 0) {
+                const offset: f32 = @floatFromInt(self.offset);
+                const total: f32 = @floatFromInt(self.total);
+                const percentage: i32 = @intFromFloat(@round(offset / total * 100.0));
+                self.setProgress("Loading file ... ({}%)", .{percentage});
             } else {
-                if (self.total > 0) {
-                    const offset: f32 = @floatFromInt(self.offset);
-                    const total: f32 = @floatFromInt(self.total);
-                    const percentage: i32 = @intFromFloat(@round(offset / total * 100.0));
-                    self.setProgress("Loading file ... ({}%)", .{percentage});
-                } else {
-                    self.setProgress("Loading file ... ({})", .{self.offset});
-                }
-
-                c.igTextUnformatted(self.progress_message.?.ptr, null);
+                self.setProgress("Loading file ... ({})", .{self.offset});
             }
 
-            c.igEndPopup();
+            c.igTextUnformatted(self.progress_message.?.ptr, null);
         }
 
-        if (!c.igIsPopupOpen_Str(popup_id, 0)) {
-            c.igOpenPopup_Str(popup_id, 0);
-        }
+        c.igEnd();
     }
 
     pub fn deinit(self: *LoadFileState) void {
@@ -444,6 +459,12 @@ const ViewPos = struct {
 
 const ViewRegion = struct {
     bb: c.ImRect,
+    min_duration_us: i64,
+    width_per_us: f32,
+
+    pub fn pos(self: *const ViewRegion) c.ImVec2 {
+        return self.bb.Min;
+    }
 
     pub fn min(self: *const ViewRegion) c.ImVec2 {
         return self.bb.Min;
@@ -453,8 +474,19 @@ const ViewRegion = struct {
         return self.bb.Max;
     }
 
+    pub fn size(self: *const ViewRegion) c.ImVec2 {
+        return c.ImVec2{
+            .x = self.bb.Max.x - self.bb.Min.x,
+            .y = self.bb.Max.y - self.bb.Min.y,
+        };
+    }
+
     pub fn width(self: *const ViewRegion) f32 {
         return self.bb.Max.x - self.bb.Min.x;
+    }
+
+    pub fn height(self: *const ViewRegion) f32 {
+        return self.bb.Max.y - self.bb.Min.y;
     }
 
     pub fn left(self: *const ViewRegion) f32 {
@@ -468,14 +500,16 @@ const ViewRegion = struct {
     pub fn right(self: *const ViewRegion) f32 {
         return self.bb.Max.x;
     }
+
+    pub fn bottom(self: *const ViewRegion) f32 {
+        return self.bb.Max.y;
+    }
 };
 
 const ViewStyle = struct {
     sub_lane_height: f32,
     character_size: c.ImVec2,
     text_padding: c.ImVec2,
-    min_duration_us: i64,
-    width_per_us: f32,
 };
 
 const ViewState = struct {
@@ -489,42 +523,62 @@ const ViewState = struct {
     drag_start: ViewPos = undefined,
 
     pub fn init(allocator: Allocator, profile: Profile) ViewState {
+        const duration_us = profile.max_time_us - profile.min_time_us;
+        const padding = @divTrunc(duration_us, 6);
         return .{
             .allocator = allocator,
             .profile = profile,
-            .start_time_us = profile.min_time_us,
-            .end_time_us = profile.max_time_us,
+            .start_time_us = profile.min_time_us - padding,
+            .end_time_us = profile.max_time_us + padding,
             .hovered_counters = std.ArrayList(HoveredCounter).init(allocator),
         };
     }
 
-    fn calcStyle(self: *ViewState, region: ViewRegion) ViewStyle {
-        const width_per_us = region.width() / @as(f32, @floatFromInt((self.end_time_us - self.start_time_us)));
+    fn calcRegion(self: *ViewState, bb: c.ImRect) ViewRegion {
+        const width_per_us = (bb.Max.x - bb.Min.x) / @as(f32, @floatFromInt((self.end_time_us - self.start_time_us)));
         const min_duration_us: i64 = @intFromFloat(@ceil(1 / width_per_us));
+        return .{
+            .bb = bb,
+            .width_per_us = width_per_us,
+            .min_duration_us = min_duration_us,
+        };
+    }
 
+    fn calcStyle(self: *ViewState) ViewStyle {
+        _ = self;
         var character_size: c.ImVec2 = undefined;
         c.igCalcTextSize(&character_size, "A", null, false, 0);
         const text_padding_x: f32 = character_size.x;
         const text_padding_y: f32 = character_size.y / 4.0;
         const sub_lane_height: f32 = 2 * text_padding_y + character_size.y;
-
         return ViewStyle{
             .sub_lane_height = sub_lane_height,
             .character_size = character_size,
             .text_padding = .{ .x = text_padding_x, .y = text_padding_y },
-            .min_duration_us = min_duration_us,
-            .width_per_us = width_per_us,
         };
     }
 
     pub fn update(self: *ViewState, dt: f32) void {
         _ = dt;
+        const style = self.calcStyle();
 
-        const region = ViewRegion{ .bb = getWindowContentRegion() };
+        const timeline_height: f32 = 21;
+        self.drawTimeline(timeline_height, style);
+        self.drawMainView(timeline_height, style);
+    }
+
+    fn drawMainView(self: *ViewState, timeline_height: f32, style: ViewStyle) void {
+        const viewport = c.igGetMainViewport();
+        c.igSetNextWindowPos(.{ .x = viewport.*.WorkPos.x, .y = viewport.*.WorkPos.y + timeline_height }, 0, .{ .x = 0, .y = 0 });
+        c.igSetNextWindowSize(.{ .x = viewport.*.WorkSize.x, .y = viewport.*.WorkSize.y - timeline_height }, 0);
+        c.igPushStyleVar_Vec2(c.ImGuiStyleVar_WindowPadding, .{ .x = 0, .y = 0 });
+        _ = c.igBegin("MainWindow", null, container_window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
+        c.igPopStyleVar(1);
+
+        const region = self.calcRegion(getWindowContentRegion());
+
         self.handleDrag(region);
         self.handleScroll(region);
-
-        const style = self.calcStyle(region);
 
         const draw_list = c.igGetWindowDrawList();
         c.ImDrawList_PushClipRect(
@@ -543,6 +597,66 @@ const ViewState = struct {
         }
 
         c.ImDrawList_PopClipRect(draw_list);
+
+        c.igEnd();
+    }
+
+    fn drawTimeline(self: *ViewState, timeline_height: f32, style: ViewStyle) void {
+        const viewport = c.igGetMainViewport();
+        const timeline_bb = c.ImRect{
+            .Min = .{ .x = viewport.*.WorkPos.x, .y = viewport.*.WorkPos.y },
+            .Max = .{ .x = viewport.*.WorkPos.x + viewport.*.WorkSize.x, .y = viewport.*.WorkPos.y + timeline_height },
+        };
+        c.igSetNextWindowPos(timeline_bb.Min, 0, .{ .x = 0, .y = 0 });
+        c.igSetNextWindowSize(.{ .x = timeline_bb.Max.x - timeline_bb.Min.x, .y = timeline_bb.Max.y - timeline_bb.Min.y }, 0);
+
+        c.igPushStyleVar_Float(c.ImGuiStyleVar_WindowRounding, 0);
+        c.igPushStyleVar_Vec2(c.ImGuiStyleVar_WindowMinSize, .{ .x = 0, .y = 0 });
+        _ = c.igBegin("Timeline", null, container_window_flags);
+        c.igPopStyleVar(2);
+
+        const draw_list = c.igGetWindowDrawList();
+        const region = self.calcRegion(timeline_bb);
+        const target_block_width: f32 = 60;
+        const target_num_blocks: f32 = @ceil(region.width() / target_block_width);
+        var block_duration_us: i64 = @intFromFloat(@ceil(@as(f32, @floatFromInt(self.end_time_us - self.start_time_us)) / target_num_blocks));
+
+        var base: i64 = 1;
+        while (base * 10 < block_duration_us) : (base *= 10) {}
+        if (block_duration_us >= base * 4) {
+            base *= 4;
+        } else if (block_duration_us >= base * 2) {
+            base *= 2;
+        }
+
+        block_duration_us = base;
+
+        const large_block_duration_us = block_duration_us * 5;
+
+        const center_y = region.top() + region.height() * 0.5;
+
+        const text_color = getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 });
+        var time_us = @divTrunc(self.start_time_us, block_duration_us) * block_duration_us;
+        while (time_us < self.end_time_us) : (time_us += block_duration_us) {
+            const is_large_block = @rem(time_us, large_block_duration_us) == 0;
+
+            const x = region.left() + @as(f32, @floatFromInt(time_us - self.start_time_us)) * region.width_per_us;
+            const y1 = region.bottom();
+            const y2 = if (is_large_block) y1 - 12 else y1 - 4;
+            c.ImDrawList_AddLine(
+                draw_list,
+                .{ .x = x, .y = y1 },
+                .{ .x = x, .y = y2 },
+                text_color,
+                1,
+            );
+            if (is_large_block) {
+                const text = std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = time_us }}) catch unreachable;
+                c.ImDrawList_AddText_Vec2(draw_list, .{ .x = x + style.text_padding.x, .y = center_y - style.character_size.y * 0.5 }, text_color, text, null);
+            }
+        }
+
+        c.igEnd();
     }
 
     fn handleDrag(self: *ViewState, region: ViewRegion) void {
@@ -590,11 +704,14 @@ const ViewState = struct {
                     var duration_us: f64 = @floatFromInt((self.end_time_us - self.start_time_us));
                     const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
                     if (wheel_y > 0) {
-                        duration_us = duration_us * 0.8;
+                        if (duration_us > 100) {
+                            duration_us = duration_us * 0.8;
+                        }
                     } else {
-                        duration_us = duration_us * 1.25;
+                        if (duration_us < @as(f64, @floatFromInt((self.profile.max_time_us - self.profile.min_time_us) * 2))) {
+                            duration_us = duration_us * 1.25;
+                        }
                     }
-                    duration_us = @max(1, duration_us);
                     self.start_time_us = p_us - @as(i64, @intFromFloat(@round(p * duration_us)));
                     self.end_time_us = self.start_time_us + @as(i64, @intFromFloat(duration_us));
                 }
@@ -660,13 +777,13 @@ const ViewState = struct {
                         const col_v4 = general_purpose_colors[(color_index_base + series_index) % general_purpose_colors.len];
                         const col = getImColorU32(col_v4);
 
-                        var iter = series.iter(self.start_time_us, style.min_duration_us);
+                        var iter = series.iter(self.start_time_us, region.min_duration_us);
                         var prev_pos: ?c.ImVec2 = null;
                         var prev_value: ?*const SeriesValue = null;
                         var hovered_counter: ?HoveredCounter = null;
                         while (iter.next()) |value| {
                             var pos = c.ImVec2{
-                                .x = region.left() + @as(f32, @floatFromInt(value.time_us - self.start_time_us)) * style.width_per_us,
+                                .x = region.left() + @as(f32, @floatFromInt(value.time_us - self.start_time_us)) * region.width_per_us,
                                 .y = lane_bottom - @as(f32, @floatCast((value.value / counter.max_value))) * lane_height,
                             };
 
@@ -829,15 +946,15 @@ const ViewState = struct {
                 c.igItemSize_Rect(lane_bb, -1);
                 if (c.igItemAdd(lane_bb, 0, null, 0)) {
                     for (thread.tracks.items, 0..) |sub_lane, sub_lane_index| {
-                        var iter = sub_lane.iter(self.start_time_us, style.min_duration_us);
+                        var iter = sub_lane.iter(self.start_time_us, region.min_duration_us);
                         var sub_lane_top = lane_top + @as(f32, @floatFromInt(sub_lane_index)) * style.sub_lane_height;
                         while (iter.next()) |span| {
                             if (span.start_time_us > self.end_time_us) {
                                 break;
                             }
 
-                            var x1 = region.left() + @as(f32, @floatFromInt(span.start_time_us - self.start_time_us)) * style.width_per_us;
-                            var x2 = x1 + @as(f32, @floatFromInt(@max(span.duration_us, style.min_duration_us))) * style.width_per_us;
+                            var x1 = region.left() + @as(f32, @floatFromInt(span.start_time_us - self.start_time_us)) * region.width_per_us;
+                            var x2 = x1 + @as(f32, @floatFromInt(@max(span.duration_us, region.min_duration_us))) * region.width_per_us;
 
                             x1 = @max(region.left(), x1);
                             x2 = @min(region.right(), x2);
@@ -1147,13 +1264,11 @@ const App = struct {
                 c.ImGuiWindowFlags_NoMove |
                 c.ImGuiWindowFlags_NoBringToFrontOnFocus |
                 c.ImGuiWindowFlags_NoNavFocus;
+            _ = window_flags;
             const viewport = c.igGetMainViewport();
             c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{ .x = 0, .y = 0 });
             c.igSetNextWindowSize(viewport.*.WorkSize, 0);
-            _ = c.igBegin("MainWindow", null, window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
             self.state.update(dt);
-
-            c.igEnd();
         }
 
         if (self.show_imgui_demo_window) {
