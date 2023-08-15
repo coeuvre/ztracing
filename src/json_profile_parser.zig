@@ -487,13 +487,15 @@ fn skipJsonValue(scanner: *std.json.Scanner, maybe_array_end: ?*bool, diagnostic
             try skipString(scanner);
         },
 
+        .partial_number => {
+            try skipNumber(scanner);
+        },
+
         .true,
         .false,
         .null,
         .number,
-        .allocated_number,
         .string,
-        .allocated_string,
         => {},
 
         else => {
@@ -512,10 +514,19 @@ fn skipString(scanner: *std.json.Scanner) !void {
             .partial_string_escaped_2,
             .partial_string_escaped_3,
             .partial_string_escaped_4,
-            .string,
-            => {
-                break;
-            },
+            => {},
+            .string => break,
+            else => return error.unexpected_token,
+        }
+    }
+}
+
+fn skipNumber(scanner: *std.json.Scanner) !void {
+    while (true) {
+        const token = try scanner.next();
+        switch (token) {
+            .partial_number => {},
+            .number => break,
             else => return error.unexpected_token,
         }
     }
@@ -549,10 +560,7 @@ fn testParser(input: []const u8, expected: ExpectedParseResult) ParseError!void 
                 try expectEqualTraceEvents(expected_trace_event, trace_event);
                 trace_event_index += 1;
             },
-            .none => {},
-        }
-        if (result == .none) {
-            break;
+            .none => break,
         }
     }
 }
@@ -635,7 +643,7 @@ test "escaped string" {
 test "skip escaped object key" {
     try testParser(
         \\{
-        \\  "a": { "\"a\"": "b" }
+        \\  "@\u1234": "b"
         \\}
     , .{
         .trace_events = &[_]TraceEvent{},
@@ -645,7 +653,7 @@ test "skip escaped object key" {
 test "skip escaped object value" {
     try testParser(
         \\{
-        \\  "a": { "a": "\"b\"" }
+        \\  "data": "@\u1234"
         \\}
     , .{
         .trace_events = &[_]TraceEvent{},

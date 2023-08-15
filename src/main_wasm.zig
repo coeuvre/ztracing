@@ -137,7 +137,7 @@ pub const SinebowColorGenerator = struct {
     }
 };
 
-const general_purpose_colors: [7]Color = [_]Color{
+var general_purpose_colors: [7]Color = [_]Color{
     rgb(169, 188, 255),
     rgb(154, 255, 255),
     rgb(24, 255, 177),
