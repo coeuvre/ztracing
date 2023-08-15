@@ -517,9 +517,12 @@ const ViewState = struct {
             true,
         );
 
-        if (c.igCollapsingHeader_BoolPtr("Process 1", null, c.ImGuiTreeNodeFlags_DefaultOpen)) {
-            self.drawCounters(region, style, self.profile.counters.items);
-            self.drawThreads(region, style, self.profile.threads.items);
+        for (self.profile.processes.items) |*process| {
+            const name = std.fmt.bufPrintZ(&global_buf, "Process {}", .{process.pid}) catch unreachable;
+            if (c.igCollapsingHeader_BoolPtr(name, null, c.ImGuiTreeNodeFlags_DefaultOpen)) {
+                self.drawCounters(region, style, process.counters.items);
+                self.drawThreads(region, style, process.threads.items);
+            }
         }
 
         c.ImDrawList_PopClipRect(draw_list);

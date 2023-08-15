@@ -139,7 +139,6 @@ pub const Counter = struct {
         }
     }
 
-
     fn lessThan(_: void, lhs: Counter, rhs: Counter) bool {
         return nameLessThan(lhs.name, rhs.name);
     }
@@ -356,24 +355,22 @@ fn nameLessThan(lhs_name: []const u8, rhs_name: []const u8) bool {
     return lhs_name.len < rhs_name.len;
 }
 
-pub const Profile = struct {
+pub const Process = struct {
     allocator: Allocator,
-    min_time_us: i64,
-    max_time_us: i64,
+    pid: i64,
     counters: ArrayList(Counter),
     threads: ArrayList(Thread),
 
-    pub fn init(allocator: Allocator) Profile {
+    pub fn init(allocator: Allocator, pid: i64) Process {
         return .{
             .allocator = allocator,
-            .min_time_us = 0,
-            .max_time_us = 0,
+            .pid = pid,
             .counters = ArrayList(Counter).init(allocator),
             .threads = ArrayList(Thread).init(allocator),
         };
     }
 
-    pub fn deinit(self: *Profile) void {
+    pub fn deinit(self: *Process) void {
         for (self.counters.items) |*counter| {
             counter.deinit();
         }
@@ -385,7 +382,19 @@ pub const Profile = struct {
         self.threads.deinit();
     }
 
-    pub fn getOrCreateCounter(self: *Profile, name: []const u8) !*Counter {
+    pub fn done(self: *Process) !void {
+        std.sort.block(Counter, self.counters.items, {}, Counter.lessThan);
+        for (self.counters.items) |*counter| {
+            counter.done();
+        }
+
+        std.sort.block(Thread, self.threads.items, {}, Thread.lessThan);
+        for (self.threads.items) |*thread| {
+            try thread.done();
+        }
+    }
+
+    pub fn getOrCreateCounter(self: *Process, name: []const u8) !*Counter {
         for (self.counters.items) |*counter| {
             if (std.mem.eql(u8, counter.name, name)) {
                 return counter;
@@ -396,7 +405,7 @@ pub const Profile = struct {
         return &self.counters.items[self.counters.items.len - 1];
     }
 
-    pub fn getOrCreateThread(self: *Profile, tid: i64) !*Thread {
+    pub fn getOrCreateThread(self: *Process, tid: i64) !*Thread {
         for (self.threads.items) |*thread| {
             if (thread.tid == tid) {
                 return thread;
@@ -405,6 +414,40 @@ pub const Profile = struct {
 
         try self.threads.append(Thread.init(self.allocator, tid));
         return &self.threads.items[self.threads.items.len - 1];
+    }
+};
+
+pub const Profile = struct {
+    allocator: Allocator,
+    min_time_us: i64,
+    max_time_us: i64,
+    processes: ArrayList(Process),
+
+    pub fn init(allocator: Allocator) Profile {
+        return .{
+            .allocator = allocator,
+            .min_time_us = 0,
+            .max_time_us = 0,
+            .processes = ArrayList(Process).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *Profile) void {
+        for (self.processes.items) |*process| {
+            process.deinit();
+        }
+        self.processes.deinit();
+    }
+
+    fn getOrCreateProcess(self: *Profile, pid: i64) !*Process {
+        for (self.processes.items) |*process| {
+            if (process.pid == pid) {
+                return process;
+            }
+        }
+
+        try self.processes.append(Process.init(self.allocator, pid));
+        return &self.processes.items[self.processes.items.len - 1];
     }
 
     pub fn handleTraceEvent(self: *Profile, trace_event: *const TraceEvent) !void {
@@ -422,61 +465,27 @@ pub const Profile = struct {
                 // Counter event
                 'C' => {
                     // TODO: handle trace_event.id
-                    if (trace_event.name) |name| {
-                        var counter = try self.getOrCreateCounter(name);
-                        if (trace_event.ts) |ts| {
-                            if (trace_event.args) |args| {
-                                switch (args) {
-                                    .object => |obj| {
-                                        var iter = obj.iterator();
-                                        while (iter.next()) |entry| {
-                                            const value_name = entry.key_ptr.*;
-                                            switch (entry.value_ptr.*) {
-                                                .string, .number_string => |num| {
-                                                    const val = try std.fmt.parseFloat(f64, num);
-                                                    try counter.addSample(ts, value_name, val);
-                                                },
-                                                .float => |val| {
-                                                    try counter.addSample(ts, value_name, val);
-                                                },
-                                                .integer => |val| {
-                                                    try counter.addSample(ts, value_name, @floatFromInt(val));
-                                                },
-                                                else => {},
-                                            }
-                                        }
-                                    },
-                                    else => {},
-                                }
-                            }
-                        }
-                    }
-                },
-                // Complete event
-                'X' => {
-                    // TODO: handle pid
-                    if (trace_event.tid) |tid| {
-                        if (trace_event.ts) |ts| {
-                            if (trace_event.dur) |dur| {
-                                var thread = try self.getOrCreateThread(tid);
-                                try thread.addSpan(trace_event.name, ts, dur);
-                            }
-                        }
-                    }
-                },
-                // Metadata event
-                'M' => {
-                    if (trace_event.name) |name| {
-                        if (std.mem.eql(u8, name, "thread_name")) {
-                            if (trace_event.tid) |tid| {
+                    if (trace_event.pid) |pid| {
+                        if (trace_event.name) |name| {
+                            if (trace_event.ts) |ts| {
                                 if (trace_event.args) |args| {
                                     switch (args) {
                                         .object => |obj| {
-                                            if (obj.get("name")) |val| {
-                                                switch (val) {
-                                                    .string => |str| {
-                                                        var thread = try self.getOrCreateThread(tid);
-                                                        try thread.setName(str);
+                                            var process = try self.getOrCreateProcess(pid);
+                                            var counter = try process.getOrCreateCounter(name);
+                                            var iter = obj.iterator();
+                                            while (iter.next()) |entry| {
+                                                const value_name = entry.key_ptr.*;
+                                                switch (entry.value_ptr.*) {
+                                                    .string, .number_string => |num| {
+                                                        const val = try std.fmt.parseFloat(f64, num);
+                                                        try counter.addSample(ts, value_name, val);
+                                                    },
+                                                    .float => |val| {
+                                                        try counter.addSample(ts, value_name, val);
+                                                    },
+                                                    .integer => |val| {
+                                                        try counter.addSample(ts, value_name, @floatFromInt(val));
                                                     },
                                                     else => {},
                                                 }
@@ -486,25 +495,70 @@ pub const Profile = struct {
                                     }
                                 }
                             }
-                        } else if (std.mem.eql(u8, name, "thread_sort_index")) {
-                            if (trace_event.tid) |tid| {
-                                if (trace_event.args) |args| {
-                                    switch (args) {
-                                        .object => |obj| {
-                                            if (obj.get("sort_index")) |val| {
-                                                switch (val) {
-                                                    .number_string, .string => |str| {
-                                                        const sort_index = try std.fmt.parseInt(i64, str, 10);
-                                                        try self.handleThreadSortIndex(tid, sort_index);
-                                                    },
-                                                    .integer => |sort_index| {
-                                                        try self.handleThreadSortIndex(tid, sort_index);
-                                                    },
-                                                    else => {},
+                        }
+                    }
+                },
+                // Complete event
+                'X' => {
+                    // TODO: handle pid
+                    if (trace_event.pid) |pid| {
+                        if (trace_event.tid) |tid| {
+                            if (trace_event.ts) |ts| {
+                                if (trace_event.dur) |dur| {
+                                    var process = try self.getOrCreateProcess(pid);
+                                    var thread = try process.getOrCreateThread(tid);
+                                    try thread.addSpan(trace_event.name, ts, dur);
+                                }
+                            }
+                        }
+                    }
+                },
+                // Metadata event
+                'M' => {
+                    if (trace_event.name) |name| {
+                        if (std.mem.eql(u8, name, "thread_name")) {
+                            if (trace_event.pid) |pid| {
+                                if (trace_event.tid) |tid| {
+                                    if (trace_event.args) |args| {
+                                        switch (args) {
+                                            .object => |obj| {
+                                                if (obj.get("name")) |val| {
+                                                    switch (val) {
+                                                        .string => |str| {
+                                                            var process = try self.getOrCreateProcess(pid);
+                                                            var thread = try process.getOrCreateThread(tid);
+                                                            try thread.setName(str);
+                                                        },
+                                                        else => {},
+                                                    }
                                                 }
-                                            }
-                                        },
-                                        else => {},
+                                            },
+                                            else => {},
+                                        }
+                                    }
+                                }
+                            }
+                        } else if (std.mem.eql(u8, name, "thread_sort_index")) {
+                            if (trace_event.pid) |pid| {
+                                if (trace_event.tid) |tid| {
+                                    if (trace_event.args) |args| {
+                                        switch (args) {
+                                            .object => |obj| {
+                                                if (obj.get("sort_index")) |val| {
+                                                    switch (val) {
+                                                        .number_string, .string => |str| {
+                                                            const sort_index = try std.fmt.parseInt(i64, str, 10);
+                                                            try self.handleThreadSortIndex(pid, tid, sort_index);
+                                                        },
+                                                        .integer => |sort_index| {
+                                                            try self.handleThreadSortIndex(pid, tid, sort_index);
+                                                        },
+                                                        else => {},
+                                                    }
+                                                }
+                                            },
+                                            else => {},
+                                        }
                                     }
                                 }
                             }
@@ -516,25 +570,25 @@ pub const Profile = struct {
         }
     }
 
-    fn handleThreadSortIndex(self: *Profile, tid: i64, sort_index: i64) !void {
-        var thread = try self.getOrCreateThread(tid);
+    fn handleThreadSortIndex(self: *Profile, pid: i64, tid: i64, sort_index: i64) !void {
+        var process = try self.getOrCreateProcess(pid);
+        var thread = try process.getOrCreateThread(tid);
         thread.sort_index = sort_index;
     }
 
     pub fn done(self: *Profile) !void {
-        std.sort.block(Counter, self.counters.items, {}, Counter.lessThan);
-        for (self.counters.items) |*counter| {
-            counter.done();
-        }
-
-        std.sort.block(Thread, self.threads.items, {}, Thread.lessThan);
-        for (self.threads.items) |*thread| {
-            try thread.done();
+        for (self.processes.items) |*process| {
+            try process.done();
         }
     }
 };
 
 const ExpectedProfile = struct {
+    processes: ?[]const ExpectedProcess = null,
+};
+
+const ExpectedProcess = struct {
+    pid: i64,
     threads: ?[]const ExpectedThread = null,
 };
 
@@ -565,12 +619,32 @@ fn testParse(trace_events: []const TraceEvent, expected_profile: ExpectedProfile
 
     try profile.done();
 
-    if (expected_profile.threads) |expected_threads| {
-        try std.testing.expectEqual(expected_threads.len, profile.threads.items.len);
+    try expectEqualProfiles(expected_profile, profile);
+}
 
-        for (expected_threads, profile.threads.items) |expected_thread, actual_thread| {
+fn expectEqualProfiles(expected: ExpectedProfile, actual: Profile) !void {
+    if (expected.processes) |expected_processes| {
+        try std.testing.expectEqual(expected_processes.len, actual.processes.items.len);
+
+        for (expected_processes, actual.processes.items) |expected_process, actual_process| {
+            try expectEqualProcesses(expected_process, actual_process);
+        }
+    } else {
+        try std.testing.expectEqual(@as(usize, 0), actual.processes.items.len);
+    }
+}
+
+fn expectEqualProcesses(expected: ExpectedProcess, actual: Process) !void {
+    try std.testing.expectEqual(expected.pid, actual.pid);
+
+    if (expected.threads) |expected_threads| {
+        try std.testing.expectEqual(expected_threads.len, actual.threads.items.len);
+
+        for (expected_threads, actual.threads.items) |expected_thread, actual_thread| {
             try expectEqualThreads(expected_thread, actual_thread);
         }
+    } else {
+        try std.testing.expectEqual(@as(usize, 0), actual.threads.items.len);
     }
 }
 
@@ -628,17 +702,22 @@ fn createArgsName(name: []const u8) !std.json.Value {
 
 test "parse, spans overlap, place at same level" {
     try testParse(&[_]TraceEvent{
-        .{ .ph = 'X', .name = "a", .tid = 1, .ts = 0, .dur = 3 },
-        .{ .ph = 'X', .name = "b", .tid = 1, .ts = 1, .dur = 4 },
+        .{ .ph = 'X', .name = "a", .pid = 1, .tid = 1, .ts = 0, .dur = 3 },
+        .{ .ph = 'X', .name = "b", .pid = 1, .tid = 1, .ts = 1, .dur = 4 },
     }, .{
-        .threads = &[_]ExpectedThread{
+        .processes = &[_]ExpectedProcess{
             .{
-                .tid = 1,
-                .tracks = &[_]ExpectedTrack{
-                    .{ .spans = &[_]ExpectedSpan{
-                        .{ .name = "a", .start_time_us = 0, .duration_us = 3 },
-                        .{ .name = "b", .start_time_us = 1, .duration_us = 4 },
-                    } },
+                .pid = 1,
+                .threads = &[_]ExpectedThread{
+                    .{
+                        .tid = 1,
+                        .tracks = &[_]ExpectedTrack{
+                            .{ .spans = &[_]ExpectedSpan{
+                                .{ .name = "a", .start_time_us = 0, .duration_us = 3 },
+                                .{ .name = "b", .start_time_us = 1, .duration_us = 4 },
+                            } },
+                        },
+                    },
                 },
             },
         },
@@ -647,17 +726,22 @@ test "parse, spans overlap, place at same level" {
 
 test "parse, spans have equal start time, sort by duration descending" {
     try testParse(&[_]TraceEvent{
-        .{ .ph = 'X', .name = "a", .tid = 1, .ts = 0, .dur = 1 },
-        .{ .ph = 'X', .name = "b", .tid = 1, .ts = 0, .dur = 2 },
-        .{ .ph = 'X', .name = "c", .tid = 1, .ts = 0, .dur = 3 },
+        .{ .ph = 'X', .name = "a", .pid = 1, .tid = 1, .ts = 0, .dur = 1 },
+        .{ .ph = 'X', .name = "b", .pid = 1, .tid = 1, .ts = 0, .dur = 2 },
+        .{ .ph = 'X', .name = "c", .pid = 1, .tid = 1, .ts = 0, .dur = 3 },
     }, .{
-        .threads = &[_]ExpectedThread{
+        .processes = &[_]ExpectedProcess{
             .{
-                .tid = 1,
-                .tracks = &[_]ExpectedTrack{
-                    .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 3 }} },
-                    .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
-                    .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 1 }} },
+                .pid = 1,
+                .threads = &[_]ExpectedThread{
+                    .{
+                        .tid = 1,
+                        .tracks = &[_]ExpectedTrack{
+                            .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 3 }} },
+                            .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
+                            .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 1 }} },
+                        },
+                    },
                 },
             },
         },
@@ -671,31 +755,36 @@ test "parse, thread_sort_index, sorted" {
     defer deinitArgs(&sort_index_3);
 
     try testParse(&[_]TraceEvent{
-        .{ .ph = 'M', .name = "thread_sort_index", .tid = 1, .args = sort_index_3 },
-        .{ .ph = 'M', .name = "thread_sort_index", .tid = 3, .args = sort_index_1 },
-        .{ .ph = 'X', .name = "a", .tid = 1, .ts = 0, .dur = 1 },
-        .{ .ph = 'X', .name = "b", .tid = 2, .ts = 0, .dur = 2 },
-        .{ .ph = 'X', .name = "c", .tid = 3, .ts = 0, .dur = 3 },
+        .{ .ph = 'M', .name = "thread_sort_index", .pid = 1, .tid = 1, .args = sort_index_3 },
+        .{ .ph = 'M', .name = "thread_sort_index", .pid = 1, .tid = 3, .args = sort_index_1 },
+        .{ .ph = 'X', .name = "a", .pid = 1, .tid = 1, .ts = 0, .dur = 1 },
+        .{ .ph = 'X', .name = "b", .pid = 1, .tid = 2, .ts = 0, .dur = 2 },
+        .{ .ph = 'X', .name = "c", .pid = 1, .tid = 3, .ts = 0, .dur = 3 },
     }, .{
-        .threads = &[_]ExpectedThread{
+        .processes = &[_]ExpectedProcess{
             .{
-                .tid = 3,
-                .sort_index = 1,
-                .tracks = &[_]ExpectedTrack{
-                    .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 3 }} },
-                },
-            },
-            .{
-                .tid = 1,
-                .sort_index = 3,
-                .tracks = &[_]ExpectedTrack{
-                    .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 1 }} },
-                },
-            },
-            .{
-                .tid = 2,
-                .tracks = &[_]ExpectedTrack{
-                    .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
+                .pid = 1,
+                .threads = &[_]ExpectedThread{
+                    .{
+                        .tid = 3,
+                        .sort_index = 1,
+                        .tracks = &[_]ExpectedTrack{
+                            .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 3 }} },
+                        },
+                    },
+                    .{
+                        .tid = 1,
+                        .sort_index = 3,
+                        .tracks = &[_]ExpectedTrack{
+                            .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 1 }} },
+                        },
+                    },
+                    .{
+                        .tid = 2,
+                        .tracks = &[_]ExpectedTrack{
+                            .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
+                        },
+                    },
                 },
             },
         },
@@ -713,39 +802,44 @@ test "parse, thread_sort_index equal, sort by name" {
     defer deinitArgs(&name_c);
 
     try testParse(&[_]TraceEvent{
-        .{ .ph = 'M', .name = "thread_name", .tid = 1, .args = name_c },
-        .{ .ph = 'M', .name = "thread_sort_index", .tid = 1, .args = sort_index_1 },
-        .{ .ph = 'M', .name = "thread_name", .tid = 2, .args = name_b },
-        .{ .ph = 'M', .name = "thread_sort_index", .tid = 2, .args = sort_index_1 },
-        .{ .ph = 'M', .name = "thread_name", .tid = 3, .args = name_a },
-        .{ .ph = 'M', .name = "thread_sort_index", .tid = 3, .args = sort_index_1 },
-        .{ .ph = 'X', .name = "c", .tid = 1, .ts = 0, .dur = 1 },
-        .{ .ph = 'X', .name = "b", .tid = 2, .ts = 0, .dur = 2 },
-        .{ .ph = 'X', .name = "a", .tid = 3, .ts = 0, .dur = 3 },
+        .{ .ph = 'M', .name = "thread_name", .pid = 1, .tid = 1, .args = name_c },
+        .{ .ph = 'M', .name = "thread_sort_index", .pid = 1, .tid = 1, .args = sort_index_1 },
+        .{ .ph = 'M', .name = "thread_name", .pid = 1, .tid = 2, .args = name_b },
+        .{ .ph = 'M', .name = "thread_sort_index", .pid = 1, .tid = 2, .args = sort_index_1 },
+        .{ .ph = 'M', .name = "thread_name", .pid = 1, .tid = 3, .args = name_a },
+        .{ .ph = 'M', .name = "thread_sort_index", .pid = 1, .tid = 3, .args = sort_index_1 },
+        .{ .ph = 'X', .name = "c", .pid = 1, .tid = 1, .ts = 0, .dur = 1 },
+        .{ .ph = 'X', .name = "b", .pid = 1, .tid = 2, .ts = 0, .dur = 2 },
+        .{ .ph = 'X', .name = "a", .pid = 1, .tid = 3, .ts = 0, .dur = 3 },
     }, .{
-        .threads = &[_]ExpectedThread{
+        .processes = &[_]ExpectedProcess{
             .{
-                .tid = 3,
-                .name = "thread a",
-                .sort_index = 1,
-                .tracks = &[_]ExpectedTrack{
-                    .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 3 }} },
-                },
-            },
-            .{
-                .tid = 2,
-                .name = "thread b",
-                .sort_index = 1,
-                .tracks = &[_]ExpectedTrack{
-                    .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
-                },
-            },
-            .{
-                .tid = 1,
-                .name = "thread c",
-                .sort_index = 1,
-                .tracks = &[_]ExpectedTrack{
-                    .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 1 }} },
+                .pid = 1,
+                .threads = &[_]ExpectedThread{
+                    .{
+                        .tid = 3,
+                        .name = "thread a",
+                        .sort_index = 1,
+                        .tracks = &[_]ExpectedTrack{
+                            .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 3 }} },
+                        },
+                    },
+                    .{
+                        .tid = 2,
+                        .name = "thread b",
+                        .sort_index = 1,
+                        .tracks = &[_]ExpectedTrack{
+                            .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
+                        },
+                    },
+                    .{
+                        .tid = 1,
+                        .name = "thread c",
+                        .sort_index = 1,
+                        .tracks = &[_]ExpectedTrack{
+                            .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 1 }} },
+                        },
+                    },
                 },
             },
         },
