@@ -94,14 +94,14 @@ pub const SeriesIter = struct {
     }
 };
 
-pub const ProfileCounterLane = struct {
+pub const Counter = struct {
     name: []u8,
     max_value: f64,
     series: ArrayList(Series),
 
     ui: UiState = .{},
 
-    fn init(allocator: Allocator, name: []const u8) ProfileCounterLane {
+    fn init(allocator: Allocator, name: []const u8) Counter {
         return .{
             .name = allocator.dupe(u8, name) catch unreachable,
             .max_value = 0,
@@ -109,20 +109,20 @@ pub const ProfileCounterLane = struct {
         };
     }
 
-    fn deinit(self: *ProfileCounterLane) void {
+    fn deinit(self: *Counter) void {
         for (self.series.items) |*series| {
             series.deinit();
         }
         self.series.deinit();
     }
 
-    pub fn addCounter(self: *ProfileCounterLane, time_us: i64, name: []const u8, value: f64) !void {
+    pub fn addSample(self: *Counter, time_us: i64, name: []const u8, value: f64) !void {
         self.max_value = @max(self.max_value, value);
         var series = try self.getOrCreateSeries(name);
         try series.values.append(.{ .time_us = time_us, .value = value });
     }
 
-    fn getOrCreateSeries(self: *ProfileCounterLane, name: []const u8) !*Series {
+    fn getOrCreateSeries(self: *Counter, name: []const u8) !*Series {
         for (self.series.items) |*series| {
             if (std.mem.eql(u8, series.name, name)) {
                 return series;
@@ -133,10 +133,15 @@ pub const ProfileCounterLane = struct {
         return &self.series.items[self.series.items.len - 1];
     }
 
-    pub fn done(self: *ProfileCounterLane) void {
+    pub fn done(self: *Counter) void {
         for (self.series.items) |*series| {
             series.done();
         }
+    }
+
+
+    fn lessThan(_: void, lhs: Counter, rhs: Counter) bool {
+        return nameLessThan(lhs.name, rhs.name);
     }
 };
 
@@ -156,24 +161,24 @@ pub const Span = struct {
     }
 };
 
-pub const ThreadSubLane = struct {
+pub const Track = struct {
     spans: ArrayList(*Span),
 
-    pub fn init(allocator: Allocator) ThreadSubLane {
+    pub fn init(allocator: Allocator) Track {
         return .{
             .spans = ArrayList(*Span).init(allocator),
         };
     }
 
-    pub fn deinit(self: *ThreadSubLane) void {
+    pub fn deinit(self: *Track) void {
         self.spans.deinit();
     }
 
-    pub fn addSpan(self: *ThreadSubLane, span: *Span) !void {
+    pub fn addSpan(self: *Track, span: *Span) !void {
         try self.spans.append(span);
     }
 
-    pub fn iter(self: *const ThreadSubLane, start_time_us: i64, min_duration_us: i64) ThreadSubLaneIter {
+    pub fn iter(self: *const Track, start_time_us: i64, min_duration_us: i64) SpanIter {
         return .{
             .spans = self.spans.items,
             .prev_index = null,
@@ -183,13 +188,13 @@ pub const ThreadSubLane = struct {
     }
 };
 
-pub const ThreadSubLaneIter = struct {
+pub const SpanIter = struct {
     spans: []const *Span,
     prev_index: ?usize,
     cursor: i64,
     min_duration_us: i64,
 
-    pub fn next(self: *ThreadSubLaneIter) ?*const Span {
+    pub fn next(self: *SpanIter) ?*const Span {
         var index = if (self.prev_index) |prev| prev + 1 else 0;
         while (index < self.spans.len) {
             const span = self.spans[index];
@@ -210,31 +215,31 @@ pub const ThreadSubLaneIter = struct {
     }
 };
 
-pub const ThreadLane = struct {
+pub const Thread = struct {
     allocator: Allocator,
     tid: i64,
     spans: ArrayList(Span),
-    sub_lanes: ArrayList(ThreadSubLane),
+    tracks: ArrayList(Track),
 
     name: ?[]u8 = null,
     sort_index: ?i64 = null,
 
     ui: UiState = .{},
 
-    pub fn init(allocator: Allocator, tid: i64) ThreadLane {
+    pub fn init(allocator: Allocator, tid: i64) Thread {
         return .{
             .allocator = allocator,
             .tid = tid,
             .spans = ArrayList(Span).init(allocator),
-            .sub_lanes = ArrayList(ThreadSubLane).init(allocator),
+            .tracks = ArrayList(Track).init(allocator),
         };
     }
 
-    pub fn deinit(self: *ThreadLane) void {
-        for (self.sub_lanes.items) |*sub_lane| {
-            sub_lane.deinit();
+    pub fn deinit(self: *Thread) void {
+        for (self.tracks.items) |*track| {
+            track.deinit();
         }
-        self.sub_lanes.deinit();
+        self.tracks.deinit();
 
         for (self.spans.items) |*span| {
             self.allocator.free(span.name);
@@ -246,14 +251,14 @@ pub const ThreadLane = struct {
         }
     }
 
-    pub fn setName(self: *ThreadLane, name: []const u8) !void {
+    pub fn setName(self: *Thread, name: []const u8) !void {
         if (self.name) |n| {
             self.allocator.free(n);
         }
         self.name = try self.allocator.dupe(u8, name);
     }
 
-    pub fn addSpan(self: *ThreadLane, name: ?[]const u8, start_time_us: i64, duration_us: i64) !void {
+    pub fn addSpan(self: *Thread, name: ?[]const u8, start_time_us: i64, duration_us: i64) !void {
         try self.spans.append(.{
             .name = try self.allocator.dupe(u8, name orelse ""),
             .start_time_us = start_time_us,
@@ -261,14 +266,14 @@ pub const ThreadLane = struct {
         });
     }
 
-    fn getOrCreateSubLane(self: *ThreadLane, level: usize) !*ThreadSubLane {
-        while (level >= self.sub_lanes.items.len) {
-            try self.sub_lanes.append(ThreadSubLane.init(self.allocator));
+    fn getOrCreateTrack(self: *Thread, level: usize) !*Track {
+        while (level >= self.tracks.items.len) {
+            try self.tracks.append(Track.init(self.allocator));
         }
-        return &self.sub_lanes.items[level];
+        return &self.tracks.items[level];
     }
 
-    pub fn done(self: *ThreadLane) !void {
+    pub fn done(self: *Thread) !void {
         std.sort.block(Span, self.spans.items, {}, Span.lessThan);
 
         if (self.spans.items.len > 0) {
@@ -287,15 +292,15 @@ pub const ThreadLane = struct {
         total_duration_us: i64,
     };
 
-    fn mergeSpans(self: *ThreadLane, level: usize, start_time_us: i64, end_time_us: i64, span_start_index: usize) !MergeResult {
+    fn mergeSpans(self: *Thread, level: usize, start_time_us: i64, end_time_us: i64, span_start_index: usize) !MergeResult {
         var index = span_start_index;
         var total: i64 = 0;
         while (index < self.spans.items.len) {
             const span = &self.spans.items[index];
             const span_end_time_us = span.start_time_us + span.duration_us;
             if (span.start_time_us >= start_time_us and span_end_time_us <= end_time_us) {
-                var sub_lane = try self.getOrCreateSubLane(level);
-                try sub_lane.addSpan(span);
+                var track = try self.getOrCreateTrack(level);
+                try track.addSpan(span);
                 const result = try mergeSpans(self, level + 1, span.start_time_us, span_end_time_us, index + 1);
                 index = result.index;
                 span.self_duration_us = @max(span.duration_us - result.total_duration_us, 0);
@@ -307,7 +312,7 @@ pub const ThreadLane = struct {
         return .{ .index = index, .total_duration_us = total };
     }
 
-    fn lessThan(_: void, lhs: ThreadLane, rhs: ThreadLane) bool {
+    fn lessThan(_: void, lhs: Thread, rhs: Thread) bool {
         if (lhs.sort_index != null or rhs.sort_index != null) {
             if (lhs.sort_index != null and rhs.sort_index == null) {
                 return true;
@@ -355,51 +360,51 @@ pub const Profile = struct {
     allocator: Allocator,
     min_time_us: i64,
     max_time_us: i64,
-    counter_lanes: ArrayList(ProfileCounterLane),
-    thread_lanes: ArrayList(ThreadLane),
+    counters: ArrayList(Counter),
+    threads: ArrayList(Thread),
 
     pub fn init(allocator: Allocator) Profile {
         return .{
             .allocator = allocator,
             .min_time_us = 0,
             .max_time_us = 0,
-            .counter_lanes = ArrayList(ProfileCounterLane).init(allocator),
-            .thread_lanes = ArrayList(ThreadLane).init(allocator),
+            .counters = ArrayList(Counter).init(allocator),
+            .threads = ArrayList(Thread).init(allocator),
         };
     }
 
     pub fn deinit(self: *Profile) void {
-        for (self.counter_lanes.items) |*counter_lane| {
-            counter_lane.deinit();
+        for (self.counters.items) |*counter| {
+            counter.deinit();
         }
-        self.counter_lanes.deinit();
+        self.counters.deinit();
 
-        for (self.thread_lanes.items) |*thread_lane| {
-            thread_lane.deinit();
+        for (self.threads.items) |*thread| {
+            thread.deinit();
         }
-        self.thread_lanes.deinit();
+        self.threads.deinit();
     }
 
-    pub fn getOrCreateCounterLane(self: *Profile, name: []const u8) !*ProfileCounterLane {
-        for (self.counter_lanes.items) |*counter_lane| {
-            if (std.mem.eql(u8, counter_lane.name, name)) {
-                return counter_lane;
+    pub fn getOrCreateCounter(self: *Profile, name: []const u8) !*Counter {
+        for (self.counters.items) |*counter| {
+            if (std.mem.eql(u8, counter.name, name)) {
+                return counter;
             }
         }
 
-        try self.counter_lanes.append(ProfileCounterLane.init(self.allocator, name));
-        return &self.counter_lanes.items[self.counter_lanes.items.len - 1];
+        try self.counters.append(Counter.init(self.allocator, name));
+        return &self.counters.items[self.counters.items.len - 1];
     }
 
-    pub fn getOrCreateThreadLane(self: *Profile, tid: i64) !*ThreadLane {
-        for (self.thread_lanes.items) |*thread_lane| {
-            if (thread_lane.tid == tid) {
-                return thread_lane;
+    pub fn getOrCreateThread(self: *Profile, tid: i64) !*Thread {
+        for (self.threads.items) |*thread| {
+            if (thread.tid == tid) {
+                return thread;
             }
         }
 
-        try self.thread_lanes.append(ThreadLane.init(self.allocator, tid));
-        return &self.thread_lanes.items[self.thread_lanes.items.len - 1];
+        try self.threads.append(Thread.init(self.allocator, tid));
+        return &self.threads.items[self.threads.items.len - 1];
     }
 
     pub fn handleTraceEvent(self: *Profile, trace_event: *const TraceEvent) !void {
@@ -418,7 +423,7 @@ pub const Profile = struct {
                 'C' => {
                     // TODO: handle trace_event.id
                     if (trace_event.name) |name| {
-                        var counter_lane = try self.getOrCreateCounterLane(name);
+                        var counter = try self.getOrCreateCounter(name);
                         if (trace_event.ts) |ts| {
                             if (trace_event.args) |args| {
                                 switch (args) {
@@ -429,13 +434,13 @@ pub const Profile = struct {
                                             switch (entry.value_ptr.*) {
                                                 .string, .number_string => |num| {
                                                     const val = try std.fmt.parseFloat(f64, num);
-                                                    try counter_lane.addCounter(ts, value_name, val);
+                                                    try counter.addSample(ts, value_name, val);
                                                 },
                                                 .float => |val| {
-                                                    try counter_lane.addCounter(ts, value_name, val);
+                                                    try counter.addSample(ts, value_name, val);
                                                 },
                                                 .integer => |val| {
-                                                    try counter_lane.addCounter(ts, value_name, @floatFromInt(val));
+                                                    try counter.addSample(ts, value_name, @floatFromInt(val));
                                                 },
                                                 else => {},
                                             }
@@ -453,8 +458,8 @@ pub const Profile = struct {
                     if (trace_event.tid) |tid| {
                         if (trace_event.ts) |ts| {
                             if (trace_event.dur) |dur| {
-                                var thread_lane = try self.getOrCreateThreadLane(tid);
-                                try thread_lane.addSpan(trace_event.name, ts, dur);
+                                var thread = try self.getOrCreateThread(tid);
+                                try thread.addSpan(trace_event.name, ts, dur);
                             }
                         }
                     }
@@ -470,8 +475,8 @@ pub const Profile = struct {
                                             if (obj.get("name")) |val| {
                                                 switch (val) {
                                                     .string => |str| {
-                                                        var thread_lane = try self.getOrCreateThreadLane(tid);
-                                                        try thread_lane.setName(str);
+                                                        var thread = try self.getOrCreateThread(tid);
+                                                        try thread.setName(str);
                                                     },
                                                     else => {},
                                                 }
@@ -512,39 +517,35 @@ pub const Profile = struct {
     }
 
     fn handleThreadSortIndex(self: *Profile, tid: i64, sort_index: i64) !void {
-        var thread_lane = try self.getOrCreateThreadLane(tid);
-        thread_lane.sort_index = sort_index;
+        var thread = try self.getOrCreateThread(tid);
+        thread.sort_index = sort_index;
     }
 
     pub fn done(self: *Profile) !void {
-        std.sort.block(ProfileCounterLane, self.counter_lanes.items, {}, profileCounterLaneLessThan);
-        for (self.counter_lanes.items) |*counter_lane| {
-            counter_lane.done();
+        std.sort.block(Counter, self.counters.items, {}, Counter.lessThan);
+        for (self.counters.items) |*counter| {
+            counter.done();
         }
 
-        std.sort.block(ThreadLane, self.thread_lanes.items, {}, ThreadLane.lessThan);
-        for (self.thread_lanes.items) |*thread_lane| {
-            try thread_lane.done();
+        std.sort.block(Thread, self.threads.items, {}, Thread.lessThan);
+        for (self.threads.items) |*thread| {
+            try thread.done();
         }
-    }
-
-    fn profileCounterLaneLessThan(_: void, lhs: ProfileCounterLane, rhs: ProfileCounterLane) bool {
-        return nameLessThan(lhs.name, rhs.name);
     }
 };
 
 const ExpectedProfile = struct {
-    thread_lanes: ?[]const ExpectedThreadLane = null,
+    threads: ?[]const ExpectedThread = null,
 };
 
-const ExpectedThreadLane = struct {
+const ExpectedThread = struct {
     tid: i64,
     name: ?[]const u8 = null,
     sort_index: ?i64 = null,
-    sub_lanes: ?[]const ExpectedSubLane = null,
+    tracks: ?[]const ExpectedTrack = null,
 };
 
-const ExpectedSubLane = struct {
+const ExpectedTrack = struct {
     spans: []const ExpectedSpan,
 };
 
@@ -564,16 +565,16 @@ fn testParse(trace_events: []const TraceEvent, expected_profile: ExpectedProfile
 
     try profile.done();
 
-    if (expected_profile.thread_lanes) |expected_thread_lanes| {
-        try std.testing.expectEqual(expected_thread_lanes.len, profile.thread_lanes.items.len);
+    if (expected_profile.threads) |expected_threads| {
+        try std.testing.expectEqual(expected_threads.len, profile.threads.items.len);
 
-        for (expected_thread_lanes, profile.thread_lanes.items) |expected_thread_lane, actual_thread_lane| {
-            try expectEqualThreadLanes(expected_thread_lane, actual_thread_lane);
+        for (expected_threads, profile.threads.items) |expected_thread, actual_thread| {
+            try expectEqualThreads(expected_thread, actual_thread);
         }
     }
 }
 
-fn expectEqualThreadLanes(expected: ExpectedThreadLane, actual: ThreadLane) !void {
+fn expectEqualThreads(expected: ExpectedThread, actual: Thread) !void {
     try std.testing.expectEqual(expected.tid, actual.tid);
 
     if (try expectOptional(expected.name, actual.name)) {
@@ -584,18 +585,18 @@ fn expectEqualThreadLanes(expected: ExpectedThreadLane, actual: ThreadLane) !voi
         try std.testing.expectEqual(expected.sort_index.?, actual.sort_index.?);
     }
 
-    if (expected.sub_lanes) |expected_sub_lanes| {
-        try std.testing.expectEqual(expected_sub_lanes.len, actual.sub_lanes.items.len);
+    if (expected.tracks) |expected_tracks| {
+        try std.testing.expectEqual(expected_tracks.len, actual.tracks.items.len);
 
-        for (expected_sub_lanes, actual.sub_lanes.items) |expected_sub_lane, actual_sub_lane| {
-            try expectEqualSubLanes(expected_sub_lane, actual_sub_lane);
+        for (expected_tracks, actual.tracks.items) |expected_track, actual_track| {
+            try expectEqualTracks(expected_track, actual_track);
         }
     } else {
-        try std.testing.expectEqual(@as(usize, 0), actual.sub_lanes.items.len);
+        try std.testing.expectEqual(@as(usize, 0), actual.tracks.items.len);
     }
 }
 
-fn expectEqualSubLanes(expected: ExpectedSubLane, actual: ThreadSubLane) !void {
+fn expectEqualTracks(expected: ExpectedTrack, actual: Track) !void {
     try std.testing.expectEqual(expected.spans.len, actual.spans.items.len);
 
     for (expected.spans, actual.spans.items) |expected_span, actual_span| {
@@ -630,10 +631,10 @@ test "parse, spans overlap, place at same level" {
         .{ .ph = 'X', .name = "a", .tid = 1, .ts = 0, .dur = 3 },
         .{ .ph = 'X', .name = "b", .tid = 1, .ts = 1, .dur = 4 },
     }, .{
-        .thread_lanes = &[_]ExpectedThreadLane{
+        .threads = &[_]ExpectedThread{
             .{
                 .tid = 1,
-                .sub_lanes = &[_]ExpectedSubLane{
+                .tracks = &[_]ExpectedTrack{
                     .{ .spans = &[_]ExpectedSpan{
                         .{ .name = "a", .start_time_us = 0, .duration_us = 3 },
                         .{ .name = "b", .start_time_us = 1, .duration_us = 4 },
@@ -650,10 +651,10 @@ test "parse, spans have equal start time, sort by duration descending" {
         .{ .ph = 'X', .name = "b", .tid = 1, .ts = 0, .dur = 2 },
         .{ .ph = 'X', .name = "c", .tid = 1, .ts = 0, .dur = 3 },
     }, .{
-        .thread_lanes = &[_]ExpectedThreadLane{
+        .threads = &[_]ExpectedThread{
             .{
                 .tid = 1,
-                .sub_lanes = &[_]ExpectedSubLane{
+                .tracks = &[_]ExpectedTrack{
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 3 }} },
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 1 }} },
@@ -676,24 +677,24 @@ test "parse, thread_sort_index, sorted" {
         .{ .ph = 'X', .name = "b", .tid = 2, .ts = 0, .dur = 2 },
         .{ .ph = 'X', .name = "c", .tid = 3, .ts = 0, .dur = 3 },
     }, .{
-        .thread_lanes = &[_]ExpectedThreadLane{
+        .threads = &[_]ExpectedThread{
             .{
                 .tid = 3,
                 .sort_index = 1,
-                .sub_lanes = &[_]ExpectedSubLane{
+                .tracks = &[_]ExpectedTrack{
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 3 }} },
                 },
             },
             .{
                 .tid = 1,
                 .sort_index = 3,
-                .sub_lanes = &[_]ExpectedSubLane{
+                .tracks = &[_]ExpectedTrack{
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 1 }} },
                 },
             },
             .{
                 .tid = 2,
-                .sub_lanes = &[_]ExpectedSubLane{
+                .tracks = &[_]ExpectedTrack{
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
                 },
             },
@@ -722,12 +723,12 @@ test "parse, thread_sort_index equal, sort by name" {
         .{ .ph = 'X', .name = "b", .tid = 2, .ts = 0, .dur = 2 },
         .{ .ph = 'X', .name = "a", .tid = 3, .ts = 0, .dur = 3 },
     }, .{
-        .thread_lanes = &[_]ExpectedThreadLane{
+        .threads = &[_]ExpectedThread{
             .{
                 .tid = 3,
                 .name = "thread a",
                 .sort_index = 1,
-                .sub_lanes = &[_]ExpectedSubLane{
+                .tracks = &[_]ExpectedTrack{
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "a", .start_time_us = 0, .duration_us = 3 }} },
                 },
             },
@@ -735,7 +736,7 @@ test "parse, thread_sort_index equal, sort by name" {
                 .tid = 2,
                 .name = "thread b",
                 .sort_index = 1,
-                .sub_lanes = &[_]ExpectedSubLane{
+                .tracks = &[_]ExpectedTrack{
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "b", .start_time_us = 0, .duration_us = 2 }} },
                 },
             },
@@ -743,7 +744,7 @@ test "parse, thread_sort_index equal, sort by name" {
                 .tid = 1,
                 .name = "thread c",
                 .sort_index = 1,
-                .sub_lanes = &[_]ExpectedSubLane{
+                .tracks = &[_]ExpectedTrack{
                     .{ .spans = &[_]ExpectedSpan{.{ .name = "c", .start_time_us = 0, .duration_us = 1 }} },
                 },
             },

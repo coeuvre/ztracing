@@ -15,8 +15,8 @@ const TraceEvent = json_profile_parser.TraceEvent;
 const Profile = _profile.Profile;
 const Span = _profile.Span;
 const SeriesValue = _profile.SeriesValue;
-const ProfileCounterLane = _profile.ProfileCounterLane;
-const ThreadLane = _profile.ThreadLane;
+const Counter = _profile.Counter;
+const Thread = _profile.Thread;
 
 fn normalize(v: f32, min: f32, max: f32) @TypeOf(v, min, max) {
     return (v - min) / (max - min);
@@ -518,8 +518,8 @@ const ViewState = struct {
         );
 
         if (c.igCollapsingHeader_BoolPtr("Process 1", null, c.ImGuiTreeNodeFlags_DefaultOpen)) {
-            self.drawCounters(region, style, self.profile.counter_lanes.items);
-            self.drawThreads(region, style, self.profile.thread_lanes.items);
+            self.drawCounters(region, style, self.profile.counters.items);
+            self.drawThreads(region, style, self.profile.threads.items);
         }
 
         c.ImDrawList_PopClipRect(draw_list);
@@ -591,7 +591,7 @@ const ViewState = struct {
         }
     }
 
-    fn drawCounters(self: *ViewState, region: ViewRegion, style: ViewStyle, counters: []ProfileCounterLane) void {
+    fn drawCounters(self: *ViewState, region: ViewRegion, style: ViewStyle, counters: []Counter) void {
         const io = c.igGetIO();
         const mouse_pos = io.*.MousePos;
         const draw_list = c.igGetWindowDrawList();
@@ -748,26 +748,25 @@ const ViewState = struct {
         }
     }
 
-    fn drawThreads(self: *ViewState, region: ViewRegion, style: ViewStyle, threads: []ThreadLane) void {
-        _ = threads;
+    fn drawThreads(self: *ViewState, region: ViewRegion, style: ViewStyle, threads: []Thread) void {
         const io = c.igGetIO();
         const mouse_pos = io.*.MousePos;
         const draw_list = c.igGetWindowDrawList();
         const allow_hover = c.igIsWindowHovered(0) and !self.is_dragging;
 
         var hovered_span: ?HoveredSpan = null;
-        for (self.profile.thread_lanes.items) |*thread_lane| {
-            if (thread_lane.sub_lanes.items.len == 0) {
+        for (threads) |*thread| {
+            if (thread.tracks.items.len == 0) {
                 continue;
             }
 
             // Header
             {
                 const name = blk: {
-                    if (thread_lane.name) |name| {
+                    if (thread.name) |name| {
                         break :blk std.fmt.bufPrintZ(&global_buf, "{s}", .{name}) catch unreachable;
                     } else {
-                        break :blk std.fmt.bufPrintZ(&global_buf, "Thread {}", .{thread_lane.tid}) catch unreachable;
+                        break :blk std.fmt.bufPrintZ(&global_buf, "Thread {}", .{thread.tid}) catch unreachable;
                     }
                 };
 
@@ -780,18 +779,18 @@ const ViewState = struct {
                 };
 
                 var hovered: bool = false;
-                drawLaneHeader(lane_bb, name, style.character_size.y, style.text_padding.x, allow_hover, &thread_lane.ui.open, &hovered);
+                drawLaneHeader(lane_bb, name, style.character_size.y, style.text_padding.x, allow_hover, &thread.ui.open, &hovered);
                 if (hovered) {
                     if (io.*.MouseClicked[0]) {
-                        thread_lane.ui.open = !thread_lane.ui.open;
+                        thread.ui.open = !thread.ui.open;
                     }
-                    if (thread_lane.ui.open) {
+                    if (thread.ui.open) {
                         if (c.igBeginTooltip()) {
-                            c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "TID: {}", .{thread_lane.tid}) catch unreachable, null);
-                            if (thread_lane.sort_index) |sort_index| {
+                            c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "TID: {}", .{thread.tid}) catch unreachable, null);
+                            if (thread.sort_index) |sort_index| {
                                 c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Sort Index: {}", .{sort_index}) catch unreachable, null);
                             }
-                            if (thread_lane.name) |thread_name| {
+                            if (thread.name) |thread_name| {
                                 c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Name: {s}", .{thread_name}) catch unreachable, null);
                             }
                         }
@@ -800,16 +799,16 @@ const ViewState = struct {
                 }
             }
 
-            if (thread_lane.ui.open) {
+            if (thread.ui.open) {
                 const lane_top = region.top() + c.igGetCursorPosY() - c.igGetScrollY();
-                const lane_height = @as(f32, @floatFromInt(thread_lane.sub_lanes.items.len)) * style.sub_lane_height;
+                const lane_height = @as(f32, @floatFromInt(thread.tracks.items.len)) * style.sub_lane_height;
                 const lane_bb = c.ImRect{
                     .Min = .{ .x = region.left(), .y = lane_top },
                     .Max = .{ .x = region.right(), .y = lane_top + lane_height },
                 };
                 c.igItemSize_Rect(lane_bb, -1);
                 if (c.igItemAdd(lane_bb, 0, null, 0)) {
-                    for (thread_lane.sub_lanes.items, 0..) |sub_lane, sub_lane_index| {
+                    for (thread.tracks.items, 0..) |sub_lane, sub_lane_index| {
                         var iter = sub_lane.iter(self.start_time_us, style.min_duration_us);
                         var sub_lane_top = lane_top + @as(f32, @floatFromInt(sub_lane_index)) * style.sub_lane_height;
                         while (iter.next()) |span| {
