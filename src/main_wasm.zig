@@ -137,7 +137,24 @@ pub const SinebowColorGenerator = struct {
     }
 };
 
-var general_purpose_colors: [23]Color = undefined;
+const general_purpose_colors: [7]Color = [_]Color{
+    rgb(169, 188, 255),
+    rgb(154, 255, 255),
+    rgb(24, 255, 177),
+    rgb(255, 255, 173),
+    rgb(255, 212, 147),
+    rgb(255, 159, 140),
+    rgb(255, 189, 218),
+};
+
+fn rgb(r: u8, g: u8, b: u8) Color {
+    return .{
+        .x = @as(f32, @floatFromInt(r)) / 255.0,
+        .y = @as(f32, @floatFromInt(g)) / 255.0,
+        .z = @as(f32, @floatFromInt(b)) / 255.0,
+        .w = 1.0,
+    };
+}
 
 fn getImColorU32(color: Color) u32 {
     return c.igGetColorU32_Vec4(color);
@@ -1089,7 +1106,7 @@ const App = struct {
                 }
 
                 if (c.igBeginMenu("Misc", true)) {
-                    if (c.igMenuItem_Bool("Color Pattle", null, self.show_color_palette, true)) {
+                    if (c.igMenuItem_Bool("Color Palette", null, self.show_color_palette, true)) {
                         self.show_color_palette = !self.show_color_palette;
                     }
                     if (c.igMenuItem_Bool("Dear ImGui Demo", null, self.show_imgui_demo_window, true)) {
@@ -1282,13 +1299,6 @@ var global_count_allocator = CountAllocator.init(gpa.allocator());
 var global_buf: [1024]u8 = [_]u8{0} ** 1024;
 
 export fn init(width: f32, height: f32) void {
-    {
-        var generator = SinebowColorGenerator.init(1.0, 1.5);
-        for (&general_purpose_colors) |*color| {
-            color.* = generator.nextColor();
-        }
-    }
-
     var allocator = global_count_allocator.allocator();
     app = allocator.create(App) catch unreachable;
     app.init(allocator, width, height);
