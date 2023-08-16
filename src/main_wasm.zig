@@ -562,7 +562,7 @@ const ViewState = struct {
         _ = dt;
         const style = self.calcStyle();
 
-        const timeline_height: f32 = 21;
+        const timeline_height: f32 = style.sub_lane_height;
         self.drawTimeline(timeline_height, style);
         self.drawMainView(timeline_height, style);
     }
@@ -575,10 +575,14 @@ const ViewState = struct {
         _ = c.igBegin("MainWindow", null, container_window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
         c.igPopStyleVar(1);
 
-        const region = self.calcRegion(getWindowContentRegion());
+        const window_bb = getWindowContentRegion();
+        var region = self.calcRegion(window_bb);
 
         self.handleDrag(region);
         self.handleScroll(region);
+
+        // Recalculate region after zoom
+        region = self.calcRegion(window_bb);
 
         const draw_list = c.igGetWindowDrawList();
         c.ImDrawList_PushClipRect(
