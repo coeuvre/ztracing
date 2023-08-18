@@ -274,6 +274,32 @@ const WelcomeState = struct {
         c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{ .x = 0, .y = 0 });
         c.igSetNextWindowSize(viewport.*.WorkSize, 0);
         _ = c.igBegin("MainWindow", null, container_window_flags);
+
+        const logo =
+            \\ ________  _________  _______          _        ______  _____  ____  _____   ______   
+            \\|  __   _||  _   _  ||_   __ \        / \     .' ___  ||_   _||_   \|_   _|.' ___  |  
+            \\|_/  / /  |_/ | | \_|  | |__) |      / _ \   / .'   \_|  | |    |   \ | | / .'   \_|  
+            \\   .'.' _     | |      |  __ /      / ___ \  | |         | |    | |\ \| | | |   ____  
+            \\ _/ /__/ |   _| |_    _| |  \ \_  _/ /   \ \_\ `.___.'\ _| |_  _| |_\   |_\ `.___]  | 
+            \\|________|  |_____|  |____| |___||____| |____|`.____ .'|_____||_____|\____|`._____.'  
+            \\                                                                                      
+            \\
+            \\                        Drag & Drop a trace file to start.
+            \\
+            \\
+        ;
+
+        const window_bb = getWindowContentRegion();
+        {
+            var text_size: c.ImVec2 = undefined;
+            c.igCalcTextSize(&text_size, logo, null, false, 0);
+            const x = window_bb.Min.x + (window_bb.Max.x - window_bb.Min.x) * 0.5 - text_size.x * 0.5;
+            const y = window_bb.Min.y + (window_bb.Max.y - window_bb.Min.y) * 0.5 - text_size.y * 0.5;
+            c.igSetCursorPosX(x);
+            c.igSetCursorPosY(y);
+        }
+        c.igTextUnformatted(logo, null);
+
         c.igEnd();
     }
 

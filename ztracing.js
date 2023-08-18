@@ -453,7 +453,6 @@ function mount(options) {
     canvas.addEventListener("mousedown", (event) => {
       if (app.onMouseButton(event.button, true)) {
         event.preventDefault();
-        return false;
       }
     });
     window.addEventListener("mouseup", (event) => {
@@ -462,7 +461,6 @@ function mount(options) {
     canvas.addEventListener("wheel", (event) => {
       app.onMouseWheel(event.deltaX, event.deltaY);
       event.preventDefault();
-      return false;
     });
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     window.addEventListener("keydown", (event) => {
@@ -470,7 +468,6 @@ function mount(options) {
       if (key) {
         app.onKey(key, true);
         event.preventDefault();
-        return false;
       }
     });
     window.addEventListener("keyup", (event) => {
@@ -482,6 +479,30 @@ function mount(options) {
 
     window.addEventListener("blur", () => app.onFocus(false));
     window.addEventListener("focus", () => app.onFocus(true));
+
+    canvas.addEventListener("drop", (event) => {
+      event.preventDefault();
+
+      if (app.loadingFile || !app.instance.exports.shouldLoadFile()) {
+        return;
+      }
+
+      if (
+        event.dataTransfer &&
+        event.dataTransfer.files &&
+        event.dataTransfer.files.length > 0
+      ) {
+        const file = event.dataTransfer.files[0];
+        app.instance.exports.onLoadFileStart(file.size);
+
+        const stream = file.stream();
+        loadFileFromStream(stream);
+      }
+    });
+
+    canvas.addEventListener("dragover", (event) => {
+      event.preventDefault();
+    });
 
     requestAnimationFrame((now) => app.update(now));
 
