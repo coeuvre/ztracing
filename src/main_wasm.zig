@@ -248,7 +248,6 @@ fn jsButtonToImguiButton(button: i32) i32 {
 }
 
 const container_window_flags =
-    c.ImGuiWindowFlags_NoDocking |
     c.ImGuiWindowFlags_NoTitleBar |
     c.ImGuiWindowFlags_NoCollapse |
     c.ImGuiWindowFlags_NoResize |
@@ -548,6 +547,8 @@ const ViewState = struct {
     is_dragging: bool = false,
     drag_start: ViewPos = undefined,
 
+    selected_span: ?*const Span = null,
+
     pub fn init(allocator: Allocator, profile: Profile) ViewState {
         const duration_us = profile.max_time_us - profile.min_time_us;
         const padding = @divTrunc(duration_us, 6);
@@ -588,18 +589,42 @@ const ViewState = struct {
         _ = dt;
         const style = self.calcStyle();
 
-        const timeline_height: f32 = style.sub_lane_height;
+        const viewport = c.igGetMainViewport();
+        c.igSetNextWindowPos(.{ .x = viewport.*.WorkPos.x, .y = viewport.*.WorkPos.y }, 0, .{ .x = 0, .y = 0 });
+        c.igSetNextWindowSize(.{ .x = viewport.*.WorkSize.x, .y = viewport.*.WorkSize.y }, 0);
+
+        c.igPushStyleVar_Float(c.ImGuiStyleVar_WindowRounding, 0);
+        c.igPushStyleVar_Vec2(c.ImGuiStyleVar_WindowPadding, .{ .x = 0, .y = 0 });
+        _ = c.igBegin("MainWindow", null, container_window_flags | c.ImGuiWindowFlags_NoDocking);
+
+        const dock_id = c.igGetID_Str("MainWindowDock");
+        _ = c.igDockSpace(dock_id, .{ .x = 0, .y = 0 }, c.ImGuiDockNodeFlags_NoDockingInCentralNode, 0);
+        c.igSetNextWindowDockID(dock_id, 0);
+
+        var window_class = c.ImGuiWindowClass_ImGuiWindowClass();
+        window_class.*.DockNodeFlagsOverrideSet = c.ImGuiDockNodeFlags_NoTabBar;
+        defer c.ImGuiWindowClass_destroy(window_class);
+        c.igSetNextWindowClass(window_class);
+
+        _ = c.igBegin("WorkArea", null, container_window_flags);
+        c.igPopStyleVar(2);
+
+        const timeline_height = style.sub_lane_height;
+
         self.drawTimeline(timeline_height, style);
         self.drawMainView(timeline_height, style);
+
+        c.igEnd();
+        c.igEnd();
     }
 
     fn drawMainView(self: *ViewState, timeline_height: f32, style: ViewStyle) void {
-        const viewport = c.igGetMainViewport();
-        c.igSetNextWindowPos(.{ .x = viewport.*.WorkPos.x, .y = viewport.*.WorkPos.y + timeline_height }, 0, .{ .x = 0, .y = 0 });
-        c.igSetNextWindowSize(.{ .x = viewport.*.WorkSize.x, .y = viewport.*.WorkSize.y - timeline_height }, 0);
+        c.igSetCursorPosY(timeline_height);
+
+        c.igPushStyleVar_Float(c.ImGuiStyleVar_WindowRounding, 0);
         c.igPushStyleVar_Vec2(c.ImGuiStyleVar_WindowPadding, .{ .x = 0, .y = 0 });
-        _ = c.igBegin("MainWindow", null, container_window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
-        c.igPopStyleVar(1);
+        _ = c.igBeginChild_Str("MainView", .{ .x = 0, .y = 0 }, false, container_window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
+        c.igPopStyleVar(2);
 
         const window_bb = getWindowContentRegion();
         var region = self.calcRegion(window_bb);
@@ -628,22 +653,16 @@ const ViewState = struct {
 
         c.ImDrawList_PopClipRect(draw_list);
 
-        c.igEnd();
+        c.igEndChild();
     }
 
     fn drawTimeline(self: *ViewState, timeline_height: f32, style: ViewStyle) void {
-        const viewport = c.igGetMainViewport();
-        const timeline_bb = c.ImRect{
-            .Min = .{ .x = viewport.*.WorkPos.x, .y = viewport.*.WorkPos.y },
-            .Max = .{ .x = viewport.*.WorkPos.x + viewport.*.WorkSize.x, .y = viewport.*.WorkPos.y + timeline_height },
-        };
-        c.igSetNextWindowPos(timeline_bb.Min, 0, .{ .x = 0, .y = 0 });
-        c.igSetNextWindowSize(.{ .x = timeline_bb.Max.x - timeline_bb.Min.x, .y = timeline_bb.Max.y - timeline_bb.Min.y }, 0);
-
         c.igPushStyleVar_Float(c.ImGuiStyleVar_WindowRounding, 0);
-        c.igPushStyleVar_Vec2(c.ImGuiStyleVar_WindowMinSize, .{ .x = 0, .y = 0 });
-        _ = c.igBegin("Timeline", null, container_window_flags);
+        c.igPushStyleVar_Vec2(c.ImGuiStyleVar_WindowPadding, .{ .x = 0, .y = 0 });
+        _ = c.igBeginChild_Str("Timeline", .{ .x = 0, .y = timeline_height }, false, container_window_flags);
         c.igPopStyleVar(2);
+
+        const timeline_bb = getWindowContentRegion();
 
         const draw_list = c.igGetWindowDrawList();
         const region = self.calcRegion(timeline_bb);
@@ -672,7 +691,7 @@ const ViewState = struct {
 
             const x = region.left() + @as(f32, @floatFromInt(time_us - self.start_time_us)) * region.width_per_us;
             const y1 = region.bottom();
-            const y2 = if (is_large_block) y1 - 12 else y1 - 4;
+            const y2 = if (is_large_block) y1 - 12 else y1 - 6;
             c.ImDrawList_AddLine(
                 draw_list,
                 .{ .x = x, .y = y1 },
@@ -686,7 +705,9 @@ const ViewState = struct {
             }
         }
 
-        c.igEnd();
+        c.ImDrawList_AddLine(draw_list, .{ .x = region.left(), .y = region.bottom() - 1 }, .{ .x = region.right(), .y = region.bottom() - 1 }, text_color, 1);
+
+        c.igEndChild();
     }
 
     fn handleDrag(self: *ViewState, region: ViewRegion) void {
@@ -778,16 +799,11 @@ const ViewState = struct {
                 };
                 var hovered: bool = false;
                 drawLaneHeader(lane_bb, name, style.character_size.y, style.text_padding.x, allow_hover, &counter.ui.open, &hovered);
-                if (hovered) {
-                    if (io.*.MouseClicked[0]) {
-                        counter.ui.open = !counter.ui.open;
+                if (hovered and counter.ui.open) {
+                    if (c.igBeginTooltip()) {
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{s}", .{counter.name}) catch unreachable, null);
                     }
-                    if (counter.ui.open) {
-                        if (c.igBeginTooltip()) {
-                            c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{s}", .{counter.name}) catch unreachable, null);
-                        }
-                        c.igEndTooltip();
-                    }
+                    c.igEndTooltip();
                 }
             }
 
@@ -947,22 +963,17 @@ const ViewState = struct {
 
                 var hovered: bool = false;
                 drawLaneHeader(lane_bb, name, style.character_size.y, style.text_padding.x, allow_hover, &thread.ui.open, &hovered);
-                if (hovered) {
-                    if (io.*.MouseClicked[0]) {
-                        thread.ui.open = !thread.ui.open;
-                    }
-                    if (thread.ui.open) {
-                        if (c.igBeginTooltip()) {
-                            c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "TID: {}", .{thread.tid}) catch unreachable, null);
-                            if (thread.sort_index) |sort_index| {
-                                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Sort Index: {}", .{sort_index}) catch unreachable, null);
-                            }
-                            if (thread.name) |thread_name| {
-                                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Name: {s}", .{thread_name}) catch unreachable, null);
-                            }
+                if (hovered and thread.ui.open) {
+                    if (c.igBeginTooltip()) {
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "TID: {}", .{thread.tid}) catch unreachable, null);
+                        if (thread.sort_index) |sort_index| {
+                            c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Sort Index: {}", .{sort_index}) catch unreachable, null);
                         }
-                        c.igEndTooltip();
+                        if (thread.name) |thread_name| {
+                            c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Name: {s}", .{thread_name}) catch unreachable, null);
+                        }
                     }
+                    c.igEndTooltip();
                 }
             }
 
@@ -1059,7 +1070,7 @@ const ViewState = struct {
             }
         }
 
-        if (hovered_span) |hovered| {
+        if (hovered_span) |*hovered| {
             const span = hovered.span;
             c.ImDrawList_AddRect(
                 draw_list,
@@ -1077,7 +1088,17 @@ const ViewState = struct {
                 c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Self: {}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
             }
             c.igEndTooltip();
+
+            if (io.*.MouseReleased[0] and c.ImRect_Contains_Vec2(&hovered.bb, io.*.MouseClickedPos[0])) {
+                self.selected_span = span;
+            }
         }
+
+        // if (self.selected_span) |selected_span| {
+        //     _ = selected_span;
+        //     if (c.igBegin("Selected Span", null, 0)) {}
+        //     c.igEnd();
+        // }
     }
 
     pub fn onLoadFileStart(self: *ViewState, len: usize) void {
@@ -1092,6 +1113,8 @@ fn getColorForSpan(span: *const Span) u32 {
 }
 
 fn drawLaneHeader(lane_bb: c.ImRect, title: [:0]const u8, character_size_y: f32, text_padding_x: f32, allow_hover: bool, open: *bool, hovered: *bool) void {
+    const io = c.igGetIO();
+
     hovered.* = false;
 
     const mouse_pos = c.igGetIO().*.MousePos;
@@ -1155,6 +1178,10 @@ fn drawLaneHeader(lane_bb: c.ImRect, title: [:0]const u8, character_size_y: f32,
             col,
             1,
         );
+    }
+
+    if (hovered.* and io.*.MouseReleased[0] and c.ImRect_Contains_Vec2(&header_bb, io.*.MouseClickedPos[0])) {
+        open.* = !open.*;
     }
 }
 
@@ -1284,22 +1311,7 @@ const App = struct {
             c.igPopStyleVar(1);
         }
 
-        // Main Window
-        {
-            const window_flags =
-                c.ImGuiWindowFlags_NoDocking |
-                c.ImGuiWindowFlags_NoTitleBar |
-                c.ImGuiWindowFlags_NoCollapse |
-                c.ImGuiWindowFlags_NoResize |
-                c.ImGuiWindowFlags_NoMove |
-                c.ImGuiWindowFlags_NoBringToFrontOnFocus |
-                c.ImGuiWindowFlags_NoNavFocus;
-            _ = window_flags;
-            const viewport = c.igGetMainViewport();
-            c.igSetNextWindowPos(viewport.*.WorkPos, 0, .{ .x = 0, .y = 0 });
-            c.igSetNextWindowSize(viewport.*.WorkSize, 0);
-            self.state.update(dt);
-        }
+        self.state.update(dt);
 
         if (self.show_imgui_demo_window) {
             c.igShowDemoWindow(&self.show_imgui_demo_window);
