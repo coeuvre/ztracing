@@ -547,6 +547,7 @@ const ViewState = struct {
     is_dragging: bool = false,
     drag_start: ViewPos = undefined,
 
+    open_selection_span: bool = false,
     selected_span: ?*const Span = null,
 
     pub fn init(allocator: Allocator, profile: Profile) ViewState {
@@ -598,7 +599,7 @@ const ViewState = struct {
         _ = c.igBegin("MainWindow", null, container_window_flags | c.ImGuiWindowFlags_NoDocking);
 
         const dock_id = c.igGetID_Str("MainWindowDock");
-        _ = c.igDockSpace(dock_id, .{ .x = 0, .y = 0 }, c.ImGuiDockNodeFlags_NoDockingInCentralNode, 0);
+        _ = c.igDockSpace(dock_id, .{ .x = 0, .y = 0 }, c.ImGuiDockNodeFlags_PassthruCentralNode | c.ImGuiDockNodeFlags_NoDockingInCentralNode, 0);
         c.igSetNextWindowDockID(dock_id, 0);
 
         var window_class = c.ImGuiWindowClass_ImGuiWindowClass();
@@ -613,6 +614,15 @@ const ViewState = struct {
 
         self.drawTimeline(timeline_height, style);
         self.drawMainView(timeline_height, style);
+
+        if (self.selected_span) |span| {
+            if (self.open_selection_span) {
+                if (c.igBegin("Selected Span", &self.open_selection_span, c.ImGuiWindowFlags_AlwaysAutoResize)) {
+                    self.drawSpan(span);
+                }
+                c.igEnd();
+            }
+        }
 
         c.igEnd();
         c.igEnd();
@@ -1082,23 +1092,28 @@ const ViewState = struct {
                 2,
             );
             if (c.igBeginTooltip()) {
-                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{s}", .{span.name}) catch unreachable, null);
-                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Start: {}", .{Timestamp{ .us = span.start_time_us }}) catch unreachable, null);
-                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Duration: {}", .{Timestamp{ .us = span.duration_us }}) catch unreachable, null);
-                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Self: {}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
+                self.drawSpan(span);
             }
             c.igEndTooltip();
 
             if (io.*.MouseReleased[0] and c.ImRect_Contains_Vec2(&hovered.bb, io.*.MouseClickedPos[0])) {
                 self.selected_span = span;
+                self.open_selection_span = true;
             }
         }
+    }
 
-        // if (self.selected_span) |selected_span| {
-        //     _ = selected_span;
-        //     if (c.igBegin("Selected Span", null, 0)) {}
-        //     c.igEnd();
-        // }
+    fn drawSpan(self: *ViewState, span: *const Span) void {
+        _ = self;
+        c.igPushTextWrapPos(c.igGetCursorPosX() + 400);
+        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Title: {s}", .{span.name}) catch unreachable, null);
+        if (span.category) |cat| {
+            c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Category: {s}", .{cat}) catch unreachable, null);
+        }
+        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Start: {}", .{Timestamp{ .us = span.start_time_us }}) catch unreachable, null);
+        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Duration: {}", .{Timestamp{ .us = span.duration_us }}) catch unreachable, null);
+        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Self: {}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
+        c.igPopTextWrapPos();
     }
 
     pub fn onLoadFileStart(self: *ViewState, len: usize) void {

@@ -150,6 +150,7 @@ pub const Span = struct {
     duration_us: i64,
 
     self_duration_us: i64 = 0,
+    category: ?[]u8 = null,
 
     fn lessThan(_: void, lhs: Span, rhs: Span) bool {
         if (lhs.start_time_us == rhs.start_time_us) {
@@ -157,6 +158,13 @@ pub const Span = struct {
         }
 
         return lhs.start_time_us < rhs.start_time_us;
+    }
+
+    fn deinit(self: *Span, allocator: Allocator) void {
+        allocator.free(self.name);
+        if (self.category) |category| {
+            allocator.free(category);
+        }
     }
 };
 
@@ -241,7 +249,7 @@ pub const Thread = struct {
         self.tracks.deinit();
 
         for (self.spans.items) |*span| {
-            self.allocator.free(span.name);
+            span.deinit(self.allocator);
         }
         self.spans.deinit();
 
@@ -257,12 +265,13 @@ pub const Thread = struct {
         self.name = try self.allocator.dupe(u8, name);
     }
 
-    pub fn addSpan(self: *Thread, name: ?[]const u8, start_time_us: i64, duration_us: i64) !void {
+    pub fn addSpan(self: *Thread, name: ?[]const u8, start_time_us: i64, duration_us: i64) !*Span {
         try self.spans.append(.{
             .name = try self.allocator.dupe(u8, name orelse ""),
             .start_time_us = start_time_us,
             .duration_us = duration_us,
         });
+        return &self.spans.items[self.spans.items.len - 1];
     }
 
     fn getOrCreateTrack(self: *Thread, level: usize) !*Track {
@@ -567,7 +576,13 @@ pub const Profile = struct {
     fn handleCompleteEvent(self: *Profile, trace_event: *const TraceEvent, pid: i64, tid: i64, ts: i64, dur: i64) !void {
         var process = try self.getOrCreateProcess(pid);
         var thread = try process.getOrCreateThread(tid);
-        try thread.addSpan(trace_event.name, ts, dur);
+
+        var span = try thread.addSpan(trace_event.name, ts, dur);
+
+        if (trace_event.cat) |cat| {
+            span.category = try self.allocator.dupe(u8, cat);
+        }
+
         self.maybeUpdateMinMax(trace_event);
     }
 
