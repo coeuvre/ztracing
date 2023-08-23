@@ -4,11 +4,18 @@ const c = @import("c.zig");
 const Allocator = std.mem.Allocator;
 
 pub const SoftwareRenderer = struct {
-    pub fn init(allocator: Allocator, width: f32, height: f32) SoftwareRenderer {
+    pixels: []u8,
+    width: usize,
+    height: usize,
+
+    pub fn init(allocator: Allocator, width: f32, height: f32) !SoftwareRenderer {
         _ = height;
         _ = width;
-        _ = allocator;
-        return .{};
+        return .{
+            .pixels = try allocator.alloc(u8, 4 * 10 * 10),
+            .width = 10,
+            .height = 10,
+        };
     }
 
     pub fn createFontTexture(self: *SoftwareRenderer, width: i32, height: i32, pixels: [*]const u8) c.ImTextureID {
@@ -36,7 +43,14 @@ pub const SoftwareRenderer = struct {
         _ = idx_count;
         _ = texture;
         _ = clip_rect;
-        _ = self;
+        for (0..self.height) |y| {
+            for (0..self.width) |x| {
+                const i = y * (self.width * 4) + x * 4;
+                self.pixels[i + 0] = 255;
+                self.pixels[i + 1] = 0;
+                self.pixels[i + 2] = 0;
+                self.pixels[i + 3] = 255;
+            }
+        }
     }
 };
-

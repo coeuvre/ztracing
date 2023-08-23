@@ -205,12 +205,7 @@ class Webgl2Renderer {
     return this.memory.storeObject(texture);
   }
 
-  bufferData(
-    vtx_buffer_ptr,
-    vtx_buffer_size,
-    idx_buffer_ptr,
-    idx_buffer_size
-  ) {
+  bufferData(vtx_buffer_ptr, vtx_buffer_size, idx_buffer_ptr, idx_buffer_size) {
     const gl = this.gl;
 
     const vtx_buffer = this.memory.memory.buffer.slice(
@@ -247,6 +242,58 @@ class Webgl2Renderer {
     gl.bindTexture(gl.TEXTURE_2D, texture);
 
     gl.drawElements(gl.TRIANGLES, idx_count, gl.UNSIGNED_INT, idx_offset * 4);
+  }
+
+  present(framebuffer_ptr, framebuffer_len, width, height) {
+    throw new Error("not supported");
+  }
+}
+
+class SoftwareRenderer {
+  /**
+   * @param {HTMLCanvasElement} canvas
+   * @param {Memory} memory 
+   */
+  constructor(canvas, memory) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.memory = memory;
+  }
+
+  init(width, heigth) {}
+
+  resize(width, height) {
+    throw new Error("not supported");
+  }
+
+  createFontTexture(w, h, pixels) {
+    throw new Error("not supported");
+  }
+
+  bufferData(vtx_buffer_ptr, vtx_buffer_size, idx_buffer_ptr, idx_buffer_size) {
+    throw new Error("not supported");
+  }
+
+  draw(
+    clip_rect_min_x,
+    clip_rect_min_y,
+    clip_rect_max_x,
+    clip_rect_max_y,
+    texture_ref,
+    idx_count,
+    idx_offset
+  ) {
+    throw new Error("not supported");
+  }
+
+  present(framebuffer_ptr, framebuffer_len, width, height) {
+    const data = new Uint8ClampedArray(
+      this.memory.memory.buffer,
+      framebuffer_ptr,
+      framebuffer_len
+    );
+    const imageData = new ImageData(data, width, height);
+    this.ctx.putImageData(imageData, 0, 0);
   }
 }
 
@@ -337,6 +384,15 @@ const imports = {
         texture_ref,
         idx_count,
         idx_offset
+      );
+    },
+
+    rendererPresent: (framebuffer_ptr, framebuffer_len, width, height) => {
+      return app.renderer.present(
+        framebuffer_ptr,
+        framebuffer_len,
+        width,
+        height
       );
     },
 
@@ -450,14 +506,26 @@ class App {
     this.memory = memory;
     this.canvas = canvas;
     this.has_webgl = true;
-    this.renderer = new Webgl2Renderer(
-      this.canvas.getContext("webgl2"),
-      memory
-    );
+
+    if (this.has_webgl) {
+      this.renderer = new Webgl2Renderer(
+        this.canvas.getContext("webgl2"),
+        memory
+      );
+    } else {
+      this.renderer = new SoftwareRenderer(
+        this.canvas,
+        memory
+      );
+    }
   }
 
   init() {
-    this.instance.exports.init(this.canvas.width, this.canvas.height, this.has_webgl);
+    this.instance.exports.init(
+      this.canvas.width,
+      this.canvas.height,
+      this.has_webgl
+    );
     this.renderer.init(this.canvas.width, this.canvas.height);
   }
 

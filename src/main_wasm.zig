@@ -205,6 +205,8 @@ const js = struct {
     pub extern "js" fn rendererBufferData(vtx_buffer_ptr: [*]const u8, vtx_buffer_len: i32, idx_buffer_ptr: [*]const u8, idx_buffer_len: i32) void;
 
     pub extern "js" fn rendererDraw(clip_rect_min_x: f32, clip_rect_min_y: f32, clip_rect_max_x: f32, clip_rect_max_y: f32, texture_ref: JsObject, idx_count: u32, idx_offset: u32) void;
+
+    pub extern "js" fn rendererPresent(framebuffer_ptr: [*]const u8, framebuffer_len: usize, width: usize, height: usize) void;
 };
 
 const alignment = 8;
@@ -1236,7 +1238,7 @@ const App = struct {
         if (has_webgl) {
             self.renderer = .{ .webgl = .{} };
         } else {
-            self.renderer = .{ .software = SoftwareRenderer.init(allocator, width, height) };
+            self.renderer = .{ .software = SoftwareRenderer.init(allocator, width, height) catch unreachable };
         }
         self.state = .{ .welcome = WelcomeState.init(allocator) };
 
@@ -1352,6 +1354,7 @@ const App = struct {
         c.igRender();
         const draw_data = c.igGetDrawData();
         self.renderImgui(draw_data);
+        self.renderer.present();
     }
 
     pub fn onResize(self: *App, width: f32, height: f32) void {
@@ -1516,6 +1519,15 @@ const Renderer = union(enum) {
     fn draw(self: *Renderer, clip_rect: c.ImRect, texture: c.ImTextureID, idx_count: u32, idx_offset: u32) void {
         switch (self.*) {
             inline else => |*r| r.draw(clip_rect, texture, idx_count, idx_offset),
+        }
+    }
+
+    fn present(self: *Renderer) void {
+        switch (self.*) {
+            .software => |r| {
+                js.rendererPresent(r.pixels.ptr, r.pixels.len, r.width, r.height);
+            },
+            else => {},
         }
     }
 };
