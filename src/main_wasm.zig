@@ -5,6 +5,7 @@ const CountAllocator = @import("./count_alloc.zig").CountAllocator;
 const json_profile_parser = @import("./json_profile_parser.zig");
 const easing = @import("./easing.zig");
 const _profile = @import("profile.zig");
+const software_renderer = @import("./software_renderer.zig");
 
 const log = std.log;
 const Allocator = std.mem.Allocator;
@@ -17,6 +18,7 @@ const Span = _profile.Span;
 const SeriesValue = _profile.SeriesValue;
 const Counter = _profile.Counter;
 const Thread = _profile.Thread;
+const SoftwareRenderer = software_renderer.SoftwareRenderer;
 
 fn normalize(v: f32, min: f32, max: f32) @TypeOf(v, min, max) {
     return (v - min) / (max - min);
@@ -1218,6 +1220,7 @@ const State = union(enum) {
 
 const App = struct {
     allocator: Allocator,
+    renderer: Renderer,
     state: State,
 
     width: f32,
@@ -1228,8 +1231,13 @@ const App = struct {
     io: *c.ImGuiIO,
     mouse_pos_before_blur: c.ImVec2 = undefined,
 
-    pub fn init(self: *App, allocator: Allocator, width: f32, height: f32) void {
+    pub fn init(self: *App, allocator: Allocator, width: f32, height: f32, has_webgl: bool) void {
         self.allocator = allocator;
+        if (has_webgl) {
+            self.renderer = .{ .webgl = .{} };
+        } else {
+            self.renderer = .{ .software = SoftwareRenderer.init(allocator, width, height) };
+        }
         self.state = .{ .welcome = WelcomeState.init(allocator) };
 
         self.width = width;
@@ -1266,9 +1274,8 @@ const App = struct {
             var bytes_per_pixel: i32 = undefined;
             c.ImFontAtlas_GetTexDataAsRGBA32(io.*.Fonts, &pixels, &w, &h, &bytes_per_pixel);
             std.debug.assert(bytes_per_pixel == 4);
-            const tex = js.rendererCreateFontTexture(w, h, pixels);
-            const addr: usize = @intCast(tex.ref);
-            c.ImFontAtlas_SetTexID(io.*.Fonts, @ptrFromInt(addr));
+            const tex = self.renderer.createFontTexture(w, h, pixels);
+            c.ImFontAtlas_SetTexID(io.*.Fonts, tex);
         }
     }
 
@@ -1354,7 +1361,7 @@ const App = struct {
         self.io.*.DisplaySize.x = width;
         self.io.*.DisplaySize.y = height;
 
-        js.rendererResize(width, height);
+        self.renderer.resize(width, height);
     }
 
     pub fn onMousePos(self: *App, x: f32, y: f32) void {
@@ -1396,7 +1403,6 @@ const App = struct {
     }
 
     fn renderImgui(self: *App, draw_data: *c.ImDrawData) void {
-        _ = self;
         if (!draw_data.*.Valid) {
             return;
         }
@@ -1417,29 +1423,99 @@ const App = struct {
         for (0..@intCast(draw_data.CmdListsCount)) |cmd_list_index| {
             const cmd_list = draw_data.*.CmdLists[cmd_list_index];
 
-            const vtx_buffer_size = cmd_list.*.VtxBuffer.Size * @sizeOf(c.ImDrawVert);
-            const idx_buffer_size = cmd_list.*.IdxBuffer.Size * @sizeOf(c.ImDrawIdx);
+            // const vtx_buffer_size = cmd_list.*.VtxBuffer.Size * @sizeOf(c.ImDrawVert);
+            // const idx_buffer_size = cmd_list.*.IdxBuffer.Size * @sizeOf(c.ImDrawIdx);
 
-            js.rendererBufferData(@ptrCast(cmd_list.*.VtxBuffer.Data), vtx_buffer_size, @ptrCast(cmd_list.*.IdxBuffer.Data), idx_buffer_size);
+            // js.rendererBufferData(@ptrCast(cmd_list.*.VtxBuffer.Data), vtx_buffer_size, @ptrCast(cmd_list.*.IdxBuffer.Data), idx_buffer_size);
+            const vtx_buffer = cmd_list.*.VtxBuffer.Data[0..@intCast(cmd_list.*.VtxBuffer.Size)];
+            const idx_buffer = cmd_list.*.IdxBuffer.Data[0..@intCast(cmd_list.*.IdxBuffer.Size)];
+            self.renderer.bufferData(vtx_buffer, idx_buffer);
 
             for (0..@intCast(cmd_list.*.CmdBuffer.Size)) |cmd_index| {
                 const cmd = &cmd_list.*.CmdBuffer.Data[cmd_index];
 
                 // Project scissor/clipping rectangles into framebuffer space
-                const clip_min_x = (cmd.*.ClipRect.x - clip_off_x) * clip_scale_x;
-                const clip_min_y = (cmd.*.ClipRect.y - clip_off_y) * clip_scale_y;
-                const clip_max_x = (cmd.*.ClipRect.z - clip_off_x) * clip_scale_x;
-                const clip_max_y = (cmd.*.ClipRect.w - clip_off_y) * clip_scale_y;
-                if (clip_max_x <= clip_min_x or clip_max_y <= clip_min_y) {
+                const clip_rect = c.ImRect{
+                    .Min = .{ .x = (cmd.*.ClipRect.x - clip_off_x) * clip_scale_x, .y = (cmd.*.ClipRect.y - clip_off_y) * clip_scale_y },
+                    .Max = .{ .x = (cmd.*.ClipRect.z - clip_off_x) * clip_scale_x, .y = (cmd.*.ClipRect.w - clip_off_y) * clip_scale_y },
+                };
+                if (clip_rect.Max.x <= clip_rect.Min.x or clip_rect.Max.y <= clip_rect.Min.y) {
                     continue;
                 }
 
-                assert(@sizeOf(c.ImDrawIdx) == 4, "expect size of ImDrawIdx to be 4.");
-                const tex_ref = js.JsObject{
-                    .ref = @intFromPtr(c.ImDrawCmd_GetTexID(cmd)),
-                };
-                js.rendererDraw(clip_min_x, clip_min_y, clip_max_x, clip_max_y, tex_ref, cmd.*.ElemCount, cmd.*.IdxOffset);
+                const texture = c.ImDrawCmd_GetTexID(cmd);
+                self.renderer.draw(clip_rect, texture, cmd.*.ElemCount, cmd.*.IdxOffset);
             }
+        }
+    }
+};
+
+const WebglRenderer = struct {
+    fn createFontTexture(self: *WebglRenderer, width: i32, height: i32, pixels: [*]const u8) c.ImTextureID {
+        _ = self;
+        const tex = js.rendererCreateFontTexture(width, height, pixels);
+        const addr: usize = @intCast(tex.ref);
+        return @ptrFromInt(addr);
+    }
+
+    fn resize(self: *WebglRenderer, width: f32, height: f32) void {
+        _ = self;
+        js.rendererResize(width, height);
+    }
+
+    fn bufferData(self: *WebglRenderer, vtx_buffer: []const c.ImDrawVert, idx_buffer: []const c.ImDrawIdx) void {
+        _ = self;
+        assert(@sizeOf(c.ImDrawIdx) == 4, "expect size of ImDrawIdx to be 4.");
+        js.rendererBufferData(
+            @ptrCast(vtx_buffer.ptr),
+            @intCast(vtx_buffer.len * @sizeOf(c.ImDrawVert)),
+            @ptrCast(idx_buffer.ptr),
+            @intCast(idx_buffer.len * 4),
+        );
+    }
+
+    fn draw(self: *WebglRenderer, clip_rect: c.ImRect, texture: c.ImTextureID, idx_count: u32, idx_offset: u32) void {
+        _ = self;
+        const tex_ref = js.JsObject{
+            .ref = @intFromPtr(texture),
+        };
+        js.rendererDraw(
+            clip_rect.Min.x,
+            clip_rect.Min.y,
+            clip_rect.Max.x,
+            clip_rect.Max.y,
+            tex_ref,
+            idx_count,
+            idx_offset,
+        );
+    }
+};
+
+const Renderer = union(enum) {
+    webgl: WebglRenderer,
+    software: SoftwareRenderer,
+
+    fn createFontTexture(self: *Renderer, width: i32, height: i32, pixels: [*]const u8) c.ImTextureID {
+        switch (self.*) {
+            inline else => |*r| return r.createFontTexture(width, height, pixels),
+        }
+    }
+
+    fn resize(self: *Renderer, width: f32, height: f32) void {
+        switch (self.*) {
+            inline else => |*r| r.resize(width, height),
+        }
+    }
+
+    fn bufferData(self: *Renderer, vtx_buffer: []const c.ImDrawVert, idx_buffer: []const c.ImDrawIdx) void {
+        switch (self.*) {
+            inline else => |*r| r.bufferData(vtx_buffer, idx_buffer),
+        }
+    }
+
+    fn draw(self: *Renderer, clip_rect: c.ImRect, texture: c.ImTextureID, idx_count: u32, idx_offset: u32) void {
+        switch (self.*) {
+            inline else => |*r| r.draw(clip_rect, texture, idx_count, idx_offset),
         }
     }
 };
@@ -1456,10 +1532,10 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var global_count_allocator = CountAllocator.init(gpa.allocator());
 var global_buf: [1024]u8 = [_]u8{0} ** 1024;
 
-export fn init(width: f32, height: f32) void {
+export fn init(width: f32, height: f32, has_webgl: bool) void {
     var allocator = global_count_allocator.allocator();
     app = allocator.create(App) catch unreachable;
-    app.init(allocator, width, height);
+    app.init(allocator, width, height, has_webgl);
 
     // HACK: Force ImGui to update the mosue cursor, otherwise it's in uninitialized state.
     app.onMousePos(0, 0);

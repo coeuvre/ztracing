@@ -449,6 +449,7 @@ class App {
     this.instance = instance;
     this.memory = memory;
     this.canvas = canvas;
+    this.has_webgl = true;
     this.renderer = new Webgl2Renderer(
       this.canvas.getContext("webgl2"),
       memory
@@ -456,7 +457,7 @@ class App {
   }
 
   init() {
-    this.instance.exports.init(this.canvas.width, this.canvas.height);
+    this.instance.exports.init(this.canvas.width, this.canvas.height, this.has_webgl);
     this.renderer.init(this.canvas.width, this.canvas.height);
   }
 
