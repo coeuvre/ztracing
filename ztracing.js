@@ -57,6 +57,199 @@ const unreachble = () => {
   throw new Error("unreachable");
 };
 
+class Webgl2Renderer {
+  constructor(gl, memory) {
+    /** @type {WebGLRenderingContext} */
+    this.gl = gl;
+    /** @type {Memory} */
+    this.memory = memory;
+  }
+
+  init(width, height) {
+    const gl = this.gl;
+
+    const vertex_shader_code =
+      "#version 300 es\n" +
+      "precision highp float;\n" +
+      "layout (location = 0) in vec2 Position;\n" +
+      "layout (location = 1) in vec2 UV;\n" +
+      "layout (location = 2) in vec4 Color;\n" +
+      "uniform mat4 ProjMtx;\n" +
+      "out vec2 Frag_UV;\n" +
+      "out vec4 Frag_Color;\n" +
+      "void main()\n" +
+      "{\n" +
+      "    Frag_UV = UV;\n" +
+      "    Frag_Color = Color;\n" +
+      "    gl_Position = ProjMtx * vec4(Position.xy,0,1);\n" +
+      "}\n";
+
+    const vertex_shader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertex_shader, vertex_shader_code);
+    gl.compileShader(vertex_shader);
+
+    const fragment_shader_code =
+      "#version 300 es\n" +
+      "precision mediump float;\n" +
+      "uniform sampler2D Texture;\n" +
+      "in vec2 Frag_UV;\n" +
+      "in vec4 Frag_Color;\n" +
+      "layout (location = 0) out vec4 Out_Color;\n" +
+      "void main()\n" +
+      "{\n" +
+      "    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n" +
+      "}\n";
+
+    const fragment_shader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragment_shader, fragment_shader_code);
+    gl.compileShader(fragment_shader);
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vertex_shader);
+    gl.attachShader(program, fragment_shader);
+    gl.linkProgram(program);
+    gl.useProgram(program);
+
+    this.uniform_texture = gl.getUniformLocation(program, "Texture");
+    this.uniform_proj_mtx = gl.getUniformLocation(program, "ProjMtx");
+    const attrib_position = gl.getAttribLocation(program, "Position");
+    const attrib_uv = gl.getAttribLocation(program, "UV");
+    const attrib_color = gl.getAttribLocation(program, "Color");
+
+    const vertex_buffer = gl.createBuffer();
+    const index_buffer = gl.createBuffer();
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
+
+    gl.enableVertexAttribArray(attrib_position);
+    gl.enableVertexAttribArray(attrib_uv);
+    gl.enableVertexAttribArray(attrib_color);
+
+    gl.vertexAttribPointer(attrib_position, 2, gl.FLOAT, false, 20, 0);
+    gl.vertexAttribPointer(attrib_uv, 2, gl.FLOAT, false, 20, 8);
+    gl.vertexAttribPointer(attrib_color, 4, gl.UNSIGNED_BYTE, true, 20, 16);
+
+    gl.enable(gl.BLEND);
+    gl.blendEquation(gl.FUNC_ADD);
+    gl.blendFuncSeparate(
+      gl.SRC_ALPHA,
+      gl.ONE_MINUS_SRC_ALPHA,
+      gl.ONE,
+      gl.ONE_MINUS_SRC_ALPHA
+    );
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.STENCIL_TEST);
+    gl.enable(gl.SCISSOR_TEST);
+
+    gl.activeTexture(gl.TEXTURE0);
+
+    this.resize(width, height);
+  }
+
+  resize(width, height) {
+    this.width = height;
+    this.height = height;
+
+    this.gl.viewport(0, 0, width, height);
+
+    const L = 0;
+    const R = width;
+    const T = 0;
+    const B = height;
+    const ortho_projection = [
+      2 / (R - L),
+      0,
+      0.0,
+      0.0,
+      0.0,
+      2.0 / (T - B),
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -1.0,
+      0.0,
+      (R + L) / (L - R),
+      (T + B) / (B - T),
+      0.0,
+      1.0,
+    ];
+    this.gl.uniform1i(this.uniform_texture, 0);
+    this.gl.uniformMatrix4fv(
+      this.uniform_proj_mtx,
+      false,
+      new Float32Array(ortho_projection)
+    );
+  }
+
+  createFontTexture(w, h, pixels) {
+    const view = new Uint8Array(this.memory.memory.buffer, pixels);
+    const gl = this.gl;
+    const texture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      w,
+      h,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      view
+    );
+    return this.memory.storeObject(texture);
+  }
+
+  bufferData(
+    vtx_buffer_ptr,
+    vtx_buffer_size,
+    idx_buffer_ptr,
+    idx_buffer_size
+  ) {
+    const gl = this.gl;
+
+    const vtx_buffer = this.memory.memory.buffer.slice(
+      vtx_buffer_ptr,
+      vtx_buffer_ptr + vtx_buffer_size
+    );
+    gl.bufferData(gl.ARRAY_BUFFER, vtx_buffer, gl.STREAM_DRAW);
+
+    const idx_buffer = this.memory.memory.buffer.slice(
+      idx_buffer_ptr,
+      idx_buffer_ptr + idx_buffer_size
+    );
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx_buffer, gl.STREAM_DRAW);
+  }
+
+  draw(
+    clip_rect_min_x,
+    clip_rect_min_y,
+    clip_rect_max_x,
+    clip_rect_max_y,
+    texture_ref,
+    idx_count,
+    idx_offset
+  ) {
+    const gl = this.gl;
+    gl.scissor(
+      clip_rect_min_x,
+      this.height - clip_rect_max_y,
+      clip_rect_max_x - clip_rect_min_x,
+      clip_rect_max_y - clip_rect_min_y
+    );
+
+    const texture = this.memory.loadObject(texture_ref);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+
+    gl.drawElements(gl.TRIANGLES, idx_count, gl.UNSIGNED_INT, idx_offset * 4);
+  }
+}
+
 const imports = {
   wasi_snapshot_preview1: {
     args_get: unreachble,
@@ -105,43 +298,46 @@ const imports = {
       app.memory.freeObject(ref);
     },
 
-    glCreateFontTexture: (w, h, pixels) => {
-      const view = new Uint8Array(app.memory.memory.buffer, pixels);
-      const gl = app.gl;
-      const texture = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,
-        gl.RGBA,
-        w,
-        h,
-        0,
-        gl.RGBA,
-        gl.UNSIGNED_BYTE,
-        view
+    rendererCreateFontTexture: (width, height, pixels) => {
+      return app.renderer.createFontTexture(width, height, pixels);
+    },
+
+    rendererResize: (width, height) => {
+      app.renderer.resize(width, height);
+    },
+
+    rendererBufferData: (
+      vtx_buffer_ptr,
+      vtx_buffer_size,
+      idx_buffer_ptr,
+      idx_buffer_size
+    ) => {
+      app.renderer.bufferData(
+        vtx_buffer_ptr,
+        vtx_buffer_size,
+        idx_buffer_ptr,
+        idx_buffer_size
       );
-      return app.memory.storeObject(texture);
     },
 
-    glBufferData: (target, size, data, usage) => {
-      const buffer = app.memory.memory.buffer.slice(data, data + size);
-      app.gl.bufferData(target, buffer, usage);
-    },
-
-    glScissor: (x, y, w, h) => {
-      app.gl.scissor(x, y, w, h);
-    },
-
-    glBindTexture: (target, texture_ref) => {
-      const texture = app.memory.loadObject(texture_ref);
-      app.gl.bindTexture(target, texture);
-    },
-
-    glDrawElements: (mode, count, type, offset) => {
-      app.gl.drawElements(mode, count, type, offset);
+    rendererDraw: (
+      clip_rect_min_x,
+      clip_rect_min_y,
+      clip_rect_max_x,
+      clip_rect_max_y,
+      texture_ref,
+      idx_count,
+      idx_offset
+    ) => {
+      app.renderer.draw(
+        clip_rect_min_x,
+        clip_rect_min_y,
+        clip_rect_max_x,
+        clip_rect_max_y,
+        texture_ref,
+        idx_count,
+        idx_offset
+      );
     },
 
     showOpenFilePicker: async () => {
@@ -253,130 +449,18 @@ class App {
     this.instance = instance;
     this.memory = memory;
     this.canvas = canvas;
-    /** @type {WebGLRenderingContext} */
-    this.gl = this.canvas.getContext("webgl2");
+    this.renderer = new Webgl2Renderer(
+      this.canvas.getContext("webgl2"),
+      memory
+    );
   }
 
   init() {
     this.instance.exports.init(this.canvas.width, this.canvas.height);
-
-    const gl = this.gl;
-
-    const vertex_shader_code =
-      "#version 300 es\n" +
-      "precision highp float;\n" +
-      "layout (location = 0) in vec2 Position;\n" +
-      "layout (location = 1) in vec2 UV;\n" +
-      "layout (location = 2) in vec4 Color;\n" +
-      "uniform mat4 ProjMtx;\n" +
-      "out vec2 Frag_UV;\n" +
-      "out vec4 Frag_Color;\n" +
-      "void main()\n" +
-      "{\n" +
-      "    Frag_UV = UV;\n" +
-      "    Frag_Color = Color;\n" +
-      "    gl_Position = ProjMtx * vec4(Position.xy,0,1);\n" +
-      "}\n";
-
-    const vertex_shader = gl.createShader(gl.VERTEX_SHADER);
-    gl.shaderSource(vertex_shader, vertex_shader_code);
-    gl.compileShader(vertex_shader);
-
-    const fragment_shader_code =
-      "#version 300 es\n" +
-      "precision mediump float;\n" +
-      "uniform sampler2D Texture;\n" +
-      "in vec2 Frag_UV;\n" +
-      "in vec4 Frag_Color;\n" +
-      "layout (location = 0) out vec4 Out_Color;\n" +
-      "void main()\n" +
-      "{\n" +
-      "    Out_Color = Frag_Color * texture(Texture, Frag_UV.st);\n" +
-      "}\n";
-
-    const fragment_shader = gl.createShader(gl.FRAGMENT_SHADER);
-    gl.shaderSource(fragment_shader, fragment_shader_code);
-    gl.compileShader(fragment_shader);
-
-    const program = gl.createProgram();
-    gl.attachShader(program, vertex_shader);
-    gl.attachShader(program, fragment_shader);
-    gl.linkProgram(program);
-    gl.useProgram(program);
-
-    this.uniform_texture = gl.getUniformLocation(program, "Texture");
-    this.uniform_proj_mtx = gl.getUniformLocation(program, "ProjMtx");
-    const attrib_position = gl.getAttribLocation(program, "Position");
-    const attrib_uv = gl.getAttribLocation(program, "UV");
-    const attrib_color = gl.getAttribLocation(program, "Color");
-
-    const vertex_buffer = gl.createBuffer();
-    const index_buffer = gl.createBuffer();
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
-
-    gl.enableVertexAttribArray(attrib_position);
-    gl.enableVertexAttribArray(attrib_uv);
-    gl.enableVertexAttribArray(attrib_color);
-
-    gl.vertexAttribPointer(attrib_position, 2, gl.FLOAT, false, 20, 0);
-    gl.vertexAttribPointer(attrib_uv, 2, gl.FLOAT, false, 20, 8);
-    gl.vertexAttribPointer(attrib_color, 4, gl.UNSIGNED_BYTE, true, 20, 16);
-
-    gl.enable(gl.BLEND);
-    gl.blendEquation(gl.FUNC_ADD);
-    gl.blendFuncSeparate(
-      gl.SRC_ALPHA,
-      gl.ONE_MINUS_SRC_ALPHA,
-      gl.ONE,
-      gl.ONE_MINUS_SRC_ALPHA
-    );
-    gl.disable(gl.CULL_FACE);
-    gl.disable(gl.DEPTH_TEST);
-    gl.disable(gl.STENCIL_TEST);
-    gl.enable(gl.SCISSOR_TEST);
-
-    gl.activeTexture(gl.TEXTURE0);
-
-    this.setViewport(this.canvas.width, this.canvas.height);
-  }
-
-  setViewport(width, height) {
-    this.gl.viewport(0, 0, width, height);
-
-    const L = 0;
-    const R = width;
-    const T = 0;
-    const B = height;
-    const ortho_projection = [
-      2 / (R - L),
-      0,
-      0.0,
-      0.0,
-      0.0,
-      2.0 / (T - B),
-      0.0,
-      0.0,
-      0.0,
-      0.0,
-      -1.0,
-      0.0,
-      (R + L) / (L - R),
-      (T + B) / (B - T),
-      0.0,
-      1.0,
-    ];
-    this.gl.uniform1i(this.uniform_texture, 0);
-    this.gl.uniformMatrix4fv(
-      this.uniform_proj_mtx,
-      false,
-      new Float32Array(ortho_projection)
-    );
+    this.renderer.init(this.canvas.width, this.canvas.height);
   }
 
   onResize() {
-    this.setViewport(this.canvas.width, this.canvas.height);
     this.instance.exports.onResize(this.canvas.width, this.canvas.height);
   }
 
@@ -408,12 +492,6 @@ class App {
         this.loadingFile = undefined;
       }
     }
-
-    const gl = this.gl;
-
-    gl.scissor(0, 0, this.canvas.width, this.canvas.height);
-    gl.clearColor(1.0, 1.0, 1.0, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
 
     if (!this.last) {
       this.last = now;

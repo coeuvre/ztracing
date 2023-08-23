@@ -183,20 +183,6 @@ pub const std_options = struct {
     }
 };
 
-const GL_ARRAY_BUFFER: i32 = 0x8892;
-const GL_ELEMENT_ARRAY_BUFFER: i32 = 0x8893;
-const GL_STREAM_DRAW: i32 = 0x88E0;
-const GL_TEXTURE_2D: i32 = 0x0DE1;
-const GL_TRIANGLES: i32 = 0x0004;
-const GL_UNSIGNED_SHORT: i32 = 0x1403;
-const GL_UNSIGNED_INT: i32 = 0x1405;
-
-pub extern "js" fn glBufferData(target: i32, size: i32, data: [*]const u8, usage: i32) void;
-pub extern "js" fn glScissor(x: i32, y: i32, w: i32, h: i32) void;
-pub extern "js" fn glBindTexture(target: i32, texture_ref: js.JsObject) void;
-pub extern "js" fn glDrawElements(mode: i32, count: u32, ty: i32, indices: u32) void;
-pub extern "js" fn glCreateFontTexture(w: i32, h: i32, pixels: [*]const u8) js.JsObject;
-
 const js = struct {
     pub const JsObject = extern struct {
         ref: i64,
@@ -209,6 +195,14 @@ const js = struct {
     pub extern "js" fn showOpenFilePicker() void;
 
     pub extern "js" fn copyChunk(chunk: JsObject, ptr: [*]const u8, len: usize) void;
+
+    pub extern "js" fn rendererCreateFontTexture(width: i32, height: i32, pixels: [*]const u8) JsObject;
+
+    pub extern "js" fn rendererResize(width: f32, height: f32) void;
+
+    pub extern "js" fn rendererBufferData(vtx_buffer_ptr: [*]const u8, vtx_buffer_len: i32, idx_buffer_ptr: [*]const u8, idx_buffer_len: i32) void;
+
+    pub extern "js" fn rendererDraw(clip_rect_min_x: f32, clip_rect_min_y: f32, clip_rect_max_x: f32, clip_rect_max_y: f32, texture_ref: JsObject, idx_count: u32, idx_offset: u32) void;
 };
 
 const alignment = 8;
@@ -1272,7 +1266,7 @@ const App = struct {
             var bytes_per_pixel: i32 = undefined;
             c.ImFontAtlas_GetTexDataAsRGBA32(io.*.Fonts, &pixels, &w, &h, &bytes_per_pixel);
             std.debug.assert(bytes_per_pixel == 4);
-            const tex = glCreateFontTexture(w, h, pixels);
+            const tex = js.rendererCreateFontTexture(w, h, pixels);
             const addr: usize = @intCast(tex.ref);
             c.ImFontAtlas_SetTexID(io.*.Fonts, @ptrFromInt(addr));
         }
@@ -1359,6 +1353,8 @@ const App = struct {
 
         self.io.*.DisplaySize.x = width;
         self.io.*.DisplaySize.y = height;
+
+        js.rendererResize(width, height);
     }
 
     pub fn onMousePos(self: *App, x: f32, y: f32) void {
@@ -1424,8 +1420,7 @@ const App = struct {
             const vtx_buffer_size = cmd_list.*.VtxBuffer.Size * @sizeOf(c.ImDrawVert);
             const idx_buffer_size = cmd_list.*.IdxBuffer.Size * @sizeOf(c.ImDrawIdx);
 
-            glBufferData(GL_ARRAY_BUFFER, vtx_buffer_size, @ptrCast(cmd_list.*.VtxBuffer.Data), GL_STREAM_DRAW);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, idx_buffer_size, @ptrCast(cmd_list.*.IdxBuffer.Data), GL_STREAM_DRAW);
+            js.rendererBufferData(@ptrCast(cmd_list.*.VtxBuffer.Data), vtx_buffer_size, @ptrCast(cmd_list.*.IdxBuffer.Data), idx_buffer_size);
 
             for (0..@intCast(cmd_list.*.CmdBuffer.Size)) |cmd_index| {
                 const cmd = &cmd_list.*.CmdBuffer.Data[cmd_index];
@@ -1438,21 +1433,12 @@ const App = struct {
                 if (clip_max_x <= clip_min_x or clip_max_y <= clip_min_y) {
                     continue;
                 }
-                // Apply scissor/clipping rectangle (Y is inverted in OpenGL)
-                glScissor(
-                    @intFromFloat(clip_min_x),
-                    @intFromFloat(fb_height - clip_max_y),
-                    @intFromFloat(clip_max_x - clip_min_x),
-                    @intFromFloat(clip_max_y - clip_min_y),
-                );
 
+                assert(@sizeOf(c.ImDrawIdx) == 4, "expect size of ImDrawIdx to be 4.");
                 const tex_ref = js.JsObject{
                     .ref = @intFromPtr(c.ImDrawCmd_GetTexID(cmd)),
                 };
-                glBindTexture(GL_TEXTURE_2D, tex_ref);
-
-                assert(@sizeOf(c.ImDrawIdx) == 4, "expect size of ImDrawIdx to be 4.");
-                glDrawElements(GL_TRIANGLES, cmd.*.ElemCount, GL_UNSIGNED_INT, cmd.*.IdxOffset * @sizeOf(c.ImDrawIdx));
+                js.rendererDraw(clip_min_x, clip_min_y, clip_max_x, clip_max_y, tex_ref, cmd.*.ElemCount, cmd.*.IdxOffset);
             }
         }
     }
