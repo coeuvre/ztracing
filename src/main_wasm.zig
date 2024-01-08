@@ -46,7 +46,7 @@ const Timestamp = struct {
             if (s != 0) {
                 try writer.print("{}s", .{Number{ .num = s }});
                 if (us != 0) {
-                    try writer.print(" {}us", .{Number{ .num = std.math.absInt(us) catch unreachable }});
+                    try writer.print(" {}us", .{Number{ .num = @intCast(@abs(us)) }});
                 }
             } else {
                 try writer.print("{}us", .{Number{ .num = us }});
@@ -68,7 +68,7 @@ const Number = struct {
         }
 
         var base: i64 = 1;
-        const abs = std.math.absInt(self.num) catch unreachable;
+        const abs = @abs(self.num);
         while (base <= abs) {
             base *= 1000;
         }
@@ -394,7 +394,7 @@ const LoadFileState = struct {
 
     pub fn onLoadFileChunk(self: *LoadFileState, offset: usize, chunk: js.JsObject, len: usize) void {
         if (self.shouldLoadFile()) {
-            var buf = self.allocator.alloc(u8, len) catch unreachable;
+            const buf = self.allocator.alloc(u8, len) catch unreachable;
             defer self.allocator.free(buf);
 
             js.copyChunk(chunk, buf.ptr, len);
@@ -453,8 +453,8 @@ const LoadFileState = struct {
 // Returns current window content region in screen space
 fn getWindowContentRegion() c.ImRect {
     const pos = ig.getWindowPos();
-    var scroll_x = c.igGetScrollX();
-    var scroll_y = c.igGetScrollY();
+    const scroll_x = c.igGetScrollX();
+    const scroll_y = c.igGetScrollY();
     var min = ig.getWindowContentRegionMin();
     min.x += pos.x + scroll_x;
     min.y += pos.y + scroll_y;
@@ -600,7 +600,7 @@ const ViewState = struct {
         _ = c.igDockSpace(dock_id, .{ .x = 0, .y = 0 }, c.ImGuiDockNodeFlags_PassthruCentralNode | c.ImGuiDockNodeFlags_NoDockingInCentralNode, 0);
         c.igSetNextWindowDockID(dock_id, 0);
 
-        var window_class = c.ImGuiWindowClass_ImGuiWindowClass();
+        const window_class = c.ImGuiWindowClass_ImGuiWindowClass();
         window_class.*.DockNodeFlagsOverrideSet = c.ImGuiDockNodeFlags_NoTabBar;
         defer c.ImGuiWindowClass_destroy(window_class);
         c.igSetNextWindowClass(window_class);
@@ -836,7 +836,7 @@ const ViewState = struct {
                         var prev_value: ?*const SeriesValue = null;
                         var hovered_counter: ?HoveredCounter = null;
                         while (iter.next()) |value| {
-                            var pos = c.ImVec2{
+                            const pos = c.ImVec2{
                                 .x = region.left() + @as(f32, @floatFromInt(value.time_us - self.start_time_us)) * region.width_per_us,
                                 .y = lane_bottom - @as(f32, @floatCast((value.value / counter.max_value))) * lane_height,
                             };
@@ -996,7 +996,7 @@ const ViewState = struct {
                 if (c.igItemAdd(lane_bb, 0, null, 0)) {
                     for (thread.tracks.items, 0..) |sub_lane, sub_lane_index| {
                         var iter = sub_lane.iter(self.start_time_us, region.min_duration_us);
-                        var sub_lane_top = lane_top + @as(f32, @floatFromInt(sub_lane_index)) * style.sub_lane_height;
+                        const sub_lane_top = lane_top + @as(f32, @floatFromInt(sub_lane_index)) * style.sub_lane_height;
                         while (iter.next()) |span| {
                             if (span.start_time_us > self.end_time_us) {
                                 break;
@@ -1255,7 +1255,7 @@ const App = struct {
         self.io = io;
 
         {
-            var style = c.igGetStyle();
+            const style = c.igGetStyle();
             c.igStyleColorsLight(style);
 
             style.*.ScrollbarRounding = 0.0;
@@ -1480,7 +1480,7 @@ const WebglRenderer = struct {
     fn draw(self: *WebglRenderer, clip_rect: c.ImRect, texture: c.ImTextureID, idx_count: u32, idx_offset: u32) void {
         _ = self;
         const tex_ref = js.JsObject{
-            .ref = @intFromPtr(texture),
+            .ref = @intCast(@intFromPtr(texture)),
         };
         js.rendererDraw(
             clip_rect.Min.x,

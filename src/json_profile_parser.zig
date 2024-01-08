@@ -547,7 +547,7 @@ const ExpectedParseResult = struct {
 };
 
 fn testParser(input: []const u8, expected: ExpectedParseResult) ParseError!void {
-    var allocator = std.testing.allocator;
+    const allocator = std.testing.allocator;
     var parser = JsonProfileParser.init(allocator);
     parser.feedInput(input);
     parser.endInput();

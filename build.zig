@@ -1,6 +1,6 @@
 const std = @import("std");
 
-fn addGenProfile(b: *std.Build, target: std.zig.CrossTarget, optimize: std.builtin.Mode) void {
+fn addGenProfile(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) void {
     const gen_profile = b.addExecutable(.{
         .name = "gen_profile",
         .root_source_file = .{ .path = "src/gen_profile.zig" },
@@ -20,7 +20,7 @@ fn addGenProfile(b: *std.Build, target: std.zig.CrossTarget, optimize: std.built
     run_gen_profile_step.dependOn(&run_gen_profile.step);
 }
 
-fn addBenchParser(b: *std.Build, target: std.zig.CrossTarget, optimize: std.builtin.Mode) void {
+fn addBenchParser(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) void {
     const bench_parser = b.addExecutable(.{
         .name = "bench_parser",
         .root_source_file = .{ .path = "src/bench_parser.zig" },
@@ -63,9 +63,11 @@ pub fn build(b: *std.Build) void {
     imgui.addIncludePath(.{ .path = "third_party" });
     imgui.addIncludePath(.{ .path = "third_party/cimgui" });
     imgui.addIncludePath(.{ .path = "third_party/cimgui/imgui" });
-    imgui.addCSourceFiles(&.{
-        "src/imgui_wrapper.cpp",
-    }, &.{});
+    imgui.addCSourceFiles(.{
+        .files = &.{
+            "src/imgui_wrapper.cpp",
+        },
+    });
     imgui.linkLibC();
     imgui.linkLibCpp();
 
@@ -75,7 +77,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    rtracing.export_symbol_names = &[_][]const u8{
+    rtracing.root_module.export_symbol_names = &.{
         "init",
         "update",
         "onResize",
