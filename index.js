@@ -1,7 +1,7 @@
 import queryString from "query-string";
 
 import ztracing from "./ztracing.js";
-import ztracingWasmUrl from "./zig-out/lib/ztracing.wasm?url";
+import ztracingWasmUrl from "./zig-out/bin/ztracing.wasm?url";
 
 const canvas = document.getElementById("canvas");
 canvas.width = window.innerWidth;

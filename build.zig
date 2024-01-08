@@ -71,7 +71,7 @@ pub fn build(b: *std.Build) void {
     imgui.linkLibC();
     imgui.linkLibCpp();
 
-    const rtracing = b.addSharedLibrary(.{
+    const rtracing = b.addExecutable(.{
         .name = "ztracing",
         .root_source_file = .{ .path = "src/main_wasm.zig" },
         .target = target,
