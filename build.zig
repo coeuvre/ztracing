@@ -96,18 +96,38 @@ fn addZtracing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
                 .optimize = optimize,
             });
             ztracing.addIncludePath(.{ .path = "third_party/SDL/build/install/include" });
-            if (target.result.os.tag == .windows) {
-                ztracing.addObjectFile(.{ .path = "third_party/SDL/build/install/lib/SDL2-static.lib" });
-                ztracing.linkSystemLibrary("setupapi");
-                ztracing.linkSystemLibrary("user32");
-                ztracing.linkSystemLibrary("winmm");
-                ztracing.linkSystemLibrary("gdi32");
-                ztracing.linkSystemLibrary("imm32");
-                ztracing.linkSystemLibrary("version");
-                ztracing.linkSystemLibrary("oleaut32");
-                ztracing.linkSystemLibrary("ole32");
-                ztracing.linkSystemLibrary("shell32");
-                ztracing.linkSystemLibrary("advapi32");
+            switch (target.result.os.tag) {
+                .windows => {
+                    ztracing.addObjectFile(.{ .path = "third_party/SDL/build/install/lib/SDL2-static.lib" });
+                    ztracing.linkSystemLibrary("setupapi");
+                    ztracing.linkSystemLibrary("user32");
+                    ztracing.linkSystemLibrary("winmm");
+                    ztracing.linkSystemLibrary("gdi32");
+                    ztracing.linkSystemLibrary("imm32");
+                    ztracing.linkSystemLibrary("version");
+                    ztracing.linkSystemLibrary("oleaut32");
+                    ztracing.linkSystemLibrary("ole32");
+                    ztracing.linkSystemLibrary("shell32");
+                    ztracing.linkSystemLibrary("advapi32");
+                },
+                .macos => {
+                    ztracing.addObjectFile(.{ .path = "third_party/SDL/build/install/lib/libSDL2.a" });
+                    ztracing.linkFramework("CoreVideo");
+                    ztracing.linkFramework("Cocoa");
+                    ztracing.linkFramework("IOKit");
+                    ztracing.linkFramework("ForceFeedback");
+                    ztracing.linkFramework("Carbon");
+                    ztracing.linkFramework("CoreAudio");
+                    ztracing.linkFramework("AudioToolbox");
+                    ztracing.linkFramework("AVFoundation");
+                    ztracing.linkFramework("Foundation");
+                    ztracing.linkFramework("GameController");
+                    ztracing.linkFramework("Metal");
+                    ztracing.linkFramework("QuartzCore");
+                    ztracing.linkFramework("CoreHaptics");
+                    ztracing.linkSystemLibrary("iconv");
+                },
+                else => @panic("Unsupported os"),
             }
             ztracing.linkLibC();
             break :blk ztracing;
