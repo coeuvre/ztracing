@@ -40,25 +40,11 @@ fn addBenchParser(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std
     run_bench_parser_step.dependOn(&run_bench_parser.step);
 }
 
-// Although this function looks imperative, note that its job is to
-// declaratively construct a build graph that will be executed by an external
-// runner.
-pub fn build(b: *std.Build) void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
-    const target = b.standardTargetOptions(.{});
-
-    // Standard optimization options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
-    // set a preferred release mode, allowing the user to decide how to optimize.
-    const optimize = b.standardOptimizeOption(.{});
-
+fn addImgui(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
     const imgui = b.addStaticLibrary(.{
         .name = "imgui",
         .target = target,
-        .optimize = .ReleaseSmall,
+        .optimize = if (optimize == .Debug) .ReleaseSafe else optimize,
     });
     imgui.addIncludePath(.{ .path = "third_party" });
     imgui.addIncludePath(.{ .path = "third_party/cimgui" });
@@ -69,35 +55,90 @@ pub fn build(b: *std.Build) void {
         },
     });
     imgui.linkLibC();
-    imgui.linkLibCpp();
+    // msvc doesn't support -lc++ yet. https://github.com/ziglang/zig/issues/5312
+    if (target.result.abi != .msvc) {
+        imgui.linkLibCpp();
+    }
 
-    const rtracing = b.addExecutable(.{
-        .name = "ztracing",
-        .root_source_file = .{ .path = "src/main_wasm.zig" },
-        .target = target,
-        .optimize = optimize,
-    });
-    rtracing.root_module.export_symbol_names = &.{
-        "init",
-        "update",
-        "onResize",
-        "onMousePos",
-        "onMouseButton",
-        "onMouseWheel",
-        "onKey",
-        "onFocus",
-        "shouldLoadFile",
-        "onLoadFileStart",
-        "onLoadFileChunk",
-        "onLoadFileDone",
+    return imgui;
+}
+
+fn addZtracing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+    const imgui = addImgui(b, target, optimize);
+    const ztracing = blk: {
+        if (target.result.isWasm()) {
+            const ztracing = b.addExecutable(.{
+                .name = "ztracing",
+                .root_source_file = .{ .path = "src/main_wasm.zig" },
+                .target = target,
+                .optimize = optimize,
+            });
+            ztracing.root_module.export_symbol_names = &.{
+                "init",
+                "update",
+                "onResize",
+                "onMousePos",
+                "onMouseButton",
+                "onMouseWheel",
+                "onKey",
+                "onFocus",
+                "shouldLoadFile",
+                "onLoadFileStart",
+                "onLoadFileChunk",
+                "onLoadFileDone",
+            };
+            break :blk ztracing;
+        } else {
+            const ztracing = b.addExecutable(.{
+                .name = "ztracing",
+                .root_source_file = .{ .path = "src/main_native.zig" },
+                .target = target,
+                .optimize = optimize,
+            });
+            ztracing.addIncludePath(.{ .path = "third_party/SDL/build/install/include" });
+            if (target.result.os.tag == .windows) {
+                ztracing.addObjectFile(.{ .path = "third_party/SDL/build/install/lib/SDL2-static.lib" });
+                ztracing.linkSystemLibrary("setupapi");
+                ztracing.linkSystemLibrary("user32");
+                ztracing.linkSystemLibrary("winmm");
+                ztracing.linkSystemLibrary("gdi32");
+                ztracing.linkSystemLibrary("imm32");
+                ztracing.linkSystemLibrary("version");
+                ztracing.linkSystemLibrary("oleaut32");
+                ztracing.linkSystemLibrary("ole32");
+                ztracing.linkSystemLibrary("shell32");
+                ztracing.linkSystemLibrary("advapi32");
+            }
+            ztracing.linkLibC();
+            break :blk ztracing;
+        }
     };
-    rtracing.linkLibrary(imgui);
-    rtracing.addIncludePath(.{ .path = "third_party/cimgui" });
+    ztracing.linkLibrary(imgui);
+    ztracing.addIncludePath(.{ .path = "third_party/cimgui" });
 
-    // This declares intent for the executable to be installed into the
-    // standard location when the user invokes the "install" step (the default
-    // step when running `zig build`).
-    b.installArtifact(rtracing);
+    return ztracing;
+}
+
+// Although this function looks imperative, note that its job is to
+// declaratively construct a build graph that will be executed by an external
+// runner.
+pub fn build(b: *std.Build) void {
+    // Standard target options allows the person running `zig build` to choose
+    // what target to build for. Here we do not override the defaults, which
+    // means any target is allowed, and the default is native. Other options
+    // for restricting supported target set are available.
+    var target = b.standardTargetOptions(.{});
+    if (target.result.os.tag == .windows and target.result.abi != .msvc) {
+        target = b.resolveTargetQuery(.{ .os_tag = .windows, .abi = .msvc });
+    }
+
+    // Standard optimization options allow the person running `zig build` to select
+    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
+    // set a preferred release mode, allowing the user to decide how to optimize.
+    const optimize = b.standardOptimizeOption(.{});
+
+    const ztracing = addZtracing(b, target, optimize);
+    b.installArtifact(ztracing);
 
     addGenProfile(b, target, optimize);
     addBenchParser(b, target, optimize);

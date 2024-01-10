@@ -1639,16 +1639,6 @@ export fn main(argc: i32, argv: i32) i32 {
     unreachable;
 }
 
-export fn logFromC(level: i32, cstr: [*:0]const u8) void {
-    switch (level) {
-        0 => std.log.err("{s}", .{cstr}),
-        1 => std.log.warn("{s}", .{cstr}),
-        2 => std.log.info("{s}", .{cstr}),
-        3 => std.log.debug("{s}", .{cstr}),
-        else => unreachable,
-    }
-}
-
 pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     _ = ret_addr;
     if (error_return_trace) |trace| {
