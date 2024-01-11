@@ -66,7 +66,7 @@ pub const Tracing = struct {
                 }
 
                 const io = c.igGetIO();
-                if (io.*.Framerate < 1000) {
+                if (io.*.Framerate < 10000) {
                     const window_width = c.igGetWindowWidth();
                     const text = std.fmt.bufPrintZ(&global_buf, "{d:.0} ", .{io.*.Framerate}) catch unreachable;
                     var text_size: c.ImVec2 = undefined;

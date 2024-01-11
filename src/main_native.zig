@@ -49,18 +49,13 @@ pub fn main() !void {
 
     _ = c.SDL_Init(c.SDL_INIT_EVERYTHING);
 
-    var mode: c.SDL_DisplayMode = undefined;
-    _ = c.SDL_GetCurrentDisplayMode(0, &mode);
-    const window_width = mode.w;
-    const window_height = mode.h;
-
     const window = c.SDL_CreateWindow(
         "ztracing",
         c.SDL_WINDOWPOS_CENTERED,
         c.SDL_WINDOWPOS_CENTERED,
-        window_width,
-        window_height,
-        c.SDL_WINDOW_ALLOW_HIGHDPI | c.SDL_WINDOW_HIDDEN | c.SDL_WINDOW_RESIZABLE,
+        1280,
+        720,
+        c.SDL_WINDOW_ALLOW_HIGHDPI | c.SDL_WINDOW_HIDDEN | c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_MAXIMIZED,
     ).?;
 
     const renderer = c.SDL_CreateRenderer(window, 0, c.SDL_RENDERER_ACCELERATED).?;
@@ -110,7 +105,7 @@ pub fn main() !void {
                     break;
                 },
                 c.SDL_DROPFILE => {
-                    std.log.debug("Dropped file {s}", .{event.drop.file});
+                    std.log.info("Dropped file {s}", .{event.drop.file});
                     if (tracing.should_load_file()) {
                         const file = try std.fs.openFileAbsoluteZ(event.drop.file, .{});
                         const stat = try file.stat();
