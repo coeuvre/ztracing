@@ -132,6 +132,9 @@ fn addZtracing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
                     ztracing.linkFramework("CoreHaptics");
                     ztracing.linkSystemLibrary("iconv");
                 },
+                .linux => {
+                    ztracing.addObjectFile(.{ .path = "third_party/SDL/build/install/lib/libSDL2.a" });
+                },
                 else => @panic("Unsupported os"),
             }
             ztracing.linkLibC();

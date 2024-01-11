@@ -145,7 +145,6 @@ pub fn main() !void {
 
         c.igRender();
 
-        _ = c.SDL_RenderClear(renderer);
         c.ig_ImplSDLRenderer_RenderDrawData(c.igGetDrawData());
         c.SDL_RenderPresent(renderer);
     }
