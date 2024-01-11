@@ -46,9 +46,13 @@ fn addImgui(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
         .target = target,
         .optimize = if (optimize == .Debug) .ReleaseSafe else optimize,
     });
-    imgui.addIncludePath(.{ .path = "third_party" });
-    imgui.addIncludePath(.{ .path = "third_party/cimgui" });
+    imgui.addIncludePath(.{ .path = "." });
     imgui.addIncludePath(.{ .path = "third_party/cimgui/imgui" });
+    if (target.result.isWasm()) {
+        imgui.defineCMacro("ZTRACING_WASM", "1");
+    } else {
+        imgui.addIncludePath(.{ .path = "third_party/SDL/build/install/include/SDL2" });
+    }
     imgui.addCSourceFiles(.{
         .files = &.{
             "src/imgui_wrapper.cpp",
@@ -87,6 +91,7 @@ fn addZtracing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
                 "onLoadFileChunk",
                 "onLoadFileDone",
             };
+            ztracing.defineCMacro("ZTRACING_WASM", "1");
             break :blk ztracing;
         } else {
             const ztracing = b.addExecutable(.{
@@ -134,6 +139,7 @@ fn addZtracing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
         }
     };
     ztracing.linkLibrary(imgui);
+    ztracing.addIncludePath(.{ .path = "." });
     ztracing.addIncludePath(.{ .path = "third_party/cimgui" });
 
     return ztracing;

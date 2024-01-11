@@ -18,14 +18,55 @@ static void my_debug_printf(const char *fmt, ...) {
 }
 
 #define IM_ASSERT(_EXPR) (void)((!!(_EXPR)) || (log_impl(LOG_ERR, #_EXPR), 0))
+#ifdef ZTRACING_WASM
 #define IMGUI_DISABLE_DEFAULT_ALLOCATORS 
+#endif
 #define IMGUI_DEBUG_PRINTF(_FMT,...) my_debug_printf(_FMT, __VA_ARGS__)
 
 #define ImDrawIdx unsigned int
 
-#include "cimgui/imgui/imgui.cpp"
-#include "cimgui/imgui/imgui_demo.cpp"
-#include "cimgui/imgui/imgui_draw.cpp"
-#include "cimgui/imgui/imgui_tables.cpp"
-#include "cimgui/imgui/imgui_widgets.cpp"
-#include "cimgui/cimgui.cpp"
+#include "third_party/cimgui/imgui/imgui.cpp"
+#include "third_party/cimgui/imgui/imgui_demo.cpp"
+#include "third_party/cimgui/imgui/imgui_draw.cpp"
+#include "third_party/cimgui/imgui/imgui_tables.cpp"
+#include "third_party/cimgui/imgui/imgui_widgets.cpp"
+#include "third_party/cimgui/cimgui.cpp"
+
+#ifndef ZTRACING_WASM
+
+#include "third_party/cimgui/imgui/backends/imgui_impl_sdl2.cpp"
+#include "third_party/cimgui/imgui/backends/imgui_impl_sdlrenderer.cpp"
+
+CIMGUI_API bool ig_ImplSDL2_InitForSDLRenderer(SDL_Window *window, SDL_Renderer *renderer) {
+    return ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
+}
+
+CIMGUI_API void ig_ImplSDL2_Shutdown() {
+    ImGui_ImplSDL2_Shutdown();
+}
+
+CIMGUI_API void ig_ImplSDL2_NewFrame() {
+    ImGui_ImplSDL2_NewFrame();
+}
+
+CIMGUI_API bool ig_ImplSDL2_ProcessEvent(const SDL_Event* event) {
+    return ImGui_ImplSDL2_ProcessEvent(event);
+}
+
+CIMGUI_API bool ig_ImplSDLRenderer_Init(SDL_Renderer* renderer) {
+    return ImGui_ImplSDLRenderer_Init(renderer);
+}
+
+CIMGUI_API void ig_ImplSDLRenderer_Shutdown() {
+    return ImGui_ImplSDLRenderer_Shutdown();
+}
+
+CIMGUI_API void ig_ImplSDLRenderer_NewFrame() {
+    return ImGui_ImplSDLRenderer_NewFrame();
+}
+
+CIMGUI_API void ig_ImplSDLRenderer_RenderDrawData(ImDrawData* draw_data) {
+    return ImGui_ImplSDLRenderer_RenderDrawData(draw_data);
+}
+
+#endif

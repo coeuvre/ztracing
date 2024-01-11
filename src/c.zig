@@ -2,13 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 pub usingnamespace @cImport({
-    if (builtin.cpu.arch != .wasm32) {
-        @cInclude("SDL2/SDL.h");
-    }
-
-    @cDefine("CIMGUI_DEFINE_ENUMS_AND_STRUCTS", "1");
-    @cDefine("ImDrawIdx", "unsigned int");
-    @cInclude("cimgui.h");
+    @cInclude("src/c.h");
 });
 
 export fn log_impl(level: i32, cstr: [*:0]const u8) void {
