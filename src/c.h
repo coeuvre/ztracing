@@ -19,4 +19,6 @@ CIMGUI_API void ig_ImplSDLRenderer_Shutdown();
 CIMGUI_API void ig_ImplSDLRenderer_NewFrame();
 CIMGUI_API void ig_ImplSDLRenderer_RenderDrawData(ImDrawData* draw_data);
 
+#include <zlib.h>
+
 #endif

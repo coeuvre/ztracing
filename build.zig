@@ -40,7 +40,7 @@ fn addBenchParser(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std
     run_bench_parser_step.dependOn(&run_bench_parser.step);
 }
 
-fn addImgui(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+fn add_imgui(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
     const imgui = b.addStaticLibrary(.{
         .name = "imgui",
         .target = target,
@@ -67,8 +67,38 @@ fn addImgui(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     return imgui;
 }
 
-fn addZtracing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
-    const imgui = addImgui(b, target, optimize);
+fn add_zlib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+    const zlib = b.addStaticLibrary(.{
+        .name = "zlib",
+        .target = target,
+        .optimize = if (optimize == .Debug) .ReleaseSafe else optimize,
+    });
+    zlib.addIncludePath(.{ .path = "third_party/zlib" });
+    zlib.addCSourceFiles(.{
+        .files = &.{
+            "third_party/zlib/adler32.c",
+            "third_party/zlib/compress.c",
+            "third_party/zlib/crc32.c",
+            "third_party/zlib/deflate.c",
+            "third_party/zlib/gzclose.c",
+            "third_party/zlib/gzlib.c",
+            "third_party/zlib/gzread.c",
+            "third_party/zlib/gzwrite.c",
+            "third_party/zlib/inflate.c",
+            "third_party/zlib/infback.c",
+            "third_party/zlib/inftrees.c",
+            "third_party/zlib/inffast.c",
+            "third_party/zlib/trees.c",
+            "third_party/zlib/uncompr.c",
+            "third_party/zlib/zutil.c",
+        },
+    });
+    zlib.linkLibC();
+    return zlib;
+}
+
+fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+    const imgui = add_imgui(b, target, optimize);
     const ztracing = blk: {
         if (target.result.isWasm()) {
             const ztracing = b.addExecutable(.{
@@ -94,6 +124,8 @@ fn addZtracing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             ztracing.defineCMacro("ZTRACING_WASM", "1");
             break :blk ztracing;
         } else {
+            const zlib = add_zlib(b, target, optimize);
+
             const ztracing = b.addExecutable(.{
                 .name = "ztracing",
                 .root_source_file = .{ .path = "src/main_native.zig" },
@@ -101,6 +133,8 @@ fn addZtracing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
                 .optimize = optimize,
             });
             ztracing.addIncludePath(.{ .path = "third_party/SDL/build/install/include" });
+            ztracing.addIncludePath(.{ .path = "third_party/zlib" });
+            ztracing.linkLibrary(zlib);
             switch (target.result.os.tag) {
                 .windows => {
                     ztracing.addObjectFile(.{ .path = "third_party/SDL/build/install/lib/SDL2-static.lib" });
@@ -166,7 +200,7 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const ztracing = addZtracing(b, target, optimize);
+    const ztracing = add_ztraing(b, target, optimize);
     b.installArtifact(ztracing);
 
     addGenProfile(b, target, optimize);

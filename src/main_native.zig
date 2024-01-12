@@ -13,34 +13,83 @@ fn get_seconds_elapsed(from: usize, to: usize, freq: usize) f32 {
 }
 
 const LoadingFile = struct {
+    allocator: *Allocator,
     file: std.fs.File,
-    decompress: ?std.compress.gzip.Decompress(std.fs.File.Reader),
+    buf: [4096]u8,
+    stream: ?*c.z_stream,
 
-    pub fn init(allocator: Allocator, file: std.fs.File) !LoadingFile {
+    pub fn init(allocator: *Allocator, file: std.fs.File) !LoadingFile {
         var header = std.mem.zeroes([2]u8);
         const bytes_read = try file.read(&header);
-        const is_gzip = bytes_read == 2 and header[0] == 0x1F and header[1] == 0x8B;
         try file.seekTo(0);
+        const use_zlib = bytes_read == 2 and
+            (header[0] == 0x1F and header[1] == 0x8B);
+
+        const stream = blk: {
+            if (!use_zlib) {
+                break :blk null;
+            }
+
+            const stream = try allocator.create(c.z_stream);
+            stream.* = c.z_stream{
+                .zalloc = zalloc,
+                .zfree = zfree,
+                .@"opaque" = allocator,
+            };
+
+            // Automatically detect header
+            const ret = c.inflateInit2(stream, c.MAX_WBITS | 32);
+            std.debug.assert(ret == c.Z_OK);
+
+            break :blk stream;
+        };
+
         return .{
+            .allocator = allocator,
             .file = file,
-            .decompress = if (is_gzip) try std.compress.gzip.decompress(allocator, file.reader()) else null,
+            .buf = undefined,
+            .stream = stream,
         };
     }
 
     pub fn deinit(self: *LoadingFile) void {
-        if (self.decompress) |*decompress| {
-            decompress.deinit();
+        if (self.stream) |stream| {
+            _ = c.inflateEnd(stream);
+            self.allocator.destroy(stream);
         }
         self.file.close();
     }
 
     pub fn read(self: *LoadingFile, buffer: []u8) !usize {
-        if (self.decompress) |*decompress| {
-            return decompress.read(buffer);
+        if (self.stream) |stream| {
+            if (stream.avail_in == 0) {
+                stream.avail_in = @intCast(try self.file.read(&self.buf));
+                stream.next_in = &self.buf;
+            }
+
+            stream.avail_out = @intCast(buffer.len);
+            stream.next_out = buffer.ptr;
+            const ret = c.inflate(stream, c.Z_NO_FLUSH);
+            if (ret == c.Z_STREAM_END or ret == c.Z_OK) {
+                return buffer.len - stream.avail_out;
+            }
+            if (stream.msg) |msg| {
+                std.log.err("{s}", .{msg});
+            }
+            return error.ZLIB_ERROR;
         }
+
         return try self.file.read(buffer);
     }
 };
+
+fn zalloc(userdata: ?*anyopaque, items: c_uint, size: c_uint) callconv(.C) ?*anyopaque {
+    return imgui.alloc(items * size, userdata);
+}
+
+fn zfree(userdata: ?*anyopaque, address: ?*anyopaque) callconv(.C) void {
+    imgui.free(address, userdata);
+}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -109,7 +158,7 @@ pub fn main() !void {
                     if (tracing.should_load_file()) {
                         const file = try std.fs.openFileAbsoluteZ(event.drop.file, .{});
                         const stat = try file.stat();
-                        loading_file = try LoadingFile.init(allocator, file);
+                        loading_file = try LoadingFile.init(&allocator, file);
                         tracing.on_load_file_start(stat.size);
                     }
                 },
@@ -126,7 +175,7 @@ pub fn main() !void {
                 const bytes_read = try file.read(&loading_buf);
                 const offset = try file.file.getPos();
                 tracing.on_load_file_chunk(offset, loading_buf[0..bytes_read]);
-                if (bytes_read < loading_buf.len) {
+                if (bytes_read == 0) {
                     tracing.on_load_file_done();
                     file.deinit();
                     loading_file = null;
