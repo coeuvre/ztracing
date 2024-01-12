@@ -169,6 +169,7 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
                 else => @panic("Unsupported os"),
             }
             ztracing.linkLibC();
+            ztracing.root_module.single_threaded = false;
             break :blk ztracing;
         }
     };

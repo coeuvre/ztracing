@@ -107,8 +107,8 @@ pub const Tracing = struct {
             .welcome => {
                 return true;
             },
-            .load_file => |*load_file| {
-                return load_file.should_load_file();
+            .load_file => {
+                return false;
             },
             .view => {
                 return false;
@@ -116,13 +116,13 @@ pub const Tracing = struct {
         }
     }
 
-    pub fn on_load_file_start(self: *Self, len: usize) void {
+    pub fn on_load_file_start(self: *Self) void {
         switch (self.state) {
             .welcome => |*welcome| {
-                welcome.on_file_load_start(len, self);
+                welcome.on_file_load_start(self);
             },
             .view => |*view| {
-                view.on_file_load_start(len, self);
+                view.on_file_load_start(self);
             },
             else => {
                 std.log.err("Unexpected event on_file_load_start, current state is {s}", .{@tagName(self.state)});
@@ -130,10 +130,10 @@ pub const Tracing = struct {
         }
     }
 
-    pub fn on_load_file_chunk(self: *Self, offset: usize, chunk: []const u8) void {
+    pub fn on_load_file_progress(self: *Self, offset: usize, total: usize) void {
         switch (self.state) {
             .load_file => |*load_file| {
-                load_file.on_load_file_chunk(offset, chunk);
+                load_file.on_load_file_progress(offset, total);
             },
             else => {
                 std.log.err("Unexpected event onLoadFileChunk, current state is {s}", .{@tagName(self.state)});
@@ -141,10 +141,21 @@ pub const Tracing = struct {
         }
     }
 
-    pub fn on_load_file_done(self: *Self) void {
+    pub fn on_load_file_done(self: *Self, profile: *Profile) void {
         switch (self.state) {
             .load_file => |*load_file| {
-                load_file.on_load_file_done(self);
+                load_file.on_load_file_done(profile, self);
+            },
+            else => {
+                std.log.err("Unexpected event onLoadFileDone, current state is {s}", .{@tagName(self.state)});
+            },
+        }
+    }
+
+    pub fn on_load_file_error(self: *Self, msg: []const u8) void {
+        switch (self.state) {
+            .load_file => |*load_file| {
+                load_file.on_load_file_error(msg);
             },
             else => {
                 std.log.err("Unexpected event onLoadFileDone, current state is {s}", .{@tagName(self.state)});
@@ -250,36 +261,28 @@ const WelcomeState = struct {
         c.igEnd();
     }
 
-    pub fn on_file_load_start(self: *WelcomeState, len: usize, tracing: *Tracing) void {
-        const state = .{ .load_file = LoadFileState.init(self.allocator, len) };
+    pub fn on_file_load_start(self: *WelcomeState, tracing: *Tracing) void {
+        const state = .{ .load_file = LoadFileState.init(self.allocator) };
         tracing.switch_state(state);
     }
 };
 
 const LoadFileState = struct {
     allocator: Allocator,
-    done: bool,
     total: usize,
     offset: usize,
-    json_parser: JsonProfileParser,
-    buffer: std.ArrayList(u8),
     progress_message: ?[:0]u8,
     error_message: ?[:0]u8,
-    profile: Profile,
 
     const popup_id = "LoadFilePopup";
 
-    pub fn init(allocator: Allocator, len: usize) LoadFileState {
+    pub fn init(allocator: Allocator) LoadFileState {
         return .{
             .allocator = allocator,
-            .done = false,
-            .total = len,
+            .total = 0,
             .offset = 0,
-            .json_parser = JsonProfileParser.init(allocator),
-            .buffer = std.ArrayList(u8).init(allocator),
             .progress_message = null,
             .error_message = null,
-            .profile = Profile.init(allocator),
         };
     }
 
@@ -333,60 +336,17 @@ const LoadFileState = struct {
         self.error_message = std.fmt.allocPrintZ(self.allocator, fmt, args) catch unreachable;
     }
 
-    pub fn should_load_file(self: *const LoadFileState) bool {
-        return self.error_message == null and !self.done;
+    pub fn on_load_file_progress(self: *LoadFileState, offset: usize, total: usize) void {
+        self.total = total;
+        self.offset = offset;
     }
 
-    pub fn on_load_file_chunk(self: *LoadFileState, offset: usize, chunk: []const u8) void {
-        if (self.should_load_file()) {
-            self.json_parser.feedInput(chunk);
-            self.continueScan();
-
-            if (self.total > 0) {
-                self.offset = offset;
-            } else {
-                self.offset += chunk.len;
-            }
-        }
+    pub fn on_load_file_done(self: *LoadFileState, profile: *Profile, tracing: *Tracing) void {
+        tracing.switch_state(.{ .view = ViewState.init(self.allocator, profile) });
     }
 
-    pub fn on_load_file_done(self: *LoadFileState, tracing: *Tracing) void {
-        if (self.should_load_file()) {
-            self.json_parser.endInput();
-            self.continueScan();
-            self.json_parser.deinit();
-
-            self.profile.done() catch |err| {
-                self.setError("Failed to finalize profile: {}", .{err});
-                return;
-            };
-
-            self.done = true;
-            if (self.total > 0) {
-                self.offset = self.total;
-            }
-
-            tracing.switch_state(.{ .view = ViewState.init(self.allocator, self.profile) });
-        }
-    }
-
-    fn continueScan(self: *LoadFileState) void {
-        while (!self.json_parser.done()) {
-            const event = self.json_parser.next() catch |err| {
-                self.setError("Failed to parse file: {}\n{}", .{ err, self.json_parser.diagnostic });
-                return;
-            };
-
-            switch (event) {
-                .trace_event => |trace_event| {
-                    self.profile.handleTraceEvent(trace_event) catch |err| {
-                        self.setError("Failed to handle trace event: {}", .{err});
-                        return;
-                    };
-                },
-                .none => return,
-            }
-        }
+    pub fn on_load_file_error(self: *LoadFileState, msg: []const u8) void {
+        self.setError("{s}", .{msg});
     }
 };
 
@@ -398,7 +358,7 @@ const ViewStyle = struct {
 
 const ViewState = struct {
     allocator: Allocator,
-    profile: Profile,
+    profile: *Profile,
     start_time_us: i64,
     end_time_us: i64,
     hovered_counters: std.ArrayList(HoveredCounter),
@@ -409,7 +369,7 @@ const ViewState = struct {
     open_selection_span: bool = false,
     selected_span: ?*const Span = null,
 
-    pub fn init(allocator: Allocator, profile: Profile) ViewState {
+    pub fn init(allocator: Allocator, profile: *Profile) ViewState {
         const duration_us = profile.max_time_us - profile.min_time_us;
         const padding = @divTrunc(duration_us, 6);
         return .{
@@ -419,6 +379,12 @@ const ViewState = struct {
             .end_time_us = profile.max_time_us + padding,
             .hovered_counters = std.ArrayList(HoveredCounter).init(allocator),
         };
+    }
+
+    pub fn deinit(self: *ViewState) void {
+        self.profile.deinit();
+        self.allocator.destroy(self.profile);
+        self.hovered_counters.deinit();
     }
 
     fn calcRegion(self: *ViewState, bb: c.ImRect) ViewRegion {
@@ -976,8 +942,8 @@ const ViewState = struct {
         c.igPopTextWrapPos();
     }
 
-    pub fn on_file_load_start(self: *ViewState, len: usize, tracing: *Tracing) void {
-        const state = .{ .load_file = LoadFileState.init(self.allocator, len) };
+    pub fn on_file_load_start(self: *ViewState, tracing: *Tracing) void {
+        const state = .{ .load_file = LoadFileState.init(self.allocator) };
         tracing.switch_state(state);
     }
 };
