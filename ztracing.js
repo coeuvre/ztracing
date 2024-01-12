@@ -419,6 +419,10 @@ const imports = {
       const dst = new Uint8Array(app.memory.memory.buffer, ptr, len);
       dst.set(chunk);
     },
+
+    get_current_timestamp: () => {
+      return performance.now();
+    }
   },
 };
 

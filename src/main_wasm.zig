@@ -8,6 +8,8 @@ const log = std.log;
 const Allocator = std.mem.Allocator;
 const CountAllocator = @import("./count_alloc.zig").CountAllocator;
 const Tracing = @import("tracing.zig").Tracing;
+const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
+const Profile = @import("profile.zig").Profile;
 
 const SoftwareRenderer = software_renderer.SoftwareRenderer;
 
@@ -48,6 +50,8 @@ const js = struct {
     pub extern "js" fn rendererDraw(clip_rect_min_x: f32, clip_rect_min_y: f32, clip_rect_max_x: f32, clip_rect_max_y: f32, texture_ref: JsObject, idx_count: u32, idx_offset: u32) void;
 
     pub extern "js" fn rendererPresent(framebuffer_ptr: [*]const u8, framebuffer_len: usize, width: usize, height: usize) void;
+
+    pub extern "js" fn get_current_timestamp() usize;
 };
 
 fn jsButtonToImguiButton(button: i32) i32 {
@@ -64,6 +68,88 @@ fn show_open_file_picker() void {
     js.showOpenFilePicker();
 }
 
+const LoadState = struct {
+    allocator: Allocator,
+    total: usize,
+    parser: JsonProfileParser,
+    profile: *Profile,
+    tracing: *Tracing,
+    start_timestamp: usize,
+    processed_bytes: usize,
+
+    pub fn init(allocator: Allocator, total: usize, tracing: *Tracing) LoadState {
+        const profile = allocator.create(Profile) catch unreachable;
+        profile.* = Profile.init(allocator);
+        return .{
+            .allocator = allocator,
+            .total = total,
+            .parser = JsonProfileParser.init(allocator),
+            .profile = profile,
+            .tracing = tracing,
+            .start_timestamp = js.get_current_timestamp(),
+            .processed_bytes = 0,
+        };
+    }
+
+    pub fn deinit(self: *LoadState) void {
+        self.parser.deinit();
+    }
+
+    pub fn load(self: *LoadState, input: []const u8) bool {
+        self.processed_bytes += input.len;
+        if (input.len == 0) {
+            self.parser.endInput();
+        } else {
+            self.parser.feedInput(input);
+        }
+
+        while (!self.parser.done()) {
+            const event = self.parser.next() catch |err| {
+                self.send_load_error("Failed to parse file: {}\n{}", .{
+                    err,
+                    self.parser.diagnostic,
+                });
+                return false;
+            };
+
+            switch (event) {
+                .trace_event => |trace_event| {
+                    self.profile.handleTraceEvent(trace_event) catch |err| {
+                        self.send_load_error("Failed to handle trace event: {}\n{}", .{
+                            err,
+                            self.parser.diagnostic,
+                        });
+                        return false;
+                    };
+                },
+                .none => break,
+            }
+        }
+
+        if (input.len == 0) {
+            self.profile.done() catch |err| {
+                self.send_load_error("Failed to finalize profile: {}", .{
+                    err,
+                });
+                return false;
+            };
+
+            const seconds = @as(f32, @floatFromInt(js.get_current_timestamp() - self.start_timestamp)) / 1000.0;
+            const processed_mb = @as(f32, @floatFromInt(self.processed_bytes)) / 1000.0 / 1000.0;
+            const speed = processed_mb / seconds;
+            std.log.info("Loaded {d:.2}MB in {d:.2} seconds. {d:.2} MB/s", .{ processed_mb, seconds, speed });
+        }
+
+        return true;
+    }
+
+    fn send_load_error(self: *LoadState, comptime fmt: []const u8, args: anytype) void {
+        const msg = std.fmt.allocPrint(self.allocator, fmt, args) catch unreachable;
+        defer self.allocator.free(msg);
+        self.tracing.on_load_file_error(msg);
+    }
+};
+
 const App = struct {
     allocator: Allocator,
     renderer: Renderer,
@@ -74,6 +160,7 @@ const App = struct {
 
     io: *c.ImGuiIO,
     mouse_pos_before_blur: c.ImVec2 = undefined,
+    load_state: ?LoadState = null,
 
     pub fn init(self: *App, count_allocator: *CountAllocator, width: f32, height: f32, has_webgl: bool) void {
         const allocator = count_allocator.allocator();
@@ -230,6 +317,28 @@ const App = struct {
             }
         }
     }
+
+    pub fn on_load_file_start(self: *App, len: usize) void {
+        self.load_state = LoadState.init(self.allocator, len, &self.tracing);
+        self.tracing.on_load_file_start();
+    }
+
+    pub fn on_load_file_chunk(self: *App, offset: usize, chunk: []const u8) void {
+        if (self.load_state.?.load(chunk)) {
+            self.tracing.on_load_file_progress(offset, self.load_state.?.total);
+        } else {
+            self.load_state.?.deinit();
+            self.load_state = null;
+        }
+    }
+
+    pub fn on_load_file_done(self: *App) void {
+        if (self.load_state.?.load(&[0]u8{})) {
+            self.tracing.on_load_file_done(self.load_state.?.profile);
+        }
+        self.load_state.?.deinit();
+        self.load_state = null;
+    }
 };
 
 const WebglRenderer = struct {
@@ -357,7 +466,7 @@ export fn shouldLoadFile() bool {
 }
 
 export fn onLoadFileStart(len: usize) void {
-    app.tracing.on_load_file_start(len);
+    app.on_load_file_start(len);
 }
 
 export fn onLoadFileChunk(offset: usize, chunk: js.JsObject, len: usize) void {
@@ -370,12 +479,12 @@ export fn onLoadFileChunk(offset: usize, chunk: js.JsObject, len: usize) void {
 
         js.copyChunk(chunk, buf.ptr, len);
 
-        app.tracing.on_load_file_chunk(offset, buf);
+        app.on_load_file_chunk(offset, buf);
     }
 }
 
 export fn onLoadFileDone() void {
-    app.tracing.on_load_file_done();
+    app.on_load_file_done();
 }
 
 export fn main(argc: i32, argv: i32) i32 {

@@ -107,8 +107,8 @@ pub const Tracing = struct {
             .welcome => {
                 return true;
             },
-            .load_file => {
-                return false;
+            .load_file => |load_file| {
+                return load_file.should_load_file();
             },
             .view => {
                 return false;
@@ -322,6 +322,10 @@ const LoadFileState = struct {
         if (self.error_message) |msg| {
             self.allocator.free(msg);
         }
+    }
+
+    pub fn should_load_file(self: *const LoadFileState) bool {
+        return self.error_message == null;
     }
 
     fn setProgress(self: *LoadFileState, comptime fmt: []const u8, args: anytype) void {
