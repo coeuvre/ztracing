@@ -74,16 +74,13 @@ fn add_zlib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
         .optimize = if (optimize == .Debug) .ReleaseSafe else optimize,
     });
     zlib.addIncludePath(.{ .path = "third_party/zlib" });
+    zlib.defineCMacro("Z_SOLO", "1");
     zlib.addCSourceFiles(.{
         .files = &.{
             "third_party/zlib/adler32.c",
             "third_party/zlib/compress.c",
             "third_party/zlib/crc32.c",
             "third_party/zlib/deflate.c",
-            "third_party/zlib/gzclose.c",
-            "third_party/zlib/gzlib.c",
-            "third_party/zlib/gzread.c",
-            "third_party/zlib/gzwrite.c",
             "third_party/zlib/inflate.c",
             "third_party/zlib/infback.c",
             "third_party/zlib/inftrees.c",
