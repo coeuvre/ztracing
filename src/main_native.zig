@@ -47,6 +47,8 @@ fn send_load_error(allocator: Allocator, comptime fmt: []const u8, args: anytype
 }
 
 fn load_thread_main(allocator: Allocator, path: []u8) void {
+    const start_counter = c.SDL_GetPerformanceCounter();
+
     _ = c.SDL_PushEvent(@constCast(&c.SDL_Event{
         .type = user_event.load_started,
     }));
@@ -61,6 +63,8 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
         return;
     };
     const file_size = stat.size;
+
+    var processed_bytes: usize = 0;
     var offset: usize = 0;
 
     var header = std.mem.zeroes([2]u8);
@@ -148,12 +152,14 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
                     is_stream_end = true;
                 } else {
                     parser.feedInput(inflate_buf[0..have]);
+                    processed_bytes += have;
                 }
             } else {
                 if (file_bytes_read == 0) {
                     parser.endInput();
                 } else {
                     parser.feedInput(file_buf[0..file_bytes_read]);
+                    processed_bytes += file_bytes_read;
                 }
             }
 
@@ -221,6 +227,13 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
             .data1 = profile,
         },
     }));
+
+    {
+        const seconds = get_seconds_elapsed(start_counter, c.SDL_GetPerformanceCounter(), c.SDL_GetPerformanceFrequency());
+        const processed_mb = @as(f32, @floatFromInt(processed_bytes)) / 1000.0 / 1000.0;
+        const speed = processed_mb / seconds;
+        std.log.info("Loaded {d:.2}MB in {d:.2} seconds. {d:.2} MB/s", .{ processed_mb, seconds, speed });
+    }
 }
 
 pub fn main() !void {
