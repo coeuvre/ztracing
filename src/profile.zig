@@ -1,7 +1,6 @@
 const std = @import("std");
 const test_utils = @import("./test_utils.zig");
 const json_profile_parser = @import("./json_profile_parser.zig");
-const tracy = @import("tracy.zig");
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -58,9 +57,6 @@ pub const SeriesIter = struct {
     prev_index: ?usize = null,
 
     pub fn next(self: *SeriesIter) ?*const SeriesValue {
-        const trace = tracy.traceNamed(@src(), "SeriesIter.next");
-        defer trace.end();
-
         if (self.prev_index) |prev| {
             var index = prev + 1;
             while (index < self.values.len) {
@@ -152,11 +148,12 @@ pub const Span = struct {
     name: []u8,
     start_time_us: i64,
     duration_us: i64,
+    end_time_us: i64,
 
     self_duration_us: i64 = 0,
     category: ?[]u8 = null,
 
-    fn lessThan(_: void, lhs: Span, rhs: Span) bool {
+    fn less_than(_: void, lhs: Span, rhs: Span) bool {
         if (lhs.start_time_us == rhs.start_time_us) {
             return rhs.duration_us < lhs.duration_us;
         }
@@ -206,27 +203,58 @@ pub const SpanIter = struct {
     min_duration_us: i64,
 
     pub fn next(self: *SpanIter) ?*const Span {
-        const trace = tracy.traceNamed(@src(), "SpanIter.next");
-        defer trace.end();
-        var index = if (self.prev_index) |prev| prev + 1 else 0;
-        while (index < self.spans.len) {
-            const span = self.spans[index];
-            const end_time_us = span.start_time_us + span.duration_us;
-            if (self.cursor < end_time_us) {
-                self.cursor = @max(end_time_us, self.cursor + self.min_duration_us);
-                break;
-            }
-            index += 1;
+        const offset = if (self.prev_index) |prev| prev + 1 else 0;
+        if (offset >= self.spans.len) {
+            return null;
         }
+
+        const index = offset + find_first_greater(*const Span, self.spans[offset..], self.cursor, {}, SpanIter.compare);
         self.prev_index = index;
 
-        if (index < self.spans.len) {
-            return self.spans[index];
-        } else {
+        if (index >= self.spans.len) {
             return null;
+        }
+
+        const span = self.spans[index];
+        std.debug.assert(self.cursor < span.end_time_us);
+        self.cursor = @max(span.end_time_us, self.cursor + self.min_duration_us);
+        return span;
+    }
+
+    fn compare(_: void, cursor: i64, span: *const Span) std.math.Order {
+        if (cursor == span.end_time_us) {
+            return .eq;
+        } else if (cursor < span.end_time_us) {
+            return .lt;
+        } else {
+            return .gt;
         }
     }
 };
+
+// Find the very first index of items where key < items[index]
+fn find_first_greater(
+    comptime T: type,
+    items: []const T,
+    key: anytype,
+    context: anytype,
+    comptime cmp: fn (context: @TypeOf(context), key: @TypeOf(key), mid_item: T) std.math.Order,
+) usize {
+    var left: usize = 0;
+    var right: usize = items.len;
+
+    while (left < right) {
+        // Avoid overflowing in the midpoint calculation
+        const mid = left + (right - left) / 2;
+        // Compare the key with the midpoint element
+        switch (cmp(context, key, items[mid])) {
+            .lt => right = mid,
+            .eq, .gt => left = mid + 1,
+        }
+    }
+
+    return left;
+}
 
 pub const Thread = struct {
     allocator: Allocator,
@@ -276,6 +304,7 @@ pub const Thread = struct {
             .name = try self.allocator.dupe(u8, name orelse ""),
             .start_time_us = start_time_us,
             .duration_us = duration_us,
+            .end_time_us = start_time_us + duration_us,
         });
         return &self.spans.items[self.spans.items.len - 1];
     }
@@ -288,7 +317,7 @@ pub const Thread = struct {
     }
 
     pub fn done(self: *Thread) !void {
-        std.sort.block(Span, self.spans.items, {}, Span.lessThan);
+        std.sort.block(Span, self.spans.items, {}, Span.less_than);
 
         if (self.spans.items.len > 0) {
             const first_span = self.spans.items[0];

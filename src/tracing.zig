@@ -858,21 +858,12 @@ const ViewState = struct {
                                 break;
                             }
 
-                            var x1: f32 = 0;
-                            var x2: f32 = 0;
-                            {
-                                const trace3 = tracy.traceNamed(@src(), "draw_threads/body/track/calculate_bb");
-                                defer trace3.end();
-                                x1 = region.left() + @as(f32, @floatFromInt(span.start_time_us - self.start_time_us)) * region.width_per_us;
-                                x2 = x1 + @as(f32, @floatFromInt(@max(span.duration_us, region.min_duration_us))) * region.width_per_us;
-                                x1 = @max(region.left(), x1);
-                                x2 = @min(region.right(), x2);
-                            }
+                            var x1: f32 = region.left() + @as(f32, @floatFromInt(span.start_time_us - self.start_time_us)) * region.width_per_us;
+                            var x2: f32 = x1 + @as(f32, @floatFromInt(@max(span.duration_us, region.min_duration_us))) * region.width_per_us;
+                            x1 = @max(region.left(), x1);
+                            x2 = @min(region.right(), x2);
 
                             {
-                                const trace3 = tracy.traceNamed(@src(), "draw_threads/body/track/draw_bb");
-                                defer trace3.end();
-
                                 const col = getColorForSpan(span);
                                 var bb = c.ImRect{
                                     .Min = .{ .x = x1, .y = sub_lane_top },
@@ -908,9 +899,6 @@ const ViewState = struct {
                             }
 
                             if (x2 - x1 > 2 * style.text_padding.x + style.character_size.x) {
-                                const trace3 = tracy.traceNamed(@src(), "draw_threads/body/track/draw_text");
-                                defer trace3.end();
-
                                 const text_min_x = x1 + style.text_padding.x;
                                 const text_max_x = x2 - style.text_padding.x;
 
