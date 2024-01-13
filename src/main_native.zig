@@ -9,8 +9,6 @@ const CountAllocator = @import("count_alloc.zig").CountAllocator;
 const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
 
-fn show_open_file_picker() void {}
-
 fn get_seconds_elapsed(from: usize, to: usize, freq: usize) f32 {
     return @floatCast(@as(f64, @floatFromInt(to - from)) / @as(f64, @floatFromInt(freq)));
 }
@@ -49,6 +47,8 @@ fn send_load_error(allocator: Allocator, comptime fmt: []const u8, args: anytype
 
 fn load_thread_main(allocator: Allocator, path: []u8) void {
     tracy.set_thread_name("Load File Thread");
+
+    defer allocator.free(path);
 
     const trace = tracy.trace(@src());
     defer trace.end();
@@ -282,7 +282,11 @@ pub fn main() !void {
         c.SDL_WINDOW_ALLOW_HIGHDPI | c.SDL_WINDOW_HIDDEN | c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_MAXIMIZED,
     ).?;
 
-    const renderer = c.SDL_CreateRenderer(window, 0, c.SDL_RENDERER_ACCELERATED).?;
+    const renderer = c.SDL_CreateRenderer(
+        window,
+        0,
+        c.SDL_RENDERER_ACCELERATED | c.SDL_RENDERER_PRESENTVSYNC,
+    ).?;
 
     c.igSetAllocatorFunctions(imgui.alloc, imgui.free, &allocator);
 
@@ -303,7 +307,7 @@ pub fn main() !void {
     _ = c.ig_ImplSDL2_InitForSDLRenderer(window, renderer);
     _ = c.ig_ImplSDLRenderer2_Init(renderer);
 
-    var tracing = Tracing.init(&count_allocator, show_open_file_picker);
+    var tracing = Tracing.init(&count_allocator, null);
     var load_thread: ?std.Thread = null;
 
     c.SDL_ShowWindow(window);
@@ -324,7 +328,7 @@ pub fn main() !void {
                     break;
                 },
                 c.SDL_DROPFILE => {
-                    if (tracing.should_load_file()) {
+                    if (tracing.should_load_file() and load_thread == null) {
                         const len = std.mem.len(event.drop.file);
                         const path = try allocator.dupe(u8, event.drop.file[0..len]);
                         load_thread = try std.Thread.spawn(.{}, load_thread_main, .{ allocator, path });

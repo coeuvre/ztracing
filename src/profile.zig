@@ -1,8 +1,10 @@
 const std = @import("std");
 const test_utils = @import("./test_utils.zig");
 const json_profile_parser = @import("./json_profile_parser.zig");
+const tracy = @import("tracy.zig");
 
 const Allocator = std.mem.Allocator;
+const Arena = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
 const TraceEvent = json_profile_parser.TraceEvent;
 const expectOptional = test_utils.expectOptional;
@@ -33,11 +35,6 @@ pub const Series = struct {
 
     pub fn done(self: *Series) void {
         std.sort.block(SeriesValue, self.values.items, {}, SeriesValue.lessThan);
-    }
-
-    pub fn deinit(self: *Series) void {
-        self.values.allocator.free(self.name);
-        self.values.deinit();
     }
 
     pub fn iter(self: *const Series, start_time_us: i64, min_duration_us: i64) SeriesIter {
@@ -109,20 +106,13 @@ pub const Counter = struct {
         };
     }
 
-    fn deinit(self: *Counter) void {
-        for (self.series.items) |*series| {
-            series.deinit();
-        }
-        self.series.deinit();
-    }
-
-    pub fn addSample(self: *Counter, time_us: i64, name: []const u8, value: f64) !void {
+    fn add_sample(self: *Counter, time_us: i64, name: []const u8, value: f64) !void {
         self.max_value = @max(self.max_value, value);
-        var series = try self.getOrCreateSeries(name);
+        var series = try self.get_or_create_series(name);
         try series.values.append(.{ .time_us = time_us, .value = value });
     }
 
-    fn getOrCreateSeries(self: *Counter, name: []const u8) !*Series {
+    fn get_or_create_series(self: *Counter, name: []const u8) !*Series {
         for (self.series.items) |*series| {
             if (std.mem.eql(u8, series.name, name)) {
                 return series;
@@ -133,7 +123,7 @@ pub const Counter = struct {
         return &self.series.items[self.series.items.len - 1];
     }
 
-    pub fn done(self: *Counter) void {
+    fn done(self: *Counter) void {
         for (self.series.items) |*series| {
             series.done();
         }
@@ -160,13 +150,6 @@ pub const Span = struct {
 
         return lhs.start_time_us < rhs.start_time_us;
     }
-
-    fn deinit(self: *Span, allocator: Allocator) void {
-        allocator.free(self.name);
-        if (self.category) |category| {
-            allocator.free(category);
-        }
-    }
 };
 
 pub const Track = struct {
@@ -176,10 +159,6 @@ pub const Track = struct {
         return .{
             .spans = ArrayList(*Span).init(allocator),
         };
-    }
-
-    pub fn deinit(self: *Track) void {
-        self.spans.deinit();
     }
 
     pub fn addSpan(self: *Track, span: *Span) !void {
@@ -274,22 +253,6 @@ pub const Thread = struct {
             .spans = ArrayList(Span).init(allocator),
             .tracks = ArrayList(Track).init(allocator),
         };
-    }
-
-    pub fn deinit(self: *Thread) void {
-        for (self.tracks.items) |*track| {
-            track.deinit();
-        }
-        self.tracks.deinit();
-
-        for (self.spans.items) |*span| {
-            span.deinit(self.allocator);
-        }
-        self.spans.deinit();
-
-        if (self.name) |name| {
-            self.allocator.free(name);
-        }
     }
 
     pub fn setName(self: *Thread, name: []const u8) !void {
@@ -405,7 +368,7 @@ pub const Process = struct {
     counters: ArrayList(Counter),
     threads: ArrayList(Thread),
 
-    pub fn init(allocator: Allocator, pid: i64) Process {
+    fn init(allocator: Allocator, pid: i64) Process {
         return .{
             .allocator = allocator,
             .pid = pid,
@@ -414,19 +377,7 @@ pub const Process = struct {
         };
     }
 
-    pub fn deinit(self: *Process) void {
-        for (self.counters.items) |*counter| {
-            counter.deinit();
-        }
-        self.counters.deinit();
-
-        for (self.threads.items) |*thread| {
-            thread.deinit();
-        }
-        self.threads.deinit();
-    }
-
-    pub fn done(self: *Process) !void {
+    fn done(self: *Process) !void {
         std.sort.block(Counter, self.counters.items, {}, Counter.lessThan);
         for (self.counters.items) |*counter| {
             counter.done();
@@ -438,7 +389,7 @@ pub const Process = struct {
         }
     }
 
-    pub fn getOrCreateCounter(self: *Process, name: []const u8) !*Counter {
+    fn get_or_create_counter(self: *Process, name: []const u8) !*Counter {
         for (self.counters.items) |*counter| {
             if (std.mem.eql(u8, counter.name, name)) {
                 return counter;
@@ -449,7 +400,7 @@ pub const Process = struct {
         return &self.counters.items[self.counters.items.len - 1];
     }
 
-    pub fn getOrCreateThread(self: *Process, tid: i64) !*Thread {
+    pub fn get_or_create_thread(self: *Process, tid: i64) !*Thread {
         for (self.threads.items) |*thread| {
             if (thread.tid == tid) {
                 return thread;
@@ -462,35 +413,40 @@ pub const Process = struct {
 };
 
 pub const Profile = struct {
-    allocator: Allocator,
+    arena: Arena,
     min_time_us: i64,
     max_time_us: i64,
     processes: ArrayList(Process),
 
     pub fn init(allocator: Allocator) Profile {
         return .{
-            .allocator = allocator,
+            .arena = Arena.init(allocator),
             .min_time_us = std.math.maxInt(i64),
             .max_time_us = 0,
+            // The allocator will be replaced with arena when appending items.
             .processes = ArrayList(Process).init(allocator),
         };
     }
 
     pub fn deinit(self: *Profile) void {
-        for (self.processes.items) |*process| {
-            process.deinit();
-        }
-        self.processes.deinit();
+        const trace = tracy.traceNamed(@src(), "Profile.deinit");
+        defer trace.end();
+
+        self.arena.deinit();
     }
 
-    fn getOrCreateProcess(self: *Profile, pid: i64) !*Process {
+    fn get_or_create_process(self: *Profile, pid: i64) !*Process {
         for (self.processes.items) |*process| {
             if (process.pid == pid) {
                 return process;
             }
         }
 
-        try self.processes.append(Process.init(self.allocator, pid));
+        if (self.processes.items.len == 0) {
+            self.processes = ArrayList(Process).init(self.arena.allocator());
+        }
+
+        try self.processes.append(Process.init(self.arena.allocator(), pid));
         return &self.processes.items[self.processes.items.len - 1];
     }
 
@@ -506,7 +462,7 @@ pub const Profile = struct {
                                 if (trace_event.args) |args| {
                                     switch (args) {
                                         .object => |obj| {
-                                            try self.handleCounterEvent(trace_event, pid, name, ts, obj);
+                                            try self.handle_counter_event(trace_event, pid, name, ts, obj);
                                         },
                                         else => {},
                                     }
@@ -522,7 +478,7 @@ pub const Profile = struct {
                         if (trace_event.tid) |tid| {
                             if (trace_event.ts) |ts| {
                                 if (trace_event.dur) |dur| {
-                                    try self.handleCompleteEvent(trace_event, pid, tid, ts, dur);
+                                    try self.handle_complete_event(trace_event, pid, tid, ts, dur);
                                 }
                             }
                         }
@@ -540,7 +496,7 @@ pub const Profile = struct {
                                                 if (obj.get("name")) |val| {
                                                     switch (val) {
                                                         .string => |str| {
-                                                            try self.handleThreadName(pid, tid, str);
+                                                            try self.handle_thread_name(pid, tid, str);
                                                         },
                                                         else => {},
                                                     }
@@ -561,10 +517,10 @@ pub const Profile = struct {
                                                     switch (val) {
                                                         .number_string, .string => |str| {
                                                             const sort_index = try std.fmt.parseInt(i64, str, 10);
-                                                            try self.handleThreadSortIndex(pid, tid, sort_index);
+                                                            try self.handle_thread_sort_index(pid, tid, sort_index);
                                                         },
                                                         .integer => |sort_index| {
-                                                            try self.handleThreadSortIndex(pid, tid, sort_index);
+                                                            try self.handle_thread_sort_index(pid, tid, sort_index);
                                                         },
                                                         else => {},
                                                     }
@@ -583,57 +539,57 @@ pub const Profile = struct {
         }
     }
 
-    fn handleCounterEvent(self: *Profile, trace_event: *const TraceEvent, pid: i64, name: []const u8, ts: i64, args: std.json.ObjectMap) !void {
-        var process = try self.getOrCreateProcess(pid);
-        var counter = try process.getOrCreateCounter(name);
+    fn handle_counter_event(self: *Profile, trace_event: *const TraceEvent, pid: i64, name: []const u8, ts: i64, args: std.json.ObjectMap) !void {
+        var process = try self.get_or_create_process(pid);
+        var counter = try process.get_or_create_counter(name);
         var iter = args.iterator();
         while (iter.next()) |entry| {
             const value_name = entry.key_ptr.*;
             switch (entry.value_ptr.*) {
                 .string, .number_string => |num| {
                     const val = try std.fmt.parseFloat(f64, num);
-                    try counter.addSample(ts, value_name, val);
-                    self.maybeUpdateMinMax(trace_event);
+                    try counter.add_sample(ts, value_name, val);
+                    self.maybe_update_min_max(trace_event);
                 },
                 .float => |val| {
-                    try counter.addSample(ts, value_name, val);
-                    self.maybeUpdateMinMax(trace_event);
+                    try counter.add_sample(ts, value_name, val);
+                    self.maybe_update_min_max(trace_event);
                 },
                 .integer => |val| {
-                    try counter.addSample(ts, value_name, @floatFromInt(val));
-                    self.maybeUpdateMinMax(trace_event);
+                    try counter.add_sample(ts, value_name, @floatFromInt(val));
+                    self.maybe_update_min_max(trace_event);
                 },
                 else => {},
             }
         }
     }
 
-    fn handleCompleteEvent(self: *Profile, trace_event: *const TraceEvent, pid: i64, tid: i64, ts: i64, dur: i64) !void {
-        var process = try self.getOrCreateProcess(pid);
-        var thread = try process.getOrCreateThread(tid);
+    fn handle_complete_event(self: *Profile, trace_event: *const TraceEvent, pid: i64, tid: i64, ts: i64, dur: i64) !void {
+        var process = try self.get_or_create_process(pid);
+        var thread = try process.get_or_create_thread(tid);
 
         var span = try thread.addSpan(trace_event.name, ts, dur);
 
         if (trace_event.cat) |cat| {
-            span.category = try self.allocator.dupe(u8, cat);
+            span.category = try self.arena.allocator().dupe(u8, cat);
         }
 
-        self.maybeUpdateMinMax(trace_event);
+        self.maybe_update_min_max(trace_event);
     }
 
-    fn handleThreadName(self: *Profile, pid: i64, tid: i64, name: []const u8) !void {
-        var process = try self.getOrCreateProcess(pid);
-        var thread = try process.getOrCreateThread(tid);
+    fn handle_thread_name(self: *Profile, pid: i64, tid: i64, name: []const u8) !void {
+        var process = try self.get_or_create_process(pid);
+        var thread = try process.get_or_create_thread(tid);
         try thread.setName(name);
     }
 
-    fn handleThreadSortIndex(self: *Profile, pid: i64, tid: i64, sort_index: i64) !void {
-        var process = try self.getOrCreateProcess(pid);
-        var thread = try process.getOrCreateThread(tid);
+    fn handle_thread_sort_index(self: *Profile, pid: i64, tid: i64, sort_index: i64) !void {
+        var process = try self.get_or_create_process(pid);
+        var thread = try process.get_or_create_thread(tid);
         thread.sort_index = sort_index;
     }
 
-    fn maybeUpdateMinMax(self: *Profile, trace_event: *const TraceEvent) void {
+    fn maybe_update_min_max(self: *Profile, trace_event: *const TraceEvent) void {
         if (trace_event.ts) |ts| {
             self.min_time_us = @min(self.min_time_us, ts);
             var end = ts;

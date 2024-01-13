@@ -23,12 +23,12 @@ pub const Tracing = struct {
 
     count_allocator: *CountAllocator,
     state: State,
-    show_open_file_picker: *const fn () void,
+    show_open_file_picker: ?*const fn () void,
 
     show_imgui_demo_window: bool = false,
     show_color_palette: bool = false,
 
-    pub fn init(count_allocator: *CountAllocator, show_open_file_picker: *const fn () void) Self {
+    pub fn init(count_allocator: *CountAllocator, show_open_file_picker: ?*const fn () void) Self {
         return .{
             .count_allocator = count_allocator,
             .state = .{ .welcome = WelcomeState.init(count_allocator.allocator()) },
@@ -44,10 +44,10 @@ pub const Tracing = struct {
         {
             c.igPushStyleVar_Vec2(c.ImGuiStyleVar_FramePadding, .{ .x = 10, .y = 4 });
             if (c.igBeginMainMenuBar()) {
-                if (self.should_load_file()) {
+                if (self.show_open_file_picker != null and self.should_load_file()) {
                     c.igSetCursorPosX(0);
                     if (c.igButton("Load", .{ .x = 0, .y = 0 })) {
-                        self.show_open_file_picker();
+                        self.show_open_file_picker.?();
                     }
                 }
 
@@ -115,7 +115,7 @@ pub const Tracing = struct {
                 return load_file.should_load_file();
             },
             .view => {
-                return false;
+                return true;
             },
         }
     }
@@ -187,9 +187,7 @@ const State = union(enum) {
     pub fn deinit(self: *State) void {
         switch (self.*) {
             inline else => |*s| {
-                if (@hasDecl(@TypeOf(s.*), "deinit")) {
-                    s.deinit();
-                }
+                s.deinit();
             },
         }
     }
@@ -226,6 +224,10 @@ const WelcomeState = struct {
             .allocator = allocator,
             .show_demo_window = false,
         };
+    }
+
+    pub fn deinit(self: *WelcomeState) void {
+        _ = self;
     }
 
     pub fn update(self: *WelcomeState, dt: f32, tracing: *Tracing) void {
@@ -308,9 +310,9 @@ const LoadFileState = struct {
                 const offset: f32 = @floatFromInt(self.offset);
                 const total: f32 = @floatFromInt(self.total);
                 const percentage: i32 = @intFromFloat(@round(offset / total * 100.0));
-                self.setProgress("Loading file ... ({}%)", .{percentage});
+                self.set_progress("Loading file ... ({}%)", .{percentage});
             } else {
-                self.setProgress("Loading file ... ({})", .{self.offset});
+                self.set_progress("Loading file ... ({})", .{self.offset});
             }
 
             c.igTextUnformatted(self.progress_message.?.ptr, null);
@@ -332,7 +334,7 @@ const LoadFileState = struct {
         return self.error_message == null;
     }
 
-    fn setProgress(self: *LoadFileState, comptime fmt: []const u8, args: anytype) void {
+    fn set_progress(self: *LoadFileState, comptime fmt: []const u8, args: anytype) void {
         if (self.progress_message) |msg| {
             self.allocator.free(msg);
         }
