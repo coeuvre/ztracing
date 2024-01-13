@@ -7,3 +7,6 @@
 [submodule "third_party/zlib"]
 	path = third_party/zlib
 	url = git@github.com:madler/zlib
+[submodule "third_party/tracy"]
+	path = third_party/tracy
+	url = git@github.com:wolfpld/tracy.git

@@ -1,6 +1,7 @@
 const std = @import("std");
 const c = @import("c.zig");
 const imgui = @import("imgui.zig");
+const tracy = @import("tracy.zig");
 
 const Tracing = @import("tracing.zig").Tracing;
 const Allocator = std.mem.Allocator;
@@ -238,7 +239,8 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    var count_allocator = CountAllocator.init(gpa.allocator());
+    var tracy_allocator = tracy.tracyAllocator(gpa.allocator());
+    var count_allocator = CountAllocator.init(tracy_allocator.allocator());
     var allocator = count_allocator.allocator();
 
     _ = c.SDL_Init(c.SDL_INIT_EVERYTHING);
@@ -344,5 +346,7 @@ pub fn main() !void {
 
         c.ig_ImplSDLRenderer2_RenderDrawData(c.igGetDrawData());
         c.SDL_RenderPresent(renderer);
+
+        tracy.frameMark();
     }
 }

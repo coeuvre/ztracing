@@ -1,13 +1,14 @@
 const std = @import("std");
 const c = @import("c.zig");
 const ig = @import("imgui.zig");
-const json_profile_parser = @import("./json_profile_parser.zig");
-const easing = @import("./easing.zig");
+const json_profile_parser = @import("json_profile_parser.zig");
+const easing = @import("easing.zig");
 const profile_ = @import("profile.zig");
-const CountAllocator = @import("./count_alloc.zig").CountAllocator;
+const tracy = @import("tracy.zig");
 
 const Allocator = std.mem.Allocator;
 const JsonProfileParser = json_profile_parser.JsonProfileParser;
+const CountAllocator = @import("count_alloc.zig").CountAllocator;
 const TraceEvent = json_profile_parser.TraceEvent;
 const Profile = profile_.Profile;
 const Span = profile_.Span;
@@ -36,6 +37,9 @@ pub const Tracing = struct {
     }
 
     pub fn update(self: *Self, dt: f32) void {
+        const trace = tracy.trace(@src());
+        defer trace.end();
+
         // Main Menu Bar
         {
             c.igPushStyleVar_Vec2(c.ImGuiStyleVar_FramePadding, .{ .x = 10, .y = 4 });
@@ -459,6 +463,9 @@ const ViewState = struct {
     }
 
     fn drawMainView(self: *ViewState, timeline_height: f32, style: ViewStyle) void {
+        const trace = tracy.trace(@src());
+        defer trace.end();
+
         c.igSetCursorPosY(timeline_height);
 
         c.igPushStyleVar_Float(c.ImGuiStyleVar_WindowRounding, 0);
@@ -497,6 +504,9 @@ const ViewState = struct {
     }
 
     fn drawTimeline(self: *ViewState, timeline_height: f32, style: ViewStyle) void {
+        const trace = tracy.trace(@src());
+        defer trace.end();
+
         c.igPushStyleVar_Float(c.ImGuiStyleVar_WindowRounding, 0);
         c.igPushStyleVar_Vec2(c.ImGuiStyleVar_WindowPadding, .{ .x = 0, .y = 0 });
         _ = c.igBeginChild_Str("Timeline", .{ .x = 0, .y = timeline_height }, 0, container_window_flags);

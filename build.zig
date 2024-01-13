@@ -94,10 +94,31 @@ fn add_zlib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.built
     return zlib;
 }
 
+fn add_tracy(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+    const tracy = b.addStaticLibrary(.{
+        .name = "tracy",
+        .target = target,
+        .optimize = if (optimize == .Debug) .ReleaseSafe else optimize,
+    });
+    tracy.addIncludePath(.{ .path = "third_party/tracy/public/tracy" });
+    tracy.defineCMacro("TRACY_ENABLE", "1");
+    tracy.addCSourceFiles(.{
+        .files = &.{
+            "third_party/tracy/public/TracyClient.cpp",
+        },
+    });
+    tracy.linkLibC();
+    return tracy;
+}
+
 fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+    const build_options = b.addOptions();
+
     const imgui = add_imgui(b, target, optimize);
     const ztracing = blk: {
         if (target.result.isWasm()) {
+            build_options.addOption(bool, "enable_tracy", false);
+
             const ztracing = b.addExecutable(.{
                 .name = "ztracing",
                 .root_source_file = .{ .path = "src/main_wasm.zig" },
@@ -122,6 +143,7 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             break :blk ztracing;
         } else {
             const zlib = add_zlib(b, target, optimize);
+            const tracy = add_tracy(b, target, optimize);
 
             const ztracing = b.addExecutable(.{
                 .name = "ztracing",
@@ -131,6 +153,7 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             });
             ztracing.addIncludePath(.{ .path = "third_party/SDL/build/install/include" });
             ztracing.addIncludePath(.{ .path = "third_party/zlib" });
+            ztracing.addIncludePath(.{ .path = "third_party/tracy/public/tracy" });
             ztracing.linkLibrary(zlib);
             switch (target.result.os.tag) {
                 .windows => {
@@ -170,12 +193,22 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             }
             ztracing.linkLibC();
             ztracing.root_module.single_threaded = false;
+
+            const enable_tracy = b.option(bool, "tracy", "Enable Tracy integration") orelse false;
+            build_options.addOption(bool, "enable_tracy", enable_tracy);
+            if (enable_tracy) {
+                build_options.addOption(bool, "enable_tracy_allocation", true);
+                build_options.addOption(bool, "enable_tracy_callstack", true);
+                ztracing.linkLibrary(tracy);
+            }
+
             break :blk ztracing;
         }
     };
     ztracing.linkLibrary(imgui);
     ztracing.addIncludePath(.{ .path = "." });
     ztracing.addIncludePath(.{ .path = "third_party/cimgui" });
+    ztracing.root_module.addOptions("build_options", build_options);
 
     return ztracing;
 }
