@@ -290,7 +290,7 @@ const App = struct {
         const clip_scale_y = draw_data.*.FramebufferScale.y;
 
         for (0..@intCast(draw_data.CmdListsCount)) |cmd_list_index| {
-            const cmd_list = draw_data.*.CmdLists[cmd_list_index];
+            const cmd_list = draw_data.*.CmdLists.Data[cmd_list_index];
 
             // const vtx_buffer_size = cmd_list.*.VtxBuffer.Size * @sizeOf(c.ImDrawVert);
             // const idx_buffer_size = cmd_list.*.IdxBuffer.Size * @sizeOf(c.ImDrawIdx);

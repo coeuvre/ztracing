@@ -276,7 +276,7 @@ pub fn main() !void {
     io.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
 
     _ = c.ig_ImplSDL2_InitForSDLRenderer(window, renderer);
-    _ = c.ig_ImplSDLRenderer_Init(renderer);
+    _ = c.ig_ImplSDLRenderer2_Init(renderer);
 
     var tracing = Tracing.init(&count_allocator, show_open_file_picker);
     var load_thread: ?std.Thread = null;
@@ -331,7 +331,7 @@ pub fn main() !void {
             }
         }
 
-        c.ig_ImplSDLRenderer_NewFrame();
+        c.ig_ImplSDLRenderer2_NewFrame();
         c.ig_ImplSDL2_NewFrame();
         c.igNewFrame();
 
@@ -342,7 +342,7 @@ pub fn main() !void {
 
         c.igRender();
 
-        c.ig_ImplSDLRenderer_RenderDrawData(c.igGetDrawData());
+        c.ig_ImplSDLRenderer2_RenderDrawData(c.igGetDrawData());
         c.SDL_RenderPresent(renderer);
     }
 }

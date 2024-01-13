@@ -429,7 +429,7 @@ const ViewState = struct {
         _ = c.igBegin("MainWindow", null, container_window_flags | c.ImGuiWindowFlags_NoDocking);
 
         const dock_id = c.igGetID_Str("MainWindowDock");
-        _ = c.igDockSpace(dock_id, .{ .x = 0, .y = 0 }, c.ImGuiDockNodeFlags_PassthruCentralNode | c.ImGuiDockNodeFlags_NoDockingInCentralNode, 0);
+        _ = c.igDockSpace(dock_id, .{ .x = 0, .y = 0 }, c.ImGuiDockNodeFlags_PassthruCentralNode | c.ImGuiDockNodeFlags_NoDockingOverCentralNode, 0);
         c.igSetNextWindowDockID(dock_id, 0);
 
         const window_class = c.ImGuiWindowClass_ImGuiWindowClass();
@@ -463,7 +463,7 @@ const ViewState = struct {
 
         c.igPushStyleVar_Float(c.ImGuiStyleVar_WindowRounding, 0);
         c.igPushStyleVar_Vec2(c.ImGuiStyleVar_WindowPadding, .{ .x = 0, .y = 0 });
-        _ = c.igBeginChild_Str("MainView", .{ .x = 0, .y = 0 }, false, container_window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
+        _ = c.igBeginChild_Str("MainView", .{ .x = 0, .y = 0 }, 0, container_window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
         c.igPopStyleVar(2);
 
         const window_bb = getWindowContentRegion();
@@ -499,7 +499,7 @@ const ViewState = struct {
     fn drawTimeline(self: *ViewState, timeline_height: f32, style: ViewStyle) void {
         c.igPushStyleVar_Float(c.ImGuiStyleVar_WindowRounding, 0);
         c.igPushStyleVar_Vec2(c.ImGuiStyleVar_WindowPadding, .{ .x = 0, .y = 0 });
-        _ = c.igBeginChild_Str("Timeline", .{ .x = 0, .y = timeline_height }, false, container_window_flags);
+        _ = c.igBeginChild_Str("Timeline", .{ .x = 0, .y = timeline_height }, 0, container_window_flags);
         c.igPopStyleVar(2);
 
         const timeline_bb = getWindowContentRegion();
