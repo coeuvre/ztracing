@@ -313,3 +313,5 @@ const ___tracy_source_location_data = extern struct {
     line: u32,
     color: u32,
 };
+
+pub usingnamespace @import("tracy_ext.zig");

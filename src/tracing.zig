@@ -447,7 +447,7 @@ const ViewState = struct {
         const timeline_height = style.sub_lane_height;
 
         self.drawTimeline(timeline_height, style);
-        self.drawMainView(timeline_height, style);
+        self.draw_main_view(timeline_height, style);
 
         if (self.selected_span) |span| {
             if (self.open_selection_span) {
@@ -462,7 +462,7 @@ const ViewState = struct {
         c.igEnd();
     }
 
-    fn drawMainView(self: *ViewState, timeline_height: f32, style: ViewStyle) void {
+    fn draw_main_view(self: *ViewState, timeline_height: f32, style: ViewStyle) void {
         const trace = tracy.trace(@src());
         defer trace.end();
 
@@ -493,8 +493,8 @@ const ViewState = struct {
         for (self.profile.processes.items) |*process| {
             const name = std.fmt.bufPrintZ(&global_buf, "Process {}", .{process.pid}) catch unreachable;
             if (c.igCollapsingHeader_BoolPtr(name, null, c.ImGuiTreeNodeFlags_DefaultOpen)) {
-                self.drawCounters(region, style, process.counters.items);
-                self.drawThreads(region, style, process.threads.items);
+                self.draw_counters(region, style, process.counters.items);
+                self.draw_threads(region, style, process.threads.items);
             }
         }
 
@@ -629,7 +629,10 @@ const ViewState = struct {
         }
     }
 
-    fn drawCounters(self: *ViewState, region: ViewRegion, style: ViewStyle, counters: []Counter) void {
+    fn draw_counters(self: *ViewState, region: ViewRegion, style: ViewStyle, counters: []Counter) void {
+        const trace = tracy.trace(@src());
+        defer trace.end();
+
         const io = c.igGetIO();
         const mouse_pos = io.*.MousePos;
         const draw_list = c.igGetWindowDrawList();
@@ -781,7 +784,10 @@ const ViewState = struct {
         }
     }
 
-    fn drawThreads(self: *ViewState, region: ViewRegion, style: ViewStyle, threads: []Thread) void {
+    fn draw_threads(self: *ViewState, region: ViewRegion, style: ViewStyle, threads: []Thread) void {
+        const trace = tracy.trace(@src());
+        defer trace.end();
+
         const io = c.igGetIO();
         const mouse_pos = io.*.MousePos;
         const draw_list = c.igGetWindowDrawList();
@@ -795,6 +801,8 @@ const ViewState = struct {
 
             // Header
             {
+                const trace1 = tracy.traceNamed(@src(), "draw_threads/header");
+                defer trace1.end();
                 const name = blk: {
                     if (thread.name) |name| {
                         break :blk std.fmt.bufPrintZ(&global_buf, "{s}", .{name}) catch unreachable;
@@ -828,6 +836,9 @@ const ViewState = struct {
             }
 
             if (thread.ui.open) {
+                const trace1 = tracy.traceNamed(@src(), "draw_threads/body");
+                defer trace1.end();
+
                 const lane_top = region.top() + c.igGetCursorPosY() - c.igGetScrollY();
                 const lane_height = @as(f32, @floatFromInt(thread.tracks.items.len)) * style.sub_lane_height;
                 const lane_bb = c.ImRect{
@@ -836,54 +847,70 @@ const ViewState = struct {
                 };
                 c.igItemSize_Rect(lane_bb, -1);
                 if (c.igItemAdd(lane_bb, 0, null, 0)) {
-                    for (thread.tracks.items, 0..) |sub_lane, sub_lane_index| {
+                    var sub_lane_top = lane_top;
+                    for (thread.tracks.items) |sub_lane| {
+                        const trace2 = tracy.traceNamed(@src(), "draw_threads/body/track");
+                        defer trace2.end();
+
                         var iter = sub_lane.iter(self.start_time_us, region.min_duration_us);
-                        const sub_lane_top = lane_top + @as(f32, @floatFromInt(sub_lane_index)) * style.sub_lane_height;
                         while (iter.next()) |span| {
                             if (span.start_time_us > self.end_time_us) {
                                 break;
                             }
 
-                            var x1 = region.left() + @as(f32, @floatFromInt(span.start_time_us - self.start_time_us)) * region.width_per_us;
-                            var x2 = x1 + @as(f32, @floatFromInt(@max(span.duration_us, region.min_duration_us))) * region.width_per_us;
-
-                            x1 = @max(region.left(), x1);
-                            x2 = @min(region.right(), x2);
-
-                            const col = getColorForSpan(span);
-                            var bb = c.ImRect{
-                                .Min = .{ .x = x1, .y = sub_lane_top },
-                                .Max = .{ .x = x2, .y = sub_lane_top + style.sub_lane_height },
-                            };
-                            c.ImDrawList_AddRectFilled(
-                                draw_list,
-                                bb.Min,
-                                bb.Max,
-                                col,
-                                0,
-                                0,
-                            );
-
-                            if (bb.Max.x - bb.Min.x > 2) {
-                                c.ImDrawList_AddRect(
-                                    draw_list,
-                                    .{ .x = bb.Min.x + 0.5, .y = bb.Min.y + 0.5 },
-                                    .{ .x = bb.Max.x - 0.5, .y = bb.Max.y - 0.5 },
-                                    getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
-                                    0,
-                                    0,
-                                    1,
-                                );
+                            var x1: f32 = 0;
+                            var x2: f32 = 0;
+                            {
+                                const trace3 = tracy.traceNamed(@src(), "draw_threads/body/track/calculate_bb");
+                                defer trace3.end();
+                                x1 = region.left() + @as(f32, @floatFromInt(span.start_time_us - self.start_time_us)) * region.width_per_us;
+                                x2 = x1 + @as(f32, @floatFromInt(@max(span.duration_us, region.min_duration_us))) * region.width_per_us;
+                                x1 = @max(region.left(), x1);
+                                x2 = @min(region.right(), x2);
                             }
 
-                            if (allow_hover and c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
-                                hovered_span = .{
-                                    .span = span,
-                                    .bb = bb,
+                            {
+                                const trace3 = tracy.traceNamed(@src(), "draw_threads/body/track/draw_bb");
+                                defer trace3.end();
+
+                                const col = getColorForSpan(span);
+                                var bb = c.ImRect{
+                                    .Min = .{ .x = x1, .y = sub_lane_top },
+                                    .Max = .{ .x = x2, .y = sub_lane_top + style.sub_lane_height },
                                 };
+                                c.ImDrawList_AddRectFilled(
+                                    draw_list,
+                                    bb.Min,
+                                    bb.Max,
+                                    col,
+                                    0,
+                                    0,
+                                );
+
+                                if (bb.Max.x - bb.Min.x > 2) {
+                                    c.ImDrawList_AddRect(
+                                        draw_list,
+                                        .{ .x = bb.Min.x + 0.5, .y = bb.Min.y + 0.5 },
+                                        .{ .x = bb.Max.x - 0.5, .y = bb.Max.y - 0.5 },
+                                        getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
+                                        0,
+                                        0,
+                                        1,
+                                    );
+                                }
+
+                                if (allow_hover and c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
+                                    hovered_span = .{
+                                        .span = span,
+                                        .bb = bb,
+                                    };
+                                }
                             }
 
                             if (x2 - x1 > 2 * style.text_padding.x + style.character_size.x) {
+                                const trace3 = tracy.traceNamed(@src(), "draw_threads/body/track/draw_text");
+                                defer trace3.end();
+
                                 const text_min_x = x1 + style.text_padding.x;
                                 const text_max_x = x2 - style.text_padding.x;
 
@@ -915,6 +942,8 @@ const ViewState = struct {
                                 }
                             }
                         }
+
+                        sub_lane_top += style.sub_lane_height;
                     }
                 }
             }

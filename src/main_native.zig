@@ -48,6 +48,11 @@ fn send_load_error(allocator: Allocator, comptime fmt: []const u8, args: anytype
 }
 
 fn load_thread_main(allocator: Allocator, path: []u8) void {
+    tracy.set_thread_name("Load File Thread");
+
+    const trace = tracy.trace(@src());
+    defer trace.end();
+
     const start_counter = c.SDL_GetPerformanceCounter();
 
     _ = c.SDL_PushEvent(@constCast(&c.SDL_Event{
@@ -127,6 +132,9 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
     };
 
     while (true) {
+        const trace1 = tracy.traceNamed(@src(), "load chunk");
+        defer trace1.end();
+
         const file_bytes_read = file.read(file_buf) catch |err| {
             send_load_error(allocator, "Failed to read file {s}: {}", .{ path, err });
             return;
@@ -142,7 +150,12 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
                 stream.avail_out = @intCast(inflate_buf.len);
                 stream.next_out = inflate_buf.ptr;
 
-                const ret = c.inflate(&stream, c.Z_NO_FLUSH);
+                const ret = blk: {
+                    const trace2 = tracy.traceNamed(@src(), "inflate");
+                    defer trace2.end();
+                    break :blk c.inflate(&stream, c.Z_NO_FLUSH);
+                };
+
                 if (ret != c.Z_OK and ret != c.Z_STREAM_END) {
                     send_load_error(allocator, "Failed to inflate: {}", .{ret});
                     return;
@@ -165,16 +178,22 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
             }
 
             while (!parser.done()) {
-                const event = parser.next() catch |err| {
-                    send_load_error(allocator, "Failed to parse file: {}\n{}", .{
-                        err,
-                        parser.diagnostic,
-                    });
-                    return;
+                const event = blk: {
+                    const trace2 = tracy.traceNamed(@src(), "parser.next()");
+                    defer trace2.end();
+                    break :blk parser.next() catch |err| {
+                        send_load_error(allocator, "Failed to parse file: {}\n{}", .{
+                            err,
+                            parser.diagnostic,
+                        });
+                        return;
+                    };
                 };
 
                 switch (event) {
                     .trace_event => |trace_event| {
+                        const trace2 = tracy.traceNamed(@src(), "profile.handleTraceEvent()");
+                        defer trace2.end();
                         profile.handleTraceEvent(trace_event) catch |err| {
                             send_load_error(allocator, "Failed to handle trace event: {}\n{}", .{
                                 err,
@@ -217,10 +236,14 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
         }
     }
 
-    profile.done() catch |err| {
-        send_load_error(allocator, "Failed to finalize profile: {}", .{err});
-        return;
-    };
+    {
+        const trace1 = tracy.traceNamed(@src(), "profile.done()");
+        defer trace1.end();
+        profile.done() catch |err| {
+            send_load_error(allocator, "Failed to finalize profile: {}", .{err});
+            return;
+        };
+    }
 
     _ = c.SDL_PushEvent(@constCast(&c.SDL_Event{
         .user = .{

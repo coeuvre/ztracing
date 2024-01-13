@@ -1,6 +1,7 @@
 const std = @import("std");
 const test_utils = @import("./test_utils.zig");
 const json_profile_parser = @import("./json_profile_parser.zig");
+const tracy = @import("tracy.zig");
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -57,6 +58,9 @@ pub const SeriesIter = struct {
     prev_index: ?usize = null,
 
     pub fn next(self: *SeriesIter) ?*const SeriesValue {
+        const trace = tracy.traceNamed(@src(), "SeriesIter.next");
+        defer trace.end();
+
         if (self.prev_index) |prev| {
             var index = prev + 1;
             while (index < self.values.len) {
@@ -202,6 +206,8 @@ pub const SpanIter = struct {
     min_duration_us: i64,
 
     pub fn next(self: *SpanIter) ?*const Span {
+        const trace = tracy.traceNamed(@src(), "SpanIter.next");
+        defer trace.end();
         var index = if (self.prev_index) |prev| prev + 1 else 0;
         while (index < self.spans.len) {
             const span = self.spans[index];
