@@ -397,7 +397,8 @@ const ViewState = struct {
 
     fn calcRegion(self: *ViewState, bb: c.ImRect) ViewRegion {
         const width_per_us = (bb.Max.x - bb.Min.x) / @as(f32, @floatFromInt((self.end_time_us - self.start_time_us)));
-        const min_duration_us: i64 = @intFromFloat(@ceil(1 / width_per_us));
+        const min_width = 6;
+        const min_duration_us: i64 = @intFromFloat(@ceil(min_width / width_per_us));
         return .{
             .bb = bb,
             .width_per_us = width_per_us,
