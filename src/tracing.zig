@@ -307,10 +307,14 @@ const LoadFileState = struct {
             }
         } else {
             if (self.total > 0) {
-                const offset: f32 = @floatFromInt(self.offset);
-                const total: f32 = @floatFromInt(self.total);
-                const percentage: i32 = @intFromFloat(@round(offset / total * 100.0));
-                self.set_progress("Loading file ... ({}%)", .{percentage});
+                if (self.offset == self.total) {
+                    self.set_progress("Preparing the view ...", .{});
+                } else {
+                    const offset: f32 = @floatFromInt(self.offset);
+                    const total: f32 = @floatFromInt(self.total);
+                    const percentage: i32 = @intFromFloat(@round(offset / total * 100.0));
+                    self.set_progress("Loading file ... ({}%)", .{percentage});
+                }
             } else {
                 self.set_progress("Loading file ... ({})", .{self.offset});
             }

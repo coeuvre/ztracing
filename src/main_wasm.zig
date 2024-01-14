@@ -114,7 +114,7 @@ const LoadState = struct {
 
             switch (event) {
                 .trace_event => |trace_event| {
-                    self.profile.handleTraceEvent(trace_event) catch |err| {
+                    self.profile.handle_trace_event(trace_event) catch |err| {
                         self.send_load_error("Failed to handle trace event: {}\n{}", .{
                             err,
                             self.parser.diagnostic,

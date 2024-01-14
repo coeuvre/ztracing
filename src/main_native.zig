@@ -21,24 +21,19 @@ fn zfree(userdata: ?*anyopaque, address: ?*anyopaque) callconv(.C) void {
     imgui.free(address, userdata);
 }
 
-const user_event = struct {
-    var load_started: u32 = 0;
-    var load_progress: u32 = 0;
-    var load_error: u32 = 0;
-    var load_done: u32 = 0;
+const UserEventCode = enum {
+    load_started,
+    load_progress,
+    load_error,
+    load_done,
 };
 
 fn send_load_error(allocator: Allocator, comptime fmt: []const u8, args: anytype) void {
-    const alloc_error_msg = "AllocPrintError";
-    var own_msg: i32 = 1;
-    const msg = std.fmt.allocPrint(allocator, fmt, args) catch blk: {
-        own_msg = 0;
-        break :blk alloc_error_msg;
-    };
+    const msg = std.fmt.allocPrint(allocator, fmt, args) catch unreachable;
     _ = c.SDL_PushEvent(@constCast(&c.SDL_Event{
         .user = .{
-            .type = user_event.load_error,
-            .code = own_msg,
+            .type = c.SDL_USEREVENT,
+            .code = @intFromEnum(UserEventCode.load_error),
             .data1 = @constCast(msg.ptr),
             .data2 = @ptrFromInt(msg.len),
         },
@@ -56,7 +51,10 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
     const start_counter = c.SDL_GetPerformanceCounter();
 
     _ = c.SDL_PushEvent(@constCast(&c.SDL_Event{
-        .type = user_event.load_started,
+        .user = .{
+            .type = c.SDL_USEREVENT,
+            .code = @intFromEnum(UserEventCode.load_started),
+        },
     }));
 
     const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
@@ -192,9 +190,9 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
 
                 switch (event) {
                     .trace_event => |trace_event| {
-                        const trace2 = tracy.traceNamed(@src(), "profile.handleTraceEvent()");
+                        const trace2 = tracy.traceNamed(@src(), "profile.handle_trace_event()");
                         defer trace2.end();
-                        profile.handleTraceEvent(trace_event) catch |err| {
+                        profile.handle_trace_event(trace_event) catch |err| {
                             send_load_error(allocator, "Failed to handle trace event: {}\n{}", .{
                                 err,
                                 parser.diagnostic,
@@ -219,7 +217,8 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
 
         _ = c.SDL_PushEvent(@constCast(&c.SDL_Event{
             .user = .{
-                .type = user_event.load_progress,
+                .type = c.SDL_USEREVENT,
+                .code = @intFromEnum(UserEventCode.load_progress),
                 .data1 = @ptrFromInt(offset),
                 .data2 = @ptrFromInt(file_size),
             },
@@ -247,7 +246,8 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
 
     _ = c.SDL_PushEvent(@constCast(&c.SDL_Event{
         .user = .{
-            .type = user_event.load_done,
+            .type = c.SDL_USEREVENT,
+            .code = @intFromEnum(UserEventCode.load_done),
             .data1 = profile,
         },
     }));
@@ -267,11 +267,6 @@ pub fn main() !void {
     var allocator = count_allocator.allocator();
 
     _ = c.SDL_Init(c.SDL_INIT_EVERYTHING);
-
-    user_event.load_started = c.SDL_RegisterEvents(1);
-    user_event.load_progress = c.SDL_RegisterEvents(1);
-    user_event.load_error = c.SDL_RegisterEvents(1);
-    user_event.load_done = c.SDL_RegisterEvents(1);
 
     const window = c.SDL_CreateWindow(
         "ztracing",
@@ -334,29 +329,34 @@ pub fn main() !void {
                         load_thread = try std.Thread.spawn(.{}, load_thread_main, .{ allocator, path });
                     }
                 },
-                else => {
-                    if (event.type == user_event.load_started) {
-                        tracing.on_load_file_start();
-                    } else if (event.type == user_event.load_progress) {
-                        tracing.on_load_file_progress(@intFromPtr(event.user.data1), @intFromPtr(event.user.data2));
-                    } else if (event.type == user_event.load_done) {
-                        tracing.on_load_file_done(@ptrCast(@alignCast(event.user.data1)));
+                c.SDL_USEREVENT => {
+                    const code: UserEventCode = @enumFromInt(event.user.code);
+                    switch (code) {
+                        .load_started => {
+                            tracing.on_load_file_start();
+                        },
+                        .load_progress => {
+                            tracing.on_load_file_progress(@intFromPtr(event.user.data1), @intFromPtr(event.user.data2));
+                        },
+                        .load_done => {
+                            tracing.on_load_file_done(@ptrCast(@alignCast(event.user.data1)));
 
-                        load_thread.?.join();
-                        load_thread = null;
-                    } else if (event.type == user_event.load_error) {
-                        const msg_ptr: [*c]u8 = @ptrCast(event.user.data1);
-                        const msg_len: usize = @intFromPtr(event.user.data2);
-                        const msg = msg_ptr[0..msg_len];
-                        defer if (event.user.code != 0) {
-                            allocator.free(msg);
-                        };
-                        tracing.on_load_file_error(msg);
+                            load_thread.?.join();
+                            load_thread = null;
+                        },
+                        .load_error => {
+                            const msg_ptr: [*c]u8 = @ptrCast(event.user.data1);
+                            const msg_len: usize = @intFromPtr(event.user.data2);
+                            const msg = msg_ptr[0..msg_len];
+                            defer allocator.free(msg);
+                            tracing.on_load_file_error(msg);
 
-                        load_thread.?.join();
-                        load_thread = null;
+                            load_thread.?.join();
+                            load_thread = null;
+                        },
                     }
                 },
+                else => {},
             }
         }
 

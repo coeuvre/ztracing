@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub fn expectOptional(expected: anytype, actual: anytype) !bool {
+pub fn expect_optional(expected: anytype, actual: anytype) !bool {
     switch (@typeInfo(@TypeOf(expected))) {
         .Optional => {
             switch (@typeInfo(@TypeOf(actual))) {
