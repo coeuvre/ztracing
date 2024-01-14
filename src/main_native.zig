@@ -2,6 +2,9 @@ const std = @import("std");
 const c = @import("c.zig");
 const imgui = @import("imgui.zig");
 const tracy = @import("tracy.zig");
+const builtin = @import("builtin");
+
+const is_window = builtin.target.os.tag == .windows;
 
 const Tracing = @import("tracing.zig").Tracing;
 const Allocator = std.mem.Allocator;
@@ -260,22 +263,62 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
     }
 }
 
+fn get_dpi_scale(window: *c.SDL_Window) f32 {
+    var dpi: f32 = 0;
+    if (c.SDL_GetDisplayDPI(c.SDL_GetWindowDisplayIndex(window), &dpi, null, null) == 0) {
+        return dpi / 96.0;
+    }
+    return 1.0;
+}
+
+fn get_system_font_paths() []const [:0]const u8 {
+    switch (comptime builtin.target.os.tag) {
+        .windows => {
+            return &.{
+                "C:\\Windows\\Fonts\\consola.ttf",
+            };
+        },
+        else => {
+            return &.{};
+        },
+    }
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     var tracy_allocator = tracy.tracyAllocator(gpa.allocator());
     var count_allocator = CountAllocator.init(tracy_allocator.allocator());
     var allocator = count_allocator.allocator();
 
+    if (comptime is_window) {
+        // Allow Windows to scale up window, but still let SDL uses coordinate in pixels.
+        _ = c.SDL_SetHint(c.SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
+    }
+
     _ = c.SDL_Init(c.SDL_INIT_EVERYTHING);
 
+    const window_w: c_int = 1280;
+    const window_h: c_int = 720;
     const window = c.SDL_CreateWindow(
         "ztracing",
         c.SDL_WINDOWPOS_CENTERED,
         c.SDL_WINDOWPOS_CENTERED,
-        1280,
-        720,
-        c.SDL_WINDOW_ALLOW_HIGHDPI | c.SDL_WINDOW_HIDDEN | c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_MAXIMIZED,
+        window_w,
+        window_h,
+        c.SDL_WINDOW_ALLOW_HIGHDPI | c.SDL_WINDOW_HIDDEN | c.SDL_WINDOW_RESIZABLE,
     ).?;
+
+    // TODO: detect DPI change
+    const dpi = get_dpi_scale(window);
+
+    // Manually scale the window if dpi is > 1 when window size is in pixels (e.g. on Windows),
+    if (comptime is_window) {
+        if (dpi > 1) {
+            const new_window_w: c_int = @intFromFloat(@round(@as(f32, @floatFromInt(window_w)) * dpi));
+            const new_window_h: c_int = @intFromFloat(@round(@as(f32, @floatFromInt(window_h)) * dpi));
+            c.SDL_SetWindowSize(window, new_window_w, new_window_h);
+        }
+    }
 
     const renderer = c.SDL_CreateRenderer(
         window,
@@ -288,9 +331,25 @@ pub fn main() !void {
     _ = c.igCreateContext(null);
 
     const io = c.igGetIO();
+    for (get_system_font_paths()) |path| {
+        const font = c.ImFontAtlas_AddFontFromFileTTF(io.*.Fonts, path, @round(13 * dpi), null, null);
+        if (font != null) {
+            break;
+        }
+    }
+
+    // Manually scale the default font if cann't load a system font at desired DPI.
+    if (io.*.Fonts.*.Fonts.Size == 0) {
+        _ = c.ImFontAtlas_AddFontDefault(io.*.Fonts, null);
+        if (dpi > 1) {
+            io.*.FontGlobalScale = dpi;
+        }
+    }
+
     {
         const style = c.igGetStyle();
         c.igStyleColorsLight(style);
+        c.ImGuiStyle_ScaleAllSizes(style, dpi);
 
         style.*.ScrollbarRounding = 0.0;
         style.*.ScrollbarSize = 18.0;

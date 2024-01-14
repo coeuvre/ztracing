@@ -202,7 +202,7 @@ const container_window_flags =
     c.ImGuiWindowFlags_NoNavFocus;
 
 // Returns current window content region in screen space
-fn getWindowContentRegion() c.ImRect {
+fn get_window_content_region() c.ImRect {
     const pos = ig.getWindowPos();
     const scroll_x = c.igGetScrollX();
     const scroll_y = c.igGetScrollY();
@@ -213,6 +213,17 @@ fn getWindowContentRegion() c.ImRect {
     max.x += pos.x + scroll_x;
     max.y += pos.y + scroll_y;
     return .{ .Min = min, .Max = max };
+}
+
+fn ig_text_centered(bb: c.ImRect, text: []const u8) void {
+    const text_end = text.ptr + text.len;
+    var text_size: c.ImVec2 = undefined;
+    c.igCalcTextSize(&text_size, text.ptr, text_end, false, 0);
+    const x = bb.Min.x + (bb.Max.x - bb.Min.x) * 0.5 - text_size.x * 0.5;
+    const y = bb.Min.y + (bb.Max.y - bb.Min.y) * 0.5 - text_size.y * 0.5;
+    c.igSetCursorPosX(x);
+    c.igSetCursorPosY(y);
+    c.igTextUnformatted(text.ptr, text_end);
 }
 
 const WelcomeState = struct {
@@ -253,16 +264,7 @@ const WelcomeState = struct {
             \\
         ;
 
-        const window_bb = getWindowContentRegion();
-        {
-            var text_size: c.ImVec2 = undefined;
-            c.igCalcTextSize(&text_size, logo, null, false, 0);
-            const x = window_bb.Min.x + (window_bb.Max.x - window_bb.Min.x) * 0.5 - text_size.x * 0.5;
-            const y = window_bb.Min.y + (window_bb.Max.y - window_bb.Min.y) * 0.5 - text_size.y * 0.5;
-            c.igSetCursorPosX(x);
-            c.igSetCursorPosY(y);
-        }
-        c.igTextUnformatted(logo, null);
+        ig_text_centered(get_window_content_region(), logo);
 
         c.igEnd();
     }
@@ -316,10 +318,10 @@ const LoadFileState = struct {
                     self.set_progress("Loading file ... ({}%)", .{percentage});
                 }
             } else {
-                self.set_progress("Loading file ... ({})", .{self.offset});
+                self.set_progress("Loading file ... ({d:.2} MB)", .{@as(f32, @floatFromInt(self.offset)) / 1000.0 / 1000.0});
             }
 
-            c.igTextUnformatted(self.progress_message.?.ptr, null);
+            ig_text_centered(get_window_content_region(), self.progress_message.?);
         }
 
         c.igEnd();
@@ -480,7 +482,7 @@ const ViewState = struct {
         _ = c.igBeginChild_Str("MainView", .{ .x = 0, .y = 0 }, 0, container_window_flags | c.ImGuiWindowFlags_NoScrollWithMouse);
         c.igPopStyleVar(2);
 
-        const window_bb = getWindowContentRegion();
+        const window_bb = get_window_content_region();
         var region = self.calcRegion(window_bb);
 
         self.handleDrag(region);
@@ -519,7 +521,7 @@ const ViewState = struct {
         _ = c.igBeginChild_Str("Timeline", .{ .x = 0, .y = timeline_height }, 0, container_window_flags);
         c.igPopStyleVar(2);
 
-        const timeline_bb = getWindowContentRegion();
+        const timeline_bb = get_window_content_region();
 
         const draw_list = c.igGetWindowDrawList();
         const region = self.calcRegion(timeline_bb);
