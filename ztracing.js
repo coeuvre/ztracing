@@ -510,6 +510,7 @@ class App {
     this.memory = memory;
     this.canvas = canvas;
     this.has_webgl = true;
+    this.device_pixel_ratio = window.devicePixelRatio;
 
     if (this.has_webgl) {
       this.renderer = new Webgl2Renderer(
@@ -524,21 +525,40 @@ class App {
     }
   }
 
-  init() {
+  init(width, height) {
+    this.update_canvas_size(width, height);
+
     this.instance.exports.init(
-      this.canvas.width,
-      this.canvas.height,
-      this.has_webgl
+      this.canvas_framebuffer_width,
+      this.canvas_framebuffer_height,
+      this.has_webgl,
+      this.device_pixel_ratio,
     );
     this.renderer.init(this.canvas.width, this.canvas.height);
   }
 
-  onResize() {
-    this.instance.exports.onResize(this.canvas.width, this.canvas.height);
+  update_canvas_size(width, height) {
+    this.canvas_display_width = width;
+    this.canvas_display_height = height;
+    this.canvas_framebuffer_width = width * this.device_pixel_ratio;
+    this.canvas_framebuffer_height = height * this.device_pixel_ratio;
+
+    this.canvas.style.width = this.canvas_display_width + 'px';
+    this.canvas.style.height = this.canvas_display_height + 'px';
+    this.canvas.width = this.canvas_display_width * this.device_pixel_ratio;
+    this.canvas.height = this.canvas_display_height * this.device_pixel_ratio;
+
+  }
+
+  resize(width, height) {
+    this.update_canvas_size(width, height);
+    this.instance.exports.onResize(this.canvas_framebuffer_width, this.canvas_framebuffer_height);
   }
 
   onMousePos(x, y) {
-    this.instance.exports.onMousePos(x, y);
+    this.instance.exports.onMousePos(
+      x / this.canvas_display_width * this.canvas_framebuffer_width,
+      y / this.canvas_display_height * this.canvas_framebuffer_height);
   }
 
   onMouseButton(button, down) {
@@ -581,6 +601,8 @@ class App {
  * @param {{
  *  ztracingWasmUrl: URL,
  *  canvas: HTMLCanvasElement,
+ *  width: number,
+ *  height: number,
  *  profileUrl: URL | undefined,
  *  onMount: (app: App) => void,
  * }} options
@@ -594,9 +616,7 @@ function mount(options) {
     const exports = wasm.instance.exports;
 
     app = new App(canvas, wasm.instance, new Memory(exports.memory));
-    app.init();
-
-    new ResizeObserver(() => app.onResize()).observe(canvas);
+    app.init(options.width, options.height);
 
     canvas.addEventListener("mousemove", (event) =>
       app.onMousePos(event.clientX, event.clientY)

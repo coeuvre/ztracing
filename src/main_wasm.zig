@@ -162,7 +162,7 @@ const App = struct {
     mouse_pos_before_blur: c.ImVec2 = undefined,
     load_state: ?LoadState = null,
 
-    pub fn init(self: *App, count_allocator: *CountAllocator, width: f32, height: f32, has_webgl: bool) void {
+    pub fn init(self: *App, count_allocator: *CountAllocator, width: f32, height: f32, has_webgl: bool, device_pixel_ratio: f32) void {
         const allocator = count_allocator.allocator();
         self.allocator = allocator;
         if (has_webgl) {
@@ -185,6 +185,7 @@ const App = struct {
         {
             const style = c.igGetStyle();
             c.igStyleColorsLight(style);
+            c.ImGuiStyle_ScaleAllSizes(style, device_pixel_ratio);
 
             style.*.ScrollbarRounding = 0.0;
             style.*.ScrollbarSize = 18.0;
@@ -196,6 +197,9 @@ const App = struct {
 
         io.*.DisplaySize.x = width;
         io.*.DisplaySize.y = height;
+
+        // TODO: Load font at desired DPI.
+        io.*.FontGlobalScale = device_pixel_ratio;
 
         {
             var pixels: [*c]u8 = undefined;
@@ -424,10 +428,10 @@ var app: *App = undefined;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var global_count_allocator = CountAllocator.init(gpa.allocator());
 
-export fn init(width: f32, height: f32, has_webgl: bool) void {
+export fn init(width: f32, height: f32, has_webgl: bool, device_pixel_ratio: f32) void {
     var allocator = global_count_allocator.allocator();
     app = allocator.create(App) catch unreachable;
-    app.init(&global_count_allocator, width, height, has_webgl);
+    app.init(&global_count_allocator, width, height, has_webgl, device_pixel_ratio);
 
     // HACK: Force ImGui to update the mosue cursor, otherwise it's in uninitialized state.
     app.onMousePos(0, 0);

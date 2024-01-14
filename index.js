@@ -4,12 +4,9 @@ import ztracing from "./ztracing.js";
 import ztracingWasmUrl from "./zig-out/bin/ztracing.wasm?url";
 
 const canvas = document.getElementById("canvas");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
 
 window.onresize = () => {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  window.app.resize(window.innerWidth, window.innerHeight);
 };
 
 const query = queryString.parse(location.search);
@@ -17,6 +14,8 @@ const query = queryString.parse(location.search);
 ztracing.mount({
   ztracingWasmUrl: ztracingWasmUrl,
   canvas: canvas,
+  width: window.innerWidth,
+  height: window.innerHeight,
   profileUrl: query.profile,
   onMount: (app) => {
     // Making debug easier
