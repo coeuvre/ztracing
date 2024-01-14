@@ -7,7 +7,7 @@ import font_url from "./assets/JetBrainsMono-Regular.ttf?url";
 const canvas = document.getElementById("canvas");
 
 window.onresize = () => {
-  window.app.resize(window.innerWidth, window.innerHeight);
+  app.resize(window.innerWidth, window.innerHeight);
 };
 
 const query = queryString.parse(location.search);

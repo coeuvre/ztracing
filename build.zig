@@ -128,7 +128,7 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             ztracing.root_module.export_symbol_names = &.{
                 "init",
                 "update",
-                "onResize",
+                "on_resize",
                 "onMousePos",
                 "onMouseButton",
                 "onMouseWheel",

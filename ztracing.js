@@ -65,7 +65,7 @@ class Webgl2Renderer {
     this.memory = memory;
   }
 
-  init(width, height) {
+  init() {
     const gl = this.gl;
 
     const vertex_shader_code =
@@ -145,12 +145,12 @@ class Webgl2Renderer {
 
     gl.activeTexture(gl.TEXTURE0);
 
-    this.resize(width, height);
+    this.on_resize();
   }
 
-  resize(width, height) {
-    this.width = height;
-    this.height = height;
+  on_resize() {
+    const width = this.gl.drawingBufferWidth;
+    const height = this.gl.drawingBufferHeight;
 
     this.gl.viewport(0, 0, width, height);
 
@@ -233,7 +233,7 @@ class Webgl2Renderer {
     const gl = this.gl;
     gl.scissor(
       clip_rect_min_x,
-      this.height - clip_rect_max_y,
+      this.gl.drawingBufferHeight - clip_rect_max_y,
       clip_rect_max_x - clip_rect_min_x,
       clip_rect_max_y - clip_rect_min_y,
     );
@@ -246,54 +246,6 @@ class Webgl2Renderer {
 
   present(framebuffer_ptr, framebuffer_len, width, height) {
     throw new Error("not supported");
-  }
-}
-
-class SoftwareRenderer {
-  /**
-   * @param {HTMLCanvasElement} canvas
-   * @param {Memory} memory
-   */
-  constructor(canvas, memory) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext("2d");
-    this.memory = memory;
-  }
-
-  init(width, heigth) {}
-
-  resize(width, height) {
-    throw new Error("not supported");
-  }
-
-  createFontTexture(w, h, pixels) {
-    throw new Error("not supported");
-  }
-
-  bufferData(vtx_buffer_ptr, vtx_buffer_size, idx_buffer_ptr, idx_buffer_size) {
-    throw new Error("not supported");
-  }
-
-  draw(
-    clip_rect_min_x,
-    clip_rect_min_y,
-    clip_rect_max_x,
-    clip_rect_max_y,
-    texture_ref,
-    idx_count,
-    idx_offset,
-  ) {
-    throw new Error("not supported");
-  }
-
-  present(framebuffer_ptr, framebuffer_len, width, height) {
-    const data = new Uint8ClampedArray(
-      this.memory.memory.buffer,
-      framebuffer_ptr,
-      framebuffer_len,
-    );
-    const imageData = new ImageData(data, width, height);
-    this.ctx.putImageData(imageData, 0, 0);
   }
 }
 
@@ -347,10 +299,6 @@ const imports = {
 
     rendererCreateFontTexture: (width, height, pixels) => {
       return app.renderer.createFontTexture(width, height, pixels);
-    },
-
-    rendererResize: (width, height) => {
-      app.renderer.resize(width, height);
     },
 
     rendererBufferData: (
@@ -509,58 +457,46 @@ class App {
     this.instance = instance;
     this.memory = memory;
     this.canvas = canvas;
-    this.has_webgl = true;
-    this.device_pixel_ratio = window.devicePixelRatio;
+    this.renderer = new Webgl2Renderer(
+      this.canvas.getContext("webgl2"),
+      memory,
+    );
+  }
 
-    if (this.has_webgl) {
-      this.renderer = new Webgl2Renderer(
-        this.canvas.getContext("webgl2"),
-        memory,
-      );
-    } else {
-      this.renderer = new SoftwareRenderer(this.canvas, memory);
-    }
+  set_canvas_size(width, height) {
+    this.canvas_display_width = width;
+    this.canvas_display_height = height;
+    this.canvas.style.width = width + "px";
+    this.canvas.style.height = height + "px";
+    this.canvas.width = width * devicePixelRatio;
+    this.canvas.height = height * devicePixelRatio;
   }
 
   init(width, height, font_data, font_size) {
-    this.update_canvas_size(width, height);
+    this.set_canvas_size(width, height);
 
     this.instance.exports.init(
-      this.canvas_framebuffer_width,
-      this.canvas_framebuffer_height,
-      this.has_webgl,
-      this.device_pixel_ratio,
+      this.canvas.width,
+      this.canvas.height,
+      devicePixelRatio,
       font_data ? this.memory.storeObject(new Uint8Array(font_data)) : 0n,
       font_data ? font_data.byteLength : 0,
       font_size,
     );
-    this.renderer.init(this.canvas.width, this.canvas.height);
-  }
-
-  update_canvas_size(width, height) {
-    this.canvas_display_width = width;
-    this.canvas_display_height = height;
-    this.canvas_framebuffer_width = width * this.device_pixel_ratio;
-    this.canvas_framebuffer_height = height * this.device_pixel_ratio;
-
-    this.canvas.style.width = this.canvas_display_width + "px";
-    this.canvas.style.height = this.canvas_display_height + "px";
-    this.canvas.width = this.canvas_display_width * this.device_pixel_ratio;
-    this.canvas.height = this.canvas_display_height * this.device_pixel_ratio;
+    this.renderer.init();
   }
 
   resize(width, height) {
-    this.update_canvas_size(width, height);
-    this.instance.exports.onResize(
-      this.canvas_framebuffer_width,
-      this.canvas_framebuffer_height,
-    );
+    this.set_canvas_size(width, height);
+
+    this.renderer.on_resize();
+    this.instance.exports.on_resize(this.canvas.width, this.canvas.height);
   }
 
   onMousePos(x, y) {
     this.instance.exports.onMousePos(
-      (x / this.canvas_display_width) * this.canvas_framebuffer_width,
-      (y / this.canvas_display_height) * this.canvas_framebuffer_height,
+      (x / this.canvas_display_width) * this.canvas.width,
+      (y / this.canvas_display_height) * this.canvas.height,
     );
   }
 
@@ -622,6 +558,7 @@ function mount(options) {
     fetch(options.ztraing_wasm_url),
     imports,
   );
+
   Promise.all([fetch_font_promise, init_wasm_promise]).then((result) => {
     const font_data = result[0];
     const wasm = result[1];

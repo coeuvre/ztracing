@@ -43,8 +43,6 @@ const js = struct {
 
     pub extern "js" fn rendererCreateFontTexture(width: i32, height: i32, pixels: [*]const u8) JsObject;
 
-    pub extern "js" fn rendererResize(width: f32, height: f32) void;
-
     pub extern "js" fn rendererBufferData(vtx_buffer_ptr: [*]const u8, vtx_buffer_len: i32, idx_buffer_ptr: [*]const u8, idx_buffer_len: i32) void;
 
     pub extern "js" fn rendererDraw(clip_rect_min_x: f32, clip_rect_min_y: f32, clip_rect_max_x: f32, clip_rect_max_y: f32, texture_ref: JsObject, idx_count: u32, idx_offset: u32) void;
@@ -167,19 +165,13 @@ const App = struct {
         count_allocator: *CountAllocator,
         width: f32,
         height: f32,
-        has_webgl: bool,
         device_pixel_ratio: f32,
         font_data: ?[]u8,
         font_size: f32,
     ) void {
-        const scale: f32 = device_pixel_ratio;
         const allocator = count_allocator.allocator();
         self.allocator = allocator;
-        if (has_webgl) {
-            self.renderer = .{ .webgl = .{} };
-        } else {
-            self.renderer = .{ .software = SoftwareRenderer.init(allocator, width, height) catch unreachable };
-        }
+        self.renderer = .{ .webgl = .{} };
         self.tracing = Tracing.init(count_allocator, show_open_file_picker);
 
         self.width = width;
@@ -188,6 +180,8 @@ const App = struct {
         c.igSetAllocatorFunctions(imgui.alloc, imgui.free, &self.allocator);
 
         _ = c.igCreateContext(null);
+
+        const scale = device_pixel_ratio;
 
         const io = c.igGetIO();
         self.io = io;
@@ -247,14 +241,12 @@ const App = struct {
         self.renderer.present();
     }
 
-    pub fn onResize(self: *App, width: f32, height: f32) void {
+    pub fn on_resize(self: *App, width: f32, height: f32) void {
         self.width = width;
         self.height = height;
 
         self.io.*.DisplaySize.x = width;
         self.io.*.DisplaySize.y = height;
-
-        self.renderer.resize(width, height);
     }
 
     pub fn onMousePos(self: *App, x: f32, y: f32) void {
@@ -373,11 +365,6 @@ const WebglRenderer = struct {
         return @ptrFromInt(addr);
     }
 
-    fn resize(self: *WebglRenderer, width: f32, height: f32) void {
-        _ = self;
-        js.rendererResize(width, height);
-    }
-
     fn bufferData(self: *WebglRenderer, vtx_buffer: []const c.ImDrawVert, idx_buffer: []const c.ImDrawIdx) void {
         _ = self;
         std.debug.assert(@sizeOf(c.ImDrawIdx) == 4);
@@ -416,12 +403,6 @@ const Renderer = union(enum) {
         }
     }
 
-    fn resize(self: *Renderer, width: f32, height: f32) void {
-        switch (self.*) {
-            inline else => |*r| r.resize(width, height),
-        }
-    }
-
     fn bufferData(self: *Renderer, vtx_buffer: []const c.ImDrawVert, idx_buffer: []const c.ImDrawIdx) void {
         switch (self.*) {
             inline else => |*r| r.bufferData(vtx_buffer, idx_buffer),
@@ -451,7 +432,6 @@ var global_count_allocator = CountAllocator.init(gpa.allocator());
 export fn init(
     width: f32,
     height: f32,
-    has_webgl: bool,
     device_pixel_ratio: f32,
     font: js.JsObject,
     font_len: usize,
@@ -477,7 +457,6 @@ export fn init(
         &global_count_allocator,
         width,
         height,
-        has_webgl,
         device_pixel_ratio,
         font_data,
         font_size,
@@ -491,8 +470,8 @@ export fn update(dt: f32) void {
     app.update(dt);
 }
 
-export fn onResize(width: f32, height: f32) void {
-    app.onResize(width, height);
+export fn on_resize(width: f32, height: f32) void {
+    app.on_resize(width, height);
 }
 
 export fn onMousePos(x: f32, y: f32) void {
