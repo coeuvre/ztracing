@@ -458,7 +458,13 @@ class App {
     this.memory = memory;
     this.canvas = canvas;
     this.renderer = new Webgl2Renderer(
-      this.canvas.getContext("webgl2"),
+      this.canvas.getContext("webgl2", {
+        powerPreference: "high-performance",
+        alpha: false,
+        antialias: false,  
+        depth: false,
+        stencil: false,
+      }),
       memory,
     );
   }
