@@ -543,7 +543,7 @@ const ViewState = struct {
 
         const center_y = region.top() + region.height() * 0.5;
 
-        const text_color = getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 });
+        const text_color = get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 1 });
         var time_us = @divTrunc(self.start_time_us, block_duration_us) * block_duration_us;
         while (time_us < self.end_time_us) : (time_us += block_duration_us) {
             const is_large_block = @rem(time_us, large_block_duration_us) == 0;
@@ -679,11 +679,11 @@ const ViewState = struct {
                 };
                 c.igItemSize_Rect(lane_bb, -1);
                 if (c.igItemAdd(lane_bb, 0, null, 0)) {
-                    const color_index_base: usize = @truncate(hashString(counter.name));
+                    const color_index_base: usize = @truncate(hash_str(counter.name));
 
                     for (counter.series.items, 0..) |series, series_index| {
                         const col_v4 = general_purpose_colors[(color_index_base + series_index) % general_purpose_colors.len];
-                        const col = getImColorU32(col_v4);
+                        const col = get_im_color_u32(col_v4);
 
                         var iter = series.iter(self.start_time_us, region.min_duration_us);
                         var prev_pos: ?c.ImVec2 = null;
@@ -721,7 +721,7 @@ const ViewState = struct {
                                     draw_list,
                                     .{ .x = pp.x - 1, .y = pp.y - 1 },
                                     .{ .x = pos.x, .y = pos.y - 1 },
-                                    getImColorU32(.{ .x = col_v4.x * 0.5, .y = col_v4.y * 0.5, .z = col_v4.z * 0.5, .w = 1.0 }),
+                                    get_im_color_u32(.{ .x = col_v4.x * 0.5, .y = col_v4.y * 0.5, .z = col_v4.z * 0.5, .w = 1.0 }),
                                     1,
                                 );
                             }
@@ -778,7 +778,7 @@ const ViewState = struct {
                         draw_list,
                         .{ .x = hovered.pos.x - 2, .y = hovered.pos.y - 2 },
                         .{ .x = hovered.pos.x + 2, .y = hovered.pos.y + 2 },
-                        getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1.0 }),
+                        get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 1.0 }),
                         0,
                         0,
                         1,
@@ -873,7 +873,7 @@ const ViewState = struct {
                             x2 = @min(region.right(), x2);
 
                             {
-                                const col = getColorForSpan(span);
+                                const col = get_color_for_span(span);
                                 var bb = c.ImRect{
                                     .Min = .{ .x = x1, .y = sub_lane_top },
                                     .Max = .{ .x = x2, .y = sub_lane_top + style.sub_lane_height },
@@ -892,7 +892,7 @@ const ViewState = struct {
                                         draw_list,
                                         .{ .x = bb.Min.x + 0.5, .y = bb.Min.y + 0.5 },
                                         .{ .x = bb.Max.x - 0.5, .y = bb.Max.y - 0.5 },
-                                        getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
+                                        get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
                                         0,
                                         0,
                                         1,
@@ -921,7 +921,7 @@ const ViewState = struct {
                                     c.ImDrawList_AddText_Vec2(
                                         draw_list,
                                         .{ .x = center_x - text_size.x / 2.0, .y = center_y - style.character_size.y / 2.0 },
-                                        getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
+                                        get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
                                         text,
                                         null,
                                     );
@@ -952,7 +952,7 @@ const ViewState = struct {
                 draw_list,
                 hovered.bb.Min,
                 hovered.bb.Max,
-                getImColorU32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
+                get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
                 0,
                 0,
                 2,
@@ -1053,9 +1053,9 @@ const ViewRegion = struct {
     }
 };
 
-fn getColorForSpan(span: *const Span) u32 {
-    const color_index: usize = @truncate(hashString(span.name));
-    return getImColorU32(general_purpose_colors[color_index % general_purpose_colors.len]);
+fn get_color_for_span(span: *Span) u32 {
+    const color_index: usize = @truncate(hash_str(span.name));
+    return get_im_color_u32(general_purpose_colors[color_index % general_purpose_colors.len]);
 }
 
 fn drawLaneHeader(lane_bb: c.ImRect, title: [:0]const u8, character_size_y: f32, text_padding_x: f32, allow_hover: bool, open: *bool, hovered: *bool) void {
@@ -1077,7 +1077,10 @@ fn drawLaneHeader(lane_bb: c.ImRect, title: [:0]const u8, character_size_y: f32,
 
     const center_y = lane_bb.Min.y + (lane_bb.Max.y - lane_bb.Min.y) * 0.5;
 
-    const col = if (open.*) getImColorU32(.{ .x = 0.3, .y = 0.3, .z = 0.3, .w = 1.0 }) else getImColorU32(.{ .x = 0.6, .y = 0.6, .z = 0.6, .w = 1.0 });
+    const col = if (open.*)
+        get_im_color_u32(.{ .x = 0.3, .y = 0.3, .z = 0.3, .w = 1.0 })
+    else
+        get_im_color_u32(.{ .x = 0.6, .y = 0.6, .z = 0.6, .w = 1.0 });
 
     c.ImDrawList_AddLine(
         draw_list,
@@ -1133,11 +1136,11 @@ fn drawLaneHeader(lane_bb: c.ImRect, title: [:0]const u8, character_size_y: f32,
 
 const Color = c.ImVec4;
 
-fn hashString(s: []const u8) u64 {
+fn hash_str(s: []const u8) u64 {
     return std.hash.Wyhash.hash(0, s);
 }
 
-fn getImColorU32(color: Color) u32 {
+fn get_im_color_u32(color: Color) u32 {
     return c.igGetColorU32_Vec4(color);
 }
 
