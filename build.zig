@@ -151,6 +151,9 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
                 .target = target,
                 .optimize = optimize,
             });
+            ztracing.root_module.addAnonymousImport("assets", .{
+                .root_source_file = .{ .path = "assets/assets.zig" },
+            });
             ztracing.addIncludePath(.{ .path = "third_party/SDL/build/install/include" });
             ztracing.addIncludePath(.{ .path = "third_party/zlib" });
             ztracing.addIncludePath(.{ .path = "third_party/tracy/public/tracy" });

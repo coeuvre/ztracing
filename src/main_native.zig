@@ -3,6 +3,7 @@ const c = @import("c.zig");
 const imgui = @import("imgui.zig");
 const tracy = @import("tracy.zig");
 const builtin = @import("builtin");
+const assets = @import("assets");
 
 const is_window = builtin.target.os.tag == .windows;
 
@@ -274,19 +275,6 @@ fn get_dpi_scale(window: *c.SDL_Window) f32 {
     return 1.0;
 }
 
-fn get_system_font_paths() []const [:0]const u8 {
-    switch (comptime builtin.target.os.tag) {
-        .windows => {
-            return &.{
-                "C:\\Windows\\Fonts\\consola.ttf",
-            };
-        },
-        else => {
-            return &.{};
-        },
-    }
-}
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     var tracy_allocator = tracy.tracyAllocator(gpa.allocator());
@@ -334,19 +322,17 @@ pub fn main() !void {
     _ = c.igCreateContext(null);
 
     const io = c.igGetIO();
-    for (get_system_font_paths()) |path| {
-        const font = c.ImFontAtlas_AddFontFromFileTTF(io.*.Fonts, path, @round(13 * dpi), null, null);
-        if (font != null) {
-            break;
-        }
-    }
 
-    // Manually scale the default font if can't load a system font at desired DPI.
-    if (io.*.Fonts.*.Fonts.Size == 0) {
-        _ = c.ImFontAtlas_AddFontDefault(io.*.Fonts, null);
-        if (dpi > 1) {
-            io.*.FontGlobalScale = dpi;
-        }
+    {
+        const font = c.ImFontAtlas_AddFontFromMemoryTTF(
+            io.*.Fonts,
+            @constCast(assets.font.ptr),
+            assets.font.len,
+            @round(15.0 * dpi),
+            null,
+            null,
+        );
+        std.debug.assert(font != null);
     }
 
     {
