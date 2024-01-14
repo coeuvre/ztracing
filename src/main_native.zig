@@ -264,10 +264,13 @@ fn load_thread_main(allocator: Allocator, path: []u8) void {
 }
 
 fn get_dpi_scale(window: *c.SDL_Window) f32 {
-    var dpi: f32 = 0;
-    if (c.SDL_GetDisplayDPI(c.SDL_GetWindowDisplayIndex(window), &dpi, null, null) == 0) {
-        return dpi / 96.0;
+    if (comptime is_window) {
+        var ddpi: f32 = 0;
+        if (c.SDL_GetDisplayDPI(c.SDL_GetWindowDisplayIndex(window), &ddpi, null, null) == 0) {
+            return ddpi / 96.0;
+        }
     }
+
     return 1.0;
 }
 
@@ -305,7 +308,7 @@ pub fn main() !void {
         c.SDL_WINDOWPOS_CENTERED,
         window_w,
         window_h,
-        c.SDL_WINDOW_ALLOW_HIGHDPI | c.SDL_WINDOW_HIDDEN | c.SDL_WINDOW_RESIZABLE,
+        c.SDL_WINDOW_HIDDEN | c.SDL_WINDOW_RESIZABLE,
     ).?;
 
     // TODO: detect DPI change
@@ -338,7 +341,7 @@ pub fn main() !void {
         }
     }
 
-    // Manually scale the default font if cann't load a system font at desired DPI.
+    // Manually scale the default font if can't load a system font at desired DPI.
     if (io.*.Fonts.*.Fonts.Size == 0) {
         _ = c.ImFontAtlas_AddFontDefault(io.*.Fonts, null);
         if (dpi > 1) {
