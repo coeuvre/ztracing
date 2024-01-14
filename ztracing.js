@@ -43,7 +43,7 @@ class Memory {
 
   loadString(ptr, len) {
     return this.textDecoder.decode(
-      new Uint8Array(this.memory.buffer, ptr, len)
+      new Uint8Array(this.memory.buffer, ptr, len),
     );
   }
 
@@ -136,7 +136,7 @@ class Webgl2Renderer {
       gl.SRC_ALPHA,
       gl.ONE_MINUS_SRC_ALPHA,
       gl.ONE,
-      gl.ONE_MINUS_SRC_ALPHA
+      gl.ONE_MINUS_SRC_ALPHA,
     );
     gl.disable(gl.CULL_FACE);
     gl.disable(gl.DEPTH_TEST);
@@ -180,7 +180,7 @@ class Webgl2Renderer {
     this.gl.uniformMatrix4fv(
       this.uniform_proj_mtx,
       false,
-      new Float32Array(ortho_projection)
+      new Float32Array(ortho_projection),
     );
   }
 
@@ -200,7 +200,7 @@ class Webgl2Renderer {
       0,
       gl.RGBA,
       gl.UNSIGNED_BYTE,
-      view
+      view,
     );
     return this.memory.storeObject(texture);
   }
@@ -210,13 +210,13 @@ class Webgl2Renderer {
 
     const vtx_buffer = this.memory.memory.buffer.slice(
       vtx_buffer_ptr,
-      vtx_buffer_ptr + vtx_buffer_size
+      vtx_buffer_ptr + vtx_buffer_size,
     );
     gl.bufferData(gl.ARRAY_BUFFER, vtx_buffer, gl.STREAM_DRAW);
 
     const idx_buffer = this.memory.memory.buffer.slice(
       idx_buffer_ptr,
-      idx_buffer_ptr + idx_buffer_size
+      idx_buffer_ptr + idx_buffer_size,
     );
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx_buffer, gl.STREAM_DRAW);
   }
@@ -228,14 +228,14 @@ class Webgl2Renderer {
     clip_rect_max_y,
     texture_ref,
     idx_count,
-    idx_offset
+    idx_offset,
   ) {
     const gl = this.gl;
     gl.scissor(
       clip_rect_min_x,
       this.height - clip_rect_max_y,
       clip_rect_max_x - clip_rect_min_x,
-      clip_rect_max_y - clip_rect_min_y
+      clip_rect_max_y - clip_rect_min_y,
     );
 
     const texture = this.memory.loadObject(texture_ref);
@@ -252,7 +252,7 @@ class Webgl2Renderer {
 class SoftwareRenderer {
   /**
    * @param {HTMLCanvasElement} canvas
-   * @param {Memory} memory 
+   * @param {Memory} memory
    */
   constructor(canvas, memory) {
     this.canvas = canvas;
@@ -281,7 +281,7 @@ class SoftwareRenderer {
     clip_rect_max_y,
     texture_ref,
     idx_count,
-    idx_offset
+    idx_offset,
   ) {
     throw new Error("not supported");
   }
@@ -290,7 +290,7 @@ class SoftwareRenderer {
     const data = new Uint8ClampedArray(
       this.memory.memory.buffer,
       framebuffer_ptr,
-      framebuffer_len
+      framebuffer_len,
     );
     const imageData = new ImageData(data, width, height);
     this.ctx.putImageData(imageData, 0, 0);
@@ -357,13 +357,13 @@ const imports = {
       vtx_buffer_ptr,
       vtx_buffer_size,
       idx_buffer_ptr,
-      idx_buffer_size
+      idx_buffer_size,
     ) => {
       app.renderer.bufferData(
         vtx_buffer_ptr,
         vtx_buffer_size,
         idx_buffer_ptr,
-        idx_buffer_size
+        idx_buffer_size,
       );
     },
 
@@ -374,7 +374,7 @@ const imports = {
       clip_rect_max_y,
       texture_ref,
       idx_count,
-      idx_offset
+      idx_offset,
     ) => {
       app.renderer.draw(
         clip_rect_min_x,
@@ -383,7 +383,7 @@ const imports = {
         clip_rect_max_y,
         texture_ref,
         idx_count,
-        idx_offset
+        idx_offset,
       );
     },
 
@@ -392,7 +392,7 @@ const imports = {
         framebuffer_ptr,
         framebuffer_len,
         width,
-        height
+        height,
       );
     },
 
@@ -413,16 +413,16 @@ const imports = {
       loadFileFromStream(stream);
     },
 
-    copyChunk: (chunkRef, ptr, len) => {
+    copy_uint8_array: (buf_ref, ptr, len) => {
       /** @type {Uint8Array} */
-      const chunk = app.memory.loadObject(chunkRef);
+      const chunk = app.memory.loadObject(buf_ref);
       const dst = new Uint8Array(app.memory.memory.buffer, ptr, len);
       dst.set(chunk);
     },
 
     get_current_timestamp: () => {
       return performance.now();
-    }
+    },
   },
 };
 
@@ -515,17 +515,14 @@ class App {
     if (this.has_webgl) {
       this.renderer = new Webgl2Renderer(
         this.canvas.getContext("webgl2"),
-        memory
+        memory,
       );
     } else {
-      this.renderer = new SoftwareRenderer(
-        this.canvas,
-        memory
-      );
+      this.renderer = new SoftwareRenderer(this.canvas, memory);
     }
   }
 
-  init(width, height) {
+  init(width, height, font_data, font_size) {
     this.update_canvas_size(width, height);
 
     this.instance.exports.init(
@@ -533,6 +530,9 @@ class App {
       this.canvas_framebuffer_height,
       this.has_webgl,
       this.device_pixel_ratio,
+      font_data ? this.memory.storeObject(new Uint8Array(font_data)) : 0n,
+      font_data ? font_data.byteLength : 0,
+      font_size,
     );
     this.renderer.init(this.canvas.width, this.canvas.height);
   }
@@ -543,22 +543,25 @@ class App {
     this.canvas_framebuffer_width = width * this.device_pixel_ratio;
     this.canvas_framebuffer_height = height * this.device_pixel_ratio;
 
-    this.canvas.style.width = this.canvas_display_width + 'px';
-    this.canvas.style.height = this.canvas_display_height + 'px';
+    this.canvas.style.width = this.canvas_display_width + "px";
+    this.canvas.style.height = this.canvas_display_height + "px";
     this.canvas.width = this.canvas_display_width * this.device_pixel_ratio;
     this.canvas.height = this.canvas_display_height * this.device_pixel_ratio;
-
   }
 
   resize(width, height) {
     this.update_canvas_size(width, height);
-    this.instance.exports.onResize(this.canvas_framebuffer_width, this.canvas_framebuffer_height);
+    this.instance.exports.onResize(
+      this.canvas_framebuffer_width,
+      this.canvas_framebuffer_height,
+    );
   }
 
   onMousePos(x, y) {
     this.instance.exports.onMousePos(
-      x / this.canvas_display_width * this.canvas_framebuffer_width,
-      y / this.canvas_display_height * this.canvas_framebuffer_height);
+      (x / this.canvas_display_width) * this.canvas_framebuffer_width,
+      (y / this.canvas_display_height) * this.canvas_framebuffer_height,
+    );
   }
 
   onMouseButton(button, down) {
@@ -599,7 +602,8 @@ class App {
 
 /**
  * @param {{
- *  ztracingWasmUrl: URL,
+ *  ztraing_wasm_url: URL,
+ *  font: { url: URL, size: number } | undefined,
  *  canvas: HTMLCanvasElement,
  *  width: number,
  *  height: number,
@@ -609,17 +613,30 @@ class App {
  */
 function mount(options) {
   const canvas = options.canvas;
-  WebAssembly.instantiateStreaming(
-    fetch(options.ztracingWasmUrl),
-    imports
-  ).then((wasm) => {
-    const exports = wasm.instance.exports;
 
+  const fetch_font_promise = options.font
+    ? fetch(options.font.url).then((res) => res.arrayBuffer())
+    : Promise.resolve();
+
+  const init_wasm_promise = WebAssembly.instantiateStreaming(
+    fetch(options.ztraing_wasm_url),
+    imports,
+  );
+  Promise.all([fetch_font_promise, init_wasm_promise]).then((result) => {
+    const font_data = result[0];
+    const wasm = result[1];
+
+    const exports = wasm.instance.exports;
     app = new App(canvas, wasm.instance, new Memory(exports.memory));
-    app.init(options.width, options.height);
+    app.init(
+      options.width,
+      options.height,
+      font_data,
+      options.font ? options.font.size : 0,
+    );
 
     canvas.addEventListener("mousemove", (event) =>
-      app.onMousePos(event.clientX, event.clientY)
+      app.onMousePos(event.clientX, event.clientY),
     );
     canvas.addEventListener("mousedown", (event) => {
       if (app.onMouseButton(event.button, true)) {

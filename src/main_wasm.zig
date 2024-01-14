@@ -39,7 +39,7 @@ const js = struct {
 
     pub extern "js" fn showOpenFilePicker() void;
 
-    pub extern "js" fn copyChunk(chunk: JsObject, ptr: [*]const u8, len: usize) void;
+    pub extern "js" fn copy_uint8_array(chunk: JsObject, ptr: [*]const u8, len: usize) void;
 
     pub extern "js" fn rendererCreateFontTexture(width: i32, height: i32, pixels: [*]const u8) JsObject;
 
@@ -162,7 +162,17 @@ const App = struct {
     mouse_pos_before_blur: c.ImVec2 = undefined,
     load_state: ?LoadState = null,
 
-    pub fn init(self: *App, count_allocator: *CountAllocator, width: f32, height: f32, has_webgl: bool, device_pixel_ratio: f32) void {
+    pub fn init(
+        self: *App,
+        count_allocator: *CountAllocator,
+        width: f32,
+        height: f32,
+        has_webgl: bool,
+        device_pixel_ratio: f32,
+        font_data: ?[]u8,
+        font_size: f32,
+    ) void {
+        const scale: f32 = device_pixel_ratio;
         const allocator = count_allocator.allocator();
         self.allocator = allocator;
         if (has_webgl) {
@@ -185,7 +195,7 @@ const App = struct {
         {
             const style = c.igGetStyle();
             c.igStyleColorsLight(style);
-            c.ImGuiStyle_ScaleAllSizes(style, device_pixel_ratio);
+            c.ImGuiStyle_ScaleAllSizes(style, scale);
 
             style.*.ScrollbarRounding = 0.0;
             style.*.ScrollbarSize = 18.0;
@@ -198,8 +208,18 @@ const App = struct {
         io.*.DisplaySize.x = width;
         io.*.DisplaySize.y = height;
 
-        // TODO: Load font at desired DPI.
-        io.*.FontGlobalScale = device_pixel_ratio;
+        if (font_data) |f| {
+            _ = c.ImFontAtlas_AddFontFromMemoryTTF(
+                io.*.Fonts,
+                f.ptr,
+                @intCast(f.len),
+                @round(font_size * scale),
+                null,
+                null,
+            );
+        } else {
+            io.*.FontGlobalScale = scale;
+        }
 
         {
             var pixels: [*c]u8 = undefined;
@@ -428,10 +448,40 @@ var app: *App = undefined;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var global_count_allocator = CountAllocator.init(gpa.allocator());
 
-export fn init(width: f32, height: f32, has_webgl: bool, device_pixel_ratio: f32) void {
+export fn init(
+    width: f32,
+    height: f32,
+    has_webgl: bool,
+    device_pixel_ratio: f32,
+    font: js.JsObject,
+    font_len: usize,
+    font_size: f32,
+) void {
     var allocator = global_count_allocator.allocator();
     app = allocator.create(App) catch unreachable;
-    app.init(&global_count_allocator, width, height, has_webgl, device_pixel_ratio);
+
+    const font_data: ?[]u8 = blk: {
+        if (font.ref != 0) {
+            defer js.destory(font);
+
+            const font_data = allocator.alloc(u8, font_len) catch unreachable;
+            js.copy_uint8_array(font, font_data.ptr, font_len);
+            break :blk font_data;
+        } else {
+            break :blk null;
+        }
+    };
+    defer if (font_data) |f| allocator.free(f);
+
+    app.init(
+        &global_count_allocator,
+        width,
+        height,
+        has_webgl,
+        device_pixel_ratio,
+        font_data,
+        font_size,
+    );
 
     // HACK: Force ImGui to update the mosue cursor, otherwise it's in uninitialized state.
     app.onMousePos(0, 0);
@@ -481,7 +531,7 @@ export fn onLoadFileChunk(offset: usize, chunk: js.JsObject, len: usize) void {
         const buf = allocator.alloc(u8, len) catch unreachable;
         defer allocator.free(buf);
 
-        js.copyChunk(chunk, buf.ptr, len);
+        js.copy_uint8_array(chunk, buf.ptr, len);
 
         app.on_load_file_chunk(offset, buf);
     }
