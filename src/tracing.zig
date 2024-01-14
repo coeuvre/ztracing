@@ -1053,7 +1053,7 @@ const ViewRegion = struct {
     }
 };
 
-fn get_color_for_span(span: *Span) u32 {
+fn get_color_for_span(span: *const Span) u32 {
     const color_index: usize = @truncate(hash_str(span.name));
     return get_im_color_u32(general_purpose_colors[color_index % general_purpose_colors.len]);
 }
