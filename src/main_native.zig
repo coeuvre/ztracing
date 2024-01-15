@@ -14,16 +14,21 @@ const Profile = @import("profile.zig").Profile;
 const Arena = std.heap.ArenaAllocator;
 const CountAllocator = @import("count_alloc.zig").CountAllocator;
 
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+var count_allocator = CountAllocator.init(gpa.allocator());
+
 fn get_seconds_elapsed(from: usize, to: usize, freq: usize) f32 {
     return @floatCast(@as(f64, @floatFromInt(to - from)) / @as(f64, @floatFromInt(freq)));
 }
 
 fn zalloc(userdata: ?*anyopaque, items: c_uint, size: c_uint) callconv(.C) ?*anyopaque {
-    return ig.alloc(items * size, userdata);
+    const allocator: *Allocator = @ptrCast(@alignCast(userdata));
+    return c.memory.malloc(allocator.*, items * size);
 }
 
 fn zfree(userdata: ?*anyopaque, address: ?*anyopaque) callconv(.C) void {
-    ig.free(address, userdata);
+    const allocator: *Allocator = @ptrCast(@alignCast(userdata));
+    c.memory.free(allocator.*, address);
 }
 
 const UserEventCode = enum {
@@ -86,8 +91,9 @@ fn Channel(comptime T: type) type {
 
 var load_thread_channel: Channel(Event) = Channel(Event).init();
 
-fn load_thread_main(parent_allocator: Allocator) void {
-    var load_file_arena: ?Arena = null;
+fn load_thread_main() void {
+    var profile_tracy_allocator = tracy.TracyAllocator("Profile").init(count_allocator.allocator());
+    var profile_arena: ?Arena = null;
 
     tracy.set_thread_name("Load File Thread");
 
@@ -95,33 +101,36 @@ fn load_thread_main(parent_allocator: Allocator) void {
         const event = load_thread_channel.get();
         switch (event) {
             .load_file => |l| {
-                if (load_file_arena) |arena| {
+                if (profile_arena) |arena| {
                     arena.deinit();
                 }
-                load_file_arena = Arena.init(parent_allocator);
-                load_file(parent_allocator, &load_file_arena.?, l.path);
+                const parent_allocator = profile_tracy_allocator.allocator();
+                profile_arena = Arena.init(parent_allocator);
+                load_file(parent_allocator, &profile_arena.?, l.path);
             },
         }
     }
 }
 
-fn load_file(parent_allocator: Allocator, arena: *Arena, path: []const u8) void {
-    _ = parent_allocator;
-
-    const allocator = arena.allocator();
-
+fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u8) void {
     const trace = tracy.traceNamed(@src(), "load_file");
     defer trace.end();
+
+    var temp_arena = Arena.init(parent_allocator);
+    defer temp_arena.deinit();
+
+    const profile_allocator = profile_arena.allocator();
+    const temp_allocator = temp_arena.allocator();
 
     const start_counter = c.SDL_GetPerformanceCounter();
 
     const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
-        send_load_error(allocator, "Failed to open file {s}: {}", .{ path, err });
+        send_load_error(profile_allocator, "Failed to open file {s}: {}", .{ path, err });
         return;
     };
     defer file.close();
     const stat = file.stat() catch |err| {
-        send_load_error(allocator, "Failed to stat file {s}: {}", .{ path, err });
+        send_load_error(profile_allocator, "Failed to stat file {s}: {}", .{ path, err });
         return;
     };
     const file_size = stat.size;
@@ -132,11 +141,11 @@ fn load_file(parent_allocator: Allocator, arena: *Arena, path: []const u8) void 
     var header = std.mem.zeroes([2]u8);
     const is_gz = blk: {
         const bytes_read = file.read(&header) catch |err| {
-            send_load_error(allocator, "Failed to read file: {}", .{err});
+            send_load_error(profile_allocator, "Failed to read file: {}", .{err});
             return;
         };
         file.seekTo(0) catch |err| {
-            send_load_error(allocator, "Failed to seek file: {}", .{err});
+            send_load_error(profile_allocator, "Failed to seek file: {}", .{err});
             return;
         };
         break :blk bytes_read == 2 and (header[0] == 0x1F and header[1] == 0x8B);
@@ -145,46 +154,38 @@ fn load_file(parent_allocator: Allocator, arena: *Arena, path: []const u8) void 
     var stream = c.z_stream{
         .zalloc = zalloc,
         .zfree = zfree,
-        .@"opaque" = @constCast(&allocator),
+        .@"opaque" = @constCast(&temp_allocator),
     };
     var is_stream_end = false;
-    defer if (is_gz) {
-        _ = c.inflateEnd(&stream);
-    };
     if (is_gz) {
         // Automatically detect header
         const ret = c.inflateInit2(&stream, c.MAX_WBITS | 32);
         if (ret != c.Z_OK) {
-            send_load_error(allocator, "Failed to init inflate: {}", .{ret});
+            send_load_error(profile_allocator, "Failed to init inflate: {}", .{ret});
             return;
         }
     }
 
-    var parser = JsonProfileParser.init(allocator);
-    defer parser.deinit();
-    var profile = allocator.create(Profile) catch |err| {
-        send_load_error(allocator, "Failed to allocate profile: {}", .{err});
+    var parser = JsonProfileParser.init(temp_allocator);
+    var profile = profile_allocator.create(Profile) catch |err| {
+        send_load_error(profile_allocator, "Failed to allocate profile: {}", .{err});
         return;
     };
-    profile.* = Profile.init(arena);
+    profile.* = Profile.init(profile_arena);
 
-    var file_buf = allocator.alloc(u8, 4096) catch |err| {
-        send_load_error(allocator, "Failed to allocate file_buf: {}", .{err});
+    var file_buf = temp_allocator.alloc(u8, 4096) catch |err| {
+        send_load_error(profile_allocator, "Failed to allocate file_buf: {}", .{err});
         return;
     };
-    defer allocator.free(file_buf);
     var inflate_buf: []u8 = blk: {
         if (is_gz) {
-            break :blk allocator.alloc(u8, 4096) catch |err| {
-                send_load_error(allocator, "Failed to allocate inflate_buf: {}", .{err});
+            break :blk temp_allocator.alloc(u8, 4096) catch |err| {
+                send_load_error(profile_allocator, "Failed to allocate inflate_buf: {}", .{err});
                 return;
             };
         } else {
             break :blk &[0]u8{};
         }
-    };
-    defer if (is_gz) {
-        allocator.free(inflate_buf);
     };
 
     while (true) {
@@ -192,7 +193,7 @@ fn load_file(parent_allocator: Allocator, arena: *Arena, path: []const u8) void 
         defer trace1.end();
 
         const file_bytes_read = file.read(file_buf) catch |err| {
-            send_load_error(allocator, "Failed to read file {s}: {}", .{ path, err });
+            send_load_error(profile_allocator, "Failed to read file {s}: {}", .{ path, err });
             return;
         };
 
@@ -213,7 +214,7 @@ fn load_file(parent_allocator: Allocator, arena: *Arena, path: []const u8) void 
                 };
 
                 if (ret != c.Z_OK and ret != c.Z_STREAM_END) {
-                    send_load_error(allocator, "Failed to inflate: {}", .{ret});
+                    send_load_error(profile_allocator, "Failed to inflate: {}", .{ret});
                     return;
                 }
                 const have = inflate_buf.len - stream.avail_out;
@@ -238,7 +239,7 @@ fn load_file(parent_allocator: Allocator, arena: *Arena, path: []const u8) void 
                     const trace2 = tracy.traceNamed(@src(), "parser.next()");
                     defer trace2.end();
                     break :blk parser.next() catch |err| {
-                        send_load_error(allocator, "Failed to parse file: {}\n{}", .{
+                        send_load_error(profile_allocator, "Failed to parse file: {}\n{}", .{
                             err,
                             parser.diagnostic,
                         });
@@ -251,7 +252,7 @@ fn load_file(parent_allocator: Allocator, arena: *Arena, path: []const u8) void 
                         const trace2 = tracy.traceNamed(@src(), "profile.handle_trace_event()");
                         defer trace2.end();
                         profile.handle_trace_event(trace_event) catch |err| {
-                            send_load_error(allocator, "Failed to handle trace event: {}\n{}", .{
+                            send_load_error(profile_allocator, "Failed to handle trace event: {}\n{}", .{
                                 err,
                                 parser.diagnostic,
                             });
@@ -297,7 +298,7 @@ fn load_file(parent_allocator: Allocator, arena: *Arena, path: []const u8) void 
         const trace1 = tracy.traceNamed(@src(), "profile.done()");
         defer trace1.end();
         profile.done() catch |err| {
-            send_load_error(allocator, "Failed to finalize profile: {}", .{err});
+            send_load_error(profile_allocator, "Failed to finalize profile: {}", .{err});
             return;
         };
     }
@@ -366,9 +367,6 @@ fn sdl_free(ptr: ?*anyopaque) callconv(.C) void {
     c.mi_free(ptr);
 }
 
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-var count_allocator = CountAllocator.init(gpa.allocator());
-
 fn get_memory_usages() usize {
     return count_allocator.allocatedBytes();
 }
@@ -385,12 +383,12 @@ pub fn main() !void {
     //     sdl_realloc,
     //     sdl_free,
     // );
-    //
+
     var imgui_tracy_allocator = tracy.TracyAllocator("ImGUI").init(count_allocator.allocator());
     var imgui_allocator = imgui_tracy_allocator.allocator();
     c.igSetAllocatorFunctions(ig.alloc, ig.free, @ptrCast(&imgui_allocator));
 
-    _ = try std.Thread.spawn(.{}, load_thread_main, .{allocator});
+    _ = try std.Thread.spawn(.{}, load_thread_main, .{});
 
     if (comptime is_window) {
         // Allow Windows to scale up window, but still let SDL uses coordinate in pixels.
