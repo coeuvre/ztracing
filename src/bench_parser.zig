@@ -22,7 +22,7 @@ pub fn main() !void {
     var count_allocator = CountAllocator.init(gpa.allocator());
     const allocator = count_allocator.allocator();
 
-    var args = try std.process.argsAlloc(allocator);
+    const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
     if (args.len != 3) {
@@ -44,7 +44,7 @@ pub fn main() !void {
     const path = args[2];
 
     var timer = try std.time.Timer.start();
-    var result = try parse(allocator, mode, path);
+    const result = try parse(allocator, mode, path);
     const delta_ns = timer.read();
 
     const stdout = std.io.getStdOut().writer();
@@ -54,7 +54,7 @@ pub fn main() !void {
     const total_mb = @as(f64, @floatFromInt(result.total_bytes)) / (1024.0 * 1024.0);
     const speed = total_mb / delta_ms * 1000.0;
     try stdout.print("Wall time: {d:.2} ms\n", .{delta_ms});
-    try stdout.print("Peek Memory: {d:.1} MiB\n", .{@as(f64, @floatFromInt(count_allocator.peekAllocatedBytes())) / (1024.0 * 1024.0)});
+    try stdout.print("Peek Memory: {d:.1} MiB\n", .{@as(f64, @floatFromInt(count_allocator.get_peek_allocated_bytes())) / (1024.0 * 1024.0)});
     try stdout.print("Size: {d:.1} MiB\n", .{total_mb});
     try stdout.print("Speed: {d:.1} MiB / s\n", .{speed});
 }

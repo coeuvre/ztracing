@@ -32,7 +32,7 @@ pub const CountAllocator = struct {
         };
     }
 
-    pub fn peekAllocatedBytes(self: *const CountAllocator) usize {
+    pub fn get_peek_allocated_bytes(self: *const CountAllocator) usize {
         if (comptime thread_safe) {
             return self.peek_allocated_bytes.load(.SeqCst);
         } else {
@@ -40,7 +40,7 @@ pub const CountAllocator = struct {
         }
     }
 
-    pub fn allocatedBytes(self: *const CountAllocator) usize {
+    pub fn get_allocated_bytes(self: *const CountAllocator) usize {
         if (comptime thread_safe) {
             return self.allocated_bytes.load(.SeqCst);
         } else {

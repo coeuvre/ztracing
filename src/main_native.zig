@@ -17,6 +17,12 @@ const CountAllocator = @import("count_alloc.zig").CountAllocator;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var count_allocator = CountAllocator.init(gpa.allocator());
 
+var imgui_tracy_allocator = tracy.TracyAllocator("ImGui").init(count_allocator.allocator());
+var imgui_allocator = imgui_tracy_allocator.allocator();
+
+var sdl_tracy_allocator = tracy.TracyAllocator("SDL").init(count_allocator.allocator());
+var sdl_allocator = sdl_tracy_allocator.allocator();
+
 fn get_seconds_elapsed(from: usize, to: usize, freq: usize) f32 {
     return @floatCast(@as(f64, @floatFromInt(to - from)) / @as(f64, @floatFromInt(freq)));
 }
@@ -330,62 +336,37 @@ fn get_dpi_scale(window: *c.SDL_Window) f32 {
     return 1.0;
 }
 
-var sdl_allocator: Allocator = undefined;
-
 fn sdl_malloc(size: usize) callconv(.C) ?*anyopaque {
-    const ptr = c.mi_malloc(size);
-    if (ptr) |p| {
-        tracy.allocNamed(@ptrCast(p), size, "SDL");
-    }
-    return ptr;
+    return c.memory.malloc(sdl_allocator, size);
 }
 
 fn sdl_calloc(count: usize, size: usize) callconv(.C) ?*anyopaque {
-    const ptr = c.mi_calloc(count, size);
-    if (ptr) |p| {
-        tracy.allocNamed(@ptrCast(p), count * size, "SDL");
-    }
-    return ptr;
+    return c.memory.calloc(sdl_allocator, count, size);
 }
 
 fn sdl_realloc(mem: ?*anyopaque, size: usize) callconv(.C) ?*anyopaque {
-    if (mem) |p| {
-        tracy.freeNamed(@ptrCast(p), "SDL");
-    }
-
-    const ptr = c.mi_realloc(mem, size);
-    if (ptr) |p| {
-        tracy.allocNamed(@ptrCast(p), size, "SDL");
-    }
-    return ptr;
+    return c.memory.realloc(sdl_allocator, mem, size);
 }
 
 fn sdl_free(ptr: ?*anyopaque) callconv(.C) void {
-    if (ptr) |p| {
-        tracy.freeNamed(@ptrCast(p), "SDL");
-    }
-    c.mi_free(ptr);
+    c.memory.free(sdl_allocator, ptr);
 }
 
 fn get_memory_usages() usize {
-    return count_allocator.allocatedBytes();
+    return count_allocator.get_allocated_bytes();
 }
 
 pub fn main() !void {
     var tracy_allocator = tracy.tracyAllocator(count_allocator.allocator());
     var allocator = tracy_allocator.allocator();
 
-    // var sdl_tracy_allocator = tracy.TracyAllocator("SDL").init(count_allocator);
-    // sdl_allocator = sdl_tracy_allocator.allocator();
-    // _ = c.SDL_SetMemoryFunctions(
-    //     sdl_malloc,
-    //     sdl_calloc,
-    //     sdl_realloc,
-    //     sdl_free,
-    // );
+    _ = c.SDL_SetMemoryFunctions(
+        sdl_malloc,
+        sdl_calloc,
+        sdl_realloc,
+        sdl_free,
+    );
 
-    var imgui_tracy_allocator = tracy.TracyAllocator("ImGUI").init(count_allocator.allocator());
-    var imgui_allocator = imgui_tracy_allocator.allocator();
     c.igSetAllocatorFunctions(ig.alloc, ig.free, @ptrCast(&imgui_allocator));
 
     _ = try std.Thread.spawn(.{}, load_thread_main, .{});

@@ -156,7 +156,7 @@ const LoadState = struct {
 };
 
 fn get_memory_usages() usize {
-    return global_count_allocator.allocatedBytes();
+    return global_count_allocator.get_allocated_bytes();
 }
 
 const App = struct {

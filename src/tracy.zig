@@ -340,4 +340,3 @@ pub inline fn set_thread_name(comptime name: [:0]const u8) void {
 }
 
 extern fn ___tracy_set_thread_name(name: ?[*:0]const u8) void;
-
