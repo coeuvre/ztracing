@@ -2,14 +2,12 @@ const std = @import("std");
 const test_utils = @import("./test_utils.zig");
 const json_profile_parser = @import("./json_profile_parser.zig");
 const tracy = @import("tracy.zig");
-const arena_ = @import("arena.zig");
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const TraceEvent = json_profile_parser.TraceEvent;
 const expect_optional = test_utils.expect_optional;
-const Arena = arena_.Arena;
-const StdArena = arena_.StdArena;
+const Arena = std.heap.ArenaAllocator;
 
 pub const UiState = struct {
     open: bool = true,
@@ -415,26 +413,18 @@ pub const Process = struct {
 };
 
 pub const Profile = struct {
-    arena: Arena,
+    arena: *Arena,
     min_time_us: i64,
     max_time_us: i64,
     processes: ArrayList(Process),
 
-    pub fn init(arena: Arena) Profile {
+    pub fn init(arena: *Arena) Profile {
         return .{
             .arena = arena,
             .min_time_us = std.math.maxInt(i64),
             .max_time_us = 0,
-            // The allocator will be replaced with arena when appending items.
             .processes = ArrayList(Process).init(arena.allocator()),
         };
-    }
-
-    pub fn deinit(self: *Profile) void {
-        const trace = tracy.traceNamed(@src(), "Profile.deinit");
-        defer trace.end();
-
-        self.arena.deinit();
     }
 
     fn get_or_create_process(self: *Profile, pid: i64) !*Process {
@@ -442,10 +432,6 @@ pub const Profile = struct {
             if (process.pid == pid) {
                 return process;
             }
-        }
-
-        if (self.processes.items.len == 0) {
-            self.processes = ArrayList(Process).init(self.arena.allocator());
         }
 
         try self.processes.append(Process.init(self.arena.allocator(), pid));
@@ -636,8 +622,10 @@ const ExpectedSpan = struct {
     duration_us: i64,
 };
 
+var testing_arena = Arena.init(std.testing.allocator);
+
 fn parse(trace_events: []const TraceEvent) !Profile {
-    var profile = Profile.init(try StdArena.init(std.testing.allocator));
+    var profile = Profile.init(&testing_arena);
 
     for (trace_events) |*trace_event| {
         try profile.handle_trace_event(trace_event);
@@ -649,8 +637,8 @@ fn parse(trace_events: []const TraceEvent) !Profile {
 }
 
 fn test_parse(trace_events: []const TraceEvent, expected_profile: ExpectedProfile) !void {
-    var profile = try parse(trace_events);
-    defer profile.deinit();
+    const profile = try parse(trace_events);
+    defer testing_arena.deinit();
     try expect_equal_profiles(expected_profile, profile);
 }
 
@@ -879,21 +867,21 @@ test "parse, thread_sort_index equal, sort by name" {
 }
 
 test "parse, set min/max" {
-    var profile = try parse(&[_]TraceEvent{
+    const profile = try parse(&[_]TraceEvent{
         .{ .ph = 'X', .name = "a", .pid = 1, .tid = 3, .ts = 8, .dur = 5 },
     });
-    defer profile.deinit();
+    defer testing_arena.deinit();
 
     try std.testing.expectEqual(@as(i64, 8), profile.min_time_us);
     try std.testing.expectEqual(@as(i64, 13), profile.max_time_us);
 }
 
 test "parse, incomplete event, ignore for min/max" {
-    var profile = try parse(&[_]TraceEvent{
+    const profile = try parse(&[_]TraceEvent{
         .{ .ph = 'X', .name = "a", .ts = 1, .dur = 20 },
         .{ .ph = 'X', .name = "a", .pid = 1, .tid = 3, .ts = 8, .dur = 5 },
     });
-    defer profile.deinit();
+    defer testing_arena.deinit();
 
     try std.testing.expectEqual(@as(i64, 8), profile.min_time_us);
     try std.testing.expectEqual(@as(i64, 13), profile.max_time_us);

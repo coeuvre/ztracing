@@ -22,6 +22,5 @@ CIMGUI_API void ig_ImplSDLRenderer2_NewFrame();
 CIMGUI_API void ig_ImplSDLRenderer2_RenderDrawData(ImDrawData* draw_data);
 
 #include <zlib.h>
-#include <mimalloc.h>
 
 #endif

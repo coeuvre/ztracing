@@ -1,10 +1,9 @@
 const std = @import("std");
 const c = @import("c.zig");
-const imgui = @import("imgui.zig");
+const ig = @import("imgui.zig");
 const tracy = @import("tracy.zig");
 const builtin = @import("builtin");
 const assets = @import("assets");
-const mimalloc = @import("mimalloc.zig");
 
 const is_window = builtin.target.os.tag == .windows;
 
@@ -12,18 +11,19 @@ const Tracing = @import("tracing.zig").Tracing;
 const Allocator = std.mem.Allocator;
 const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
-const Arena = @import("arena.zig").Arena;
+const Arena = std.heap.ArenaAllocator;
+const CountAllocator = @import("count_alloc.zig").CountAllocator;
 
 fn get_seconds_elapsed(from: usize, to: usize, freq: usize) f32 {
     return @floatCast(@as(f64, @floatFromInt(to - from)) / @as(f64, @floatFromInt(freq)));
 }
 
 fn zalloc(userdata: ?*anyopaque, items: c_uint, size: c_uint) callconv(.C) ?*anyopaque {
-    return imgui.alloc(items * size, userdata);
+    return ig.alloc(items * size, userdata);
 }
 
 fn zfree(userdata: ?*anyopaque, address: ?*anyopaque) callconv(.C) void {
-    imgui.free(address, userdata);
+    ig.free(address, userdata);
 }
 
 const UserEventCode = enum {
@@ -43,28 +43,6 @@ fn send_load_error(allocator: Allocator, comptime fmt: []const u8, args: anytype
         },
     }));
 }
-
-const HeapArena = struct {
-    pub fn init(heap: mimalloc.Heap) Arena {
-        return .{
-            .ptr = heap.raw,
-            .vtable = &.{
-                .allocator = allocator,
-                .deinit = deinit,
-            },
-        };
-    }
-
-    fn allocator(p: *anyopaque) Allocator {
-        const heap: mimalloc.Heap = mimalloc.Heap.from_raw(@ptrCast(@alignCast(p)));
-        return heap.allocator();
-    }
-
-    fn deinit(p: *anyopaque) void {
-        const heap: mimalloc.Heap = mimalloc.Heap.from_raw(@ptrCast(@alignCast(p)));
-        heap.destroy();
-    }
-};
 
 const Event = union(enum) {
     load_file: struct {
@@ -108,8 +86,8 @@ fn Channel(comptime T: type) type {
 
 var load_thread_channel: Channel(Event) = Channel(Event).init();
 
-fn load_thread_main() void {
-    var load_file_heap: ?mimalloc.Heap = null;
+fn load_thread_main(parent_allocator: Allocator) void {
+    var load_file_arena: ?Arena = null;
 
     tracy.set_thread_name("Load File Thread");
 
@@ -117,18 +95,20 @@ fn load_thread_main() void {
         const event = load_thread_channel.get();
         switch (event) {
             .load_file => |l| {
-                if (load_file_heap) |heap| {
-                    heap.destroy();
+                if (load_file_arena) |arena| {
+                    arena.deinit();
                 }
-                load_file_heap = mimalloc.Heap.new();
-                load_file(load_file_heap.?, l.path);
+                load_file_arena = Arena.init(parent_allocator);
+                load_file(parent_allocator, &load_file_arena.?, l.path);
             },
         }
     }
 }
 
-fn load_file(heap: mimalloc.Heap, path: []const u8) void {
-    const allocator = heap.allocator();
+fn load_file(parent_allocator: Allocator, arena: *Arena, path: []const u8) void {
+    _ = parent_allocator;
+
+    const allocator = arena.allocator();
 
     const trace = tracy.traceNamed(@src(), "load_file");
     defer trace.end();
@@ -186,7 +166,7 @@ fn load_file(heap: mimalloc.Heap, path: []const u8) void {
         send_load_error(allocator, "Failed to allocate profile: {}", .{err});
         return;
     };
-    profile.* = Profile.init(HeapArena.init(heap));
+    profile.* = Profile.init(arena);
 
     var file_buf = allocator.alloc(u8, 4096) catch |err| {
         send_load_error(allocator, "Failed to allocate file_buf: {}", .{err});
@@ -349,20 +329,7 @@ fn get_dpi_scale(window: *c.SDL_Window) f32 {
     return 1.0;
 }
 
-fn ig_alloc(size: usize, _: ?*anyopaque) callconv(.C) ?*anyopaque {
-    const ptr = c.mi_malloc(size);
-    if (ptr) |p| {
-        tracy.allocNamed(@ptrCast(p), c.mi_malloc_size(p), "imgui");
-    }
-    return ptr;
-}
-
-fn ig_free(ptr: ?*anyopaque, _: ?*anyopaque) callconv(.C) void {
-    if (ptr) |p| {
-        tracy.freeNamed(@ptrCast(p), "imgui");
-    }
-    c.mi_free(ptr);
-}
+var sdl_allocator: Allocator = undefined;
 
 fn sdl_malloc(size: usize) callconv(.C) ?*anyopaque {
     const ptr = c.mi_malloc(size);
@@ -399,24 +366,31 @@ fn sdl_free(ptr: ?*anyopaque) callconv(.C) void {
     c.mi_free(ptr);
 }
 
+var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+var count_allocator = CountAllocator.init(gpa.allocator());
+
 fn get_memory_usages() usize {
-    var current_rss: usize = 0;
-    c.mi_process_info(null, null, null, &current_rss, null, null, null, null);
-    return current_rss;
+    return count_allocator.allocatedBytes();
 }
 
 pub fn main() !void {
-    var tracy_allocator = tracy.tracyAllocator(mimalloc.allocator());
+    var tracy_allocator = tracy.tracyAllocator(count_allocator.allocator());
     var allocator = tracy_allocator.allocator();
 
-    _ = try std.Thread.spawn(.{}, load_thread_main, .{});
+    // var sdl_tracy_allocator = tracy.TracyAllocator("SDL").init(count_allocator);
+    // sdl_allocator = sdl_tracy_allocator.allocator();
+    // _ = c.SDL_SetMemoryFunctions(
+    //     sdl_malloc,
+    //     sdl_calloc,
+    //     sdl_realloc,
+    //     sdl_free,
+    // );
+    //
+    var imgui_tracy_allocator = tracy.TracyAllocator("ImGUI").init(count_allocator.allocator());
+    var imgui_allocator = imgui_tracy_allocator.allocator();
+    c.igSetAllocatorFunctions(ig.alloc, ig.free, @ptrCast(&imgui_allocator));
 
-    _ = c.SDL_SetMemoryFunctions(
-        sdl_malloc,
-        sdl_calloc,
-        sdl_realloc,
-        sdl_free,
-    );
+    _ = try std.Thread.spawn(.{}, load_thread_main, .{allocator});
 
     if (comptime is_window) {
         // Allow Windows to scale up window, but still let SDL uses coordinate in pixels.
@@ -453,8 +427,6 @@ pub fn main() !void {
         0,
         c.SDL_RENDERER_ACCELERATED | c.SDL_RENDERER_PRESENTVSYNC,
     ).?;
-
-    c.igSetAllocatorFunctions(ig_alloc, ig_free, null);
 
     _ = c.igCreateContext(null);
 

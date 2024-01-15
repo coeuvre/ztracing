@@ -111,24 +111,6 @@ fn add_tracy(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     return tracy;
 }
 
-fn add_mimalloc(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
-    const mimalloc = b.addStaticLibrary(.{
-        .name = "mimalloc",
-        .target = target,
-        .optimize = optimize,
-    });
-    if (optimize == .Debug) {
-        // MI_DEBUG_FULL
-        mimalloc.defineCMacro("MI_DEBUG", "3");
-    }
-    mimalloc.addIncludePath(.{ .path = "third_party/mimalloc/include" });
-    mimalloc.addCSourceFile(.{
-        .file = .{ .path = "third_party/mimalloc/src/static.c" },
-    });
-    mimalloc.linkLibC();
-    return mimalloc;
-}
-
 fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
     const build_options = b.addOptions();
 
@@ -162,7 +144,6 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
         } else {
             const zlib = add_zlib(b, target, optimize);
             const tracy = add_tracy(b, target, optimize);
-            const mimalloc = add_mimalloc(b, target, optimize);
 
             const ztracing = b.addExecutable(.{
                 .name = "ztracing",
@@ -176,9 +157,6 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
 
             ztracing.addIncludePath(.{ .path = "third_party/zlib" });
             ztracing.linkLibrary(zlib);
-
-            ztracing.addIncludePath(.{ .path = "third_party/mimalloc/include" });
-            ztracing.linkLibrary(mimalloc);
 
             ztracing.addIncludePath(.{ .path = "third_party/SDL/build/install/include" });
             switch (target.result.os.tag) {

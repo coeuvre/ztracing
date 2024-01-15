@@ -3,7 +3,6 @@ const c = @import("c.zig");
 const ig = @import("imgui.zig");
 const software_renderer = @import("./software_renderer.zig");
 const imgui = @import("imgui.zig");
-const arena_ = @import("arena.zig");
 
 const log = std.log;
 const Allocator = std.mem.Allocator;
@@ -11,7 +10,7 @@ const CountAllocator = @import("./count_alloc.zig").CountAllocator;
 const Tracing = @import("tracing.zig").Tracing;
 const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
-const Arena = arena_.Arena;
+const Arena = std.heap.ArenaAllocator;
 
 pub const std_options = struct {
     pub fn logFn(
@@ -67,7 +66,7 @@ fn show_open_file_picker() void {
 }
 
 const LoadState = struct {
-    arena: Arena,
+    arena: *Arena,
     total: usize,
     parser: JsonProfileParser,
     profile: *Profile,
@@ -75,8 +74,10 @@ const LoadState = struct {
     start_timestamp: usize,
     processed_bytes: usize,
 
-    pub fn init(child_allocator: Allocator, total: usize, tracing: *Tracing) LoadState {
-        const arena = arena_.StdArena.init(child_allocator) catch unreachable;
+    pub fn init(parent_allocator: Allocator, total: usize, tracing: *Tracing) LoadState {
+        const arena = parent_allocator.create(Arena) catch unreachable;
+        arena.* = Arena.init(parent_allocator);
+
         const allocator = arena.allocator();
         const profile = allocator.create(Profile) catch unreachable;
         profile.* = Profile.init(arena);
@@ -92,7 +93,9 @@ const LoadState = struct {
     }
 
     pub fn deinit(self: *LoadState) void {
+        const parent_allocator = self.arena.child_allocator;
         self.arena.deinit();
+        parent_allocator.destroy(self.arena);
     }
 
     pub fn load(self: *LoadState, input: []const u8) bool {
