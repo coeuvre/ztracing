@@ -238,7 +238,7 @@ inline fn frameMarkEnd(comptime name: [:0]const u8) void {
 extern fn ___tracy_emit_frame_mark_start(name: [*:0]const u8) void;
 extern fn ___tracy_emit_frame_mark_end(name: [*:0]const u8) void;
 
-inline fn alloc(ptr: [*]u8, len: usize) void {
+pub inline fn alloc(ptr: [*]u8, len: usize) void {
     if (!enable) return;
 
     if (enable_callstack) {
@@ -248,7 +248,7 @@ inline fn alloc(ptr: [*]u8, len: usize) void {
     }
 }
 
-inline fn allocNamed(ptr: [*]u8, len: usize, comptime name: [:0]const u8) void {
+pub inline fn allocNamed(ptr: [*]u8, len: usize, comptime name: [:0]const u8) void {
     if (!enable) return;
 
     if (enable_callstack) {
@@ -258,7 +258,17 @@ inline fn allocNamed(ptr: [*]u8, len: usize, comptime name: [:0]const u8) void {
     }
 }
 
-inline fn free(ptr: [*]u8) void {
+pub inline fn allocNamed2(ptr: [*]u8, len: usize, name: [:0]const u8) void {
+    if (!enable) return;
+
+    if (enable_callstack) {
+        ___tracy_emit_memory_alloc_callstack_named(ptr, len, callstack_depth, 0, name.ptr);
+    } else {
+        ___tracy_emit_memory_alloc_named(ptr, len, 0, name.ptr);
+    }
+}
+
+pub inline fn free(ptr: [*]u8) void {
     if (!enable) return;
 
     if (enable_callstack) {
@@ -268,7 +278,17 @@ inline fn free(ptr: [*]u8) void {
     }
 }
 
-inline fn freeNamed(ptr: [*]u8, comptime name: [:0]const u8) void {
+pub inline fn freeNamed(ptr: [*]u8, comptime name: [:0]const u8) void {
+    if (!enable) return;
+
+    if (enable_callstack) {
+        ___tracy_emit_memory_free_callstack_named(ptr, callstack_depth, 0, name.ptr);
+    } else {
+        ___tracy_emit_memory_free_named(ptr, 0, name.ptr);
+    }
+}
+
+pub inline fn freeNamed2(ptr: [*]u8, name: [:0]const u8) void {
     if (!enable) return;
 
     if (enable_callstack) {
@@ -314,4 +334,10 @@ const ___tracy_source_location_data = extern struct {
     color: u32,
 };
 
-pub usingnamespace @import("tracy_ext.zig");
+pub inline fn set_thread_name(comptime name: [:0]const u8) void {
+    if (!enable) return;
+    ___tracy_set_thread_name(name.ptr);
+}
+
+extern fn ___tracy_set_thread_name(name: ?[*:0]const u8) void;
+

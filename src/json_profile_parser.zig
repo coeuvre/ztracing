@@ -5,7 +5,7 @@ const Allocator = std.mem.Allocator;
 const Token = std.json.Token;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const Buffer = std.ArrayList(u8);
-const expectOptional = test_utils.expectOptional;
+const expect_optional = test_utils.expect_optional;
 
 pub const TraceEvent = struct {
     name: ?[]const u8 = null,
@@ -537,7 +537,7 @@ fn skipNumber(scanner: *std.json.Scanner) !void {
 }
 
 fn expectEqualTraceEvents(expected: *const TraceEvent, actual: *const TraceEvent) !void {
-    if (try expectOptional(expected.name, actual.name)) {
+    if (try expect_optional(expected.name, actual.name)) {
         try std.testing.expectEqualStrings(expected.name.?, actual.name.?);
     }
 }

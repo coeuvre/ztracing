@@ -18,21 +18,26 @@ const Thread = profile_.Thread;
 
 var global_buf: [1024]u8 = [_]u8{0} ** 1024;
 
+pub const PlatformApi = struct {
+    show_open_file_picker: ?*const fn () void,
+    get_memory_usages: *const fn() usize,
+};
+
 pub const Tracing = struct {
     const Self = @This();
 
-    count_allocator: *CountAllocator,
+    allocator: Allocator,
     state: State,
-    show_open_file_picker: ?*const fn () void,
+    api: PlatformApi,
 
     show_imgui_demo_window: bool = false,
     show_color_palette: bool = false,
 
-    pub fn init(count_allocator: *CountAllocator, show_open_file_picker: ?*const fn () void) Self {
+    pub fn init(allocator: Allocator, api: PlatformApi) Self {
         return .{
-            .count_allocator = count_allocator,
-            .state = .{ .welcome = WelcomeState.init(count_allocator.allocator()) },
-            .show_open_file_picker = show_open_file_picker,
+            .allocator = allocator,
+            .state = .{ .welcome = WelcomeState.init(allocator) },
+            .api = api,
         };
     }
 
@@ -44,10 +49,10 @@ pub const Tracing = struct {
         {
             c.igPushStyleVar_Vec2(c.ImGuiStyleVar_FramePadding, .{ .x = 10, .y = 4 });
             if (c.igBeginMainMenuBar()) {
-                if (self.show_open_file_picker != null and self.should_load_file()) {
+                if (self.api.show_open_file_picker != null and self.should_load_file()) {
                     c.igSetCursorPosX(0);
                     if (c.igButton("Load", .{ .x = 0, .y = 0 })) {
-                        self.show_open_file_picker.?();
+                        self.api.show_open_file_picker.?();
                     }
                 }
 
@@ -63,7 +68,7 @@ pub const Tracing = struct {
 
                 {
                     c.igSetCursorPosX(c.igGetCursorPosX() + 10.0);
-                    const allocated_bytes: f64 = @floatFromInt(self.count_allocator.allocatedBytes());
+                    const allocated_bytes: f64 = @floatFromInt(self.api.get_memory_usages());
                     const allocated_bytes_mb = allocated_bytes / 1024.0 / 1024.0;
                     const text = std.fmt.bufPrintZ(&global_buf, "Memory: {d:.1} MB", .{allocated_bytes_mb}) catch unreachable;
                     c.igTextUnformatted(text.ptr, null);
@@ -398,8 +403,6 @@ const ViewState = struct {
     }
 
     pub fn deinit(self: *ViewState) void {
-        self.profile.deinit();
-        self.allocator.destroy(self.profile);
         self.hovered_counters.deinit();
     }
 

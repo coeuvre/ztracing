@@ -421,8 +421,8 @@ class LoadingFile {
         // gzip magic number
         if (value[0] == 0x1f && value[1] == 0x8b) {
           this.inflator = new pako.Inflate();
-          this.inflator.onData = this.onChunk;
-          this.inflator.onEnd = this.onDone;
+          this.inflator.onData = (chunk) => this.onChunk(chunk);
+          this.inflator.onEnd = () => this.onDone();
         }
       }
 
@@ -461,7 +461,7 @@ class App {
       this.canvas.getContext("webgl2", {
         powerPreference: "high-performance",
         alpha: false,
-        antialias: false,  
+        antialias: false,
         depth: false,
         stencil: false,
       }),

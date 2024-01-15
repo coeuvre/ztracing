@@ -111,6 +111,24 @@ fn add_tracy(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     return tracy;
 }
 
+fn add_mimalloc(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+    const mimalloc = b.addStaticLibrary(.{
+        .name = "mimalloc",
+        .target = target,
+        .optimize = optimize,
+    });
+    if (optimize == .Debug) {
+        // MI_DEBUG_FULL
+        mimalloc.defineCMacro("MI_DEBUG", "3");
+    }
+    mimalloc.addIncludePath(.{ .path = "third_party/mimalloc/include" });
+    mimalloc.addCSourceFile(.{
+        .file = .{ .path = "third_party/mimalloc/src/static.c" },
+    });
+    mimalloc.linkLibC();
+    return mimalloc;
+}
+
 fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
     const build_options = b.addOptions();
 
@@ -144,6 +162,7 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
         } else {
             const zlib = add_zlib(b, target, optimize);
             const tracy = add_tracy(b, target, optimize);
+            const mimalloc = add_mimalloc(b, target, optimize);
 
             const ztracing = b.addExecutable(.{
                 .name = "ztracing",
@@ -154,10 +173,14 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             ztracing.root_module.addAnonymousImport("assets", .{
                 .root_source_file = .{ .path = "assets/assets.zig" },
             });
-            ztracing.addIncludePath(.{ .path = "third_party/SDL/build/install/include" });
+
             ztracing.addIncludePath(.{ .path = "third_party/zlib" });
-            ztracing.addIncludePath(.{ .path = "third_party/tracy/public/tracy" });
             ztracing.linkLibrary(zlib);
+
+            ztracing.addIncludePath(.{ .path = "third_party/mimalloc/include" });
+            ztracing.linkLibrary(mimalloc);
+
+            ztracing.addIncludePath(.{ .path = "third_party/SDL/build/install/include" });
             switch (target.result.os.tag) {
                 .windows => {
                     ztracing.addObjectFile(.{ .path = "third_party/SDL/build/install/lib/SDL2-static.lib" });
@@ -200,6 +223,7 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             const enable_tracy = b.option(bool, "tracy", "Enable Tracy integration") orelse false;
             build_options.addOption(bool, "enable_tracy", enable_tracy);
             if (enable_tracy) {
+                ztracing.addIncludePath(.{ .path = "third_party/tracy/public/tracy" });
                 build_options.addOption(bool, "enable_tracy_allocation", true);
                 build_options.addOption(bool, "enable_tracy_callstack", true);
                 ztracing.linkLibrary(tracy);

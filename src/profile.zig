@@ -2,12 +2,14 @@ const std = @import("std");
 const test_utils = @import("./test_utils.zig");
 const json_profile_parser = @import("./json_profile_parser.zig");
 const tracy = @import("tracy.zig");
+const arena_ = @import("arena.zig");
 
 const Allocator = std.mem.Allocator;
-const Arena = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
 const TraceEvent = json_profile_parser.TraceEvent;
 const expect_optional = test_utils.expect_optional;
+const Arena = arena_.Arena;
+const StdArena = arena_.StdArena;
 
 pub const UiState = struct {
     open: bool = true,
@@ -418,13 +420,13 @@ pub const Profile = struct {
     max_time_us: i64,
     processes: ArrayList(Process),
 
-    pub fn init(allocator: Allocator) Profile {
+    pub fn init(arena: Arena) Profile {
         return .{
-            .arena = Arena.init(allocator),
+            .arena = arena,
             .min_time_us = std.math.maxInt(i64),
             .max_time_us = 0,
             // The allocator will be replaced with arena when appending items.
-            .processes = ArrayList(Process).init(allocator),
+            .processes = ArrayList(Process).init(arena.allocator()),
         };
     }
 
@@ -635,7 +637,7 @@ const ExpectedSpan = struct {
 };
 
 fn parse(trace_events: []const TraceEvent) !Profile {
-    var profile = Profile.init(std.testing.allocator);
+    var profile = Profile.init(try StdArena.init(std.testing.allocator));
 
     for (trace_events) |*trace_event| {
         try profile.handle_trace_event(trace_event);

@@ -3,6 +3,7 @@ const c = @import("c.zig");
 const ig = @import("imgui.zig");
 const software_renderer = @import("./software_renderer.zig");
 const imgui = @import("imgui.zig");
+const arena_ = @import("arena.zig");
 
 const log = std.log;
 const Allocator = std.mem.Allocator;
@@ -10,8 +11,7 @@ const CountAllocator = @import("./count_alloc.zig").CountAllocator;
 const Tracing = @import("tracing.zig").Tracing;
 const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
-
-const SoftwareRenderer = software_renderer.SoftwareRenderer;
+const Arena = arena_.Arena;
 
 pub const std_options = struct {
     pub fn logFn(
@@ -67,7 +67,7 @@ fn show_open_file_picker() void {
 }
 
 const LoadState = struct {
-    allocator: Allocator,
+    arena: Arena,
     total: usize,
     parser: JsonProfileParser,
     profile: *Profile,
@@ -75,11 +75,13 @@ const LoadState = struct {
     start_timestamp: usize,
     processed_bytes: usize,
 
-    pub fn init(allocator: Allocator, total: usize, tracing: *Tracing) LoadState {
+    pub fn init(child_allocator: Allocator, total: usize, tracing: *Tracing) LoadState {
+        const arena = arena_.StdArena.init(child_allocator) catch unreachable;
+        const allocator = arena.allocator();
         const profile = allocator.create(Profile) catch unreachable;
-        profile.* = Profile.init(allocator);
+        profile.* = Profile.init(arena);
         return .{
-            .allocator = allocator,
+            .arena = arena,
             .total = total,
             .parser = JsonProfileParser.init(allocator),
             .profile = profile,
@@ -90,7 +92,7 @@ const LoadState = struct {
     }
 
     pub fn deinit(self: *LoadState) void {
-        self.parser.deinit();
+        self.arena.deinit();
     }
 
     pub fn load(self: *LoadState, input: []const u8) bool {
@@ -132,6 +134,8 @@ const LoadState = struct {
                 return false;
             };
 
+            self.parser.deinit();
+
             const seconds = @as(f32, @floatFromInt(js.get_current_timestamp() - self.start_timestamp)) / 1000.0;
             const processed_mb = @as(f32, @floatFromInt(self.processed_bytes)) / 1000.0 / 1000.0;
             const speed = processed_mb / seconds;
@@ -142,11 +146,15 @@ const LoadState = struct {
     }
 
     fn send_load_error(self: *LoadState, comptime fmt: []const u8, args: anytype) void {
-        const msg = std.fmt.allocPrint(self.allocator, fmt, args) catch unreachable;
-        defer self.allocator.free(msg);
+        const msg = std.fmt.allocPrint(self.arena.allocator(), fmt, args) catch unreachable;
+        defer self.arena.allocator().free(msg);
         self.tracing.on_load_file_error(msg);
     }
 };
+
+fn get_memory_usages() usize {
+    return global_count_allocator.allocatedBytes();
+}
 
 const App = struct {
     allocator: Allocator,
@@ -158,7 +166,7 @@ const App = struct {
 
     io: *c.ImGuiIO,
     mouse_pos_before_blur: c.ImVec2 = undefined,
-    load_state: ?LoadState = null,
+    load_state: ?LoadState,
 
     pub fn init(
         self: *App,
@@ -171,8 +179,12 @@ const App = struct {
     ) void {
         const allocator = count_allocator.allocator();
         self.allocator = allocator;
-        self.renderer = .{ .webgl = .{} };
-        self.tracing = Tracing.init(count_allocator, show_open_file_picker);
+        self.renderer = .{};
+        self.load_state = null;
+        self.tracing = Tracing.init(allocator, .{
+            .show_open_file_picker = show_open_file_picker,
+            .get_memory_usages = get_memory_usages,
+        });
 
         self.width = width;
         self.height = height;
@@ -238,7 +250,6 @@ const App = struct {
         c.igRender();
         const draw_data = c.igGetDrawData();
         self.renderImgui(draw_data);
-        self.renderer.present();
     }
 
     pub fn on_resize(self: *App, width: f32, height: f32) void {
@@ -335,16 +346,17 @@ const App = struct {
     }
 
     pub fn on_load_file_start(self: *App, len: usize) void {
-        self.load_state = LoadState.init(self.allocator, len, &self.tracing);
         self.tracing.on_load_file_start();
+
+        if (self.load_state) |*load_state| {
+            load_state.deinit();
+        }
+        self.load_state = LoadState.init(self.allocator, len, &self.tracing);
     }
 
     pub fn on_load_file_chunk(self: *App, offset: usize, chunk: []const u8) void {
         if (self.load_state.?.load(chunk)) {
             self.tracing.on_load_file_progress(offset, self.load_state.?.total);
-        } else {
-            self.load_state.?.deinit();
-            self.load_state = null;
         }
     }
 
@@ -352,8 +364,6 @@ const App = struct {
         if (self.load_state.?.load(&[0]u8{})) {
             self.tracing.on_load_file_done(self.load_state.?.profile);
         }
-        self.load_state.?.deinit();
-        self.load_state = null;
     }
 };
 
@@ -393,37 +403,7 @@ const WebglRenderer = struct {
     }
 };
 
-const Renderer = union(enum) {
-    webgl: WebglRenderer,
-    software: SoftwareRenderer,
-
-    fn createFontTexture(self: *Renderer, width: i32, height: i32, pixels: [*]const u8) c.ImTextureID {
-        switch (self.*) {
-            inline else => |*r| return r.createFontTexture(width, height, pixels),
-        }
-    }
-
-    fn bufferData(self: *Renderer, vtx_buffer: []const c.ImDrawVert, idx_buffer: []const c.ImDrawIdx) void {
-        switch (self.*) {
-            inline else => |*r| r.bufferData(vtx_buffer, idx_buffer),
-        }
-    }
-
-    fn draw(self: *Renderer, clip_rect: c.ImRect, texture: c.ImTextureID, idx_count: u32, idx_offset: u32) void {
-        switch (self.*) {
-            inline else => |*r| r.draw(clip_rect, texture, idx_count, idx_offset),
-        }
-    }
-
-    fn present(self: *Renderer) void {
-        switch (self.*) {
-            .software => |r| {
-                js.rendererPresent(r.pixels.ptr, r.pixels.len, r.width, r.height);
-            },
-            else => {},
-        }
-    }
-};
+const Renderer = WebglRenderer;
 
 var app: *App = undefined;
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
