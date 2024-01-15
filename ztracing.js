@@ -501,8 +501,8 @@ class App {
 
   onMousePos(x, y) {
     this.instance.exports.onMousePos(
-      (x / this.canvas_display_width) * this.canvas.width,
-      (y / this.canvas_display_height) * this.canvas.height,
+      x / this.canvas_display_width * this.canvas.width,
+      y / this.canvas_display_height * this.canvas.height,
     );
   }
 
@@ -511,7 +511,10 @@ class App {
   }
 
   onMouseWheel(dx, dy) {
-    this.instance.exports.onMouseWheel(dx, dy);
+    this.instance.exports.onMouseWheel(
+      dx / this.canvas_display_width * this.canvas.width,
+      dy / this.canvas_display_height * this.canvas.height,
+    );
   }
 
   onKey(key, down) {
