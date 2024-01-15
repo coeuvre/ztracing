@@ -62,16 +62,19 @@ pub const CountAllocator = struct {
 
     fn resize(ctx: *anyopaque, buf: []u8, buf_align: u8, new_len: usize, ret_addr: usize) bool {
         const self: *CountAllocator = @ptrCast(@alignCast(ctx));
-        if (comptime thread_safe) {
-            _ = self.allocated_bytes.fetchSub(buf.len, .SeqCst);
-            _ = self.allocated_bytes.fetchAdd(new_len, .SeqCst);
-            _ = self.peek_allocated_bytes.fetchMax(self.allocated_bytes.load(.SeqCst), .SeqCst);
-        } else {
-            self.allocated_bytes -= buf.len;
-            self.allocated_bytes += new_len;
-            self.peek_allocated_bytes = @max(self.peek_allocated_bytes, self.allocated_bytes);
+        const result = self.underlying.rawResize(buf, buf_align, new_len, ret_addr);
+        if (result) {
+            if (comptime thread_safe) {
+                _ = self.allocated_bytes.fetchSub(buf.len, .SeqCst);
+                _ = self.allocated_bytes.fetchAdd(new_len, .SeqCst);
+                _ = self.peek_allocated_bytes.fetchMax(self.allocated_bytes.load(.SeqCst), .SeqCst);
+            } else {
+                self.allocated_bytes -= buf.len;
+                self.allocated_bytes += new_len;
+                self.peek_allocated_bytes = @max(self.peek_allocated_bytes, self.allocated_bytes);
+            }
         }
-        return self.underlying.rawResize(buf, buf_align, new_len, ret_addr);
+        return result;
     }
 
     fn free(ctx: *anyopaque, buf: []u8, buf_align: u8, ret_addr: usize) void {
