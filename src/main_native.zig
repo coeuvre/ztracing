@@ -11,16 +11,17 @@ const Tracing = @import("tracing.zig").Tracing;
 const Allocator = std.mem.Allocator;
 const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
-const Arena = std.heap.ArenaAllocator;
+const Arena = @import("arena.zig").SimpleArena;
 const CountAllocator = @import("count_alloc.zig").CountAllocator;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var count_allocator = CountAllocator.init(gpa.allocator());
+const root_allocator = count_allocator.allocator();
 
-var imgui_tracy_allocator = tracy.TracyAllocator("ImGui").init(count_allocator.allocator());
+var imgui_tracy_allocator = tracy.TracyAllocator("ImGui").init(root_allocator);
 var imgui_allocator = imgui_tracy_allocator.allocator();
 
-var sdl_tracy_allocator = tracy.TracyAllocator("SDL").init(count_allocator.allocator());
+var sdl_tracy_allocator = tracy.TracyAllocator("SDL").init(root_allocator);
 var sdl_allocator = sdl_tracy_allocator.allocator();
 
 fn get_seconds_elapsed(from: usize, to: usize, freq: usize) f32 {
@@ -98,7 +99,7 @@ fn Channel(comptime T: type) type {
 var load_thread_channel: Channel(Event) = Channel(Event).init();
 
 fn load_thread_main() void {
-    var profile_tracy_allocator = tracy.TracyAllocator("Profile").init(count_allocator.allocator());
+    var profile_tracy_allocator = tracy.TracyAllocator("Profile").init(root_allocator);
     var profile_arena: ?Arena = null;
 
     tracy.set_thread_name("Load File Thread");
@@ -123,7 +124,9 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
     defer trace.end();
 
     var temp_arena = Arena.init(parent_allocator);
-    defer temp_arena.deinit();
+    defer {
+        temp_arena.deinit();
+    }
 
     const profile_allocator = profile_arena.allocator();
     const temp_allocator = temp_arena.allocator();
@@ -177,7 +180,7 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
         send_load_error(profile_allocator, "Failed to allocate profile: {}", .{err});
         return;
     };
-    profile.* = Profile.init(profile_arena);
+    profile.* = Profile.init(profile_arena.allocator());
 
     var file_buf = temp_allocator.alloc(u8, 4096) catch |err| {
         send_load_error(profile_allocator, "Failed to allocate file_buf: {}", .{err});
@@ -357,7 +360,7 @@ fn get_memory_usages() usize {
 }
 
 pub fn main() !void {
-    var tracy_allocator = tracy.tracyAllocator(count_allocator.allocator());
+    var tracy_allocator = tracy.tracyAllocator(root_allocator);
     var allocator = tracy_allocator.allocator();
 
     _ = c.SDL_SetMemoryFunctions(

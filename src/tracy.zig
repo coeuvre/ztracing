@@ -8,7 +8,7 @@ pub const enable_allocation = enable and build_options.enable_tracy_allocation;
 pub const enable_callstack = enable and build_options.enable_tracy_callstack;
 
 // TODO: make this configurable
-const callstack_depth = 10;
+const callstack_depth = 32;
 
 const ___tracy_c_zone_context = extern struct {
     id: u32,

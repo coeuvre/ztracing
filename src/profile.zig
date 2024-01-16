@@ -431,19 +431,19 @@ pub const Process = struct {
 };
 
 pub const Profile = struct {
-    arena: *Arena,
+    allocator: Allocator,
     string_pool: StringPool,
     min_time_us: i64,
     max_time_us: i64,
     processes: ArrayList(Process),
 
-    pub fn init(arena: *Arena) Profile {
+    pub fn init(allocator: Allocator) Profile {
         return .{
-            .arena = arena,
-            .string_pool = StringPool.init(arena.allocator()),
+            .allocator = allocator,
+            .string_pool = StringPool.init(allocator),
             .min_time_us = std.math.maxInt(i64),
             .max_time_us = 0,
-            .processes = ArrayList(Process).init(arena.allocator()),
+            .processes = ArrayList(Process).init(allocator),
         };
     }
 
@@ -454,7 +454,7 @@ pub const Profile = struct {
             }
         }
 
-        try self.processes.append(Process.init(self.arena.allocator(), pid));
+        try self.processes.append(Process.init(self.allocator, pid));
         return &self.processes.items[self.processes.items.len - 1];
     }
 
@@ -649,10 +649,8 @@ const ExpectedSpan = struct {
     duration_us: i64,
 };
 
-var testing_arena = Arena.init(std.testing.allocator);
-
-fn parse(trace_events: []const TraceEvent) !Profile {
-    var profile = Profile.init(&testing_arena);
+fn parse(arena: *Arena, trace_events: []const TraceEvent) !Profile {
+    var profile = Profile.init(arena.allocator());
 
     for (trace_events) |*trace_event| {
         try profile.handle_trace_event(trace_event);
@@ -664,7 +662,8 @@ fn parse(trace_events: []const TraceEvent) !Profile {
 }
 
 fn test_parse(trace_events: []const TraceEvent, expected_profile: ExpectedProfile) !void {
-    const profile = try parse(trace_events);
+    var testing_arena = Arena.init(std.testing.allocator);
+    const profile = try parse(&testing_arena, trace_events);
     defer testing_arena.deinit();
     try expect_equal_profiles(expected_profile, profile);
 }
@@ -894,7 +893,8 @@ test "parse, thread_sort_index equal, sort by name" {
 }
 
 test "parse, set min/max" {
-    const profile = try parse(&[_]TraceEvent{
+    var testing_arena = Arena.init(std.testing.allocator);
+    const profile = try parse(&testing_arena, &[_]TraceEvent{
         .{ .ph = 'X', .name = "a", .pid = 1, .tid = 3, .ts = 8, .dur = 5 },
     });
     defer testing_arena.deinit();
@@ -904,7 +904,8 @@ test "parse, set min/max" {
 }
 
 test "parse, incomplete event, ignore for min/max" {
-    const profile = try parse(&[_]TraceEvent{
+    var testing_arena = Arena.init(std.testing.allocator);
+    const profile = try parse(&testing_arena, &[_]TraceEvent{
         .{ .ph = 'X', .name = "a", .ts = 1, .dur = 20 },
         .{ .ph = 'X', .name = "a", .pid = 1, .tid = 3, .ts = 8, .dur = 5 },
     });

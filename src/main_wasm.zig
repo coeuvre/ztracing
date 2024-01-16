@@ -10,7 +10,7 @@ const CountAllocator = @import("./count_alloc.zig").CountAllocator;
 const Tracing = @import("tracing.zig").Tracing;
 const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
-const Arena = std.heap.ArenaAllocator;
+const Arena = @import("arena.zig").SimpleArena;
 
 pub const std_options = struct {
     pub fn logFn(
@@ -80,7 +80,7 @@ const LoadState = struct {
 
         const allocator = arena.allocator();
         const profile = allocator.create(Profile) catch unreachable;
-        profile.* = Profile.init(arena);
+        profile.* = Profile.init(arena.allocator());
         return .{
             .arena = arena,
             .total = total,
@@ -93,7 +93,7 @@ const LoadState = struct {
     }
 
     pub fn deinit(self: *LoadState) void {
-        const parent_allocator = self.arena.child_allocator;
+        const parent_allocator = self.arena.parent_allocator;
         self.arena.deinit();
         parent_allocator.destroy(self.arena);
     }
