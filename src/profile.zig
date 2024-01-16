@@ -9,6 +9,27 @@ const TraceEvent = json_profile_parser.TraceEvent;
 const expect_optional = test_utils.expect_optional;
 const Arena = std.heap.ArenaAllocator;
 
+const StringPool = struct {
+    allocator: Allocator,
+    pool: std.StringHashMap([:0]const u8),
+
+    pub fn init(allocator: Allocator) StringPool {
+        return .{
+            .allocator = allocator,
+            .pool = std.StringHashMap([:0]const u8).init(allocator),
+        };
+    }
+
+    pub fn intern(self: *StringPool, str: []const u8) ![:0]const u8 {
+        if (self.pool.get(str)) |s| {
+            return s;
+        }
+        const new_str = try self.allocator.dupeZ(u8, str);
+        try self.pool.put(new_str, new_str);
+        return new_str;
+    }
+};
+
 pub const UiState = struct {
     open: bool = true,
 };
@@ -23,12 +44,12 @@ pub const SeriesValue = struct {
 };
 
 pub const Series = struct {
-    name: []u8,
+    name: [:0]const u8,
     values: ArrayList(SeriesValue),
 
-    pub fn init(allocator: Allocator, name: []const u8) !Series {
+    pub fn init(allocator: Allocator, name: [:0]const u8) !Series {
         return .{
-            .name = try allocator.dupe(u8, name),
+            .name = name,
             .values = ArrayList(SeriesValue).init(allocator),
         };
     }
@@ -92,27 +113,27 @@ pub const SeriesIter = struct {
 };
 
 pub const Counter = struct {
-    name: []u8,
+    name: [:0]const u8,
     max_value: f64,
     series: ArrayList(Series),
 
     ui: UiState = .{},
 
-    fn init(allocator: Allocator, name: []const u8) Counter {
+    fn init(allocator: Allocator, name: [:0]const u8) Counter {
         return .{
-            .name = allocator.dupe(u8, name) catch unreachable,
+            .name = name,
             .max_value = 0,
             .series = ArrayList(Series).init(allocator),
         };
     }
 
-    fn add_sample(self: *Counter, time_us: i64, name: []const u8, value: f64) !void {
+    fn add_sample(self: *Counter, time_us: i64, name: [:0]const u8, value: f64) !void {
         self.max_value = @max(self.max_value, value);
         var series = try self.get_or_create_series(name);
         try series.values.append(.{ .time_us = time_us, .value = value });
     }
 
-    fn get_or_create_series(self: *Counter, name: []const u8) !*Series {
+    fn get_or_create_series(self: *Counter, name: [:0]const u8) !*Series {
         for (self.series.items) |*series| {
             if (std.mem.eql(u8, series.name, name)) {
                 return series;
@@ -135,13 +156,13 @@ pub const Counter = struct {
 };
 
 pub const Span = struct {
-    name: []u8,
+    name: [:0]const u8,
     start_time_us: i64,
     duration_us: i64,
     end_time_us: i64,
 
     self_duration_us: i64 = 0,
-    category: ?[]u8 = null,
+    category: ?[:0]const u8 = null,
 
     fn less_than(_: void, lhs: Span, rhs: Span) bool {
         if (lhs.start_time_us == rhs.start_time_us) {
@@ -241,7 +262,7 @@ pub const Thread = struct {
     spans: ArrayList(Span),
     tracks: ArrayList(Track),
 
-    name: ?[]u8 = null,
+    name: ?[:0]const u8 = null,
     sort_index: ?i64 = null,
 
     ui: UiState = .{},
@@ -255,16 +276,13 @@ pub const Thread = struct {
         };
     }
 
-    pub fn set_name(self: *Thread, name: []const u8) !void {
-        if (self.name) |n| {
-            self.allocator.free(n);
-        }
-        self.name = try self.allocator.dupe(u8, name);
+    pub fn set_name(self: *Thread, name: [:0]const u8) !void {
+        self.name = name;
     }
 
-    pub fn create_span(self: *Thread, name: ?[]const u8, start_time_us: i64, duration_us: i64) !*Span {
+    pub fn create_span(self: *Thread, name: ?[:0]const u8, start_time_us: i64, duration_us: i64) !*Span {
         try self.spans.append(.{
-            .name = try self.allocator.dupe(u8, name orelse ""),
+            .name = name orelse "",
             .start_time_us = start_time_us,
             .duration_us = duration_us,
             .end_time_us = start_time_us + duration_us,
@@ -389,7 +407,7 @@ pub const Process = struct {
         }
     }
 
-    fn get_or_create_counter(self: *Process, name: []const u8) !*Counter {
+    fn get_or_create_counter(self: *Process, name: [:0]const u8) !*Counter {
         for (self.counters.items) |*counter| {
             if (std.mem.eql(u8, counter.name, name)) {
                 return counter;
@@ -414,6 +432,7 @@ pub const Process = struct {
 
 pub const Profile = struct {
     arena: *Arena,
+    string_pool: StringPool,
     min_time_us: i64,
     max_time_us: i64,
     processes: ArrayList(Process),
@@ -421,6 +440,7 @@ pub const Profile = struct {
     pub fn init(arena: *Arena) Profile {
         return .{
             .arena = arena,
+            .string_pool = StringPool.init(arena.allocator()),
             .min_time_us = std.math.maxInt(i64),
             .max_time_us = 0,
             .processes = ArrayList(Process).init(arena.allocator()),
@@ -529,10 +549,10 @@ pub const Profile = struct {
 
     fn handle_counter_event(self: *Profile, trace_event: *const TraceEvent, pid: i64, name: []const u8, ts: i64, args: std.json.ObjectMap) !void {
         var process = try self.get_or_create_process(pid);
-        var counter = try process.get_or_create_counter(name);
+        var counter = try process.get_or_create_counter(try self.string_pool.intern(name));
         var iter = args.iterator();
         while (iter.next()) |entry| {
-            const value_name = entry.key_ptr.*;
+            const value_name = try self.string_pool.intern(entry.key_ptr.*);
             switch (entry.value_ptr.*) {
                 .string, .number_string => |num| {
                     const val = try std.fmt.parseFloat(f64, num);
@@ -556,10 +576,17 @@ pub const Profile = struct {
         var process = try self.get_or_create_process(pid);
         var thread = try process.get_or_create_thread(tid);
 
-        var span = try thread.create_span(trace_event.name, ts, dur);
+        const name_ref = blk: {
+            if (trace_event.name) |name| {
+                break :blk try self.string_pool.intern(name);
+            } else {
+                break :blk null;
+            }
+        };
+        var span = try thread.create_span(name_ref, ts, dur);
 
         if (trace_event.cat) |cat| {
-            span.category = try self.arena.allocator().dupe(u8, cat);
+            span.category = try self.string_pool.intern(cat);
         }
 
         self.maybe_update_min_max(trace_event);
@@ -568,7 +595,7 @@ pub const Profile = struct {
     fn handle_thread_name(self: *Profile, pid: i64, tid: i64, name: []const u8) !void {
         var process = try self.get_or_create_process(pid);
         var thread = try process.get_or_create_thread(tid);
-        try thread.set_name(name);
+        try thread.set_name(try self.string_pool.intern(name));
     }
 
     fn handle_thread_sort_index(self: *Profile, pid: i64, tid: i64, sort_index: i64) !void {

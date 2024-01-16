@@ -653,8 +653,6 @@ const ViewState = struct {
         for (counters) |*counter| {
             // Header
             {
-                const name = std.fmt.bufPrintZ(&global_buf, "{s}", .{counter.name}) catch unreachable;
-
                 const lane_top = region.top() + c.igGetCursorPosY() - c.igGetScrollY();
                 const lane_height: f32 = style.sub_lane_height;
                 const lane_bottom = lane_top + lane_height;
@@ -663,10 +661,10 @@ const ViewState = struct {
                     .Max = .{ .x = region.right(), .y = lane_bottom },
                 };
                 var hovered: bool = false;
-                drawLaneHeader(lane_bb, name, style.character_size.y, style.text_padding.x, allow_hover, &counter.ui.open, &hovered);
+                drawLaneHeader(lane_bb, counter.name, style.character_size.y, style.text_padding.x, allow_hover, &counter.ui.open, &hovered);
                 if (hovered and counter.ui.open) {
                     if (c.igBeginTooltip()) {
-                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{s}", .{counter.name}) catch unreachable, null);
+                        c.igTextUnformatted(counter.name, null);
                     }
                     c.igEndTooltip();
                 }
@@ -817,7 +815,7 @@ const ViewState = struct {
                 defer trace1.end();
                 const name = blk: {
                     if (thread.name) |name| {
-                        break :blk std.fmt.bufPrintZ(&global_buf, "{s}", .{name}) catch unreachable;
+                        break :blk name;
                     } else {
                         break :blk std.fmt.bufPrintZ(&global_buf, "Thread {}", .{thread.tid}) catch unreachable;
                     }
@@ -914,7 +912,7 @@ const ViewState = struct {
                                 const text_min_x = x1 + style.text_padding.x;
                                 const text_max_x = x2 - style.text_padding.x;
 
-                                const text = std.fmt.bufPrintZ(&global_buf, "{s}", .{span.name}) catch unreachable;
+                                const text = span.name;
                                 var text_size: c.ImVec2 = undefined;
                                 c.igCalcTextSize(&text_size, text, null, false, 0);
                                 const center_y = sub_lane_top + style.sub_lane_height / 2.0;
@@ -992,7 +990,7 @@ const ViewState = struct {
 };
 
 const HoveredCounter = struct {
-    name: []const u8,
+    name: [:0]const u8,
     value: *const SeriesValue,
     pos: c.ImVec2,
 };
