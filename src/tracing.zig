@@ -20,7 +20,7 @@ var global_buf: [1024]u8 = [_]u8{0} ** 1024;
 
 pub const PlatformApi = struct {
     show_open_file_picker: ?*const fn () void,
-    get_memory_usages: *const fn() usize,
+    get_memory_usages: *const fn () usize,
 };
 
 pub const Tracing = struct {
@@ -406,7 +406,7 @@ const ViewState = struct {
         self.hovered_counters.deinit();
     }
 
-    fn calcRegion(self: *ViewState, bb: c.ImRect) ViewRegion {
+    fn calc_region(self: *ViewState, bb: c.ImRect) ViewRegion {
         const width_per_us = (bb.Max.x - bb.Min.x) / @as(f32, @floatFromInt((self.end_time_us - self.start_time_us)));
         const min_width = 6;
         const min_duration_us: i64 = @intFromFloat(@ceil(min_width / width_per_us));
@@ -486,13 +486,13 @@ const ViewState = struct {
         c.igPopStyleVar(2);
 
         const window_bb = get_window_content_region();
-        var region = self.calcRegion(window_bb);
+        var region = self.calc_region(window_bb);
 
         self.handleDrag(region);
         self.handleScroll(region);
 
         // Recalculate region after zoom
-        region = self.calcRegion(window_bb);
+        region = self.calc_region(window_bb);
 
         const draw_list = c.igGetWindowDrawList();
         c.ImDrawList_PushClipRect(
@@ -527,7 +527,7 @@ const ViewState = struct {
         const timeline_bb = get_window_content_region();
 
         const draw_list = c.igGetWindowDrawList();
-        const region = self.calcRegion(timeline_bb);
+        const region = self.calc_region(timeline_bb);
         const target_block_width: f32 = 60;
         const target_num_blocks: f32 = @ceil(region.width() / target_block_width);
         var block_duration_us: i64 = @intFromFloat(@ceil(@as(f32, @floatFromInt(self.end_time_us - self.start_time_us)) / target_num_blocks));
@@ -686,7 +686,10 @@ const ViewState = struct {
                         const col_v4 = general_purpose_colors[(color_index_base + series_index) % general_purpose_colors.len];
                         const col = get_im_color_u32(col_v4);
 
-                        var iter = series.iter(self.start_time_us, region.min_duration_us);
+                        // round to the step of region.min_duration_us so that the selected series don't change
+                        // when user move the viewport.
+                        const start = self.start_time_us - @rem(self.start_time_us, region.min_duration_us);
+                        var iter = series.iter(start, region.min_duration_us);
                         var prev_pos: ?c.ImVec2 = null;
                         var prev_value: ?*const SeriesValue = null;
                         var hovered_counter: ?HoveredCounter = null;
@@ -862,7 +865,10 @@ const ViewState = struct {
                         const trace2 = tracy.traceNamed(@src(), "draw_threads/body/track");
                         defer trace2.end();
 
-                        var iter = sub_lane.iter(self.start_time_us, region.min_duration_us);
+                        // round to the step of region.min_duration_us so that the selected series don't change
+                        // when user move the viewport.
+                        const start = self.start_time_us - @rem(self.start_time_us, region.min_duration_us);
+                        var iter = sub_lane.iter(start, region.min_duration_us);
                         while (iter.next()) |span| {
                             if (span.start_time_us > self.end_time_us) {
                                 break;
