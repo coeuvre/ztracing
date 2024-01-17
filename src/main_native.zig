@@ -446,6 +446,19 @@ pub fn main() !void {
         .get_memory_usages = get_memory_usages,
     });
     var load_path: ?[]u8 = null;
+    {
+        const args = try std.process.argsAlloc(allocator);
+        defer std.process.argsFree(allocator, args);
+
+        if (args.len >= 2) {
+            if (tracing.should_load_file()) {
+                tracing.on_load_file_start();
+
+                load_path = try allocator.dupe(u8, args[1]);
+                load_thread_channel.put(.{ .load_file = .{ .path = load_path.? } });
+            }
+        }
+    }
 
     c.SDL_ShowWindow(window);
 
@@ -490,7 +503,6 @@ pub fn main() !void {
                             const msg_ptr: [*c]u8 = @ptrCast(event.user.data1);
                             const msg_len: usize = @intFromPtr(event.user.data2);
                             const msg = msg_ptr[0..msg_len];
-                            defer allocator.free(msg);
                             tracing.on_load_file_error(msg);
 
                             allocator.free(load_path.?);
