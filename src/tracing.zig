@@ -862,11 +862,7 @@ const ViewState = struct {
                         const trace2 = tracy.traceNamed(@src(), "draw_threads/body/track");
                         defer trace2.end();
 
-                        for (sub_lane.get_spans(region.min_duration_us)) |span| {
-                            if (span.start_time_us > self.end_time_us) {
-                                break;
-                            }
-
+                        for (sub_lane.get_spans(self.start_time_us, self.end_time_us, region.min_duration_us)) |span| {
                             var x1: f32 = region.left() + @as(f32, @floatFromInt(span.start_time_us - self.start_time_us)) * region.width_per_us;
                             var x2: f32 = x1 + @as(f32, @floatFromInt(@max(span.duration_us, region.min_duration_us))) * region.width_per_us;
                             x1 = @max(region.left(), x1);

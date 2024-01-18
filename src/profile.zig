@@ -251,9 +251,35 @@ pub const Track = struct {
         self.mipmap = try mipmap.toOwnedSlice();
     }
 
-    pub fn get_spans(self: *const Track, min_duration_us: i64) []const *Span {
+    pub fn get_spans(self: *const Track, start_time_us: i64, end_time_us: i64, min_duration_us: i64) []const *Span {
         const lod: usize = @intCast(std.math.log2(highest_power_of_two_less_or_equal(@intCast(min_duration_us))));
-        return self.mipmap[@min(lod, self.mipmap.len - 1)];
+        const spans = self.mipmap[@min(lod, self.mipmap.len - 1)];
+        const i = find_first_greater(*const Span, spans, start_time_us, {}, Track.compare_end_time_us);
+        if (i >= spans.len) {
+            return &.{};
+        }
+        const j = find_last_less_or_equal(*const Span, spans, end_time_us, {}, Track.compare_start_time_us) orelse i;
+        return spans[i .. j + 1];
+    }
+
+    fn compare_start_time_us(_: void, cursor: i64, span: *const Span) std.math.Order {
+        if (cursor == span.start_time_us) {
+            return .eq;
+        } else if (cursor < span.start_time_us) {
+            return .lt;
+        } else {
+            return .gt;
+        }
+    }
+
+    fn compare_end_time_us(_: void, cursor: i64, span: *const Span) std.math.Order {
+        if (cursor == span.end_time_us) {
+            return .eq;
+        } else if (cursor < span.end_time_us) {
+            return .lt;
+        } else {
+            return .gt;
+        }
     }
 };
 
@@ -264,6 +290,45 @@ fn highest_power_of_two_less_or_equal(val: u64) u64 {
         result <<= 1;
     }
     return result >> 1;
+}
+
+// Find the very first index of items where items[index] > key
+fn find_first_greater(
+    comptime T: type,
+    items: []const T,
+    key: anytype,
+    context: anytype,
+    comptime cmp: fn (context: @TypeOf(context), key: @TypeOf(key), mid_item: T) std.math.Order,
+) usize {
+    var left: usize = 0;
+    var right: usize = items.len;
+
+    while (left < right) {
+        // Avoid overflowing in the midpoint calculation
+        const mid = left + (right - left) / 2;
+        // Compare the key with the midpoint element
+        switch (cmp(context, key, items[mid])) {
+            .lt => right = mid,
+            .eq, .gt => left = mid + 1,
+        }
+    }
+
+    return left;
+}
+
+// Find the very last index of items where items[index] <= key
+fn find_last_less_or_equal(
+    comptime T: type,
+    items: []const T,
+    key: anytype,
+    context: anytype,
+    comptime cmp: fn (context: @TypeOf(context), key: @TypeOf(key), mid_item: T) std.math.Order,
+) ?usize {
+    const index = find_first_greater(T, items, key, context, cmp);
+    if (index > 0) {
+        return index - 1;
+    }
+    return null;
 }
 
 pub const Thread = struct {
@@ -928,4 +993,3 @@ test "parse, incomplete event, ignore for min/max" {
     try std.testing.expectEqual(@as(i64, 8), profile.min_time_us);
     try std.testing.expectEqual(@as(i64, 13), profile.max_time_us);
 }
-
