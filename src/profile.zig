@@ -174,81 +174,96 @@ pub const Span = struct {
 };
 
 pub const Track = struct {
+    /// Store different level of detail for the spans in one track.
+    /// mipmap[i] is at resolution 2^i us.
+    /// mipmap[0] is at 1 us resolution which is the raw data.
+    mipmap: []const []const *Span,
+    /// Raw data of spans, always equal to mipmap[0].
     spans: ArrayList(*Span),
 
-    pub fn init(allocator: Allocator) Track {
+    fn init(allocator: Allocator) !Track {
         return .{
+            .mipmap = &[0][]const *Span{},
             .spans = ArrayList(*Span).init(allocator),
         };
     }
 
-    pub fn create_span(self: *Track, span: *Span) !void {
+    fn append_span_raw(self: *Track, span: *Span) !void {
         try self.spans.append(span);
     }
 
-    pub fn iter(self: *const Track, start_time_us: i64, min_duration_us: i64) SpanIter {
-        return .{
-            .spans = self.spans.items,
-            .prev_index = null,
-            .cursor = start_time_us,
-            .min_duration_us = min_duration_us,
-        };
+    fn generate_mipmap(self: *Track) !void {
+        var mipmap = ArrayList([]const *Span).init(self.spans.allocator);
+        try mipmap.append(self.spans.items);
+        var min_duration_us: i64 = 1;
+        var lod: usize = 0;
+        while (true) {
+            const current_spans = mipmap.items[lod];
+            if (current_spans.len <= 1) {
+                break;
+            }
+
+            min_duration_us <<= 1;
+            // overflowing
+            if (min_duration_us < 0) {
+                break;
+            }
+
+            // first pass to check whether this level can merge spans.
+            // Otherwise, use the same slice to avoid memory allocations.
+            var merge: bool = false;
+            const bucket = @divTrunc(current_spans[0].start_time_us, min_duration_us);
+            for (current_spans[1..]) |span| {
+                if (@divTrunc(span.start_time_us, min_duration_us) == bucket) {
+                    merge = true;
+                    break;
+                }
+            }
+
+            var next_spans = current_spans;
+            if (merge) {
+                var next_spans_array = ArrayList(*Span).init(self.spans.allocator);
+                for (current_spans) |span| {
+                    if (next_spans_array.items.len == 0) {
+                        try next_spans_array.append(span);
+                        continue;
+                    }
+
+                    const bucket_for_current = @divTrunc(span.start_time_us, min_duration_us);
+                    const next_span = next_spans_array.items[next_spans_array.items.len - 1];
+                    const bucket_for_next = @divTrunc(next_span.start_time_us, min_duration_us);
+                    if (bucket_for_current != bucket_for_next) {
+                        try next_spans_array.append(span);
+                    } else {
+                        if (span.duration_us > next_span.duration_us) {
+                            // Use the span that has longest duration in the bucket
+                            next_spans_array.items[next_spans_array.items.len - 1] = span;
+                        }
+                    }
+                }
+                next_spans = try next_spans_array.toOwnedSlice();
+            }
+
+            try mipmap.append(next_spans);
+            lod += 1;
+        }
+
+        self.mipmap = try mipmap.toOwnedSlice();
+    }
+
+    pub fn get_spans(self: *const Track, min_duration_us: i64) []const *Span {
+        const lod: usize = @intCast(std.math.log2(highest_power_of_two_less_or_equal(@intCast(min_duration_us))));
+        return self.mipmap[@min(lod, self.mipmap.len - 1)];
     }
 };
 
-pub const SpanIter = struct {
-    spans: []const *Span,
-    prev_index: ?usize,
-    cursor: i64,
-    min_duration_us: i64,
-
-    pub fn next(self: *SpanIter) ?*const Span {
-        const offset = if (self.prev_index) |prev| prev + 1 else 0;
-        const index = offset + find_first_greater(*const Span, self.spans[offset..], self.cursor, {}, SpanIter.compare_end_time_us);
-        if (index >= self.spans.len) {
-            return null;
-        }
-
-        const span = self.spans[index];
-        std.debug.assert(self.cursor < span.end_time_us);
-        self.prev_index = index;
-        self.cursor = span.start_time_us + @max(span.duration_us, self.min_duration_us);
-        return span;
+fn highest_power_of_two_less_or_equal(val: u64) u64 {
+    std.debug.assert(val >= 1);
+    var result: u64 = 1;
+    while (result <= val) {
+        result <<= 1;
     }
-
-    fn compare_end_time_us(_: void, cursor: i64, span: *const Span) std.math.Order {
-        if (cursor == span.end_time_us) {
-            return .eq;
-        } else if (cursor < span.end_time_us) {
-            return .lt;
-        } else {
-            return .gt;
-        }
-    }
-};
-
-// Find the very first index of items where key < items[index]
-fn find_first_greater(
-    comptime T: type,
-    items: []const T,
-    key: anytype,
-    context: anytype,
-    comptime cmp: fn (context: @TypeOf(context), key: @TypeOf(key), mid_item: T) std.math.Order,
-) usize {
-    var left: usize = 0;
-    var right: usize = items.len;
-
-    while (left < right) {
-        // Avoid overflowing in the midpoint calculation
-        const mid = left + (right - left) / 2;
-        // Compare the key with the midpoint element
-        switch (cmp(context, key, items[mid])) {
-            .lt => right = mid,
-            .eq, .gt => left = mid + 1,
-        }
-    }
-
-    return left;
+    return result >> 1;
 }
 
 pub const Thread = struct {
@@ -287,7 +302,7 @@ pub const Thread = struct {
 
     fn get_or_create_track(self: *Thread, level: usize) !*Track {
         while (level >= self.tracks.items.len) {
-            try self.tracks.append(Track.init(self.allocator));
+            try self.tracks.append(try Track.init(self.allocator));
         }
         return &self.tracks.items[level];
     }
@@ -304,6 +319,10 @@ pub const Thread = struct {
             }
             _ = try self.merge_spans(0, start_time_us, end_time_us, 0);
         }
+
+        for (self.tracks.items) |*track| {
+            try track.generate_mipmap();
+        }
     }
 
     const MergeResult = struct {
@@ -319,7 +338,7 @@ pub const Thread = struct {
             const span_end_time_us = span.start_time_us + span.duration_us;
             if (span.start_time_us >= start_time_us and span_end_time_us <= end_time_us) {
                 var track = try self.get_or_create_track(level);
-                try track.create_span(span);
+                try track.append_span_raw(span);
                 const result = try merge_spans(self, level + 1, span.start_time_us, span_end_time_us, index + 1);
                 index = result.index;
                 span.self_duration_us = @max(span.duration_us - result.total_duration_us, 0);
@@ -910,23 +929,3 @@ test "parse, incomplete event, ignore for min/max" {
     try std.testing.expectEqual(@as(i64, 13), profile.max_time_us);
 }
 
-test "SpanIter, correctly handle min_duration_us" {
-    var testing_arena = Arena.init(std.testing.allocator);
-    defer testing_arena.deinit();
-    var track = Track.init(testing_arena.allocator());
-    var spans = [_]Span{
-        .{ .name = "s0", .start_time_us = 0, .duration_us = 1, .end_time_us = 1 },
-        .{ .name = "s1", .start_time_us = 2, .duration_us = 1, .end_time_us = 3 },
-        .{ .name = "s2", .start_time_us = 11, .duration_us = 1, .end_time_us = 12 },
-    };
-    for (&spans) |*span| {
-        try track.create_span(span);
-    }
-
-    var iter = track.iter(-10, 10);
-
-    const first_span = iter.next();
-    try std.testing.expectEqualStrings("s0", first_span.?.name);
-    const second_span = iter.next();
-    try std.testing.expectEqualStrings("s2", second_span.?.name);
-}

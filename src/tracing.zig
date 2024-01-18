@@ -862,8 +862,7 @@ const ViewState = struct {
                         const trace2 = tracy.traceNamed(@src(), "draw_threads/body/track");
                         defer trace2.end();
 
-                        var iter = sub_lane.iter(self.start_time_us, region.min_duration_us);
-                        while (iter.next()) |span| {
+                        for (sub_lane.get_spans(region.min_duration_us)) |span| {
                             if (span.start_time_us > self.end_time_us) {
                                 break;
                             }

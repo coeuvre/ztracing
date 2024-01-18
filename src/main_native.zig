@@ -304,6 +304,13 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
     }
 
     {
+        const seconds = get_seconds_elapsed(start_counter, c.SDL_GetPerformanceCounter(), c.SDL_GetPerformanceFrequency());
+        const processed_mb = @as(f32, @floatFromInt(processed_bytes)) / 1000.0 / 1000.0;
+        const speed = processed_mb / seconds;
+        std.log.info("Loaded {d:.2}MB in {d:.2} seconds. {d:.2} MB/s", .{ processed_mb, seconds, speed });
+    }
+
+    {
         const trace1 = tracy.traceNamed(@src(), "profile.done()");
         defer trace1.end();
         profile.done() catch |err| {
@@ -319,13 +326,6 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
             .data1 = profile,
         },
     }));
-
-    {
-        const seconds = get_seconds_elapsed(start_counter, c.SDL_GetPerformanceCounter(), c.SDL_GetPerformanceFrequency());
-        const processed_mb = @as(f32, @floatFromInt(processed_bytes)) / 1000.0 / 1000.0;
-        const speed = processed_mb / seconds;
-        std.log.info("Loaded {d:.2}MB in {d:.2} seconds. {d:.2} MB/s", .{ processed_mb, seconds, speed });
-    }
 }
 
 fn get_dpi_scale(window: *c.SDL_Window) f32 {
