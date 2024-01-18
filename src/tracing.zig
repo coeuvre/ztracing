@@ -883,16 +883,6 @@ const ViewState = struct {
                                     0,
                                 );
 
-                                c.ImDrawList_AddRect(
-                                    draw_list,
-                                    .{ .x = bb.Min.x + 0.5, .y = bb.Min.y + 0.5 },
-                                    .{ .x = bb.Max.x - 0.5, .y = bb.Max.y - 0.5 },
-                                    get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
-                                    0,
-                                    0,
-                                    1,
-                                );
-
                                 if (allow_hover and c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
                                     hovered_span = .{
                                         .span = span,
