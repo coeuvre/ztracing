@@ -686,10 +686,7 @@ const ViewState = struct {
                         const col_v4 = general_purpose_colors[(color_index_base + series_index) % general_purpose_colors.len];
                         const col = get_im_color_u32(col_v4);
 
-                        // round to the step of region.min_duration_us so that the selected series don't change
-                        // when user move the viewport.
-                        const start = self.start_time_us - @rem(self.start_time_us, region.min_duration_us);
-                        var iter = series.iter(start, region.min_duration_us);
+                        var iter = series.iter(self.start_time_us, region.min_duration_us);
                         var prev_pos: ?c.ImVec2 = null;
                         var prev_value: ?*const SeriesValue = null;
                         var hovered_counter: ?HoveredCounter = null;
@@ -865,10 +862,7 @@ const ViewState = struct {
                         const trace2 = tracy.traceNamed(@src(), "draw_threads/body/track");
                         defer trace2.end();
 
-                        // round to the step of region.min_duration_us so that the selected series don't change
-                        // when user move the viewport.
-                        const start = self.start_time_us - @rem(self.start_time_us, region.min_duration_us);
-                        var iter = sub_lane.iter(start, region.min_duration_us);
+                        var iter = sub_lane.iter(self.start_time_us, region.min_duration_us);
                         while (iter.next()) |span| {
                             if (span.start_time_us > self.end_time_us) {
                                 break;
@@ -894,17 +888,15 @@ const ViewState = struct {
                                     0,
                                 );
 
-                                if (bb.Max.x - bb.Min.x > 2) {
-                                    c.ImDrawList_AddRect(
-                                        draw_list,
-                                        .{ .x = bb.Min.x + 0.5, .y = bb.Min.y + 0.5 },
-                                        .{ .x = bb.Max.x - 0.5, .y = bb.Max.y - 0.5 },
-                                        get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
-                                        0,
-                                        0,
-                                        1,
-                                    );
-                                }
+                                c.ImDrawList_AddRect(
+                                    draw_list,
+                                    .{ .x = bb.Min.x + 0.5, .y = bb.Min.y + 0.5 },
+                                    .{ .x = bb.Max.x - 0.5, .y = bb.Max.y - 0.5 },
+                                    get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
+                                    0,
+                                    0,
+                                    1,
+                                );
 
                                 if (allow_hover and c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
                                     hovered_span = .{

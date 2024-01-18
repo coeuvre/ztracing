@@ -204,24 +204,19 @@ pub const SpanIter = struct {
 
     pub fn next(self: *SpanIter) ?*const Span {
         const offset = if (self.prev_index) |prev| prev + 1 else 0;
-        if (offset >= self.spans.len) {
-            return null;
-        }
-
-        const index = offset + find_first_greater(*const Span, self.spans[offset..], self.cursor, {}, SpanIter.compare);
-        self.prev_index = index;
-
+        const index = offset + find_first_greater(*const Span, self.spans[offset..], self.cursor, {}, SpanIter.compare_end_time_us);
         if (index >= self.spans.len) {
             return null;
         }
 
         const span = self.spans[index];
         std.debug.assert(self.cursor < span.end_time_us);
-        self.cursor = @max(span.end_time_us, self.cursor + self.min_duration_us);
+        self.prev_index = index;
+        self.cursor = span.start_time_us + @max(span.duration_us, self.min_duration_us);
         return span;
     }
 
-    fn compare(_: void, cursor: i64, span: *const Span) std.math.Order {
+    fn compare_end_time_us(_: void, cursor: i64, span: *const Span) std.math.Order {
         if (cursor == span.end_time_us) {
             return .eq;
         } else if (cursor < span.end_time_us) {
@@ -894,10 +889,10 @@ test "parse, thread_sort_index equal, sort by name" {
 
 test "parse, set min/max" {
     var testing_arena = Arena.init(std.testing.allocator);
+    defer testing_arena.deinit();
     const profile = try parse(&testing_arena, &[_]TraceEvent{
         .{ .ph = 'X', .name = "a", .pid = 1, .tid = 3, .ts = 8, .dur = 5 },
     });
-    defer testing_arena.deinit();
 
     try std.testing.expectEqual(@as(i64, 8), profile.min_time_us);
     try std.testing.expectEqual(@as(i64, 13), profile.max_time_us);
@@ -905,12 +900,33 @@ test "parse, set min/max" {
 
 test "parse, incomplete event, ignore for min/max" {
     var testing_arena = Arena.init(std.testing.allocator);
+    defer testing_arena.deinit();
     const profile = try parse(&testing_arena, &[_]TraceEvent{
         .{ .ph = 'X', .name = "a", .ts = 1, .dur = 20 },
         .{ .ph = 'X', .name = "a", .pid = 1, .tid = 3, .ts = 8, .dur = 5 },
     });
-    defer testing_arena.deinit();
 
     try std.testing.expectEqual(@as(i64, 8), profile.min_time_us);
     try std.testing.expectEqual(@as(i64, 13), profile.max_time_us);
+}
+
+test "SpanIter, correctly handle min_duration_us" {
+    var testing_arena = Arena.init(std.testing.allocator);
+    defer testing_arena.deinit();
+    var track = Track.init(testing_arena.allocator());
+    var spans = [_]Span{
+        .{ .name = "s0", .start_time_us = 0, .duration_us = 1, .end_time_us = 1 },
+        .{ .name = "s1", .start_time_us = 2, .duration_us = 1, .end_time_us = 3 },
+        .{ .name = "s2", .start_time_us = 11, .duration_us = 1, .end_time_us = 12 },
+    };
+    for (&spans) |*span| {
+        try track.create_span(span);
+    }
+
+    var iter = track.iter(-10, 10);
+
+    const first_span = iter.next();
+    try std.testing.expectEqualStrings("s0", first_span.?.name);
+    const second_span = iter.next();
+    try std.testing.expectEqualStrings("s2", second_span.?.name);
 }
