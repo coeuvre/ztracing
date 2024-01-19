@@ -121,7 +121,7 @@ pub const Series = struct {
                     if (bucket_for_current != bucket_for_next) {
                         try next_values_array.append(value);
                     } else {
-                        if (value.time_us > next_value.time_us) {
+                        if (value.value > next_value.value) {
                             // Use the larger value
                             next_values_array.items[next_values_array.items.len - 1] = value;
                         }
