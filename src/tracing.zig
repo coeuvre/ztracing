@@ -408,7 +408,7 @@ const ViewState = struct {
 
     fn calc_region(self: *ViewState, bb: c.ImRect) ViewRegion {
         const width_per_us = (bb.Max.x - bb.Min.x) / @as(f32, @floatFromInt((self.end_time_us - self.start_time_us)));
-        const min_width = 6;
+        const min_width = 3;
         const min_duration_us: i64 = @intFromFloat(@ceil(min_width / width_per_us));
         return .{
             .bb = bb,
@@ -880,6 +880,16 @@ const ViewState = struct {
                                     col,
                                     0,
                                     0,
+                                );
+
+                                c.ImDrawList_AddRect(
+                                    draw_list,
+                                    .{ .x = bb.Min.x + 0.5, .y = bb.Min.y + 0.5 },
+                                    .{ .x = bb.Max.x - 0.5, .y = bb.Max.y - 0.5 },
+                                    get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
+                                    0,
+                                    0,
+                                    1,
                                 );
 
                                 if (allow_hover and c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
