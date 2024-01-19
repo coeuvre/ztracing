@@ -686,11 +686,10 @@ const ViewState = struct {
                         const col_v4 = general_purpose_colors[(color_index_base + series_index) % general_purpose_colors.len];
                         const col = get_im_color_u32(col_v4);
 
-                        var iter = series.iter(self.start_time_us, region.min_duration_us);
                         var prev_pos: ?c.ImVec2 = null;
                         var prev_value: ?*const SeriesValue = null;
                         var hovered_counter: ?HoveredCounter = null;
-                        while (iter.next()) |value| {
+                        for (series.get_values(self.start_time_us, self.end_time_us, region.min_duration_us)) |*value| {
                             const pos = c.ImVec2{
                                 .x = region.left() + @as(f32, @floatFromInt(value.time_us - self.start_time_us)) * region.width_per_us,
                                 .y = lane_bottom - @as(f32, @floatCast((value.value / counter.max_value))) * lane_height,

@@ -41,74 +41,115 @@ pub const SeriesValue = struct {
     fn less_than(_: void, lhs: SeriesValue, rhs: SeriesValue) bool {
         return lhs.time_us < rhs.time_us;
     }
+
+    fn compare(_: void, cursor: i64, value: SeriesValue) std.math.Order {
+        if (cursor == value.time_us) {
+            return .eq;
+        } else if (cursor < value.time_us) {
+            return .lt;
+        } else {
+            return .gt;
+        }
+    }
 };
 
 pub const Series = struct {
     name: [:0]const u8,
+    /// Store different level of detail for the values in one series.
+    /// mipmap[i] is at resolution 2^i us.
+    /// mipmap[0] is at 1 us resolution which is the raw data.
+    mipmap: []const []const SeriesValue,
+    /// Raw data of values, always equal to mipmap[0].
     values: ArrayList(SeriesValue),
 
-    pub fn init(allocator: Allocator, name: [:0]const u8) !Series {
+    fn init(allocator: Allocator, name: [:0]const u8) !Series {
         return .{
             .name = name,
+            .mipmap = &.{},
             .values = ArrayList(SeriesValue).init(allocator),
         };
     }
 
-    pub fn done(self: *Series) void {
+    fn done(self: *Series) !void {
         std.sort.block(SeriesValue, self.values.items, {}, SeriesValue.less_than);
+
+        try self.generate_mipmap();
     }
 
-    pub fn iter(self: *const Series, start_time_us: i64, min_duration_us: i64) SeriesIter {
-        return .{
-            .values = self.values.items,
-            .cursor = start_time_us,
-            .min_duration_us = min_duration_us,
-        };
+    fn generate_mipmap(self: *Series) !void {
+        var mipmap = ArrayList([]const SeriesValue).init(self.values.allocator);
+        try mipmap.append(self.values.items);
+        var min_duration_us: i64 = 1;
+        var lod: usize = 0;
+        while (true) {
+            const current_values = mipmap.items[lod];
+            if (current_values.len <= 1) {
+                break;
+            }
+
+            min_duration_us <<= 1;
+            // overflowing
+            if (min_duration_us < 0) {
+                break;
+            }
+
+            // first pass to check whether this level can merge values.
+            // Otherwise, use the same slice to avoid memory allocations.
+            var merge: bool = false;
+            var bucket = @divTrunc(current_values[0].time_us, min_duration_us);
+            for (current_values[1..]) |value| {
+                const next_bucket = @divTrunc(value.time_us, min_duration_us);
+                if (next_bucket == bucket) {
+                    merge = true;
+                    break;
+                }
+                bucket = next_bucket;
+            }
+
+            var next_values = current_values;
+            if (merge) {
+                var next_values_array = ArrayList(SeriesValue).init(self.values.allocator);
+                for (current_values) |value| {
+                    if (next_values_array.items.len == 0) {
+                        try next_values_array.append(value);
+                        continue;
+                    }
+
+                    const bucket_for_current = @divTrunc(value.time_us, min_duration_us);
+                    const next_value = next_values_array.items[next_values_array.items.len - 1];
+                    const bucket_for_next = @divTrunc(next_value.time_us, min_duration_us);
+                    if (bucket_for_current != bucket_for_next) {
+                        try next_values_array.append(value);
+                    } else {
+                        if (value.time_us > next_value.time_us) {
+                            // Use the larger value
+                            next_values_array.items[next_values_array.items.len - 1] = value;
+                        }
+                    }
+                }
+
+                next_values = try next_values_array.toOwnedSlice();
+            }
+
+            try mipmap.append(next_values);
+            lod += 1;
+        }
+
+        self.mipmap = try mipmap.toOwnedSlice();
     }
-};
 
-pub const SeriesIter = struct {
-    values: []const SeriesValue,
-    cursor: i64,
-    min_duration_us: i64,
-
-    prev_index: ?usize = null,
-
-    pub fn next(self: *SeriesIter) ?*const SeriesValue {
-        if (self.prev_index) |prev| {
-            var index = prev + 1;
-            while (index < self.values.len) {
-                const value = self.values[index];
-                if (value.time_us >= self.cursor) {
-                    self.cursor = @max(value.time_us, self.cursor + self.min_duration_us);
-                    break;
-                }
-                index += 1;
-            }
-            self.prev_index = index;
-        } else {
-            // Find the largest value that is less than the cursor.
-
-            // TODO: Optimize with binary search.
-            var index_larger_or_equal = self.values.len;
-            for (self.values, 0..) |value, index| {
-                if (value.time_us >= self.cursor) {
-                    index_larger_or_equal = index;
-                    break;
-                }
-            }
-            if (index_larger_or_equal > 0) {
-                self.prev_index = index_larger_or_equal - 1;
-            } else {
-                self.prev_index = 0;
-            }
+    pub fn get_values(self: *const Series, start_time_us: i64, end_time_us: i64, min_duration_us: i64) []const SeriesValue {
+        const lod: usize = @intCast(std.math.log2(highest_power_of_two_less_or_equal(@intCast(min_duration_us))));
+        const values = self.mipmap[@min(lod, self.mipmap.len - 1)];
+        const i = find_last_less_or_equal(SeriesValue, values, start_time_us, {}, SeriesValue.compare) orelse 0;
+        if (i >= values.len) {
+            return &.{};
         }
-
-        if (self.prev_index.? < self.values.len) {
-            return &self.values[self.prev_index.?];
-        } else {
-            return null;
+        var j = find_first_greater(SeriesValue, values, end_time_us, {}, SeriesValue.compare);
+        if (j < values.len) {
+            j += 1;
         }
+        return values[i..j];
     }
 };
 
@@ -144,9 +185,9 @@ pub const Counter = struct {
         return &self.series.items[self.series.items.len - 1];
     }
 
-    fn done(self: *Counter) void {
+    fn done(self: *Counter) !void {
         for (self.series.items) |*series| {
-            series.done();
+            try series.done();
         }
     }
 
@@ -212,12 +253,14 @@ pub const Track = struct {
             // first pass to check whether this level can merge spans.
             // Otherwise, use the same slice to avoid memory allocations.
             var merge: bool = false;
-            const bucket = @divTrunc(current_spans[0].start_time_us, min_duration_us);
+            var bucket = @divTrunc(current_spans[0].start_time_us, min_duration_us);
             for (current_spans[1..]) |span| {
-                if (@divTrunc(span.start_time_us, min_duration_us) == bucket) {
+                const next_bucket = @divTrunc(span.start_time_us, min_duration_us);
+                if (next_bucket == bucket) {
                     merge = true;
                     break;
                 }
+                bucket = next_bucket;
             }
 
             var next_spans = current_spans;
@@ -258,7 +301,10 @@ pub const Track = struct {
         if (i >= spans.len) {
             return &.{};
         }
-        const j = find_last_less_or_equal(*const Span, spans, end_time_us, {}, Track.compare_start_time_us) orelse i;
+        var j = find_last_less_or_equal(*const Span, spans, end_time_us, {}, Track.compare_start_time_us) orelse i;
+        if (j < i) {
+            j = i;
+        }
         return spans[i .. j + 1];
     }
 
@@ -477,7 +523,7 @@ pub const Process = struct {
     fn done(self: *Process) !void {
         std.sort.block(Counter, self.counters.items, {}, Counter.less_than);
         for (self.counters.items) |*counter| {
-            counter.done();
+            try counter.done();
         }
 
         std.sort.block(Thread, self.threads.items, {}, Thread.less_than);
