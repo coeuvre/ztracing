@@ -383,9 +383,11 @@ const ViewState = struct {
     start_time_us: i64,
     end_time_us: i64,
     hovered_counters: std.ArrayList(HoveredCounter),
+    highlighted_spans: std.ArrayList(HoveredSpan),
 
     is_dragging: bool = false,
     drag_start: ViewPos = undefined,
+    hovered_span: ?HoveredSpan = null,
 
     open_selection_span: bool = false,
     selected_span: ?*const Span = null,
@@ -399,6 +401,7 @@ const ViewState = struct {
             .start_time_us = profile.min_time_us - padding,
             .end_time_us = profile.max_time_us + padding,
             .hovered_counters = std.ArrayList(HoveredCounter).init(allocator),
+            .highlighted_spans = std.ArrayList(HoveredSpan).init(allocator),
         };
     }
 
@@ -502,11 +505,13 @@ const ViewState = struct {
             true,
         );
 
+        const last_hovered_span = self.hovered_span;
+
         for (self.profile.processes.items) |*process| {
             const name = std.fmt.bufPrintZ(&global_buf, "Process {}", .{process.pid}) catch unreachable;
             if (c.igCollapsingHeader_BoolPtr(name, null, c.ImGuiTreeNodeFlags_DefaultOpen)) {
                 self.draw_counters(region, style, process.counters.items);
-                self.draw_threads(region, style, process.threads.items);
+                self.draw_threads(region, style, process.threads.items, last_hovered_span);
             }
         }
 
@@ -793,7 +798,7 @@ const ViewState = struct {
         }
     }
 
-    fn draw_threads(self: *ViewState, region: ViewRegion, style: ViewStyle, threads: []Thread) void {
+    fn draw_threads(self: *ViewState, region: ViewRegion, style: ViewStyle, threads: []Thread, last_hovered_span: ?HoveredSpan) void {
         const trace = tracy.trace(@src());
         defer trace.end();
 
@@ -801,8 +806,11 @@ const ViewState = struct {
         const mouse_pos = io.*.MousePos;
         const draw_list = c.igGetWindowDrawList();
         const allow_hover = c.igIsWindowHovered(0) and !self.is_dragging;
+        self.highlighted_spans.clearRetainingCapacity();
 
         var hovered_span: ?HoveredSpan = null;
+        var selected_span: ?HoveredSpan = null;
+        const last_hovered_span_name_ptr = if (last_hovered_span) |last| last.span.name.ptr else null;
         for (threads) |*thread| {
             if (thread.tracks.items.len == 0) {
                 continue;
@@ -882,18 +890,32 @@ const ViewState = struct {
                                     0,
                                 );
 
-                                c.ImDrawList_AddRect(
-                                    draw_list,
-                                    .{ .x = bb.Min.x + 0.5, .y = bb.Min.y + 0.5 },
-                                    .{ .x = bb.Max.x - 0.5, .y = bb.Max.y - 0.5 },
-                                    get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
-                                    0,
-                                    0,
-                                    1,
-                                );
+                                if (last_hovered_span_name_ptr == span.name.ptr) {
+                                    self.highlighted_spans.append(.{
+                                        .span = span,
+                                        .bb = bb,
+                                    }) catch unreachable;
+                                } else {
+                                    c.ImDrawList_AddRect(
+                                        draw_list,
+                                        .{ .x = bb.Min.x + 0.5, .y = bb.Min.y + 0.5 },
+                                        .{ .x = bb.Max.x - 0.5, .y = bb.Max.y - 0.5 },
+                                        get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 0.4 }),
+                                        0,
+                                        0,
+                                        1,
+                                    );
+                                }
 
                                 if (allow_hover and c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
                                     hovered_span = .{
+                                        .span = span,
+                                        .bb = bb,
+                                    };
+                                }
+
+                                if (self.selected_span == span) {
+                                    selected_span = .{
                                         .span = span,
                                         .bb = bb,
                                     };
@@ -939,6 +961,18 @@ const ViewState = struct {
             }
         }
 
+        for (self.highlighted_spans.items) |hovered| {
+            c.ImDrawList_AddRect(
+                draw_list,
+                hovered.bb.Min,
+                hovered.bb.Max,
+                get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
+                0,
+                0,
+                2,
+            );
+        }
+
         if (hovered_span) |*hovered| {
             const span = hovered.span;
             c.ImDrawList_AddRect(
@@ -959,6 +993,19 @@ const ViewState = struct {
                 self.selected_span = span;
                 self.open_selection_span = true;
             }
+        }
+        self.hovered_span = hovered_span;
+
+        if (selected_span) |selected| {
+            c.ImDrawList_AddRect(
+                draw_list,
+                selected.bb.Min,
+                selected.bb.Max,
+                get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
+                0,
+                0,
+                2,
+            );
         }
     }
 

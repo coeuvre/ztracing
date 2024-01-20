@@ -419,6 +419,7 @@ pub fn main() !void {
     _ = c.igCreateContext(null);
 
     const io = c.igGetIO();
+    io.*.IniFilename = null;
 
     {
         const font = c.ImFontAtlas_AddFontFromMemoryTTF(

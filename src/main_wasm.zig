@@ -201,6 +201,8 @@ const App = struct {
         const io = c.igGetIO();
         self.io = io;
 
+        io.*.IniFilename = null;
+
         {
             const style = c.igGetStyle();
             c.igStyleColorsLight(style);
