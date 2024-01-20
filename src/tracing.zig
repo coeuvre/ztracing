@@ -75,8 +75,7 @@ pub const Tracing = struct {
                     const text = std.fmt.bufPrintZ(&global_buf, "{d:.1}MiB {d:.0} ", .{ allocated_bytes_mb, fps }) catch unreachable;
 
                     const window_width = c.igGetWindowWidth();
-                    var text_size: c.ImVec2 = undefined;
-                    c.igCalcTextSize(&text_size, text.ptr, null, false, -1.0);
+                    const text_size = ig.calc_text_size(text, false, 0);
                     c.igSetCursorPosX(window_width - text_size.x);
                     c.igTextUnformatted(text.ptr, null);
                 }
@@ -218,14 +217,12 @@ fn get_window_content_region() c.ImRect {
 }
 
 fn ig_text_centered(bb: c.ImRect, text: []const u8) void {
-    const text_end = text.ptr + text.len;
-    var text_size: c.ImVec2 = undefined;
-    c.igCalcTextSize(&text_size, text.ptr, text_end, false, 0);
+    const text_size = ig.calc_text_size(text, false, 0);
     const x = bb.Min.x + (bb.Max.x - bb.Min.x) * 0.5 - text_size.x * 0.5;
     const y = bb.Min.y + (bb.Max.y - bb.Min.y) * 0.5 - text_size.y * 0.5;
     c.igSetCursorPosX(x);
     c.igSetCursorPosY(y);
-    c.igTextUnformatted(text.ptr, text_end);
+    c.igTextUnformatted(text.ptr, text.ptr + text.len);
 }
 
 const WelcomeState = struct {
@@ -426,10 +423,9 @@ const ViewState = struct {
         };
     }
 
-    fn calcStyle(self: *ViewState) ViewStyle {
+    fn calc_style(self: *ViewState) ViewStyle {
         _ = self;
-        var character_size: c.ImVec2 = undefined;
-        c.igCalcTextSize(&character_size, "A", null, false, 0);
+        const character_size = ig.calc_text_size("A", false, 0);
         const text_padding_x: f32 = character_size.x;
         const text_padding_y: f32 = character_size.y / 4.0;
         const sub_lane_height: f32 = 2 * text_padding_y + character_size.y;
@@ -443,7 +439,7 @@ const ViewState = struct {
     pub fn update(self: *ViewState, dt: f32, tracing: *Tracing) void {
         _ = dt;
         _ = tracing;
-        const style = self.calcStyle();
+        const style = self.calc_style();
 
         const viewport = c.igGetMainViewport();
         c.igSetNextWindowPos(.{ .x = viewport.*.WorkPos.x, .y = viewport.*.WorkPos.y }, 0, .{ .x = 0, .y = 0 });
@@ -480,7 +476,7 @@ const ViewState = struct {
         if (self.selected_span) |span| {
             if (self.open_selection_span) {
                 if (c.igBegin("Selection", &self.open_selection_span, c.ImGuiWindowFlags_AlwaysAutoResize)) {
-                    self.drawSpan(span);
+                    self.draw_span(span);
                 }
                 c.igEnd();
             } else {
@@ -942,8 +938,7 @@ const ViewState = struct {
                                 const text_max_x = x2 - style.text_padding.x;
 
                                 const text = span.name;
-                                var text_size: c.ImVec2 = undefined;
-                                c.igCalcTextSize(&text_size, text, null, false, 0);
+                                const text_size = ig.calc_text_size(text, false, 0);
                                 const center_y = sub_lane_top + style.sub_lane_height / 2.0;
 
                                 if (text_max_x - text_min_x >= text_size.x) {
@@ -1000,7 +995,7 @@ const ViewState = struct {
                 2,
             );
             if (c.igBeginTooltip()) {
-                self.drawSpan(span);
+                self.draw_span_tooltip(span);
             }
             c.igEndTooltip();
 
@@ -1016,17 +1011,16 @@ const ViewState = struct {
                 draw_list,
                 selected.bb.Min,
                 selected.bb.Max,
-                get_im_color_u32(.{ .x = 0, .y = 0, .z = 0, .w = 1 }),
+                get_im_color_u32(.{ .x = 0, .y = 0.7, .z = 0, .w = 1 }),
                 0,
                 0,
-                2,
+                4,
             );
         }
     }
 
-    fn drawSpan(self: *ViewState, span: *const Span) void {
+    fn draw_span_tooltip(self: *ViewState, span: *const Span) void {
         _ = self;
-        c.igPushTextWrapPos(c.igGetCursorPosX() + 400);
         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Title: {s}", .{span.name}) catch unreachable, null);
         if (span.category) |cat| {
             c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Category: {s}", .{cat}) catch unreachable, null);
@@ -1034,7 +1028,23 @@ const ViewState = struct {
         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Start: {}", .{Timestamp{ .us = span.start_time_us }}) catch unreachable, null);
         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Duration: {}", .{Timestamp{ .us = span.duration_us }}) catch unreachable, null);
         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Self: {}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
-        c.igPopTextWrapPos();
+    }
+
+    fn draw_span(self: *ViewState, span: *const Span) void {
+        _ = self;
+
+        c.igTextUnformatted("Title: ", null);
+        c.igSameLine(0, 0);
+        c.igTextWrapped("%s", span.name.ptr);
+
+        if (span.category) |cat| {
+            c.igTextUnformatted("Category: ", null);
+            c.igSameLine(0, 0);
+            c.igTextUnformatted(cat, null);
+        }
+        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Start: {}", .{Timestamp{ .us = span.start_time_us }}) catch unreachable, null);
+        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Duration: {}", .{Timestamp{ .us = span.duration_us }}) catch unreachable, null);
+        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Self: {}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
     }
 
     pub fn on_file_load_start(self: *ViewState, tracing: *Tracing) void {
@@ -1125,8 +1135,7 @@ fn drawLaneHeader(lane_bb: c.ImRect, title: [:0]const u8, character_size_y: f32,
         return;
     }
 
-    var text_size: c.ImVec2 = undefined;
-    c.igCalcTextSize(&text_size, title, null, false, 0);
+    const text_size = ig.calc_text_size(title, false, 0);
     const text_min_x = lane_bb.Min.x + character_size_y + text_padding_x;
     const text_max_x = @min(text_min_x + text_size.x, lane_bb.Max.x);
 
