@@ -17,7 +17,9 @@ static void my_debug_printf(const char *fmt, ...) {
     log_impl(LOG_DEBUG, buf);
 }
 
+#ifdef ZTRACING_WASM
 #define IM_ASSERT(_EXPR) (void)((!!(_EXPR)) || (log_impl(LOG_ERR, #_EXPR), 0))
+#endif
 #define IMGUI_DISABLE_DEFAULT_ALLOCATORS 
 #define IMGUI_DEBUG_PRINTF(_FMT,...) my_debug_printf(_FMT, __VA_ARGS__)
 

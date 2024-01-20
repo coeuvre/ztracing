@@ -56,7 +56,7 @@ pub const Tracing = struct {
                     }
                 }
 
-                if (c.igBeginMenu("Misc", true)) {
+                if (c.igBeginMenu("About", true)) {
                     if (c.igMenuItem_Bool("Color Palette", null, self.show_color_palette, true)) {
                         self.show_color_palette = !self.show_color_palette;
                     }
@@ -67,17 +67,14 @@ pub const Tracing = struct {
                 }
 
                 {
-                    c.igSetCursorPosX(c.igGetCursorPosX() + 10.0);
+                    const io = c.igGetIO();
+                    const fps = if (io.*.Framerate < 10000) io.*.Framerate else 0;
                     const allocated_bytes: f64 = @floatFromInt(self.api.get_memory_usages());
                     const allocated_bytes_mb = allocated_bytes / 1024.0 / 1024.0;
-                    const text = std.fmt.bufPrintZ(&global_buf, "Memory: {d:.1} MB", .{allocated_bytes_mb}) catch unreachable;
-                    c.igTextUnformatted(text.ptr, null);
-                }
 
-                const io = c.igGetIO();
-                if (io.*.Framerate < 10000) {
+                    const text = std.fmt.bufPrintZ(&global_buf, "{d:.1}MiB {d:.0} ", .{ allocated_bytes_mb, fps }) catch unreachable;
+
                     const window_width = c.igGetWindowWidth();
-                    const text = std.fmt.bufPrintZ(&global_buf, "{d:.0} ", .{io.*.Framerate}) catch unreachable;
                     var text_size: c.ImVec2 = undefined;
                     c.igCalcTextSize(&text_size, text.ptr, null, false, -1.0);
                     c.igSetCursorPosX(window_width - text_size.x);
@@ -377,6 +374,8 @@ const ViewStyle = struct {
     text_padding: c.ImVec2,
 };
 
+var is_dockspace_initialized: bool = false;
+
 const ViewState = struct {
     allocator: Allocator,
     profile: *Profile,
@@ -384,6 +383,8 @@ const ViewState = struct {
     end_time_us: i64,
     hovered_counters: std.ArrayList(HoveredCounter),
     highlighted_spans: std.ArrayList(HoveredSpan),
+
+    main_window_class: [*c]c.ImGuiWindowClass,
 
     is_dragging: bool = false,
     drag_start: ViewPos = undefined,
@@ -393,6 +394,9 @@ const ViewState = struct {
     selected_span: ?*const Span = null,
 
     pub fn init(allocator: Allocator, profile: *Profile) ViewState {
+        const window_class = c.ImGuiWindowClass_ImGuiWindowClass();
+        window_class.*.DockNodeFlagsOverrideSet = c.ImGuiDockNodeFlags_NoTabBar;
+
         const duration_us = profile.max_time_us - profile.min_time_us;
         const padding = @divTrunc(duration_us, 6);
         return .{
@@ -402,11 +406,13 @@ const ViewState = struct {
             .end_time_us = profile.max_time_us + padding,
             .hovered_counters = std.ArrayList(HoveredCounter).init(allocator),
             .highlighted_spans = std.ArrayList(HoveredSpan).init(allocator),
+            .main_window_class = window_class,
         };
     }
 
     pub fn deinit(self: *ViewState) void {
         self.hovered_counters.deinit();
+        defer c.ImGuiWindowClass_destroy(self.main_window_class);
     }
 
     fn calc_region(self: *ViewState, bb: c.ImRect) ViewRegion {
@@ -447,15 +453,22 @@ const ViewState = struct {
         c.igPushStyleVar_Vec2(c.ImGuiStyleVar_WindowPadding, .{ .x = 0, .y = 0 });
         _ = c.igBegin("MainWindow", null, container_window_flags | c.ImGuiWindowFlags_NoDocking);
 
-        const dock_id = c.igGetID_Str("MainWindowDock");
-        _ = c.igDockSpace(dock_id, .{ .x = 0, .y = 0 }, c.ImGuiDockNodeFlags_PassthruCentralNode | c.ImGuiDockNodeFlags_NoDockingOverCentralNode, 0);
-        c.igSetNextWindowDockID(dock_id, 0);
+        const dockspace_id = c.igGetID_Str("MainWindowDockspace");
+        _ = c.igDockSpace(dockspace_id, .{ .x = 0, .y = 0 }, c.ImGuiDockNodeFlags_PassthruCentralNode | c.ImGuiDockNodeFlags_NoDockingOverCentralNode, 0);
 
-        const window_class = c.ImGuiWindowClass_ImGuiWindowClass();
-        window_class.*.DockNodeFlagsOverrideSet = c.ImGuiDockNodeFlags_NoTabBar;
-        defer c.ImGuiWindowClass_destroy(window_class);
-        c.igSetNextWindowClass(window_class);
+        if (!is_dockspace_initialized) {
+            std.log.info("Building dockspace ...", .{});
 
+            var work_area_id: c.ImGuiID = undefined;
+            var tool_area_id: c.ImGuiID = undefined;
+            _ = c.igDockBuilderSplitNode(dockspace_id, c.ImGuiDir_Down, 0.3, &tool_area_id, &work_area_id);
+            c.igDockBuilderDockWindow("WorkArea", work_area_id);
+            c.igDockBuilderDockWindow("Selection", tool_area_id);
+            c.igDockBuilderFinish(dockspace_id);
+            is_dockspace_initialized = true;
+        }
+
+        c.igSetNextWindowClass(self.main_window_class);
         _ = c.igBegin("WorkArea", null, container_window_flags);
         c.igPopStyleVar(2);
 
@@ -466,10 +479,12 @@ const ViewState = struct {
 
         if (self.selected_span) |span| {
             if (self.open_selection_span) {
-                if (c.igBegin("Selected Span", &self.open_selection_span, c.ImGuiWindowFlags_AlwaysAutoResize)) {
+                if (c.igBegin("Selection", &self.open_selection_span, c.ImGuiWindowFlags_AlwaysAutoResize)) {
                     self.drawSpan(span);
                 }
                 c.igEnd();
+            } else {
+                self.selected_span = null;
             }
         }
 
