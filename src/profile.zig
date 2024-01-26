@@ -1,6 +1,6 @@
 const std = @import("std");
-const test_utils = @import("./test_utils.zig");
-const json_profile_parser = @import("./json_profile_parser.zig");
+const test_utils = @import("test_utils.zig");
+const json_profile_parser = @import("json_profile_parser.zig");
 const tracy = @import("tracy.zig");
 
 const Allocator = std.mem.Allocator;
@@ -51,6 +51,10 @@ pub const SeriesValue = struct {
             return .gt;
         }
     }
+
+    fn get_time_us(self: SeriesValue) i64 {
+        return self.time_us;
+    }
 };
 
 pub const Series = struct {
@@ -59,7 +63,7 @@ pub const Series = struct {
     /// mipmap[i] is at resolution 2^i us.
     /// mipmap[0] is at 1 us resolution which is the raw data.
     mipmap: []const []const SeriesValue,
-    /// Raw data of values, always equal to mipmap[0].
+
     values: ArrayList(SeriesValue),
 
     fn init(allocator: Allocator, name: [:0]const u8) !Series {
@@ -73,69 +77,12 @@ pub const Series = struct {
     fn done(self: *Series) !void {
         std.sort.block(SeriesValue, self.values.items, {}, SeriesValue.less_than);
 
-        try self.generate_mipmap();
-    }
-
-    fn generate_mipmap(self: *Series) !void {
-        var mipmap = ArrayList([]const SeriesValue).init(self.values.allocator);
-        try mipmap.append(self.values.items);
-        var min_duration_us: i64 = 1;
-        var lod: usize = 0;
-        while (true) {
-            const current_values = mipmap.items[lod];
-            if (current_values.len <= 1) {
-                break;
-            }
-
-            min_duration_us <<= 1;
-            // overflowing
-            if (min_duration_us < 0) {
-                break;
-            }
-
-            // first pass to check whether this level can merge values.
-            // Otherwise, use the same slice to avoid memory allocations.
-            var merge: bool = false;
-            var bucket = @divTrunc(current_values[0].time_us, min_duration_us);
-            for (current_values[1..]) |value| {
-                const next_bucket = @divTrunc(value.time_us, min_duration_us);
-                if (next_bucket == bucket) {
-                    merge = true;
-                    break;
-                }
-                bucket = next_bucket;
-            }
-
-            var next_values = current_values;
-            if (merge) {
-                var next_values_array = ArrayList(SeriesValue).init(self.values.allocator);
-                for (current_values) |value| {
-                    if (next_values_array.items.len == 0) {
-                        try next_values_array.append(value);
-                        continue;
-                    }
-
-                    const bucket_for_current = @divTrunc(value.time_us, min_duration_us);
-                    const next_value = next_values_array.items[next_values_array.items.len - 1];
-                    const bucket_for_next = @divTrunc(next_value.time_us, min_duration_us);
-                    if (bucket_for_current != bucket_for_next) {
-                        try next_values_array.append(value);
-                    } else {
-                        if (value.value > next_value.value) {
-                            // Use the larger value
-                            next_values_array.items[next_values_array.items.len - 1] = value;
-                        }
-                    }
-                }
-
-                next_values = try next_values_array.toOwnedSlice();
-            }
-
-            try mipmap.append(next_values);
-            lod += 1;
-        }
-
-        self.mipmap = try mipmap.toOwnedSlice();
+        self.mipmap = try generate_mipmap(
+            SeriesValue,
+            self.values.allocator,
+            try self.values.toOwnedSlice(),
+            SeriesValue.get_time_us,
+        );
     }
 
     pub fn get_values(self: *const Series, start_time_us: i64, end_time_us: i64, min_duration_us: i64) []const SeriesValue {
@@ -152,6 +99,77 @@ pub const Series = struct {
         return values[i..j];
     }
 };
+
+fn generate_mipmap(
+    comptime T: type,
+    allocator: Allocator,
+    lod0: []T,
+    comptime get_value: fn (_: T) i64,
+) ![]const []const T {
+    const zone = tracy.trace(@src());
+    defer zone.end();
+
+    var mipmap = ArrayList([]const T).init(allocator);
+    try mipmap.append(lod0);
+    var min_duration_us: i64 = 1;
+    var lod: usize = 0;
+    while (true) {
+        const current_values = mipmap.items[lod];
+        if (current_values.len <= 1) {
+            break;
+        }
+
+        min_duration_us <<= 1;
+        // overflowing
+        if (min_duration_us < 0) {
+            break;
+        }
+
+        // first pass to check whether this level can merge values.
+        // Otherwise, use the same slice to avoid memory allocations.
+        var len: usize = 0;
+        var last_bucket: i64 = 0;
+        for (current_values) |value| {
+            const current_bucket = @divTrunc(get_value(value), min_duration_us);
+            if (len == 0 or current_bucket != last_bucket) {
+                len += 1;
+                last_bucket = current_bucket;
+            }
+        }
+
+        var next_values: []T = @constCast(current_values);
+        if (len != current_values.len) {
+            std.debug.assert(len < current_values.len);
+            next_values = try allocator.alloc(T, len);
+            var index: usize = 0;
+            for (current_values) |value| {
+                if (index == 0) {
+                    next_values[index] = value;
+                    index += 1;
+                    continue;
+                }
+
+                const bucket_for_current = @divTrunc(get_value(value), min_duration_us);
+                const next_value = next_values[index - 1];
+                const bucket_for_next = @divTrunc(get_value(next_value), min_duration_us);
+                if (bucket_for_current != bucket_for_next) {
+                    next_values[index] = value;
+                    index += 1;
+                } else {
+                    if (get_value(value) > get_value(next_value)) {
+                        // Use the larger value
+                        next_values[index - 1] = value;
+                    }
+                }
+            }
+        }
+
+        try mipmap.append(next_values);
+        lod += 1;
+    }
+
+    return try mipmap.toOwnedSlice();
+}
 
 pub const Counter = struct {
     name: [:0]const u8,
@@ -212,6 +230,10 @@ pub const Span = struct {
 
         return lhs.start_time_us < rhs.start_time_us;
     }
+
+    fn get_start_time_us(self: *const Span) i64 {
+        return self.start_time_us;
+    }
 };
 
 pub const Track = struct {
@@ -219,7 +241,7 @@ pub const Track = struct {
     /// mipmap[i] is at resolution 2^i us.
     /// mipmap[0] is at 1 us resolution which is the raw data.
     mipmap: []const []const *Span,
-    /// Raw data of spans, always equal to mipmap[0].
+
     spans: ArrayList(*Span),
 
     fn init(allocator: Allocator) !Track {
@@ -233,65 +255,13 @@ pub const Track = struct {
         try self.spans.append(span);
     }
 
-    fn generate_mipmap(self: *Track) !void {
-        var mipmap = ArrayList([]const *Span).init(self.spans.allocator);
-        try mipmap.append(self.spans.items);
-        var min_duration_us: i64 = 1;
-        var lod: usize = 0;
-        while (true) {
-            const current_spans = mipmap.items[lod];
-            if (current_spans.len <= 1) {
-                break;
-            }
-
-            min_duration_us <<= 1;
-            // overflowing
-            if (min_duration_us < 0) {
-                break;
-            }
-
-            // first pass to check whether this level can merge spans.
-            // Otherwise, use the same slice to avoid memory allocations.
-            var merge: bool = false;
-            var bucket = @divTrunc(current_spans[0].start_time_us, min_duration_us);
-            for (current_spans[1..]) |span| {
-                const next_bucket = @divTrunc(span.start_time_us, min_duration_us);
-                if (next_bucket == bucket) {
-                    merge = true;
-                    break;
-                }
-                bucket = next_bucket;
-            }
-
-            var next_spans = current_spans;
-            if (merge) {
-                var next_spans_array = ArrayList(*Span).init(self.spans.allocator);
-                for (current_spans) |span| {
-                    if (next_spans_array.items.len == 0) {
-                        try next_spans_array.append(span);
-                        continue;
-                    }
-
-                    const bucket_for_current = @divTrunc(span.start_time_us, min_duration_us);
-                    const next_span = next_spans_array.items[next_spans_array.items.len - 1];
-                    const bucket_for_next = @divTrunc(next_span.start_time_us, min_duration_us);
-                    if (bucket_for_current != bucket_for_next) {
-                        try next_spans_array.append(span);
-                    } else {
-                        if (span.duration_us > next_span.duration_us) {
-                            // Use the span that has longest duration in the bucket
-                            next_spans_array.items[next_spans_array.items.len - 1] = span;
-                        }
-                    }
-                }
-                next_spans = try next_spans_array.toOwnedSlice();
-            }
-
-            try mipmap.append(next_spans);
-            lod += 1;
-        }
-
-        self.mipmap = try mipmap.toOwnedSlice();
+    fn done(self: *Track) !void {
+        self.mipmap = try generate_mipmap(
+            *Span,
+            self.spans.allocator,
+            try self.spans.toOwnedSlice(),
+            Span.get_start_time_us,
+        );
     }
 
     pub fn get_spans(self: *const Track, start_time_us: i64, end_time_us: i64, min_duration_us: i64) []const *Span {
@@ -419,6 +389,9 @@ pub const Thread = struct {
     }
 
     pub fn done(self: *Thread) !void {
+        const zone = tracy.trace(@src());
+        defer zone.end();
+
         std.sort.block(Span, self.spans.items, {}, Span.less_than);
 
         if (self.spans.items.len > 0) {
@@ -432,7 +405,7 @@ pub const Thread = struct {
         }
 
         for (self.tracks.items) |*track| {
-            try track.generate_mipmap();
+            try track.done();
         }
     }
 
