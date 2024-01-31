@@ -30,6 +30,7 @@ pub const Tracing = struct {
     state: State,
     api: PlatformApi,
 
+    file_name: ?[:0]u8 = null,
     show_imgui_demo_window: bool = false,
     show_color_palette: bool = false,
 
@@ -66,6 +67,9 @@ pub const Tracing = struct {
                     c.igEndMenu();
                 }
 
+                const left_width = c.igGetCursorPosX();
+                var right_width: f32 = 0;
+
                 {
                     const io = c.igGetIO();
                     const fps = if (io.*.Framerate < 10000) io.*.Framerate else 0;
@@ -76,8 +80,32 @@ pub const Tracing = struct {
 
                     const window_width = c.igGetWindowWidth();
                     const text_size = ig.calc_text_size(text, false, 0);
+                    right_width = text_size.x + c.igGetStyle().*.ItemSpacing.x;
                     c.igSetCursorPosX(window_width - text_size.x);
                     c.igTextUnformatted(text.ptr, null);
+                }
+
+                if (self.file_name) |text| {
+                    const text_size = ig.calc_text_size(text, false, 0);
+
+                    const window_width = c.igGetWindowWidth();
+                    const max_width = window_width - left_width - right_width;
+                    const frame_width = @min(text_size.x, max_width);
+                    const text_x = left_width + max_width / 2 - frame_width / 2;
+                    const text_y = c.igGetCursorPosY() + c.igGetStyle().*.FramePadding.y;
+                    const text_max_x = text_x + frame_width;
+
+                    const draw_list = c.igGetWindowDrawList();
+                    c.igRenderTextEllipsis(
+                        draw_list,
+                        .{ .x = text_x, .y = text_y },
+                        .{ .x = text_max_x, .y = text_y + text_size.y },
+                        text_max_x,
+                        text_max_x,
+                        text,
+                        null,
+                        &text_size,
+                    );
                 }
 
                 c.igEndMainMenuBar();
@@ -107,6 +135,13 @@ pub const Tracing = struct {
         }
     }
 
+    pub fn set_file_name(self: *Self, file_name: []const u8) void {
+        if (self.file_name) |f| {
+            self.allocator.free(f);
+        }
+        self.file_name = self.allocator.dupeZ(u8, file_name) catch unreachable;
+    }
+
     pub fn should_load_file(self: *const Self) bool {
         switch (self.state) {
             .welcome => {
@@ -121,13 +156,13 @@ pub const Tracing = struct {
         }
     }
 
-    pub fn on_load_file_start(self: *Self) void {
+    pub fn on_load_file_start(self: *Self, file_name: []const u8) void {
         switch (self.state) {
             .welcome => |*welcome| {
-                welcome.on_file_load_start(self);
+                welcome.on_file_load_start(self, file_name);
             },
             .view => |*view| {
-                view.on_file_load_start(self);
+                view.on_file_load_start(self, file_name);
             },
             else => {
                 std.log.err("Unexpected event on_file_load_start, current state is {s}", .{@tagName(self.state)});
@@ -268,8 +303,9 @@ const WelcomeState = struct {
         c.igEnd();
     }
 
-    pub fn on_file_load_start(self: *WelcomeState, tracing: *Tracing) void {
+    pub fn on_file_load_start(self: *WelcomeState, tracing: *Tracing, file_name: []const u8) void {
         const state = .{ .load_file = LoadFileState.init(self.allocator) };
+        tracing.set_file_name(file_name);
         tracing.switch_state(state);
     }
 };
@@ -1047,8 +1083,9 @@ const ViewState = struct {
         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Self: {}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
     }
 
-    pub fn on_file_load_start(self: *ViewState, tracing: *Tracing) void {
+    pub fn on_file_load_start(self: *ViewState, tracing: *Tracing, file_name: []const u8) void {
         const state = .{ .load_file = LoadFileState.init(self.allocator) };
+        tracing.set_file_name(file_name);
         tracing.switch_state(state);
     }
 };

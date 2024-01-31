@@ -40,13 +40,13 @@ const js = struct {
 
     pub extern "js" fn copy_uint8_array(chunk: JsObject, ptr: [*]const u8, len: usize) void;
 
+    pub extern "js" fn get_uint8_array_len(buf_ref: JsObject) usize;
+
     pub extern "js" fn rendererCreateFontTexture(width: i32, height: i32, pixels: [*]const u8) JsObject;
 
     pub extern "js" fn rendererBufferData(vtx_buffer_ptr: [*]const u8, vtx_buffer_len: i32, idx_buffer_ptr: [*]const u8, idx_buffer_len: i32) void;
 
     pub extern "js" fn rendererDraw(clip_rect_min_x: f32, clip_rect_min_y: f32, clip_rect_max_x: f32, clip_rect_max_y: f32, texture_ref: JsObject, idx_count: u32, idx_offset: u32) void;
-
-    pub extern "js" fn rendererPresent(framebuffer_ptr: [*]const u8, framebuffer_len: usize, width: usize, height: usize) void;
 
     pub extern "js" fn get_current_timestamp() usize;
 };
@@ -350,8 +350,8 @@ const App = struct {
         }
     }
 
-    pub fn on_load_file_start(self: *App, len: usize) void {
-        self.tracing.on_load_file_start();
+    pub fn on_load_file_start(self: *App, len: usize, file_name: []const u8) void {
+        self.tracing.on_load_file_start(file_name);
 
         if (self.load_state) |*load_state| {
             load_state.deinit();
@@ -483,8 +483,16 @@ export fn shouldLoadFile() bool {
     return app.tracing.should_load_file();
 }
 
-export fn onLoadFileStart(len: usize) void {
-    app.on_load_file_start(len);
+export fn onLoadFileStart(len: usize, file_name: js.JsObject) void {
+    defer js.destory(file_name);
+
+    const file_name_len = js.get_uint8_array_len(file_name);
+    const allocator = app.allocator;
+    const buf = allocator.alloc(u8, file_name_len) catch unreachable;
+    defer allocator.free(buf);
+    js.copy_uint8_array(file_name, buf.ptr, file_name_len);
+
+    app.on_load_file_start(len, buf);
 }
 
 export fn onLoadFileChunk(offset: usize, chunk: js.JsObject, len: usize) void {

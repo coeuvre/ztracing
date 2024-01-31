@@ -20,36 +20,41 @@ class Memory {
    */
   constructor(memory) {
     this.memory = memory;
-    this.textDecoder = new TextDecoder();
+    this.text_decoder = new TextDecoder();
+    this.text_encoder = new TextEncoder();
 
-    this.nextObjectRef = 1n;
+    this.next_object_ref = 1n;
     this.objects = {};
   }
 
-  storeObject(object) {
-    const ref = this.nextObjectRef;
-    this.nextObjectRef = this.nextObjectRef + 1n;
+  store_object(object) {
+    const ref = this.next_object_ref;
+    this.next_object_ref = this.next_object_ref + 1n;
     this.objects[ref] = object;
     return ref;
   }
 
-  loadObject(ref) {
+  load_object(ref) {
     return this.objects[ref];
   }
 
-  freeObject(ref) {
+  free_object(ref) {
     this.objects[ref] = undefined;
   }
 
-  loadString(ptr, len) {
-    return this.textDecoder.decode(
+  store_string(str) {
+    return this.store_object(this.text_encoder.encode(str));
+  }
+
+  load_string(ptr, len) {
+    return this.text_decoder.decode(
       new Uint8Array(this.memory.buffer, ptr, len),
     );
   }
 
-  setUint32(ptr, val) {
+  set_uint32(ptr, val) {
     const dataView = new DataView(this.memory.buffer);
-    dataView.setUint32(ptr, val, true);
+    dataView.set_uint32(ptr, val, true);
   }
 }
 
@@ -202,7 +207,7 @@ class Webgl2Renderer {
       gl.UNSIGNED_BYTE,
       view,
     );
-    return this.memory.storeObject(texture);
+    return this.memory.store_object(texture);
   }
 
   bufferData(vtx_buffer_ptr, vtx_buffer_size, idx_buffer_ptr, idx_buffer_size) {
@@ -238,14 +243,10 @@ class Webgl2Renderer {
       clip_rect_max_y - clip_rect_min_y,
     );
 
-    const texture = this.memory.loadObject(texture_ref);
+    const texture = this.memory.load_object(texture_ref);
     gl.bindTexture(gl.TEXTURE_2D, texture);
 
     gl.drawElements(gl.TRIANGLES, idx_count, gl.UNSIGNED_INT, idx_offset * 4);
-  }
-
-  present(framebuffer_ptr, framebuffer_len, width, height) {
-    throw new Error("not supported");
   }
 }
 
@@ -269,7 +270,7 @@ const imports = {
 
   js: {
     log: (level, ptr, len) => {
-      const msg = app.memory.loadString(ptr, len);
+      const msg = app.memory.load_string(ptr, len);
       switch (level) {
         case 0: {
           console.error(msg);
@@ -294,7 +295,7 @@ const imports = {
     },
 
     destory: (ref) => {
-      app.memory.freeObject(ref);
+      app.memory.free_object(ref);
     },
 
     rendererCreateFontTexture: (width, height, pixels) => {
@@ -335,15 +336,6 @@ const imports = {
       );
     },
 
-    rendererPresent: (framebuffer_ptr, framebuffer_len, width, height) => {
-      return app.renderer.present(
-        framebuffer_ptr,
-        framebuffer_len,
-        width,
-        height,
-      );
-    },
-
     showOpenFilePicker: async () => {
       if (app.loadingFile || !app.instance.exports.shouldLoadFile()) {
         return;
@@ -355,7 +347,7 @@ const imports = {
 
       const file = await firstPickedFile.getFile();
 
-      app.instance.exports.onLoadFileStart(file.size);
+      app.instance.exports.onLoadFileStart(file.size, app.memory.store_string(file.name));
 
       const stream = file.stream();
       loadFileFromStream(stream);
@@ -363,9 +355,15 @@ const imports = {
 
     copy_uint8_array: (buf_ref, ptr, len) => {
       /** @type {Uint8Array} */
-      const chunk = app.memory.loadObject(buf_ref);
+      const chunk = app.memory.load_object(buf_ref);
       const dst = new Uint8Array(app.memory.memory.buffer, ptr, len);
       dst.set(chunk);
+    },
+
+    get_uint8_array_len: (buf_ref) => {
+      /** @type {Uint8Array} */
+      const buf = app.memory.load_object(buf_ref);
+      return buf.length;
     },
 
     get_current_timestamp: () => {
@@ -380,7 +378,7 @@ function loadFileFromUrl(url) {
     return;
   }
 
-  app.instance.exports.onLoadFileStart(0);
+  app.instance.exports.onLoadFileStart(0, app.memory.store_string(url));
 
   fetch(url)
     .then((response) => response.body)
@@ -437,7 +435,7 @@ class LoadingFile {
   }
 
   onChunk(chunk) {
-    const chunkRef = app.memory.storeObject(chunk);
+    const chunkRef = app.memory.store_object(chunk);
     app.instance.exports.onLoadFileChunk(this.offset, chunkRef, chunk.length);
   }
 
@@ -485,7 +483,7 @@ class App {
       this.canvas.width,
       this.canvas.height,
       devicePixelRatio,
-      font_data ? this.memory.storeObject(new Uint8Array(font_data)) : 0n,
+      font_data ? this.memory.store_object(new Uint8Array(font_data)) : 0n,
       font_data ? font_data.byteLength : 0,
       font_size,
     );
@@ -627,7 +625,7 @@ function mount(options) {
         event.dataTransfer.files.length > 0
       ) {
         const file = event.dataTransfer.files[0];
-        app.instance.exports.onLoadFileStart(file.size);
+        app.instance.exports.onLoadFileStart(file.size, app.memory.store_string(file.name));
 
         const stream = file.stream();
         loadFileFromStream(stream);

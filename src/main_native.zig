@@ -459,9 +459,10 @@ pub fn main() !void {
 
         if (args.len >= 2) {
             if (tracing.should_load_file()) {
-                tracing.on_load_file_start();
-
                 load_path = try allocator.dupe(u8, args[1]);
+
+                tracing.on_load_file_start(std.fs.path.basename(load_path.?));
+
                 load_thread_channel.put(.{ .load_file = .{ .path = load_path.? } });
             }
         }
@@ -487,10 +488,11 @@ pub fn main() !void {
                 c.SDL_DROPFILE => {
                     defer c.SDL_free(event.drop.file);
                     if (tracing.should_load_file()) {
-                        tracing.on_load_file_start();
-
                         const len = std.mem.len(event.drop.file);
                         load_path = try allocator.dupe(u8, event.drop.file[0..len]);
+
+                        tracing.on_load_file_start(std.fs.path.basename(load_path.?));
+
                         load_thread_channel.put(.{ .load_file = .{ .path = load_path.? } });
                     }
                 },
