@@ -114,10 +114,27 @@ fn add_tracy(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     return tracy;
 }
 
+fn add_sqlite3(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+    const sqlite3 = b.addStaticLibrary(.{
+        .name = "sqlite3",
+        .target = target,
+        .optimize = if (optimize == .Debug) .ReleaseSafe else optimize,
+    });
+    sqlite3.addIncludePath(.{ .path = "third_party/sqlite3" });
+    sqlite3.addCSourceFiles(.{
+        .files = &.{
+            "third_party/sqlite3/sqlite3.c",
+        },
+    });
+    sqlite3.linkLibC();
+    return sqlite3;
+}
+
 fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
     const build_options = b.addOptions();
 
     const imgui = add_imgui(b, target, optimize);
+    const sqlite3 = add_sqlite3(b, target, optimize);
     const ztracing = blk: {
         if (target.result.isWasm()) {
             build_options.addOption(bool, "enable_tracy", false);
@@ -214,6 +231,7 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
         }
     };
     ztracing.linkLibrary(imgui);
+    ztracing.linkLibrary(sqlite3);
     ztracing.addIncludePath(.{ .path = "." });
     ztracing.addIncludePath(.{ .path = "third_party/cimgui" });
     ztracing.root_module.addOptions("build_options", build_options);

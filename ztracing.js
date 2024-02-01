@@ -266,6 +266,20 @@ const imports = {
     proc_exit: unreachble,
     random_get: unreachble,
     clock_time_get: unreachble,
+    environ_get: unreachble,
+    environ_sizes_get: function () {
+      return 0;
+    },
+    fd_filestat_get: unreachble,
+    fd_filestat_set_size: unreachble,
+    fd_sync: unreachble,
+    path_create_directory: unreachble,
+    path_filestat_get: unreachble,
+    path_filestat_set_times: unreachble,
+    path_readlink: unreachble,
+    path_remove_directory: unreachble,
+    path_unlink_file: unreachble,
+    poll_oneoff: unreachble,
   },
 
   js: {
