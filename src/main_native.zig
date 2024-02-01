@@ -325,8 +325,10 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
             send_load_error(profile_allocator, "Failed to finalize profile: {}", .{err});
             return;
         };
+        db.done() catch unreachable;
         const seconds = get_seconds_elapsed(counter, c.SDL_GetPerformanceCounter(), c.SDL_GetPerformanceFrequency());
-        const allocated_mb = @as(f32, @floatFromInt(get_memory_usages() - bytes_before)) / 1000.0 / 1000.0;
+        const bytes_after = get_memory_usages();
+        const allocated_mb = if (bytes_after > bytes_before) @as(f32, @floatFromInt(bytes_after - bytes_before)) / 1000.0 / 1000.0 else 0;
         std.log.info("Prepared view in {d:.2} seconds, allocated {d:.2}MB.", .{ seconds, allocated_mb });
     }
 
