@@ -10,6 +10,7 @@ const CountAllocator = @import("./count_alloc.zig").CountAllocator;
 const Tracing = @import("tracing.zig").Tracing;
 const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
+const ProfileDB = @import("db.zig").ProfileDB;
 const Arena = @import("arena.zig").SimpleArena;
 
 pub const std_options = struct {
@@ -70,6 +71,7 @@ const LoadState = struct {
     total: usize,
     parser: JsonProfileParser,
     profile: *Profile,
+    db: *ProfileDB,
     tracing: *Tracing,
     start_timestamp: usize,
     processed_bytes: usize,
@@ -81,11 +83,16 @@ const LoadState = struct {
         const allocator = arena.allocator();
         const profile = allocator.create(Profile) catch unreachable;
         profile.* = Profile.init(arena.allocator());
+
+        const db = allocator.create(ProfileDB) catch unreachable;
+        db.* = ProfileDB.init(arena.allocator()) catch unreachable;
+
         return .{
             .arena = arena,
             .total = total,
             .parser = JsonProfileParser.init(allocator),
             .profile = profile,
+            .db = db,
             .tracing = tracing,
             .start_timestamp = js.get_current_timestamp(),
             .processed_bytes = 0,
@@ -117,13 +124,14 @@ const LoadState = struct {
 
             switch (event) {
                 .trace_event => |trace_event| {
-                    self.profile.handle_trace_event(trace_event) catch |err| {
-                        self.send_load_error("Failed to handle trace event: {}\n{}", .{
-                            err,
-                            self.parser.diagnostic,
-                        });
-                        return false;
-                    };
+                    // self.profile.handle_trace_event(trace_event) catch |err| {
+                    //     self.send_load_error("Failed to handle trace event: {}\n{}", .{
+                    //         err,
+                    //         self.parser.diagnostic,
+                    //     });
+                    //     return false;
+                    // };
+                    self.db.handle_trace_event(trace_event) catch unreachable;
                 },
                 .none => break,
             }
@@ -422,6 +430,8 @@ export fn init(
     font_len: usize,
     font_size: f32,
 ) void {
+    var conn: ?*c.sqlite3 = null;
+    _ = c.sqlite3_open(":memory:", &conn);
     var allocator = global_count_allocator.allocator();
     app = allocator.create(App) catch unreachable;
 

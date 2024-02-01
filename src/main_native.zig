@@ -13,6 +13,7 @@ const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
 const Arena = @import("arena.zig").SimpleArena;
 const CountAllocator = @import("count_alloc.zig").CountAllocator;
+const ProfileDB = @import("db.zig").ProfileDB;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var count_allocator = CountAllocator.init(gpa.allocator());
@@ -182,6 +183,9 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
     };
     profile.* = Profile.init(profile_arena.allocator());
 
+    var db = profile_allocator.create(ProfileDB) catch unreachable;
+    db.* = ProfileDB.init(profile_allocator) catch unreachable;
+
     var file_buf = temp_allocator.alloc(u8, 4096) catch |err| {
         send_load_error(profile_allocator, "Failed to allocate file_buf: {}", .{err});
         return;
@@ -260,13 +264,14 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
                     .trace_event => |trace_event| {
                         const trace2 = tracy.traceNamed(@src(), "profile.handle_trace_event()");
                         defer trace2.end();
-                        profile.handle_trace_event(trace_event) catch |err| {
-                            send_load_error(profile_allocator, "Failed to handle trace event: {}\n{}", .{
-                                err,
-                                parser.diagnostic,
-                            });
-                            return;
-                        };
+                        // profile.handle_trace_event(trace_event) catch |err| {
+                        //     send_load_error(profile_allocator, "Failed to handle trace event: {}\n{}", .{
+                        //         err,
+                        //         parser.diagnostic,
+                        //     });
+                        //     return;
+                        // };
+                        db.handle_trace_event(trace_event) catch unreachable;
                     },
                     .none => break,
                 }

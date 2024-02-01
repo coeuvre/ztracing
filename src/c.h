@@ -7,6 +7,8 @@
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS 1
 #include "third_party/cimgui/cimgui.h"
 
+#include "third_party/sqlite3/sqlite3.h"
+
 #ifndef ZTRACING_WASM
 
 #include <SDL2/SDL.h>
