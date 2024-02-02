@@ -82,7 +82,7 @@ const sql = struct {
     const select_series_value_upper_bound =
         \\SELECT time_us, value
         \\FROM series_value
-        \\WHERE series_id = ?1 AND time_us > ?2
+        \\WHERE series_id = ?1 AND time_us >= ?2
         \\ORDER BY time_us ASC
         \\LIMIT 1;
     ;
@@ -712,7 +712,7 @@ pub const Profile = struct {
         upper_bound_stmt: *c.sqlite3_stmt,
         series_id: i64,
         cursor: i64,
-        start_time_us: i64,
+        is_first: bool,
         end_time_us: i64,
         resolution: i64,
 
@@ -731,7 +731,7 @@ pub const Profile = struct {
                 .upper_bound_stmt = upper_bound_stmt,
                 .series_id = series_id,
                 .cursor = start_time_us,
-                .start_time_us = start_time_us,
+                .is_first = false,
                 .end_time_us = end_time_us,
                 .resolution = resolution,
             };
@@ -746,26 +746,32 @@ pub const Profile = struct {
                 return null;
             }
 
-            const stmt = if (self.cursor == self.start_time_us)
-                self.lower_bound_stmt
-            else
-                self.upper_bound_stmt;
-
-            defer sqlite3.reset(self.conn, stmt) catch unreachable;
-            sqlite3.bind_int64(self.conn, stmt, 1, self.series_id) catch unreachable;
-            sqlite3.bind_int64(self.conn, stmt, 2, self.cursor) catch unreachable;
-            if (sqlite3.step(self.conn, stmt) catch unreachable == c.SQLITE_DONE) {
-                return null;
+            if (!self.is_first) {
+                self.is_first = true;
+                if (SeriesValueIter.query(self.conn, self.lower_bound_stmt, self.series_id, self.cursor)) |v| {
+                    return v;
+                }
             }
 
-            const value = SeriesValue{
+            if (SeriesValueIter.query(self.conn, self.upper_bound_stmt, self.series_id, self.cursor)) |v| {
+                self.cursor = v.time_us - @rem(v.time_us, self.resolution) + self.resolution;
+                return v;
+            }
+
+            return null;
+        }
+
+        fn query(conn: *c.sqlite3, stmt: *c.sqlite3_stmt, series_id: i64, time_us: i64) ?SeriesValue {
+            defer sqlite3.reset(conn, stmt) catch unreachable;
+            sqlite3.bind_int64(conn, stmt, 1, series_id) catch unreachable;
+            sqlite3.bind_int64(conn, stmt, 2, time_us) catch unreachable;
+            if (sqlite3.step(conn, stmt) catch unreachable == c.SQLITE_DONE) {
+                return null;
+            }
+            return .{
                 .time_us = c.sqlite3_column_int64(stmt, 0),
                 .value = c.sqlite3_column_double(stmt, 1),
             };
-
-            self.cursor += self.resolution;
-
-            return value;
         }
     };
 
