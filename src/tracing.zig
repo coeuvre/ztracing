@@ -10,7 +10,7 @@ const Allocator = std.mem.Allocator;
 const JsonProfileParser = json_profile_parser.JsonProfileParser;
 const CountAllocator = @import("count_alloc.zig").CountAllocator;
 const TraceEvent = json_profile_parser.TraceEvent;
-const Profile = profile_.Profile;
+const Profile = @import("db.zig").Profile;
 const Span = profile_.Span;
 const SeriesValue = profile_.SeriesValue;
 const Counter = profile_.Counter;
@@ -409,6 +409,10 @@ const ViewStyle = struct {
 
 var is_dockspace_initialized: bool = false;
 
+pub const UiState = struct {
+    open: bool = true,
+};
+
 const ViewState = struct {
     allocator: Allocator,
     profile: *Profile,
@@ -416,6 +420,7 @@ const ViewState = struct {
     end_time_us: i64,
     hovered_counters: std.ArrayList(HoveredCounter),
     highlighted_spans: std.ArrayList(HoveredSpan),
+    counter_ui_state: std.AutoHashMap(i64, UiState),
 
     main_window_class: [*c]c.ImGuiWindowClass,
 
@@ -439,6 +444,7 @@ const ViewState = struct {
             .end_time_us = profile.max_time_us + padding,
             .hovered_counters = std.ArrayList(HoveredCounter).init(allocator),
             .highlighted_spans = std.ArrayList(HoveredSpan).init(allocator),
+            .counter_ui_state = std.AutoHashMap(i64, UiState).init(allocator),
             .main_window_class = window_class,
         };
     }
@@ -549,13 +555,15 @@ const ViewState = struct {
             true,
         );
 
-        const last_hovered_span = self.hovered_span;
+        //const last_hovered_span = self.hovered_span;
 
-        for (self.profile.processes.items) |*process| {
-            const name = std.fmt.bufPrintZ(&global_buf, "Process {}", .{process.pid}) catch unreachable;
+        var process_iter = self.profile.iter_process();
+        defer process_iter.deinit();
+        while (process_iter.next()) |process| {
+            const name = std.fmt.bufPrintZ(&global_buf, "Process {}", .{process.id}) catch unreachable;
             if (c.igCollapsingHeader_BoolPtr(name, null, c.ImGuiTreeNodeFlags_DefaultOpen)) {
-                self.draw_counters(region, style, process.counters.items);
-                self.draw_threads(region, style, process.threads.items, last_hovered_span);
+                self.draw_counters(region, style, &process);
+                // self.draw_threads(region, style, process.threads.items, last_hovered_span);
             }
         }
 
@@ -690,7 +698,16 @@ const ViewState = struct {
         }
     }
 
-    fn draw_counters(self: *ViewState, region: ViewRegion, style: ViewStyle, counters: []Counter) void {
+    fn get_counter_ui_state(self: *ViewState, counter: *const Profile.Counter) *UiState {
+        const entry = self.counter_ui_state.getOrPut(counter.id) catch unreachable;
+        if (entry.found_existing) {
+            return entry.value_ptr;
+        }
+        entry.value_ptr.* = .{ .open = true };
+        return entry.value_ptr;
+    }
+
+    fn draw_counters(self: *ViewState, region: ViewRegion, style: ViewStyle, process: *const Profile.Process) void {
         const trace = tracy.trace(@src());
         defer trace.end();
 
@@ -699,7 +716,10 @@ const ViewState = struct {
         const draw_list = c.igGetWindowDrawList();
 
         const allow_hover = c.igIsWindowHovered(0) and !self.is_dragging;
-        for (counters) |*counter| {
+        var counter_iter = self.profile.iter_counter(process.id);
+        defer counter_iter.deinit();
+        while (counter_iter.next()) |counter| {
+            const ui = self.get_counter_ui_state(&counter);
             // Header
             {
                 const lane_top = region.top() + c.igGetCursorPosY() - c.igGetScrollY();
@@ -710,8 +730,8 @@ const ViewState = struct {
                     .Max = .{ .x = region.right(), .y = lane_bottom },
                 };
                 var hovered: bool = false;
-                drawLaneHeader(lane_bb, counter.name, style.character_size.y, style.text_padding.x, allow_hover, &counter.ui.open, &hovered);
-                if (hovered and counter.ui.open) {
+                drawLaneHeader(lane_bb, counter.name, style.character_size.y, style.text_padding.x, allow_hover, &ui.open, &hovered);
+                if (hovered and ui.open) {
                     if (c.igBeginTooltip()) {
                         c.igTextUnformatted(counter.name, null);
                     }
@@ -719,7 +739,7 @@ const ViewState = struct {
                 }
             }
 
-            if (counter.ui.open) {
+            if (ui.open) {
                 const min_width = 3;
                 const min_duration_us: i64 = @intFromFloat(@ceil(min_width / region.width_per_us));
                 const lane_top = region.top() + c.igGetCursorPosY() - c.igGetScrollY();
@@ -733,14 +753,20 @@ const ViewState = struct {
                 if (c.igItemAdd(lane_bb, 0, null, 0)) {
                     const color_index_base: usize = @truncate(hash_str(counter.name));
 
-                    for (counter.series.items, 0..) |series, series_index| {
+                    var series_iter = self.profile.iter_series(counter.id);
+                    defer series_iter.deinit();
+                    var series_index: usize = 0;
+                    while (series_iter.next()) |series| {
+                        defer series_index += 1;
                         const col_v4 = general_purpose_colors[(color_index_base + series_index) % general_purpose_colors.len];
                         const col = get_im_color_u32(col_v4);
 
                         var prev_pos: ?c.ImVec2 = null;
-                        var prev_value: ?*const SeriesValue = null;
+                        var prev_value: ?Profile.SeriesValue = null;
                         var hovered_counter: ?HoveredCounter = null;
-                        for (series.get_values(self.start_time_us, self.end_time_us, min_duration_us)) |*value| {
+                        var series_value_iter = self.profile.iter_series_value(series.id, self.start_time_us, self.end_time_us, min_duration_us);
+                        defer series_value_iter.deinit();
+                        while (series_value_iter.next()) |value| {
                             const pos = c.ImVec2{
                                 .x = region.left() + @as(f32, @floatFromInt(value.time_us - self.start_time_us)) * region.width_per_us,
                                 .y = lane_bottom - @as(f32, @floatCast((value.value / counter.max_value))) * lane_height,
@@ -770,10 +796,6 @@ const ViewState = struct {
 
                                 c.ImDrawList_PathLineTo(draw_list, .{ .x = pp.x, .y = pp.y });
                                 c.ImDrawList_PathLineTo(draw_list, .{ .x = pos.x, .y = pp.y });
-                            }
-
-                            if (value.time_us > self.end_time_us) {
-                                break;
                             }
 
                             prev_pos = pos;
@@ -1091,7 +1113,7 @@ const ViewState = struct {
 
 const HoveredCounter = struct {
     name: [:0]const u8,
-    value: *const SeriesValue,
+    value: Profile.SeriesValue,
     pos: c.ImVec2,
 };
 

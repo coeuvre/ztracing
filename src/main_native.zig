@@ -13,7 +13,8 @@ const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
 const Arena = @import("arena.zig").SimpleArena;
 const CountAllocator = @import("count_alloc.zig").CountAllocator;
-const ProfileDB = @import("db.zig").ProfileDB;
+const ProfileBuilder = @import("db.zig").ProfileBuilder;
+const Profile2 = @import("db.zig").Profile;
 
 var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var count_allocator = CountAllocator.init(gpa.allocator());
@@ -183,8 +184,7 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
     };
     profile.* = Profile.init(profile_arena.allocator());
 
-    var db = profile_allocator.create(ProfileDB) catch unreachable;
-    db.* = ProfileDB.init(profile_allocator) catch unreachable;
+    var builder = ProfileBuilder.init(profile_allocator) catch unreachable;
 
     var file_buf = temp_allocator.alloc(u8, 4096) catch |err| {
         send_load_error(profile_allocator, "Failed to allocate file_buf: {}", .{err});
@@ -271,7 +271,7 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
                         //     });
                         //     return;
                         // };
-                        db.handle_trace_event(trace_event) catch unreachable;
+                        builder.handle_trace_event(trace_event) catch unreachable;
                     },
                     .none => break,
                 }
@@ -325,18 +325,20 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
             send_load_error(profile_allocator, "Failed to finalize profile: {}", .{err});
             return;
         };
-        db.done() catch unreachable;
         const seconds = get_seconds_elapsed(counter, c.SDL_GetPerformanceCounter(), c.SDL_GetPerformanceFrequency());
         const bytes_after = get_memory_usages();
         const allocated_mb = if (bytes_after > bytes_before) @as(f32, @floatFromInt(bytes_after - bytes_before)) / 1000.0 / 1000.0 else 0;
         std.log.info("Prepared view in {d:.2} seconds, allocated {d:.2}MB.", .{ seconds, allocated_mb });
     }
 
+    const profile2 = profile_allocator.create(Profile2) catch unreachable;
+    profile2.* = builder.build() catch unreachable;
+
     _ = c.SDL_PushEvent(@constCast(&c.SDL_Event{
         .user = .{
             .type = c.SDL_USEREVENT,
             .code = @intFromEnum(UserEventCode.load_done),
-            .data1 = profile,
+            .data1 = profile2,
         },
     }));
 }
