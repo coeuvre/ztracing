@@ -108,7 +108,9 @@ fn add_tracy(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
         },
     });
     tracy.linkLibC();
-    tracy.linkLibCpp();
+    if (target.result.os.tag != .windows) {
+        tracy.linkLibCpp();
+    }
     return tracy;
 }
 
