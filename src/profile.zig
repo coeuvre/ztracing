@@ -815,9 +815,9 @@ fn expect_equal_threads(expected: ExpectedThread, actual: Thread) !void {
 }
 
 fn expect_equal_tracks(expected: ExpectedTrack, actual: Track) !void {
-    try std.testing.expectEqual(expected.spans.len, actual.spans.items.len);
+    try std.testing.expectEqual(expected.spans.len, actual.mipmap[0].len);
 
-    for (expected.spans, actual.spans.items) |expected_span, actual_span| {
+    for (expected.spans, actual.mipmap[0]) |expected_span, actual_span| {
         try expect_equal_span(expected_span, actual_span);
     }
 }
