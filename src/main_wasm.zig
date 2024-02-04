@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const c = @import("c.zig");
 const ig = @import("imgui.zig");
 const software_renderer = @import("./software_renderer.zig");
@@ -25,6 +26,11 @@ pub const std_options = struct {
         const msg = std.fmt.bufPrint(&buf, prefix2 ++ format ++ "\n", args) catch return;
         js.log(level, msg.ptr, msg.len);
     }
+
+    pub const log_level: std.log.Level = switch (builtin.mode) {
+        .Debug => .debug,
+        else => .info,
+    };
 };
 
 const js = struct {
