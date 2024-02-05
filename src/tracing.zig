@@ -450,12 +450,9 @@ const ViewState = struct {
 
     fn calc_region(self: *ViewState, bb: c.ImRect) ViewRegion {
         const width_per_us = (bb.Max.x - bb.Min.x) / @as(f32, @floatFromInt((self.end_time_us - self.start_time_us)));
-        const min_width = 6;
-        const min_duration_us: i64 = @intFromFloat(@ceil(min_width / width_per_us));
         return .{
             .bb = bb,
             .width_per_us = width_per_us,
-            .min_duration_us = min_duration_us,
         };
     }
 
@@ -723,6 +720,8 @@ const ViewState = struct {
             }
 
             if (counter.ui.open) {
+                const min_width = 3;
+                const min_duration_us: i64 = @intFromFloat(@ceil(min_width / region.width_per_us));
                 const lane_top = region.top() + c.igGetCursorPosY() - c.igGetScrollY();
                 const lane_height: f32 = style.sub_lane_height;
                 const lane_bottom = lane_top + lane_height;
@@ -741,7 +740,7 @@ const ViewState = struct {
                         var prev_pos: ?c.ImVec2 = null;
                         var prev_value: ?*const SeriesValue = null;
                         var hovered_counter: ?HoveredCounter = null;
-                        for (series.get_values(self.start_time_us, self.end_time_us, region.min_duration_us)) |*value| {
+                        for (series.get_values(self.start_time_us, self.end_time_us, min_duration_us)) |*value| {
                             const pos = c.ImVec2{
                                 .x = region.left() + @as(f32, @floatFromInt(value.time_us - self.start_time_us)) * region.width_per_us,
                                 .y = lane_bottom - @as(f32, @floatCast((value.value / counter.max_value))) * lane_height,
@@ -760,22 +759,17 @@ const ViewState = struct {
                                     };
                                 }
 
-                                c.ImDrawList_AddQuadFilled(
+                                c.ImDrawList_AddRectFilled(
                                     draw_list,
                                     .{ .x = pp.x, .y = lane_bottom },
-                                    .{ .x = pos.x, .y = lane_bottom },
-                                    pos,
-                                    pp,
+                                    .{ .x = pos.x, .y = pp.y },
                                     col,
+                                    0,
+                                    0,
                                 );
 
-                                c.ImDrawList_AddLine(
-                                    draw_list,
-                                    .{ .x = pp.x - 1, .y = pp.y - 1 },
-                                    .{ .x = pos.x, .y = pos.y - 1 },
-                                    get_im_color_u32(.{ .x = col_v4.x * 0.5, .y = col_v4.y * 0.5, .z = col_v4.z * 0.5, .w = 1.0 }),
-                                    1,
-                                );
+                                c.ImDrawList_PathLineTo(draw_list, .{ .x = pp.x, .y = pp.y });
+                                c.ImDrawList_PathLineTo(draw_list, .{ .x = pos.x, .y = pp.y });
                             }
 
                             if (value.time_us > self.end_time_us) {
@@ -785,6 +779,9 @@ const ViewState = struct {
                             prev_pos = pos;
                             prev_value = value;
                         }
+
+                        c.ImDrawList_PathStroke(draw_list, get_im_color_u32(.{ .x = col_v4.x * 0.5, .y = col_v4.y * 0.5, .z = col_v4.z * 0.5, .w = 1.0 }), 0, 1);
+                        c.ImDrawList_PathClear(draw_list);
 
                         if (hovered_counter == null) {
                             // Handle hover for last point
@@ -900,6 +897,8 @@ const ViewState = struct {
             }
 
             if (thread.ui.open) {
+                const min_width = 6;
+                const min_duration_us: i64 = @intFromFloat(@ceil(min_width / region.width_per_us));
                 const trace1 = tracy.traceNamed(@src(), "draw_threads/body");
                 defer trace1.end();
 
@@ -916,9 +915,9 @@ const ViewState = struct {
                         const trace2 = tracy.traceNamed(@src(), "draw_threads/body/track");
                         defer trace2.end();
 
-                        for (sub_lane.get_spans(self.start_time_us, self.end_time_us, region.min_duration_us)) |span| {
+                        for (sub_lane.get_spans(self.start_time_us, self.end_time_us, min_duration_us)) |span| {
                             var x1: f32 = region.left() + @as(f32, @floatFromInt(span.start_time_us - self.start_time_us)) * region.width_per_us;
-                            var x2: f32 = x1 + @as(f32, @floatFromInt(@max(span.duration_us, region.min_duration_us))) * region.width_per_us;
+                            var x2: f32 = x1 + @as(f32, @floatFromInt(@max(span.duration_us, min_duration_us))) * region.width_per_us;
                             x1 = @max(region.left(), x1);
                             x2 = @min(region.right(), x2);
 
@@ -1108,7 +1107,6 @@ const ViewPos = struct {
 
 const ViewRegion = struct {
     bb: c.ImRect,
-    min_duration_us: i64,
     width_per_us: f32,
 
     pub fn pos(self: *const ViewRegion) c.ImVec2 {
