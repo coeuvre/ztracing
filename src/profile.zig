@@ -8,6 +8,7 @@ const ArrayList = std.ArrayList;
 const TraceEvent = json_profile_parser.TraceEvent;
 const expect_optional = test_utils.expect_optional;
 const Arena = std.heap.ArenaAllocator;
+const AutoHashMap = std.AutoHashMap;
 
 const StringPool = struct {
     allocator: Allocator,
@@ -482,6 +483,7 @@ pub const Process = struct {
     allocator: Allocator,
     pid: i64,
     counters: ArrayList(Counter),
+    thread_map: AutoHashMap(i64, usize),
     threads: ArrayList(Thread),
 
     fn init(allocator: Allocator, pid: i64) Process {
@@ -489,6 +491,7 @@ pub const Process = struct {
             .allocator = allocator,
             .pid = pid,
             .counters = ArrayList(Counter).init(allocator),
+            .thread_map = AutoHashMap(i64, usize).init(allocator),
             .threads = ArrayList(Thread).init(allocator),
         };
     }
@@ -499,6 +502,7 @@ pub const Process = struct {
             try counter.done();
         }
 
+        self.thread_map.clearAndFree();
         std.sort.block(Thread, self.threads.items, {}, Thread.less_than);
         for (self.threads.items) |*thread| {
             try thread.done();
@@ -517,14 +521,13 @@ pub const Process = struct {
     }
 
     pub fn get_or_create_thread(self: *Process, tid: i64) !*Thread {
-        for (self.threads.items) |*thread| {
-            if (thread.tid == tid) {
-                return thread;
-            }
+        if (self.thread_map.get(tid)) |index| {
+            return &self.threads.items[index];
         }
-
         try self.threads.append(Thread.init(self.allocator, tid));
-        return &self.threads.items[self.threads.items.len - 1];
+        const index = self.threads.items.len - 1;
+        try self.thread_map.put(tid, index);
+        return &self.threads.items[index];
     }
 };
 
