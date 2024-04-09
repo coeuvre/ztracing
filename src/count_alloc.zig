@@ -34,7 +34,7 @@ pub const CountAllocator = struct {
 
     pub fn get_peek_allocated_bytes(self: *const CountAllocator) usize {
         if (comptime thread_safe) {
-            return self.peek_allocated_bytes.load(.SeqCst);
+            return self.peek_allocated_bytes.load(.seq_cst);
         } else {
             return self.peek_allocated_bytes;
         }
@@ -42,7 +42,7 @@ pub const CountAllocator = struct {
 
     pub fn get_allocated_bytes(self: *const CountAllocator) usize {
         if (comptime thread_safe) {
-            return self.allocated_bytes.load(.SeqCst);
+            return self.allocated_bytes.load(.seq_cst);
         } else {
             return self.allocated_bytes;
         }
@@ -51,8 +51,8 @@ pub const CountAllocator = struct {
     fn alloc(ctx: *anyopaque, len: usize, log2_ptr_align: u8, ret_addr: usize) ?[*]u8 {
         const self: *CountAllocator = @ptrCast(@alignCast(ctx));
         if (comptime thread_safe) {
-            _ = self.allocated_bytes.fetchAdd(len, .SeqCst);
-            _ = self.peek_allocated_bytes.fetchMax(self.allocated_bytes.load(.SeqCst), .SeqCst);
+            _ = self.allocated_bytes.fetchAdd(len, .seq_cst);
+            _ = self.peek_allocated_bytes.fetchMax(self.allocated_bytes.load(.seq_cst), .seq_cst);
         } else {
             self.allocated_bytes += len;
             self.peek_allocated_bytes = @max(self.peek_allocated_bytes, self.allocated_bytes);
@@ -65,9 +65,9 @@ pub const CountAllocator = struct {
         const result = self.underlying.rawResize(buf, buf_align, new_len, ret_addr);
         if (result) {
             if (comptime thread_safe) {
-                _ = self.allocated_bytes.fetchSub(buf.len, .SeqCst);
-                _ = self.allocated_bytes.fetchAdd(new_len, .SeqCst);
-                _ = self.peek_allocated_bytes.fetchMax(self.allocated_bytes.load(.SeqCst), .SeqCst);
+                _ = self.allocated_bytes.fetchSub(buf.len, .seq_cst);
+                _ = self.allocated_bytes.fetchAdd(new_len, .seq_cst);
+                _ = self.peek_allocated_bytes.fetchMax(self.allocated_bytes.load(.seq_cst), .seq_cst);
             } else {
                 self.allocated_bytes -= buf.len;
                 self.allocated_bytes += new_len;
@@ -80,7 +80,7 @@ pub const CountAllocator = struct {
     fn free(ctx: *anyopaque, buf: []u8, buf_align: u8, ret_addr: usize) void {
         const self: *CountAllocator = @ptrCast(@alignCast(ctx));
         if (comptime thread_safe) {
-            _ = self.allocated_bytes.fetchSub(buf.len, .SeqCst);
+            _ = self.allocated_bytes.fetchSub(buf.len, .seq_cst);
         } else {
             self.allocated_bytes -= buf.len;
         }
