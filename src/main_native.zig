@@ -10,7 +10,6 @@ const is_window = builtin.target.os.tag == .windows;
 const Tracing = @import("tracing.zig").Tracing;
 const Allocator = std.mem.Allocator;
 const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
-const Profile = @import("profile.zig").Profile;
 const Arena = @import("arena.zig").SimpleArena;
 const CountAllocator = @import("count_alloc.zig").CountAllocator;
 const ProfileBuilder = @import("db.zig").ProfileBuilder;
@@ -178,12 +177,6 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
     }
 
     var parser = JsonProfileParser.init(temp_allocator);
-    var profile = profile_allocator.create(Profile) catch |err| {
-        send_load_error(profile_allocator, "Failed to allocate profile: {}", .{err});
-        return;
-    };
-    profile.* = Profile.init(profile_arena.allocator());
-
     var builder = ProfileBuilder.init(profile_allocator) catch unreachable;
 
     var file_buf = temp_allocator.alloc(u8, 4096) catch |err| {
@@ -321,10 +314,6 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
 
         const counter = c.SDL_GetPerformanceCounter();
         const bytes_before = get_memory_usages();
-        profile.done() catch |err| {
-            send_load_error(profile_allocator, "Failed to finalize profile: {}", .{err});
-            return;
-        };
         const seconds = get_seconds_elapsed(counter, c.SDL_GetPerformanceCounter(), c.SDL_GetPerformanceFrequency());
         const bytes_after = get_memory_usages();
         const allocated_mb = if (bytes_after > bytes_before) @as(f32, @floatFromInt(bytes_after - bytes_before)) / 1000.0 / 1000.0 else 0;

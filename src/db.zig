@@ -198,7 +198,7 @@ pub const ProfileBuilder = struct {
     pub fn init(allocator: Allocator) !Self {
         const conn = blk: {
             var conn: ?*c.sqlite3 = null;
-            if (c.sqlite3_open("test.db", &conn) != c.SQLITE_OK) {
+            if (c.sqlite3_open(":memory:", &conn) != c.SQLITE_OK) {
                 return error.sqlite3_open;
             }
             break :blk conn.?;
