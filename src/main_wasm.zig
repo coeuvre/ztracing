@@ -11,6 +11,7 @@ const Tracing = @import("tracing.zig").Tracing;
 const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
 const Arena = @import("arena.zig").SimpleArena;
+const SharedState = @import("shared.zig").SharedState;
 
 pub const std_options = std.Options{
     .logFn = log,
@@ -161,11 +162,13 @@ const LoadState = struct {
     }
 };
 
-fn get_memory_usages() usize {
-    return global_count_allocator.get_allocated_bytes();
+fn get_memory_usages(ctx: *void) usize {
+    var app: *App = @ptrCast(@alignCast(ctx));
+    return app.count_allocator.get_allocated_bytes();
 }
 
 const App = struct {
+    count_allocator: *CountAllocator,
     allocator: Allocator,
     renderer: Renderer,
     tracing: Tracing,
@@ -187,10 +190,12 @@ const App = struct {
         font_size: f32,
     ) void {
         const allocator = count_allocator.allocator();
+        self.count_allocator = count_allocator;
         self.allocator = allocator;
         self.renderer = .{};
         self.load_state = null;
         self.tracing = Tracing.init(allocator, .{
+            .ctx = @ptrCast(self),
             .show_open_file_picker = show_open_file_picker,
             .get_memory_usages = get_memory_usages,
         });
@@ -416,21 +421,26 @@ const WebglRenderer = struct {
 
 const Renderer = WebglRenderer;
 
-var app: *App = undefined;
-var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-var global_count_allocator = CountAllocator.init(gpa.allocator());
+export fn init_shared_state() *void {
+    var shared_state = std.heap.page_allocator.create(SharedState) catch unreachable;
+    shared_state.gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    shared_state.count_allocator = CountAllocator.init(shared_state.gpa.allocator());
+    return @ptrCast(shared_state);
+}
 
 export fn init(
+    shared_state_ptr: *void,
     width: f32,
     height: f32,
     device_pixel_ratio: f32,
     font: js.JsObject,
     font_len: usize,
     font_size: f32,
-) void {
-    var allocator = global_count_allocator.allocator();
-    app = allocator.create(App) catch unreachable;
+) *void {
+    const shared_state: *SharedState = @ptrCast(@alignCast(shared_state_ptr));
+    var allocator = shared_state.count_allocator.allocator();
 
+    var app = allocator.create(App) catch unreachable;
     const font_data: ?[]u8 = blk: {
         if (font.ref != 0) {
             defer js.destory(font);
@@ -445,7 +455,7 @@ export fn init(
     defer if (font_data) |f| allocator.free(f);
 
     app.init(
-        &global_count_allocator,
+        &shared_state.count_allocator,
         width,
         height,
         device_pixel_ratio,
@@ -455,41 +465,54 @@ export fn init(
 
     // HACK: Force ImGui to update the mosue cursor, otherwise it's in uninitialized state.
     app.onMousePos(0, 0);
+
+    return @ptrCast(app);
 }
 
-export fn update(dt: f32) void {
+export fn update(app_ptr: *void, dt: f32) void {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
     app.update(dt);
 }
 
-export fn on_resize(width: f32, height: f32) void {
+export fn on_resize(app_ptr: *void, width: f32, height: f32) void {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
     app.on_resize(width, height);
 }
 
-export fn onMousePos(x: f32, y: f32) void {
+export fn onMousePos(app_ptr: *void, x: f32, y: f32) void {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
     app.onMousePos(x, y);
 }
 
-export fn onMouseButton(button: i32, down: bool) bool {
+export fn onMouseButton(app_ptr: *void, button: i32, down: bool) bool {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
     return app.onMouseButton(jsButtonToImguiButton(button), down);
 }
 
-export fn onMouseWheel(dx: f32, dy: f32) void {
+export fn onMouseWheel(app_ptr: *void, dx: f32, dy: f32) void {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
     app.onMouseWheel(dx, dy);
 }
 
-export fn onKey(key: u32, down: bool) bool {
+export fn onKey(app_ptr: *void, key: u32, down: bool) bool {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
     return app.onKey(key, down);
 }
 
-export fn onFocus(focused: bool) void {
+export fn onFocus(app_ptr: *void, focused: bool) void {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
     app.onFocus(focused);
 }
 
-export fn shouldLoadFile() bool {
+export fn shouldLoadFile(
+    app_ptr: *void,
+) bool {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
     return app.tracing.should_load_file();
 }
 
-export fn onLoadFileStart(len: usize, file_name: js.JsObject) void {
+export fn onLoadFileStart(app_ptr: *void, len: usize, file_name: js.JsObject) void {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
     defer js.destory(file_name);
 
     const file_name_len = js.get_uint8_array_len(file_name);
@@ -501,7 +524,8 @@ export fn onLoadFileStart(len: usize, file_name: js.JsObject) void {
     app.on_load_file_start(len, buf);
 }
 
-export fn onLoadFileChunk(offset: usize, chunk: js.JsObject, len: usize) void {
+export fn onLoadFileChunk(app_ptr: *void, offset: usize, chunk: js.JsObject, len: usize) void {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
     defer js.destory(chunk);
 
     if (app.tracing.should_load_file()) {
@@ -515,7 +539,8 @@ export fn onLoadFileChunk(offset: usize, chunk: js.JsObject, len: usize) void {
     }
 }
 
-export fn onLoadFileDone() void {
+export fn onLoadFileDone(app_ptr: *void) void {
+    const app: *App = @ptrCast(@alignCast(app_ptr));
     app.on_load_file_done();
 }
 

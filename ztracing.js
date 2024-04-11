@@ -1,3 +1,5 @@
+import { Heap, make_wasm_imports, WorkerEvent } from "./ztracing_shared.js";
+
 const keyCodeMap = {
   ControlLeft: 527,
   ShiftLeft: 528,
@@ -12,60 +14,16 @@ const keyCodeMap = {
 /** @type {App} */
 var app;
 
-class Memory {
-  /**
-   * @param {WebAssembly.Memory} memory
-   */
-  constructor(memory) {
-    this.memory = memory;
-    this.text_decoder = new TextDecoder();
-    this.text_encoder = new TextEncoder();
-
-    this.next_object_ref = 1n;
-    this.objects = {};
-  }
-
-  store_object(object) {
-    const ref = this.next_object_ref;
-    this.next_object_ref = this.next_object_ref + 1n;
-    this.objects[ref] = object;
-    return ref;
-  }
-
-  load_object(ref) {
-    return this.objects[ref];
-  }
-
-  free_object(ref) {
-    this.objects[ref] = undefined;
-  }
-
-  store_string(str) {
-    return this.store_object(this.text_encoder.encode(str));
-  }
-
-  load_string(ptr, len) {
-    return this.text_decoder.decode(
-      new Uint8Array(this.memory.buffer.slice(ptr, ptr + len)).slice()
-    );
-  }
-
-  set_uint32(ptr, val) {
-    const dataView = new DataView(this.memory.buffer);
-    dataView.setUint32(ptr, val, true);
-  }
-}
-
 const unreachble = () => {
   throw new Error("unreachable");
 };
 
 class Webgl2Renderer {
-  constructor(gl, memory) {
+  constructor(gl, app) {
     /** @type {WebGLRenderingContext} */
     this.gl = gl;
-    /** @type {Memory} */
-    this.memory = memory;
+    /** @type {App} */
+    this.app = app;
   }
 
   init() {
@@ -188,7 +146,7 @@ class Webgl2Renderer {
   }
 
   createFontTexture(w, h, pixels) {
-    const view = new Uint8Array(this.memory.memory.buffer, pixels);
+    const view = new Uint8Array(this.app.heap.memory.buffer, pixels);
     const gl = this.gl;
     const texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -205,19 +163,19 @@ class Webgl2Renderer {
       gl.UNSIGNED_BYTE,
       view
     );
-    return this.memory.store_object(texture);
+    return app.store_object(texture);
   }
 
   bufferData(vtx_buffer_ptr, vtx_buffer_size, idx_buffer_ptr, idx_buffer_size) {
     const gl = this.gl;
 
-    const vtx_buffer = this.memory.memory.buffer.slice(
+    const vtx_buffer = this.app.heap.memory.buffer.slice(
       vtx_buffer_ptr,
       vtx_buffer_ptr + vtx_buffer_size
     );
     gl.bufferData(gl.ARRAY_BUFFER, vtx_buffer, gl.STREAM_DRAW);
 
-    const idx_buffer = this.memory.memory.buffer.slice(
+    const idx_buffer = this.app.heap.memory.buffer.slice(
       idx_buffer_ptr,
       idx_buffer_ptr + idx_buffer_size
     );
@@ -241,149 +199,20 @@ class Webgl2Renderer {
       clip_rect_max_y - clip_rect_min_y
     );
 
-    const texture = this.memory.load_object(texture_ref);
+    const texture = this.app.load_object(texture_ref);
     gl.bindTexture(gl.TEXTURE_2D, texture);
 
     gl.drawElements(gl.TRIANGLES, idx_count, gl.UNSIGNED_INT, idx_offset * 4);
   }
 }
 
-const imports = {
-  wasi_snapshot_preview1: {
-    args_get: unreachble,
-    args_sizes_get: unreachble,
-    fd_close: unreachble,
-    fd_fdstat_get: unreachble,
-    fd_fdstat_set_flags: unreachble,
-    fd_prestat_get: unreachble,
-    fd_prestat_dir_name: unreachble,
-    fd_read: unreachble,
-    fd_seek: unreachble,
-    fd_write: unreachble,
-    path_open: unreachble,
-    proc_exit: unreachble,
-    random_get: unreachble,
-    clock_time_get: unreachble,
-  },
-
-  js: {
-    log: (level, ptr, len) => {
-      const msg = app.memory.load_string(ptr, len);
-      switch (level) {
-        case 0: {
-          console.error(msg);
-          break;
-        }
-        case 1: {
-          console.warn(msg);
-          break;
-        }
-        case 2: {
-          console.info(msg);
-          break;
-        }
-        case 3: {
-          console.debug(msg);
-          break;
-        }
-        default: {
-          console.log("[level " + level + "] " + msg);
-        }
-      }
-    },
-
-    destory: (ref) => {
-      app.memory.free_object(ref);
-    },
-
-    rendererCreateFontTexture: (width, height, pixels) => {
-      return app.renderer.createFontTexture(width, height, pixels);
-    },
-
-    rendererBufferData: (
-      vtx_buffer_ptr,
-      vtx_buffer_size,
-      idx_buffer_ptr,
-      idx_buffer_size
-    ) => {
-      app.renderer.bufferData(
-        vtx_buffer_ptr,
-        vtx_buffer_size,
-        idx_buffer_ptr,
-        idx_buffer_size
-      );
-    },
-
-    rendererDraw: (
-      clip_rect_min_x,
-      clip_rect_min_y,
-      clip_rect_max_x,
-      clip_rect_max_y,
-      texture_ref,
-      idx_count,
-      idx_offset
-    ) => {
-      app.renderer.draw(
-        clip_rect_min_x,
-        clip_rect_min_y,
-        clip_rect_max_x,
-        clip_rect_max_y,
-        texture_ref,
-        idx_count,
-        idx_offset
-      );
-    },
-
-    showOpenFilePicker: async () => {
-      if (app.loadingFile || !app.instance.exports.shouldLoadFile()) {
-        return;
-      }
-
-      const pickedFiles = await window.showOpenFilePicker();
-      /** @type {FileSystemFileHandle} */
-      const firstPickedFile = pickedFiles[0];
-
-      const file = await firstPickedFile.getFile();
-
-      app.instance.exports.onLoadFileStart(
-        file.size,
-        app.memory.store_string(file.name)
-      );
-
-      const stream = file.stream();
-      loadFileFromStream(stream);
-    },
-
-    copy_uint8_array: (buf_ref, ptr, len) => {
-      /** @type {Uint8Array} */
-      const chunk = app.memory.load_object(buf_ref);
-      const dst = new Uint8Array(app.memory.memory.buffer, ptr, len);
-      dst.set(chunk);
-    },
-
-    get_uint8_array_len: (buf_ref) => {
-      /** @type {Uint8Array} */
-      const buf = app.memory.load_object(buf_ref);
-      return buf.length;
-    },
-
-    get_current_timestamp: () => {
-      return performance.now();
-    },
-  },
-
-  env: {
-    memory: new WebAssembly.Memory({ initial: 260, maximum: 65536, shared: true}),
-  }
-};
-
 /** @type {URL} url */
 function loadFileFromUrl(url) {
-  if (app.loadingFile || !app.instance.exports.shouldLoadFile()) {
+  if (app.loadingFile || !app.instance.exports.shouldLoadFile(app.app_ptr)) {
     return;
   }
 
-  app.instance.exports.onLoadFileStart(0, app.memory.store_string(url));
+  app.instance.exports.onLoadFileStart(app.app_ptr, 0, app.store_string(url));
 
   fetch(url)
     .then((response) => response.body)
@@ -438,7 +267,7 @@ class LoadingFile {
   onChunk(done, chunk) {
     if (done) {
       this.isDone = true;
-      app.instance.exports.onLoadFileDone();
+      app.instance.exports.onLoadFileDone(app.app_ptr);
       return;
     }
 
@@ -459,8 +288,13 @@ class LoadingFile {
       }
     }
 
-    const chunkRef = app.memory.store_object(chunk);
-    app.instance.exports.onLoadFileChunk(this.offset, chunkRef, chunk.length);
+    const chunkRef = app.store_object(chunk);
+    app.instance.exports.onLoadFileChunk(
+      app.app_ptr,
+      this.offset,
+      chunkRef,
+      chunk.length
+    );
     this.offset = this.underlying_offset;
     this.reading = false;
   }
@@ -469,12 +303,12 @@ class LoadingFile {
 class App {
   /**
    * @param {HTMLCanvasElement} canvas
-   * @param {WebAssembly.Instance} instance
-   * @param {Memory} memory
+   * @param {Heap} heap
    */
-  constructor(canvas, instance, memory) {
-    this.instance = instance;
-    this.memory = memory;
+  constructor(canvas, heap) {
+    /** @type {WebAssembly.Instance} */
+    this.instance = undefined;
+    this.heap = heap;
     this.canvas = canvas;
     this.renderer = new Webgl2Renderer(
       this.canvas.getContext("webgl2", {
@@ -484,10 +318,13 @@ class App {
         depth: false,
         stencil: false,
       }),
-      memory
+      this
     );
     /** @type {LoadingFile | undefined} */
     this.loadingFile = undefined;
+
+    this.next_object_ref = 1n;
+    this.objects = {};
   }
 
   set_canvas_size(width, height) {
@@ -499,14 +336,16 @@ class App {
     this.canvas.height = height * devicePixelRatio;
   }
 
-  init(width, height, font_data, font_size) {
+  init(shared_state, instance, width, height, font_data, font_size) {
+    this.instance = instance;
     this.set_canvas_size(width, height);
 
-    this.instance.exports.init(
+    this.app_ptr = this.instance.exports.init(
+      shared_state,
       this.canvas.width,
       this.canvas.height,
       devicePixelRatio,
-      font_data ? this.memory.store_object(new Uint8Array(font_data)) : 0n,
+      font_data ? this.store_object(new Uint8Array(font_data)) : 0n,
       font_data ? font_data.byteLength : 0,
       font_size
     );
@@ -517,38 +356,47 @@ class App {
     this.set_canvas_size(width, height);
 
     this.renderer.on_resize();
-    this.instance.exports.on_resize(this.canvas.width, this.canvas.height);
+    this.instance.exports.on_resize(
+      this.app_ptr,
+      this.canvas.width,
+      this.canvas.height
+    );
   }
 
   onMousePos(x, y) {
     this.instance.exports.onMousePos(
+      this.app_ptr,
       (x / this.canvas_display_width) * this.canvas.width,
       (y / this.canvas_display_height) * this.canvas.height
     );
   }
 
   onMouseButton(button, down) {
-    return this.instance.exports.onMouseButton(button, down);
+    return this.instance.exports.onMouseButton(this.app_ptr, button, down);
   }
 
   onMouseWheel(dx, dy) {
     this.instance.exports.onMouseWheel(
+      this.app_ptr,
       (dx / this.canvas_display_width) * this.canvas.width,
       (dy / this.canvas_display_height) * this.canvas.height
     );
   }
 
   onKey(key, down) {
-    return this.instance.exports.onKey(key, down);
+    return this.instance.exports.onKey(this.app_ptr, key, down);
   }
 
   onFocus(focused) {
-    this.instance.exports.onFocus(focused);
+    this.instance.exports.onFocus(this.app_ptr, focused);
   }
 
   update(now) {
     if (this.loadingFile) {
-      if (!this.loadingFile.isDone && app.instance.exports.shouldLoadFile()) {
+      if (
+        !this.loadingFile.isDone &&
+        app.instance.exports.shouldLoadFile(this.app_ptr)
+      ) {
         this.loadingFile.load();
       } else {
         this.loadingFile = undefined;
@@ -561,16 +409,69 @@ class App {
     const dt = (now - this.last) / 1000;
     this.last = now;
     if (dt > 0) {
-      this.instance.exports.update(dt);
+      this.instance.exports.update(this.app_ptr, dt);
     }
 
     requestAnimationFrame((now) => this.update(now));
+  }
+
+  store_object(object) {
+    const ref = this.next_object_ref;
+    this.next_object_ref = this.next_object_ref + 1n;
+    this.objects[ref] = object;
+    return ref;
+  }
+
+  load_object(ref) {
+    return this.objects[ref];
+  }
+
+  free_object(ref) {
+    this.objects[ref] = undefined;
+  }
+
+  store_string(str) {
+    return this.store_object(new TextEncoder().encode(str));
+  }
+}
+
+class WorkerMessageQueue {
+  constructor(worker) {
+    this.worker = worker;
+    this.resolves = {};
+    this.rejects = {};
+    this.next_id = 0;
+    this.worker.onmessage = (e) => {
+      this.queue.push(e);
+    };
+
+    this.worker.onmessage = (e) => {
+      const { id, resolve, reject } = e.data;
+      if (resolve) {
+        this.resolves[id](resolve.value);
+      } else {
+        this.rejects[id](reject.reason);
+      }
+      this.resolves[id] = undefined;
+      this.rejects[id] = undefined;
+    };
+  }
+
+  postMessage(message) {
+    const id = this.next_id++;
+    var promise = new Promise((resolve, reject) => {
+      this.resolves[id] = resolve;
+      this.rejects[id] = reject;
+      this.worker.postMessage({ id, message });
+    });
+    return promise;
   }
 }
 
 /**
  * @param {{
- *  ztraing_wasm_url: URL,
+ *  ztracing_wasm_url: URL,
+ *  ztracing_worker_wasm_url: URL,
  *  font: { url: URL, size: number } | undefined,
  *  canvas: HTMLCanvasElement,
  *  width: number,
@@ -582,26 +483,49 @@ class App {
 function mount(options) {
   const canvas = options.canvas;
 
-  const worker = new Worker("ztracing_worker.js");
-  worker.postMessage({ type: "init", });
+  const memory = new WebAssembly.Memory({
+    initial: 260,
+    maximum: 65536,
+    shared: true,
+  });
+  const heap = new Heap(memory);
+
+  app = new App(canvas, heap);
+  const imports = make_wasm_imports(memory, app);
+
+  const worker = new Worker("./ztracing_worker.js", { type: "module" });
+  const worker_mq = new WorkerMessageQueue(worker);
+  const load_worker_promise = worker_mq.postMessage({
+    event: WorkerEvent.load,
+    args: { memory, ztracing_wasm_url: options.ztracing_worker_wasm_url },
+  });
 
   const fetch_font_promise = options.font
     ? fetch(options.font.url).then((res) => res.arrayBuffer())
     : Promise.resolve();
 
   const init_wasm_promise = WebAssembly.instantiateStreaming(
-    fetch(options.ztraing_wasm_url),
+    fetch(options.ztracing_wasm_url),
     imports
   );
 
-  Promise.all([fetch_font_promise, init_wasm_promise]).then((result) => {
+  Promise.all([
+    fetch_font_promise,
+    init_wasm_promise,
+    load_worker_promise,
+  ]).then(async (result) => {
     const font_data = result[0];
     const wasm = result[1];
 
-    const exports = wasm.instance.exports;
-    console.log(exports.memory);
-    app = new App(canvas, wasm.instance, new Memory(imports.env.memory));
+    const shared_state = wasm.instance.exports.init_shared_state();
+    await worker_mq.postMessage({
+      event: WorkerEvent.init,
+      args: { shared_state },
+    });
+
     app.init(
+      shared_state,
+      wasm.instance,
       options.width,
       options.height,
       font_data,
@@ -644,7 +568,10 @@ function mount(options) {
     canvas.addEventListener("drop", (event) => {
       event.preventDefault();
 
-      if (app.loadingFile || !app.instance.exports.shouldLoadFile()) {
+      if (
+        app.loadingFile ||
+        !app.instance.exports.shouldLoadFile(app.app_ptr)
+      ) {
         return;
       }
 
@@ -655,8 +582,9 @@ function mount(options) {
       ) {
         const file = event.dataTransfer.files[0];
         app.instance.exports.onLoadFileStart(
+          app.app_ptr,
           file.size,
-          app.memory.store_string(file.name)
+          app.store_string(file.name)
         );
 
         const stream = file.stream();

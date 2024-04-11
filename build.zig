@@ -114,7 +114,7 @@ fn add_tracy(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     return tracy;
 }
 
-fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) *std.Build.Step.Compile {
+fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.Mode) void {
     const build_options = b.addOptions();
 
     const imgui = add_imgui(b, target, optimize);
@@ -126,6 +126,23 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             query.cpu_features_add.addFeature(@intFromEnum(std.Target.wasm.Feature.atomics));
             query.cpu_features_add.addFeature(@intFromEnum(std.Target.wasm.Feature.bulk_memory));
             const target2 = b.resolveTargetQuery(query);
+
+            const ztracing_worker = b.addExecutable(.{
+                .name = "ztracing_worker",
+                .root_source_file = .{ .path = "src/worker_wasm.zig" },
+                .target = target2,
+                .optimize = optimize,
+            });
+            ztracing_worker.import_memory = true;
+            ztracing_worker.initial_memory = 260 * 65536;
+            ztracing_worker.max_memory = 65536 * 65536;
+            ztracing_worker.shared_memory = true;
+            ztracing_worker.root_module.export_symbol_names = &.{
+                "init",
+            };
+            ztracing_worker.entry = .disabled;
+            b.installArtifact(ztracing_worker);
+
             const ztracing = b.addExecutable(.{
                 .name = "ztracing",
                 .root_source_file = .{ .path = "src/main_wasm.zig" },
@@ -134,9 +151,10 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             });
             ztracing.import_memory = true;
             ztracing.initial_memory = 260 * 65536;
-            ztracing.max_memory = 65536  * 65536;
+            ztracing.max_memory = 65536 * 65536;
             ztracing.shared_memory = true;
             ztracing.root_module.export_symbol_names = &.{
+                "init_shared_state",
                 "init",
                 "update",
                 "on_resize",
@@ -225,8 +243,7 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
     ztracing.addIncludePath(.{ .path = "." });
     ztracing.addIncludePath(.{ .path = "third_party/cimgui" });
     ztracing.root_module.addOptions("build_options", build_options);
-
-    return ztracing;
+    b.installArtifact(ztracing);
 }
 
 // Although this function looks imperative, note that its job is to
@@ -247,8 +264,7 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const ztracing = add_ztraing(b, target, optimize);
-    b.installArtifact(ztracing);
+    add_ztraing(b, target, optimize);
 
     addGenProfile(b, target, optimize);
     addBenchParser(b, target, optimize);

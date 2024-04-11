@@ -3,7 +3,7 @@ const std = @import("std");
 
 const Allocator = std.mem.Allocator;
 
-const thread_safe = !builtin.single_threaded;
+const thread_safe = true;
 
 const Count = if (thread_safe) std.atomic.Value(usize) else usize;
 const zero: Count = if (thread_safe) std.atomic.Value(usize).init(0) else 0;

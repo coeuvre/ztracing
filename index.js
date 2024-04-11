@@ -1,7 +1,8 @@
 import queryString from "query-string";
 
 import ztracing from "./ztracing.js";
-import ztraing_wasm_url from "./zig-out/bin/ztracing.wasm?url";
+import ztracing_wasm_url from "./zig-out/bin/ztracing.wasm?url";
+import ztracing_worker_wasm_url from "./zig-out/bin/ztracing_worker.wasm?url";
 import font_url from "./assets/JetBrainsMono-Regular.ttf?url";
 
 const canvas = document.getElementById("canvas");
@@ -13,7 +14,8 @@ window.onresize = () => {
 const query = queryString.parse(location.search);
 
 ztracing.mount({
-  ztraing_wasm_url,
+  ztracing_wasm_url,
+  ztracing_worker_wasm_url,
   font: {
     url: font_url,
     size: 15.0,
