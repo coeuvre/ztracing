@@ -5,7 +5,6 @@ const ig = @import("imgui.zig");
 const software_renderer = @import("./software_renderer.zig");
 const imgui = @import("imgui.zig");
 
-const log = std.log;
 const Allocator = std.mem.Allocator;
 const CountAllocator = @import("./count_alloc.zig").CountAllocator;
 const Tracing = @import("tracing.zig").Tracing;
@@ -13,25 +12,26 @@ const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
 const Arena = @import("arena.zig").SimpleArena;
 
-pub const std_options = struct {
-    pub fn logFn(
-        comptime message_level: std.log.Level,
-        comptime scope: @Type(.EnumLiteral),
-        comptime format: []const u8,
-        args: anytype,
-    ) void {
-        const level = @intFromEnum(message_level);
-        const prefix2 = if (scope == .default) "" else "[" ++ @tagName(scope) ++ "] ";
-        var buf: [256]u8 = undefined;
-        const msg = std.fmt.bufPrint(&buf, prefix2 ++ format ++ "\n", args) catch return;
-        js.log(level, msg.ptr, msg.len);
-    }
-
-    pub const log_level: std.log.Level = switch (builtin.mode) {
+pub const std_options = std.Options{
+    .logFn = log,
+    .log_level = switch (builtin.mode) {
         .Debug => .debug,
         else => .info,
-    };
+    },
 };
+
+fn log(
+    comptime message_level: std.log.Level,
+    comptime scope: @Type(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    const level = @intFromEnum(message_level);
+    const prefix2 = if (scope == .default) "" else "[" ++ @tagName(scope) ++ "] ";
+    var buf: [256]u8 = undefined;
+    const msg = std.fmt.bufPrint(&buf, prefix2 ++ format ++ "\n", args) catch return;
+    js.log(level, msg.ptr, msg.len);
+}
 
 const js = struct {
     pub const JsObject = extern struct {
@@ -528,9 +528,9 @@ export fn main(argc: i32, argv: i32) i32 {
 pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     _ = ret_addr;
     if (error_return_trace) |trace| {
-        log.err("{s}\n{}", .{ msg, trace });
+        std.log.err("{s}\n{}", .{ msg, trace });
     } else {
-        log.err("{s}", .{msg});
+        std.log.err("{s}", .{msg});
     }
-    std.os.abort();
+    std.process.abort();
 }
