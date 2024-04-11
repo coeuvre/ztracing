@@ -12,7 +12,6 @@
     "vite": "^4.3.9"
   },
   "dependencies": {
-    "pako": "^2.1.0",
     "query-string": "^8.1.0"
   }
 }

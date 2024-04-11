@@ -1,5 +1,3 @@
-import pako from "pako";
-
 const keyCodeMap = {
   ControlLeft: 527,
   ShiftLeft: 528,
@@ -48,7 +46,7 @@ class Memory {
 
   load_string(ptr, len) {
     return this.text_decoder.decode(
-      new Uint8Array(this.memory.buffer, ptr, len),
+      new Uint8Array(this.memory.buffer, ptr, len)
     );
   }
 
@@ -141,7 +139,7 @@ class Webgl2Renderer {
       gl.SRC_ALPHA,
       gl.ONE_MINUS_SRC_ALPHA,
       gl.ONE,
-      gl.ONE_MINUS_SRC_ALPHA,
+      gl.ONE_MINUS_SRC_ALPHA
     );
     gl.disable(gl.CULL_FACE);
     gl.disable(gl.DEPTH_TEST);
@@ -185,7 +183,7 @@ class Webgl2Renderer {
     this.gl.uniformMatrix4fv(
       this.uniform_proj_mtx,
       false,
-      new Float32Array(ortho_projection),
+      new Float32Array(ortho_projection)
     );
   }
 
@@ -205,7 +203,7 @@ class Webgl2Renderer {
       0,
       gl.RGBA,
       gl.UNSIGNED_BYTE,
-      view,
+      view
     );
     return this.memory.store_object(texture);
   }
@@ -215,13 +213,13 @@ class Webgl2Renderer {
 
     const vtx_buffer = this.memory.memory.buffer.slice(
       vtx_buffer_ptr,
-      vtx_buffer_ptr + vtx_buffer_size,
+      vtx_buffer_ptr + vtx_buffer_size
     );
     gl.bufferData(gl.ARRAY_BUFFER, vtx_buffer, gl.STREAM_DRAW);
 
     const idx_buffer = this.memory.memory.buffer.slice(
       idx_buffer_ptr,
-      idx_buffer_ptr + idx_buffer_size,
+      idx_buffer_ptr + idx_buffer_size
     );
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx_buffer, gl.STREAM_DRAW);
   }
@@ -233,14 +231,14 @@ class Webgl2Renderer {
     clip_rect_max_y,
     texture_ref,
     idx_count,
-    idx_offset,
+    idx_offset
   ) {
     const gl = this.gl;
     gl.scissor(
       clip_rect_min_x,
       this.gl.drawingBufferHeight - clip_rect_max_y,
       clip_rect_max_x - clip_rect_min_x,
-      clip_rect_max_y - clip_rect_min_y,
+      clip_rect_max_y - clip_rect_min_y
     );
 
     const texture = this.memory.load_object(texture_ref);
@@ -306,13 +304,13 @@ const imports = {
       vtx_buffer_ptr,
       vtx_buffer_size,
       idx_buffer_ptr,
-      idx_buffer_size,
+      idx_buffer_size
     ) => {
       app.renderer.bufferData(
         vtx_buffer_ptr,
         vtx_buffer_size,
         idx_buffer_ptr,
-        idx_buffer_size,
+        idx_buffer_size
       );
     },
 
@@ -323,7 +321,7 @@ const imports = {
       clip_rect_max_y,
       texture_ref,
       idx_count,
-      idx_offset,
+      idx_offset
     ) => {
       app.renderer.draw(
         clip_rect_min_x,
@@ -332,7 +330,7 @@ const imports = {
         clip_rect_max_y,
         texture_ref,
         idx_count,
-        idx_offset,
+        idx_offset
       );
     },
 
@@ -347,7 +345,10 @@ const imports = {
 
       const file = await firstPickedFile.getFile();
 
-      app.instance.exports.onLoadFileStart(file.size, app.memory.store_string(file.name));
+      app.instance.exports.onLoadFileStart(
+        file.size,
+        app.memory.store_string(file.name)
+      );
 
       const stream = file.stream();
       loadFileFromStream(stream);
@@ -401,47 +402,63 @@ class LoadingFile {
    * @param {ReadableStream} stream
    */
   constructor(stream) {
-    this.reader = stream.getReader();
+    const self = this;
+    this.stream = stream.pipeThrough(
+      new TransformStream({
+        transform(chunk, controller) {
+          self.underlying_offset += chunk.length;
+          controller.enqueue(chunk);
+        },
+      })
+    );
+    this.reader = this.stream.getReader();
+    this.reading = false;
     this.offset = 0;
+    this.underlying_offset = 0;
     this.isDone = false;
   }
 
   load() {
-    this.reader.read().then(({ done, value }) => {
-      if (done) {
-        if (!this.inflator) {
-          this.onDone();
+    if (this.reading || this.isDone) {
+      return;
+    }
+
+    this.reading = true;
+    this.reader.read().then(({ done, value }) => this.onChunk(done, value));
+  }
+
+  /**
+   *
+   * @param {ReadableStreamReadResult} result
+   */
+  onChunk(done, chunk) {
+    if (done) {
+      this.isDone = true;
+      app.instance.exports.onLoadFileDone();
+      return;
+    }
+
+    if (this.offset == 0) {
+      // gzip magic number
+      if (chunk[0] == 0x1f && chunk[1] == 0x8b) {
+        const ds = new DecompressionStream("gzip");
+        {
+          const writable = ds.writable.getWriter();
+          writable.write(chunk);
+          writable.releaseLock();
         }
+
+        this.reader.releaseLock();
+        this.reader = this.stream.pipeThrough(ds).getReader();
+        this.reading = false;
         return;
       }
+    }
 
-      if (this.offset == 0) {
-        // gzip magic number
-        if (value[0] == 0x1f && value[1] == 0x8b) {
-          this.inflator = new pako.Inflate();
-          this.inflator.onData = (chunk) => this.onChunk(chunk);
-          this.inflator.onEnd = () => this.onDone();
-        }
-      }
-
-      if (this.inflator) {
-        this.inflator.push(value);
-      } else {
-        this.onChunk(value);
-      }
-
-      this.offset += value.length;
-    });
-  }
-
-  onChunk(chunk) {
     const chunkRef = app.memory.store_object(chunk);
     app.instance.exports.onLoadFileChunk(this.offset, chunkRef, chunk.length);
-  }
-
-  onDone() {
-    this.isDone = true;
-    app.instance.exports.onLoadFileDone();
+    this.offset = this.underlying_offset;
+    this.reading = false;
   }
 }
 
@@ -463,8 +480,10 @@ class App {
         depth: false,
         stencil: false,
       }),
-      memory,
+      memory
     );
+    /** @type {LoadingFile | undefined} */
+    this.loadingFile = undefined;
   }
 
   set_canvas_size(width, height) {
@@ -485,7 +504,7 @@ class App {
       devicePixelRatio,
       font_data ? this.memory.store_object(new Uint8Array(font_data)) : 0n,
       font_data ? font_data.byteLength : 0,
-      font_size,
+      font_size
     );
     this.renderer.init();
   }
@@ -499,8 +518,8 @@ class App {
 
   onMousePos(x, y) {
     this.instance.exports.onMousePos(
-      x / this.canvas_display_width * this.canvas.width,
-      y / this.canvas_display_height * this.canvas.height,
+      (x / this.canvas_display_width) * this.canvas.width,
+      (y / this.canvas_display_height) * this.canvas.height
     );
   }
 
@@ -510,8 +529,8 @@ class App {
 
   onMouseWheel(dx, dy) {
     this.instance.exports.onMouseWheel(
-      dx / this.canvas_display_width * this.canvas.width,
-      dy / this.canvas_display_height * this.canvas.height,
+      (dx / this.canvas_display_width) * this.canvas.width,
+      (dy / this.canvas_display_height) * this.canvas.height
     );
   }
 
@@ -563,7 +582,7 @@ function mount(options) {
 
   const init_wasm_promise = WebAssembly.instantiateStreaming(
     fetch(options.ztraing_wasm_url),
-    imports,
+    imports
   );
 
   Promise.all([fetch_font_promise, init_wasm_promise]).then((result) => {
@@ -576,11 +595,11 @@ function mount(options) {
       options.width,
       options.height,
       font_data,
-      options.font ? options.font.size : 0,
+      options.font ? options.font.size : 0
     );
 
     canvas.addEventListener("mousemove", (event) =>
-      app.onMousePos(event.clientX, event.clientY),
+      app.onMousePos(event.clientX, event.clientY)
     );
     canvas.addEventListener("mousedown", (event) => {
       if (app.onMouseButton(event.button, true)) {
@@ -625,7 +644,10 @@ function mount(options) {
         event.dataTransfer.files.length > 0
       ) {
         const file = event.dataTransfer.files[0];
-        app.instance.exports.onLoadFileStart(file.size, app.memory.store_string(file.name));
+        app.instance.exports.onLoadFileStart(
+          file.size,
+          app.memory.store_string(file.name)
+        );
 
         const stream = file.stream();
         loadFileFromStream(stream);
