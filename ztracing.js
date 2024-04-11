@@ -46,13 +46,13 @@ class Memory {
 
   load_string(ptr, len) {
     return this.text_decoder.decode(
-      new Uint8Array(this.memory.buffer, ptr, len)
+      new Uint8Array(this.memory.buffer.slice(ptr, ptr + len)).slice()
     );
   }
 
   set_uint32(ptr, val) {
     const dataView = new DataView(this.memory.buffer);
-    dataView.set_uint32(ptr, val, true);
+    dataView.setUint32(ptr, val, true);
   }
 }
 
@@ -371,6 +371,10 @@ const imports = {
       return performance.now();
     },
   },
+
+  env: {
+    memory: new WebAssembly.Memory({ initial: 260, maximum: 65536, shared: true}),
+  }
 };
 
 /** @type {URL} url */
@@ -556,7 +560,9 @@ class App {
     }
     const dt = (now - this.last) / 1000;
     this.last = now;
-    this.instance.exports.update(dt);
+    if (dt > 0) {
+      this.instance.exports.update(dt);
+    }
 
     requestAnimationFrame((now) => this.update(now));
   }
@@ -576,6 +582,9 @@ class App {
 function mount(options) {
   const canvas = options.canvas;
 
+  const worker = new Worker("ztracing_worker.js");
+  worker.postMessage({ type: "init", });
+
   const fetch_font_promise = options.font
     ? fetch(options.font.url).then((res) => res.arrayBuffer())
     : Promise.resolve();
@@ -590,7 +599,8 @@ function mount(options) {
     const wasm = result[1];
 
     const exports = wasm.instance.exports;
-    app = new App(canvas, wasm.instance, new Memory(exports.memory));
+    console.log(exports.memory);
+    app = new App(canvas, wasm.instance, new Memory(imports.env.memory));
     app.init(
       options.width,
       options.height,

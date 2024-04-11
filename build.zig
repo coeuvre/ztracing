@@ -122,12 +122,20 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
         if (target.result.isWasm()) {
             build_options.addOption(bool, "enable_tracy", false);
 
+            var query = target.query;
+            query.cpu_features_add.addFeature(@intFromEnum(std.Target.wasm.Feature.atomics));
+            query.cpu_features_add.addFeature(@intFromEnum(std.Target.wasm.Feature.bulk_memory));
+            const target2 = b.resolveTargetQuery(query);
             const ztracing = b.addExecutable(.{
                 .name = "ztracing",
                 .root_source_file = .{ .path = "src/main_wasm.zig" },
-                .target = target,
+                .target = target2,
                 .optimize = optimize,
             });
+            ztracing.import_memory = true;
+            ztracing.initial_memory = 260 * 65536;
+            ztracing.max_memory = 65536  * 65536;
+            ztracing.shared_memory = true;
             ztracing.root_module.export_symbol_names = &.{
                 "init",
                 "update",
