@@ -1,4 +1,4 @@
-import { Heap, make_wasm_imports, WorkerEvent } from "./ztracing_shared.js";
+import { Heap, make_wasm_imports } from "./ztracing_shared.js";
 
 const keyCodeMap = {
   ControlLeft: 527,
@@ -336,12 +336,11 @@ class App {
     this.canvas.height = height * devicePixelRatio;
   }
 
-  init(shared_state, instance, width, height, font_data, font_size) {
+  init(instance, width, height, font_data, font_size) {
     this.instance = instance;
     this.set_canvas_size(width, height);
 
     this.app_ptr = this.instance.exports.init(
-      shared_state,
       this.canvas.width,
       this.canvas.height,
       devicePixelRatio,
@@ -468,10 +467,11 @@ class WorkerMessageQueue {
   }
 }
 
+var next_thread_id = 0;
+
 /**
  * @param {{
  *  ztracing_wasm_url: URL,
- *  ztracing_worker_wasm_url: URL,
  *  font: { url: URL, size: number } | undefined,
  *  canvas: HTMLCanvasElement,
  *  width: number,
@@ -493,12 +493,20 @@ function mount(options) {
   app = new App(canvas, heap);
   const imports = make_wasm_imports(memory, app);
 
-  const worker = new Worker("./ztracing_worker.js", { type: "module" });
-  const worker_mq = new WorkerMessageQueue(worker);
-  const load_worker_promise = worker_mq.postMessage({
-    event: WorkerEvent.load,
-    args: { memory, ztracing_wasm_url: options.ztracing_worker_wasm_url },
-  });
+  app.spawn_thread = function (arg) {
+    const tid = next_thread_id++;
+    const worker = new Worker("./ztracing_worker.js", { type: "module" });
+    worker.postMessage({
+      memory,
+      ztracing_wasm_url: options.ztracing_wasm_url,
+      tid,
+      arg,
+    });
+    worker.onmessage = (e) => {
+      worker.terminate();
+    };
+    return tid;
+  };
 
   const fetch_font_promise = options.font
     ? fetch(options.font.url).then((res) => res.arrayBuffer())
@@ -509,22 +517,11 @@ function mount(options) {
     imports
   );
 
-  Promise.all([
-    fetch_font_promise,
-    init_wasm_promise,
-    load_worker_promise,
-  ]).then(async (result) => {
+  Promise.all([fetch_font_promise, init_wasm_promise]).then(async (result) => {
     const font_data = result[0];
     const wasm = result[1];
 
-    const shared_state = wasm.instance.exports.init_shared_state();
-    await worker_mq.postMessage({
-      event: WorkerEvent.init,
-      args: { shared_state },
-    });
-
     app.init(
-      shared_state,
       wasm.instance,
       options.width,
       options.height,

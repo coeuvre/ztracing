@@ -11,7 +11,6 @@ const Tracing = @import("tracing.zig").Tracing;
 const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
 const Arena = @import("arena.zig").SimpleArena;
-const SharedState = @import("shared.zig").SharedState;
 
 pub const std_options = std.Options{
     .logFn = log,
@@ -40,6 +39,8 @@ const js = struct {
     };
 
     pub extern "js" fn log(level: u32, ptr: [*]const u8, len: usize) void;
+
+    pub extern "js" fn dispatch(task: *void) void;
 
     pub extern "js" fn destory(obj: JsObject) void;
 
@@ -421,15 +422,83 @@ const WebglRenderer = struct {
 
 const Renderer = WebglRenderer;
 
-export fn init_shared_state() *void {
-    var shared_state = std.heap.page_allocator.create(SharedState) catch unreachable;
-    shared_state.gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    shared_state.count_allocator = CountAllocator.init(shared_state.gpa.allocator());
-    return @ptrCast(shared_state);
+const global = struct {
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = undefined;
+    var count_allocator: CountAllocator = undefined;
+    var queue: EventQueue(Task) = undefined;
+};
+
+const Task = union(enum) {
+    add: struct {
+        a: i32,
+        b: i32,
+    },
+};
+
+fn EventQueue(Event: type) type {
+    return struct {
+        const Self = @This();
+
+        mutex: std.Thread.Mutex = .{},
+        condition: std.Thread.Condition = .{},
+        queue: std.ArrayList(Event),
+
+        pub fn init(allocator: Allocator) Self {
+            return .{
+                .queue = std.ArrayList(Event).init(allocator),
+            };
+        }
+
+        pub fn get(self: *Self) Event {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            while (self.queue.items.len == 0) {
+                // singal might be lost due to compiler bug, so we need to use timedWait.
+                self.condition.timedWait(&self.mutex, 10e6) catch |err| {
+                    switch (err) {
+                        error.Timeout => {},
+                    }
+                };
+            }
+
+            const event = self.queue.pop();
+
+            if (self.queue.items.len > 0) {
+                self.condition.signal();
+            }
+
+            return event;
+        }
+
+        pub noinline fn put(self: *Self, event: Event) void {
+            // wasm doesn't support atomic.wait on main thread, so we need to busy wait.
+            while (true) {
+                if (self.mutex.tryLock()) {
+                    defer self.mutex.unlock();
+
+                    self.queue.append(event) catch unreachable;
+                    self.condition.signal();
+                    break;
+                }
+            }
+        }
+    };
+}
+
+fn worker_main() !void {
+    while (true) {
+        const task = global.queue.get();
+        switch (task) {
+            else => {
+                std.log.info("Thread {} got task: {?}", .{ std.Thread.getCurrentId(), task });
+            },
+        }
+    }
+    return null;
 }
 
 export fn init(
-    shared_state_ptr: *void,
     width: f32,
     height: f32,
     device_pixel_ratio: f32,
@@ -437,8 +506,12 @@ export fn init(
     font_len: usize,
     font_size: f32,
 ) *void {
-    const shared_state: *SharedState = @ptrCast(@alignCast(shared_state_ptr));
-    var allocator = shared_state.count_allocator.allocator();
+    global.gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    global.count_allocator = CountAllocator.init(global.gpa.allocator());
+    var allocator = global.count_allocator.allocator();
+    global.queue = EventQueue(Task).init(allocator);
+
+    _ = std.Thread.spawn(.{ .allocator = allocator }, worker_main, .{}) catch unreachable;
 
     var app = allocator.create(App) catch unreachable;
     const font_data: ?[]u8 = blk: {
@@ -455,7 +528,7 @@ export fn init(
     defer if (font_data) |f| allocator.free(f);
 
     app.init(
-        &shared_state.count_allocator,
+        &global.count_allocator,
         width,
         height,
         device_pixel_ratio,
@@ -470,6 +543,7 @@ export fn init(
 }
 
 export fn update(app_ptr: *void, dt: f32) void {
+    global.queue.put(.{ .add = .{ .a = 1, .b = 2 } });
     const app: *App = @ptrCast(@alignCast(app_ptr));
     app.update(dt);
 }

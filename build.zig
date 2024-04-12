@@ -127,22 +127,6 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             query.cpu_features_add.addFeature(@intFromEnum(std.Target.wasm.Feature.bulk_memory));
             const target2 = b.resolveTargetQuery(query);
 
-            const ztracing_worker = b.addExecutable(.{
-                .name = "ztracing_worker",
-                .root_source_file = .{ .path = "src/worker_wasm.zig" },
-                .target = target2,
-                .optimize = optimize,
-            });
-            ztracing_worker.import_memory = true;
-            ztracing_worker.initial_memory = 260 * 65536;
-            ztracing_worker.max_memory = 65536 * 65536;
-            ztracing_worker.shared_memory = true;
-            ztracing_worker.root_module.export_symbol_names = &.{
-                "init",
-            };
-            ztracing_worker.entry = .disabled;
-            b.installArtifact(ztracing_worker);
-
             const ztracing = b.addExecutable(.{
                 .name = "ztracing",
                 .root_source_file = .{ .path = "src/main_wasm.zig" },
@@ -153,8 +137,10 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             ztracing.initial_memory = 260 * 65536;
             ztracing.max_memory = 65536 * 65536;
             ztracing.shared_memory = true;
+            ztracing.root_module.single_threaded = false;
             ztracing.root_module.export_symbol_names = &.{
-                "init_shared_state",
+                "wasi_thread_start",
+
                 "init",
                 "update",
                 "on_resize",

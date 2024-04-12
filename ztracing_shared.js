@@ -1,9 +1,3 @@
-const WorkerEvent = {
-    load: 0,
-    init: 1,
-    run_task: 2,
-};
-
 class Heap {
   /**
    * @param {WebAssembly.Memory} memory
@@ -19,8 +13,13 @@ class Heap {
   }
 
   set_uint32(ptr, val) {
-    const dataView = new DataView(this.memory.buffer);
-    dataView.setUint32(ptr, val, true);
+    const view = new DataView(this.memory.buffer);
+    view.setUint32(ptr, val, true);
+  }
+
+  set_uint64(ptr, val) {
+    const view = new DataView(this.memory.buffer);
+    view.setBigUint64(ptr, val);
   }
 }
 
@@ -44,7 +43,10 @@ function make_wasm_imports(memory, app) {
       path_open: unreachble,
       proc_exit: unreachble,
       random_get: unreachble,
-      clock_time_get: unreachble,
+      clock_time_get: (ctx, clock_id, precision, time) => {
+        heap.set_uint64(time, BigInt(Math.round(performance.now() * 1e6)));
+        return 0;
+      },
     },
 
     js: {
@@ -156,6 +158,12 @@ function make_wasm_imports(memory, app) {
     env: {
       memory: memory,
     },
+
+    wasi: {
+      "thread-spawn": (arg) => {
+        return app.spawn_thread(arg);
+      },
+    },
   };
 }
 
@@ -163,4 +171,4 @@ const unreachble = () => {
   throw new Error("unreachable");
 };
 
-export { make_wasm_imports, Heap, WorkerEvent };
+export { make_wasm_imports, Heap };
