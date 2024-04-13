@@ -19,9 +19,8 @@ const Thread = profile_.Thread;
 var global_buf: [1024]u8 = [_]u8{0} ** 1024;
 
 pub const PlatformApi = struct {
-    ctx: *void,
     show_open_file_picker: ?*const fn () void,
-    get_memory_usages: *const fn (ctx: *void) usize,
+    get_memory_usages: *const fn () usize,
 };
 
 pub const Tracing = struct {
@@ -74,7 +73,7 @@ pub const Tracing = struct {
                 {
                     const io = c.igGetIO();
                     const fps = if (io.*.Framerate < 10000) io.*.Framerate else 0;
-                    const allocated_bytes: f64 = @floatFromInt(self.api.get_memory_usages(self.api.ctx));
+                    const allocated_bytes: f64 = @floatFromInt(self.api.get_memory_usages());
                     const allocated_bytes_mb = allocated_bytes / 1024.0 / 1024.0;
 
                     const text = std.fmt.bufPrintZ(&global_buf, "{d:.1}MiB {d:.0} ", .{ allocated_bytes_mb, fps }) catch unreachable;

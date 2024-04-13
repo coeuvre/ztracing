@@ -213,8 +213,7 @@ const LoadState = struct {
     }
 };
 
-fn get_memory_usages(ctx: *void) usize {
-    _ = ctx;
+fn get_memory_usages() usize {
     return global.gpa.total_requested_bytes;
 }
 
@@ -246,7 +245,6 @@ const App = struct {
         self.load_state = null;
         self.load_state_arena = Arena.init(allocator);
         self.tracing = Tracing.init(allocator, .{
-            .ctx = @ptrCast(self),
             .show_open_file_picker = show_open_file_picker,
             .get_memory_usages = get_memory_usages,
         });
