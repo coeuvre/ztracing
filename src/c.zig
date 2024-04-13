@@ -24,7 +24,7 @@ pub const memory = struct {
 
     pub fn malloc(allocator: Allocator, size: usize) ?*anyopaque {
         const total_size = header_size + size;
-        const buf = allocator.alignedAlloc(u8, alignment, total_size) catch unreachable;
+        const buf = allocator.alignedAlloc(u8, alignment, total_size) catch return null;
         var base: [*]usize = @ptrCast(buf.ptr);
         base[0] = total_size;
         return @ptrCast(base + num_usize);

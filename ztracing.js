@@ -214,7 +214,7 @@ function loadFileFromUrl(url) {
     return;
   }
 
-  app.instance.exports.onLoadFileStart(app.app_ptr, 0, app.store_string(url));
+  app.on_load_file_start(0, url);
 
   fetch(url)
     .then((response) => response.body)
@@ -290,11 +290,11 @@ class LoadingFile {
       }
     }
 
-    const chunkRef = app.store_object(chunk);
+    const chunk_ptr = app.store_bytes(chunk);
     app.instance.exports.onLoadFileChunk(
       app.app_ptr,
       this.offset,
-      chunkRef,
+      chunk_ptr,
       chunk.length
     );
     this.offset = this.underlying_offset;
@@ -338,6 +338,7 @@ class App {
     this.canvas.height = height * devicePixelRatio;
   }
 
+  /** @param {ArrayBuffer} font_data  */
   init(instance, width, height, font_data, font_size) {
     this.instance = instance;
     this.set_canvas_size(width, height);
@@ -346,7 +347,7 @@ class App {
       this.canvas.width,
       this.canvas.height,
       devicePixelRatio,
-      font_data ? this.store_object(new Uint8Array(font_data)) : 0n,
+      font_data ? this.store_bytes(new Uint8Array(font_data)) : 0n,
       font_data ? font_data.byteLength : 0,
       font_size
     );
@@ -431,8 +432,37 @@ class App {
     this.objects[ref] = undefined;
   }
 
-  store_string(str) {
-    return this.store_object(new TextEncoder().encode(str));
+  /** @param {Uint8Array} buf */
+  store_bytes(buf) {
+    const ptr = this.instance.exports.alloc(buf.length);
+    this.heap.memcpy(ptr, buf);
+    return ptr;
+  }
+
+  async show_open_file_picker() {
+    if (app.loadingFile || !app.instance.exports.shouldLoadFile()) {
+      return;
+    }
+
+    const pickedFiles = await window.showOpenFilePicker();
+    /** @type {FileSystemFileHandle} */
+    const firstPickedFile = pickedFiles[0];
+
+    const file = await firstPickedFile.getFile();
+    this.on_load_file_start(file.size, file.name);
+
+    const stream = file.stream();
+    loadFileFromStream(stream);
+  }
+
+  on_load_file_start(file_size, file_name) {
+    const file_name_bytes = new TextEncoder().encode(file_name);
+    this.instance.exports.onLoadFileStart(
+      this.app_ptr,
+      file_size,
+      this.store_bytes(file_name_bytes),
+      file_name_bytes.length
+    );
   }
 }
 
@@ -547,12 +577,7 @@ function mount(options) {
         event.dataTransfer.files.length > 0
       ) {
         const file = event.dataTransfer.files[0];
-        app.instance.exports.onLoadFileStart(
-          app.app_ptr,
-          file.size,
-          app.store_string(file.name)
-        );
-
+        app.on_load_file_start(file.size, file.name);
         const stream = file.stream();
         loadFileFromStream(stream);
       }

@@ -140,6 +140,7 @@ fn add_ztraing(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bu
             ztracing.root_module.single_threaded = false;
             ztracing.root_module.export_symbol_names = &.{
                 "wasi_thread_start",
+                "alloc",
 
                 "init",
                 "update",

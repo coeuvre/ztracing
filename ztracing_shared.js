@@ -21,6 +21,15 @@ class Heap {
     const view = new DataView(this.memory.buffer);
     view.setBigUint64(ptr, val);
   }
+
+  /**
+   *
+   * @param {number} dst
+   * @param {Uint8Array} src
+   */
+  memcpy(dst, src) {
+    new Uint8Array(this.memory.buffer).set(src, dst);
+  }
 }
 
 /**
@@ -120,37 +129,12 @@ function make_wasm_imports(memory, app) {
         );
       },
 
-      showOpenFilePicker: async () => {
-        if (app.loadingFile || !app.instance.exports.shouldLoadFile()) {
-          return;
+      showOpenFilePicker: () => {
+        if (!app) {
+          unreachble();
         }
 
-        const pickedFiles = await window.showOpenFilePicker();
-        /** @type {FileSystemFileHandle} */
-        const firstPickedFile = pickedFiles[0];
-
-        const file = await firstPickedFile.getFile();
-
-        app.instance.exports.onLoadFileStart(
-          file.size,
-          app.store_string(file.name)
-        );
-
-        const stream = file.stream();
-        loadFileFromStream(stream);
-      },
-
-      copy_uint8_array: (buf_ref, ptr, len) => {
-        /** @type {Uint8Array} */
-        const chunk = app.load_object(buf_ref);
-        const dst = new Uint8Array(heap.memory.buffer, ptr, len);
-        dst.set(chunk);
-      },
-
-      get_uint8_array_len: (buf_ref) => {
-        /** @type {Uint8Array} */
-        const buf = app.load_object(buf_ref);
-        return buf.length;
+        app.show_open_file_picker();
       },
 
       get_current_timestamp: () => {

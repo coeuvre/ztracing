@@ -45,10 +45,6 @@ const js = struct {
 
     pub extern "js" fn showOpenFilePicker() void;
 
-    pub extern "js" fn copy_uint8_array(chunk: JsObject, ptr: [*]const u8, len: usize) void;
-
-    pub extern "js" fn get_uint8_array_len(buf_ref: JsObject) usize;
-
     pub extern "js" fn rendererCreateFontTexture(width: i32, height: i32, pixels: [*]const u8) JsObject;
 
     pub extern "js" fn rendererBufferData(vtx_buffer_ptr: [*]const u8, vtx_buffer_len: i32, idx_buffer_ptr: [*]const u8, idx_buffer_len: i32) void;
@@ -499,10 +495,8 @@ const WebglRenderer = struct {
 
 const Renderer = WebglRenderer;
 
-const GPA = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true, .MutexType = mq.Mutex });
-
 const global = struct {
-    var gpa: GPA = undefined;
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true, .MutexType = mq.Mutex }){};
     var queue: MessageQueue(Task) = undefined;
 };
 
@@ -526,11 +520,10 @@ export fn init(
     width: f32,
     height: f32,
     device_pixel_ratio: f32,
-    font: js.JsObject,
+    font_ptr: ?[*]u8,
     font_len: usize,
     font_size: f32,
 ) *void {
-    global.gpa = GPA{};
     var allocator = global.gpa.allocator();
     global.queue = MessageQueue(Task).init(allocator);
 
@@ -538,17 +531,13 @@ export fn init(
 
     var app = allocator.create(App) catch unreachable;
     const font_data: ?[]u8 = blk: {
-        if (font.ref != 0) {
-            defer js.destory(font);
-
-            const font_data = allocator.alloc(u8, font_len) catch unreachable;
-            js.copy_uint8_array(font, font_data.ptr, font_len);
-            break :blk font_data;
+        if (font_ptr) |p| {
+            break :blk p[0..font_len];
         } else {
             break :blk null;
         }
     };
-    defer if (font_data) |f| allocator.free(f);
+    defer if (font_ptr) |p| free(p);
 
     app.init(
         allocator,
@@ -607,31 +596,24 @@ export fn shouldLoadFile(
     return app.tracing.should_load_file();
 }
 
-export fn onLoadFileStart(app_ptr: *void, len: usize, file_name: js.JsObject) void {
+export fn onLoadFileStart(app_ptr: *void, len: usize, file_name_ptr: [*]u8, file_name_len: usize) void {
+    defer free(@ptrCast(file_name_ptr));
+
     const app: *App = @ptrCast(@alignCast(app_ptr));
-    defer js.destory(file_name);
-
-    const file_name_len = js.get_uint8_array_len(file_name);
-    const allocator = app.allocator;
-    const buf = allocator.alloc(u8, file_name_len) catch unreachable;
-    defer allocator.free(buf);
-    js.copy_uint8_array(file_name, buf.ptr, file_name_len);
-
-    app.on_load_file_start(len, buf);
+    const file_name = file_name_ptr[0..file_name_len];
+    app.on_load_file_start(len, file_name);
 }
 
-export fn onLoadFileChunk(app_ptr: *void, offset: usize, chunk: js.JsObject, len: usize) void {
+export fn onLoadFileChunk(app_ptr: *void, offset: usize, chunk_ptr: [*]u8, chunk_len: usize) void {
+    defer free(@ptrCast(chunk_ptr));
+
     const app: *App = @ptrCast(@alignCast(app_ptr));
-    defer js.destory(chunk);
-
-    if (app.tracing.should_load_file()) {
-        const allocator = app.allocator;
-        const buf = allocator.alloc(u8, len) catch unreachable;
-
-        js.copy_uint8_array(chunk, buf.ptr, len);
-
-        app.on_load_file_chunk(offset, buf);
+    if (!app.tracing.should_load_file()) {
+        return;
     }
+
+    const chunk = app.allocator.dupe(u8, chunk_ptr[0..chunk_len]) catch unreachable;
+    app.on_load_file_chunk(offset, chunk);
 }
 
 export fn onLoadFileDone(app_ptr: *void) void {
@@ -653,4 +635,12 @@ pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_
         std.log.err("{s}", .{msg});
     }
     std.process.abort();
+}
+
+export fn alloc(size: usize) *void {
+    return @ptrCast(c.memory.malloc(global.gpa.allocator(), size).?);
+}
+
+export fn free(ptr: *anyopaque) void {
+    c.memory.free(global.gpa.allocator(), ptr);
 }
