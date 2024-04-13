@@ -436,12 +436,13 @@ pub fn main() !void {
     {
         const style = c.igGetStyle();
         c.igStyleColorsLight(style);
-        c.ImGuiStyle_ScaleAllSizes(style, dpi);
 
         style.*.ScrollbarRounding = 0.0;
         style.*.ScrollbarSize = 18.0;
 
         style.*.SeparatorTextBorderSize = 1.0;
+
+        c.ImGuiStyle_ScaleAllSizes(style, dpi);
     }
     io.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
 

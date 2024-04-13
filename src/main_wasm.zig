@@ -266,12 +266,13 @@ const App = struct {
         {
             const style = c.igGetStyle();
             c.igStyleColorsLight(style);
-            c.ImGuiStyle_ScaleAllSizes(style, scale);
 
             style.*.ScrollbarRounding = 0.0;
             style.*.ScrollbarSize = 18.0;
 
             style.*.SeparatorTextBorderSize = 1.0;
+
+            c.ImGuiStyle_ScaleAllSizes(style, scale);
         }
 
         io.*.ConfigFlags |= c.ImGuiConfigFlags_DockingEnable;
