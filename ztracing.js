@@ -283,7 +283,7 @@ class LoadingFile {
 
         this.reader.releaseLock();
         this.reader = this.stream.pipeThrough(ds).getReader();
-        this.reading = false;
+        this.reader.read().then(({ done, value }) => this.onChunk(done, value));
         return;
       }
     }
@@ -296,7 +296,7 @@ class LoadingFile {
       chunk.length
     );
     this.offset = this.underlying_offset;
-    this.reading = false;
+    this.reader.read().then(({ done, value }) => this.onChunk(done, value));
   }
 }
 
@@ -431,39 +431,6 @@ class App {
 
   store_string(str) {
     return this.store_object(new TextEncoder().encode(str));
-  }
-}
-
-class WorkerMessageQueue {
-  constructor(worker) {
-    this.worker = worker;
-    this.resolves = {};
-    this.rejects = {};
-    this.next_id = 0;
-    this.worker.onmessage = (e) => {
-      this.queue.push(e);
-    };
-
-    this.worker.onmessage = (e) => {
-      const { id, resolve, reject } = e.data;
-      if (resolve) {
-        this.resolves[id](resolve.value);
-      } else {
-        this.rejects[id](reject.reason);
-      }
-      this.resolves[id] = undefined;
-      this.rejects[id] = undefined;
-    };
-  }
-
-  postMessage(message) {
-    const id = this.next_id++;
-    var promise = new Promise((resolve, reject) => {
-      this.resolves[id] = resolve;
-      this.rejects[id] = reject;
-      this.worker.postMessage({ id, message });
-    });
-    return promise;
   }
 }
 
