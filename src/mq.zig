@@ -6,14 +6,17 @@ const Allocator = std.mem.Allocator;
 pub fn MessageQueue(Message: type) type {
     return struct {
         const Self = @This();
+        const Queue = std.DoublyLinkedList(Message);
 
         mutex: Mutex = .{},
         condition: Condition = .{},
-        queue: std.ArrayList(Message),
+        allocator: Allocator,
+        queue: Queue = .{},
+        free_nodes: Queue = .{},
 
         pub fn init(allocator: Allocator) Self {
             return .{
-                .queue = std.ArrayList(Message).init(allocator),
+                .allocator = allocator,
             };
         }
 
@@ -21,17 +24,23 @@ pub fn MessageQueue(Message: type) type {
             self.mutex.lock();
             defer self.mutex.unlock();
 
-            while (self.queue.items.len == 0) {
+            while (self.queue.len == 0) {
                 self.condition.wait(&self.mutex);
             }
 
-            const message = self.queue.pop();
+            return self.pop_first();
+        }
 
-            if (self.queue.items.len > 0) {
+        // the lock must be held and there is at least one node in the queue
+        fn pop_first(self: *Self) Message {
+            const node = self.queue.popFirst().?;
+            self.free_nodes.append(node);
+
+            if (self.queue.len > 0) {
                 self.condition.signal();
             }
 
-            return message;
+            return node.data;
         }
 
         pub fn try_get(self: *Self) ?Message {
@@ -42,18 +51,17 @@ pub fn MessageQueue(Message: type) type {
                 return null;
             }
 
-            const message = self.queue.pop();
-            if (self.queue.items.len > 0) {
-                self.condition.signal();
-            }
-            return message;
+            return self.pop_first();
         }
 
         pub fn put(self: *Self, message: Message) void {
             self.mutex.lock();
             defer self.mutex.unlock();
 
-            self.queue.append(message) catch unreachable;
+            const node = self.free_nodes.pop() orelse
+                self.allocator.create(Queue.Node) catch unreachable;
+            node.data = message;
+            self.queue.append(node);
             self.condition.signal();
         }
     };
