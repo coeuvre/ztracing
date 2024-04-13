@@ -467,7 +467,7 @@ class WorkerMessageQueue {
   }
 }
 
-var next_thread_id = 0;
+var next_thread_id = 1;
 
 /**
  * @param {{

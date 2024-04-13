@@ -4,6 +4,7 @@ const c = @import("c.zig");
 const ig = @import("imgui.zig");
 const software_renderer = @import("./software_renderer.zig");
 const imgui = @import("imgui.zig");
+const MessageQueue = @import("mq.zig").MessageQueue;
 
 const Allocator = std.mem.Allocator;
 const CountAllocator = @import("./count_alloc.zig").CountAllocator;
@@ -425,7 +426,7 @@ const Renderer = WebglRenderer;
 const global = struct {
     var gpa: std.heap.GeneralPurposeAllocator(.{}) = undefined;
     var count_allocator: CountAllocator = undefined;
-    var queue: EventQueue(Task) = undefined;
+    var queue: MessageQueue(Task) = undefined;
 };
 
 const Task = union(enum) {
@@ -434,57 +435,6 @@ const Task = union(enum) {
         b: i32,
     },
 };
-
-fn EventQueue(Event: type) type {
-    return struct {
-        const Self = @This();
-
-        mutex: std.Thread.Mutex = .{},
-        condition: std.Thread.Condition = .{},
-        queue: std.ArrayList(Event),
-
-        pub fn init(allocator: Allocator) Self {
-            return .{
-                .queue = std.ArrayList(Event).init(allocator),
-            };
-        }
-
-        pub fn get(self: *Self) Event {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-
-            while (self.queue.items.len == 0) {
-                // singal might be lost due to compiler bug, so we need to use timedWait.
-                self.condition.timedWait(&self.mutex, 10e6) catch |err| {
-                    switch (err) {
-                        error.Timeout => {},
-                    }
-                };
-            }
-
-            const event = self.queue.pop();
-
-            if (self.queue.items.len > 0) {
-                self.condition.signal();
-            }
-
-            return event;
-        }
-
-        pub noinline fn put(self: *Self, event: Event) void {
-            // wasm doesn't support atomic.wait on main thread, so we need to busy wait.
-            while (true) {
-                if (self.mutex.tryLock()) {
-                    defer self.mutex.unlock();
-
-                    self.queue.append(event) catch unreachable;
-                    self.condition.signal();
-                    break;
-                }
-            }
-        }
-    };
-}
 
 fn worker_main() !void {
     while (true) {
@@ -509,7 +459,7 @@ export fn init(
     global.gpa = std.heap.GeneralPurposeAllocator(.{}){};
     global.count_allocator = CountAllocator.init(global.gpa.allocator());
     var allocator = global.count_allocator.allocator();
-    global.queue = EventQueue(Task).init(allocator);
+    global.queue = MessageQueue(Task).init(allocator);
 
     _ = std.Thread.spawn(.{ .allocator = allocator }, worker_main, .{}) catch unreachable;
 
