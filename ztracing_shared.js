@@ -44,7 +44,10 @@ function make_wasm_imports(memory, app) {
       proc_exit: unreachble,
       random_get: unreachble,
       clock_time_get: (ctx, clock_id, precision, time) => {
-        heap.set_uint64(time, BigInt(Math.round(performance.now() * 1e6)));
+        if (clock_id != 1) {
+          unreachble();
+        }
+        heap.set_uint64(time, BigInt(Math.round(new Date().getTime() * 1e6)));
         return 0;
       },
     },

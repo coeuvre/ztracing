@@ -2,6 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 
 const Allocator = std.mem.Allocator;
+const Arena = std.heap.ArenaAllocator;
 
 pub fn MessageQueue(Message: type) type {
     return struct {
@@ -10,14 +11,21 @@ pub fn MessageQueue(Message: type) type {
 
         mutex: Mutex = .{},
         condition: Condition = .{},
-        allocator: Allocator,
+        arena: Arena,
         queue: Queue = .{},
         free_nodes: Queue = .{},
 
         pub fn init(allocator: Allocator) Self {
             return .{
-                .allocator = allocator,
+                .arena = Arena.init(allocator),
             };
+        }
+
+        pub fn deinit(self: *Self) void {
+            self.mutex.lock();
+            defer self.mutex.unlock();
+
+            self.arena.deinit();
         }
 
         pub fn get(self: *Self) Message {
@@ -59,7 +67,7 @@ pub fn MessageQueue(Message: type) type {
             defer self.mutex.unlock();
 
             const node = self.free_nodes.pop() orelse
-                self.allocator.create(Queue.Node) catch unreachable;
+                self.arena.allocator().create(Queue.Node) catch unreachable;
             node.data = message;
             self.queue.append(node);
             self.condition.signal();
@@ -67,21 +75,21 @@ pub fn MessageQueue(Message: type) type {
     };
 }
 
-const Mutex = struct {
+pub const Mutex = struct {
     const Self = @This();
 
     impl: std.Thread.Mutex = .{},
 
     pub fn lock(self: *Self) void {
         if (comptime builtin.os.tag == .wasi) {
-            if (std.Thread.getCurrentId() == 0) {
-                // wasm doesn't support atomic.wait on main thread, so we need to busy wait.
-                while (!self.impl.tryLock()) {}
-                return;
-            }
+            // We need to busy wait because:
+            // 1. wasm doesn't support atomic.wait on main thread
+            // 2. singal might be lost due to compiler bug
+            while (!self.impl.tryLock()) {}
+            return;
+        } else {
+            self.impl.lock();
         }
-
-        self.impl.lock();
     }
 
     pub fn unlock(self: *Self) void {
@@ -89,7 +97,7 @@ const Mutex = struct {
     }
 };
 
-const Condition = struct {
+pub const Condition = struct {
     const Self = @This();
 
     impl: std.Thread.Condition = .{},
@@ -97,7 +105,7 @@ const Condition = struct {
     pub fn wait(self: *Self, mutex: *Mutex) void {
         if (comptime builtin.os.tag == .wasi) {
             // singal might be lost due to compiler bug, so we need to use timedWait.
-            self.impl.timedWait(&mutex.impl, 10e6) catch |err| {
+            self.impl.timedWait(&mutex.impl, 1e6) catch |err| {
                 switch (err) {
                     error.Timeout => {},
                 }

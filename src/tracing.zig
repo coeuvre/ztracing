@@ -315,6 +315,7 @@ const LoadFileState = struct {
     allocator: Allocator,
     total: usize,
     offset: usize,
+    buf: [256]u8,
     progress_message: ?[:0]u8,
     error_message: ?[:0]u8,
 
@@ -325,6 +326,7 @@ const LoadFileState = struct {
             .allocator = allocator,
             .total = 0,
             .offset = 0,
+            .buf = undefined,
             .progress_message = null,
             .error_message = null,
         };
@@ -364,12 +366,7 @@ const LoadFileState = struct {
     }
 
     pub fn deinit(self: *LoadFileState) void {
-        if (self.progress_message) |msg| {
-            self.allocator.free(msg);
-        }
-        if (self.error_message) |msg| {
-            self.allocator.free(msg);
-        }
+        _ = self;
     }
 
     pub fn should_load_file(self: *const LoadFileState) bool {
@@ -377,15 +374,12 @@ const LoadFileState = struct {
     }
 
     fn set_progress(self: *LoadFileState, comptime fmt: []const u8, args: anytype) void {
-        if (self.progress_message) |msg| {
-            self.allocator.free(msg);
-        }
-        self.progress_message = std.fmt.allocPrintZ(self.allocator, fmt, args) catch unreachable;
+        self.progress_message = std.fmt.bufPrintZ(&self.buf, fmt, args) catch unreachable;
     }
 
     fn setError(self: *LoadFileState, comptime fmt: []const u8, args: anytype) void {
         std.debug.assert(self.error_message == null);
-        self.error_message = std.fmt.allocPrintZ(self.allocator, fmt, args) catch unreachable;
+        self.error_message = std.fmt.bufPrintZ(&self.buf, fmt, args) catch unreachable;
     }
 
     pub fn on_load_file_progress(self: *LoadFileState, offset: usize, total: usize) void {

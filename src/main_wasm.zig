@@ -4,14 +4,14 @@ const c = @import("c.zig");
 const ig = @import("imgui.zig");
 const software_renderer = @import("./software_renderer.zig");
 const imgui = @import("imgui.zig");
-const MessageQueue = @import("mq.zig").MessageQueue;
+const mq = @import("mq.zig");
 
 const Allocator = std.mem.Allocator;
-const CountAllocator = @import("./count_alloc.zig").CountAllocator;
 const Tracing = @import("tracing.zig").Tracing;
 const JsonProfileParser = @import("json_profile_parser.zig").JsonProfileParser;
 const Profile = @import("profile.zig").Profile;
 const Arena = @import("arena.zig").SimpleArena;
+const MessageQueue = mq.MessageQueue;
 
 pub const std_options = std.Options{
     .logFn = log,
@@ -40,8 +40,6 @@ const js = struct {
     };
 
     pub extern "js" fn log(level: u32, ptr: [*]const u8, len: usize) void;
-
-    pub extern "js" fn dispatch(task: *void) void;
 
     pub extern "js" fn destory(obj: JsObject) void;
 
@@ -75,39 +73,75 @@ fn show_open_file_picker() void {
 }
 
 const LoadState = struct {
+    const Chunk = struct {
+        offset: usize,
+        buf: []u8,
+    };
+
+    const Status = union(enum) {
+        loading: struct {
+            offset: usize,
+            total: usize,
+        },
+        err: []u8,
+        done: struct {
+            profile: *Profile,
+            processed_bytes: usize,
+        },
+    };
+
+    allocator: Allocator,
+    chunk_queue: MessageQueue(Chunk),
     arena: *Arena,
     total: usize,
     parser: JsonProfileParser,
     profile: *Profile,
-    tracing: *Tracing,
-    start_timestamp: usize,
     processed_bytes: usize,
 
-    pub fn init(parent_allocator: Allocator, total: usize, tracing: *Tracing) LoadState {
-        const arena = parent_allocator.create(Arena) catch unreachable;
-        arena.* = Arena.init(parent_allocator);
+    status: Status,
 
-        const allocator = arena.allocator();
-        const profile = allocator.create(Profile) catch unreachable;
+    mutex: mq.Mutex = .{},
+
+    pub fn init(allocator: Allocator, arena: *Arena, total: usize) LoadState {
+        const profile = arena.allocator().create(Profile) catch unreachable;
         profile.* = Profile.init(arena.allocator());
         return .{
+            .allocator = allocator,
+            .chunk_queue = MessageQueue(Chunk).init(arena.allocator()),
             .arena = arena,
             .total = total,
             .parser = JsonProfileParser.init(allocator),
             .profile = profile,
-            .tracing = tracing,
-            .start_timestamp = js.get_current_timestamp(),
             .processed_bytes = 0,
+            .status = .{ .loading = .{ .offset = 0, .total = total } },
         };
     }
 
-    pub fn deinit(self: *LoadState) void {
-        const parent_allocator = self.arena.parent_allocator;
-        self.arena.deinit();
-        parent_allocator.destroy(self.arena);
+    pub fn put_chunk(self: *LoadState, offset: usize, chunk: []u8) void {
+        self.chunk_queue.put(.{ .offset = offset, .buf = chunk });
     }
 
-    pub fn load(self: *LoadState, input: []const u8) bool {
+    pub fn get_load_status(self: *LoadState) Status {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        return self.status;
+    }
+
+    fn load(self: *LoadState) void {
+        while (true) {
+            const chunk = self.chunk_queue.get();
+            if (!self.load_one_chunk(chunk.offset, chunk.buf)) {
+                break;
+            }
+        }
+    }
+
+    fn load_one_chunk(self: *LoadState, offset: usize, input: []u8) bool {
+        defer if (input.len > 0) {
+            self.allocator.free(input);
+        };
+
         self.processed_bytes += input.len;
         if (input.len == 0) {
             self.parser.endInput();
@@ -117,7 +151,7 @@ const LoadState = struct {
 
         while (!self.parser.done()) {
             const event = self.parser.next() catch |err| {
-                self.send_load_error("Failed to parse file: {}\n{}", .{
+                self.set_load_error("Failed to parse file: {}\n{}", .{
                     err,
                     self.parser.diagnostic,
                 });
@@ -127,7 +161,7 @@ const LoadState = struct {
             switch (event) {
                 .trace_event => |trace_event| {
                     self.profile.handle_trace_event(trace_event) catch |err| {
-                        self.send_load_error("Failed to handle trace event: {}\n{}", .{
+                        self.set_load_error("Failed to handle trace event: {}\n{}", .{
                             err,
                             self.parser.diagnostic,
                         });
@@ -140,37 +174,51 @@ const LoadState = struct {
 
         if (input.len == 0) {
             self.profile.done() catch |err| {
-                self.send_load_error("Failed to finalize profile: {}", .{
+                self.set_load_error("Failed to finalize profile: {}", .{
                     err,
                 });
                 return false;
             };
 
             self.parser.deinit();
-
-            const seconds = @as(f32, @floatFromInt(js.get_current_timestamp() - self.start_timestamp)) / 1000.0;
-            const processed_mb = @as(f32, @floatFromInt(self.processed_bytes)) / 1000.0 / 1000.0;
-            const speed = processed_mb / seconds;
-            std.log.info("Loaded {d:.2}MB in {d:.2} seconds. {d:.2} MB/s", .{ processed_mb, seconds, speed });
+            self.set_load_done();
+            return false;
         }
 
+        self.set_load_progress(offset);
         return true;
     }
 
-    fn send_load_error(self: *LoadState, comptime fmt: []const u8, args: anytype) void {
-        const msg = std.fmt.allocPrint(self.arena.allocator(), fmt, args) catch unreachable;
-        defer self.arena.allocator().free(msg);
-        self.tracing.on_load_file_error(msg);
+    fn set_load_error(self: *LoadState, comptime fmt: []const u8, args: anytype) void {
+        const msg = std.fmt.allocPrint(self.allocator, fmt, args) catch unreachable;
+
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        self.status = .{ .err = msg };
+    }
+
+    fn set_load_progress(self: *LoadState, offset: usize) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        self.status = .{ .loading = .{ .offset = offset, .total = self.total } };
+    }
+
+    fn set_load_done(self: *LoadState) void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+
+        self.status = .{ .done = .{ .profile = self.profile, .processed_bytes = self.processed_bytes } };
     }
 };
 
 fn get_memory_usages(ctx: *void) usize {
-    var app: *App = @ptrCast(@alignCast(ctx));
-    return app.count_allocator.get_allocated_bytes();
+    _ = ctx;
+    return global.gpa.total_requested_bytes;
 }
 
 const App = struct {
-    count_allocator: *CountAllocator,
     allocator: Allocator,
     renderer: Renderer,
     tracing: Tracing,
@@ -180,22 +228,23 @@ const App = struct {
 
     io: *c.ImGuiIO,
     mouse_pos_before_blur: c.ImVec2 = undefined,
-    load_state: ?LoadState,
+    load_state: ?*LoadState,
+    load_state_arena: Arena,
+    load_start_at: usize,
 
     pub fn init(
         self: *App,
-        count_allocator: *CountAllocator,
+        allocator: Allocator,
         width: f32,
         height: f32,
         device_pixel_ratio: f32,
         font_data: ?[]u8,
         font_size: f32,
     ) void {
-        const allocator = count_allocator.allocator();
-        self.count_allocator = count_allocator;
         self.allocator = allocator;
         self.renderer = .{};
         self.load_state = null;
+        self.load_state_arena = Arena.init(allocator);
         self.tracing = Tracing.init(allocator, .{
             .ctx = @ptrCast(self),
             .show_open_file_picker = show_open_file_picker,
@@ -262,6 +311,33 @@ const App = struct {
 
         c.igNewFrame();
 
+        if (self.load_state) |load_state| {
+            switch (load_state.get_load_status()) {
+                .loading => |loading| {
+                    self.tracing.on_load_file_progress(loading.offset, loading.total);
+                },
+                .err => |msg| {
+                    defer self.allocator.free(msg);
+
+                    self.tracing.on_load_file_error(msg);
+                    self.allocator.destroy(load_state);
+                    self.load_state = null;
+                },
+                .done => |done| {
+                    self.tracing.on_load_file_done(done.profile);
+                    self.allocator.destroy(load_state);
+                    self.load_state = null;
+
+                    const now = js.get_current_timestamp();
+                    if (now > self.load_start_at) {
+                        const seconds = @as(f32, @floatFromInt(now - self.load_start_at)) / 1000.0;
+                        const processed_mb = @as(f32, @floatFromInt(done.processed_bytes)) / 1000.0 / 1000.0;
+                        const speed = processed_mb / seconds;
+                        std.log.info("Loaded {d:.2}MB in {d:.2} seconds. {d:.2} MB/s", .{ processed_mb, seconds, speed });
+                    }
+                },
+            }
+        }
         self.tracing.update(dt);
 
         c.igEndFrame();
@@ -366,22 +442,23 @@ const App = struct {
     pub fn on_load_file_start(self: *App, len: usize, file_name: []const u8) void {
         self.tracing.on_load_file_start(file_name);
 
-        if (self.load_state) |*load_state| {
-            load_state.deinit();
-        }
-        self.load_state = LoadState.init(self.allocator, len, &self.tracing);
+        std.debug.assert(self.load_state == null);
+        self.load_state_arena.deinit();
+        self.load_state_arena = Arena.init(self.allocator);
+        const load_state = self.allocator.create(LoadState) catch unreachable;
+        load_state.* = LoadState.init(self.allocator, &self.load_state_arena, len);
+        global.queue.put(Task{ .load = load_state });
+
+        self.load_state = load_state;
+        self.load_start_at = js.get_current_timestamp();
     }
 
-    pub fn on_load_file_chunk(self: *App, offset: usize, chunk: []const u8) void {
-        if (self.load_state.?.load(chunk)) {
-            self.tracing.on_load_file_progress(offset, self.load_state.?.total);
-        }
+    pub fn on_load_file_chunk(self: *App, offset: usize, chunk: []u8) void {
+        self.load_state.?.put_chunk(offset, chunk);
     }
 
     pub fn on_load_file_done(self: *App) void {
-        if (self.load_state.?.load(&[0]u8{})) {
-            self.tracing.on_load_file_done(self.load_state.?.profile);
-        }
+        self.load_state.?.put_chunk(0, &[0]u8{});
     }
 };
 
@@ -423,25 +500,23 @@ const WebglRenderer = struct {
 
 const Renderer = WebglRenderer;
 
+const GPA = std.heap.GeneralPurposeAllocator(.{ .enable_memory_limit = true, .MutexType = mq.Mutex });
+
 const global = struct {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = undefined;
-    var count_allocator: CountAllocator = undefined;
+    var gpa: GPA = undefined;
     var queue: MessageQueue(Task) = undefined;
 };
 
 const Task = union(enum) {
-    add: struct {
-        a: i32,
-        b: i32,
-    },
+    load: *LoadState,
 };
 
 fn worker_main() !void {
     while (true) {
         const task = global.queue.get();
         switch (task) {
-            else => {
-                std.log.info("Thread {} got task: {?}", .{ std.Thread.getCurrentId(), task });
+            .load => |s| {
+                s.load();
             },
         }
     }
@@ -456,9 +531,8 @@ export fn init(
     font_len: usize,
     font_size: f32,
 ) *void {
-    global.gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    global.count_allocator = CountAllocator.init(global.gpa.allocator());
-    var allocator = global.count_allocator.allocator();
+    global.gpa = GPA{};
+    var allocator = global.gpa.allocator();
     global.queue = MessageQueue(Task).init(allocator);
 
     _ = std.Thread.spawn(.{ .allocator = allocator }, worker_main, .{}) catch unreachable;
@@ -478,7 +552,7 @@ export fn init(
     defer if (font_data) |f| allocator.free(f);
 
     app.init(
-        &global.count_allocator,
+        allocator,
         width,
         height,
         device_pixel_ratio,
@@ -493,7 +567,6 @@ export fn init(
 }
 
 export fn update(app_ptr: *void, dt: f32) void {
-    global.queue.put(.{ .add = .{ .a = 1, .b = 2 } });
     const app: *App = @ptrCast(@alignCast(app_ptr));
     app.update(dt);
 }
@@ -555,7 +628,6 @@ export fn onLoadFileChunk(app_ptr: *void, offset: usize, chunk: js.JsObject, len
     if (app.tracing.should_load_file()) {
         const allocator = app.allocator;
         const buf = allocator.alloc(u8, len) catch unreachable;
-        defer allocator.free(buf);
 
         js.copy_uint8_array(chunk, buf.ptr, len);
 
