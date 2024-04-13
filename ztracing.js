@@ -1,5 +1,7 @@
 import { Heap, make_wasm_imports } from "./ztracing_shared.js";
 
+import ZtracingWorker from "./ztracing_worker.js?worker";
+
 const keyCodeMap = {
   ControlLeft: 527,
   ShiftLeft: 528,
@@ -462,7 +464,7 @@ function mount(options) {
 
   app.spawn_thread = function (arg) {
     const tid = next_thread_id++;
-    const worker = new Worker("./ztracing_worker.js", { type: "module" });
+    const worker = new ZtracingWorker();
     worker.postMessage({
       memory,
       ztracing_wasm_url: options.ztracing_wasm_url,
