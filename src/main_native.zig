@@ -119,6 +119,72 @@ fn load_thread_main() void {
     }
 }
 
+fn InflateStream(comptime ReaderType: type) type {
+    return struct {
+        const Self = @This();
+        const ReadError = ReaderType.Error || error{
+            inflate_init_error,
+            inflate_error,
+        };
+        pub const Reader = std.io.Reader(*Self, ReadError, read);
+
+        input_reader: ReaderType,
+        allocator: Allocator,
+
+        input_buf: [4096]u8 = undefined,
+        input_processed: usize = 0,
+        stream: ?c.z_stream = null,
+
+        pub fn init(allocator: Allocator, reader: ReaderType) Self {
+            return .{
+                .allocator = allocator,
+                .input_reader = reader,
+            };
+        }
+
+        pub fn read(self: *Self, buf: []u8) ReadError!usize {
+            if (self.stream == null) {
+                self.stream = c.z_stream{
+                    .zalloc = zalloc,
+                    .zfree = zfree,
+                    .@"opaque" = @constCast(&self.allocator),
+                };
+
+                std.log.info("init stream", .{});
+                // Automatically detect header
+                const ret = c.inflateInit2(&self.stream.?, c.MAX_WBITS | 32);
+                if (ret != c.Z_OK) {
+                    return error.inflate_init_error;
+                }
+            }
+
+            const stream = &self.stream.?;
+            if (stream.avail_in == 0) {
+                stream.avail_in = @intCast(try self.input_reader.read(&self.input_buf));
+                stream.next_in = &self.input_buf;
+                self.input_processed += stream.avail_in;
+            }
+            if (stream.avail_in == 0) {
+                return 0;
+            }
+
+            stream.avail_out = @intCast(buf.len);
+            stream.next_out = buf.ptr;
+
+            switch (c.inflate(stream, c.Z_NO_FLUSH)) {
+                c.Z_OK => {
+                    return buf.len - stream.avail_out;
+                },
+                c.Z_STREAM_END => return 0,
+                else => |ret| {
+                    std.log.err("inflate returned {}", .{ret});
+                    return error.inflate_error;
+                },
+            }
+        }
+    };
+}
+
 fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u8) void {
     const trace = tracy.traceNamed(@src(), "load_file");
     defer trace.end();
@@ -160,20 +226,13 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
         break :blk bytes_read == 2 and (header[0] == 0x1F and header[1] == 0x8B);
     };
 
-    var stream = c.z_stream{
-        .zalloc = zalloc,
-        .zfree = zfree,
-        .@"opaque" = @constCast(&temp_allocator),
-    };
-    var is_stream_end = false;
-    if (is_gz) {
-        // Automatically detect header
-        const ret = c.inflateInit2(&stream, c.MAX_WBITS | 32);
-        if (ret != c.Z_OK) {
-            send_load_error(profile_allocator, "Failed to init inflate: {}", .{ret});
-            return;
+    var inflate_reader = blk: {
+        if (is_gz) {
+            break :blk InflateStream(std.fs.File.Reader).init(temp_allocator, file.reader());
+        } else {
+            break :blk null;
         }
-    }
+    };
 
     var parser = JsonProfileParser.init(temp_allocator);
     var profile = profile_allocator.create(Profile) catch |err| {
@@ -182,106 +241,66 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
     };
     profile.* = Profile.init(profile_arena.allocator());
 
-    var file_buf = temp_allocator.alloc(u8, 4096) catch |err| {
+    var buf = temp_allocator.alloc(u8, 4096) catch |err| {
         send_load_error(profile_allocator, "Failed to allocate file_buf: {}", .{err});
         return;
     };
-    var inflate_buf: []u8 = blk: {
-        if (is_gz) {
-            break :blk temp_allocator.alloc(u8, 4096) catch |err| {
-                send_load_error(profile_allocator, "Failed to allocate inflate_buf: {}", .{err});
-                return;
-            };
-        } else {
-            break :blk &[0]u8{};
-        }
-    };
-
     while (true) {
         const trace1 = tracy.traceNamed(@src(), "load chunk");
         defer trace1.end();
 
-        const file_bytes_read = file.read(file_buf) catch |err| {
-            send_load_error(profile_allocator, "Failed to read file {s}: {}", .{ path, err });
-            return;
+        const bytes_to_process = blk: {
+            if (inflate_reader) |*reader| {
+                offset = reader.input_processed;
+                break :blk reader.read(buf) catch |err| {
+                    send_load_error(profile_allocator, "Failed to read file {s}: {}", .{ path, err });
+                    return;
+                };
+            } else {
+                const nread = file.read(buf) catch |err| {
+                    send_load_error(profile_allocator, "Failed to read file {s}: {}", .{ path, err });
+                    return;
+                };
+                offset += nread;
+                break :blk nread;
+            }
         };
 
-        if (is_gz) {
-            stream.avail_in = @intCast(file_bytes_read);
-            stream.next_in = file_buf.ptr;
+        if (bytes_to_process == 0) {
+            parser.endInput();
+        } else {
+            parser.feedInput(buf[0..bytes_to_process]);
+            processed_bytes += bytes_to_process;
         }
 
-        while (true) {
-            if (is_gz) {
-                stream.avail_out = @intCast(inflate_buf.len);
-                stream.next_out = inflate_buf.ptr;
-
-                const ret = blk: {
-                    const trace2 = tracy.traceNamed(@src(), "inflate");
-                    defer trace2.end();
-                    break :blk c.inflate(&stream, c.Z_NO_FLUSH);
-                };
-
-                if (ret != c.Z_OK and ret != c.Z_STREAM_END) {
-                    send_load_error(profile_allocator, "Failed to inflate: {}", .{ret});
+        while (!parser.done()) {
+            const event = blk: {
+                const trace2 = tracy.traceNamed(@src(), "parser.next()");
+                defer trace2.end();
+                break :blk parser.next() catch |err| {
+                    send_load_error(profile_allocator, "Failed to parse file: {}\n{}", .{
+                        err,
+                        parser.diagnostic,
+                    });
                     return;
-                }
-                const have = inflate_buf.len - stream.avail_out;
-                if (ret == c.Z_STREAM_END) {
-                    parser.endInput();
-                    is_stream_end = true;
-                } else {
-                    parser.feedInput(inflate_buf[0..have]);
-                    processed_bytes += have;
-                }
-            } else {
-                if (file_bytes_read == 0) {
-                    parser.endInput();
-                } else {
-                    parser.feedInput(file_buf[0..file_bytes_read]);
-                    processed_bytes += file_bytes_read;
-                }
-            }
+                };
+            };
 
-            while (!parser.done()) {
-                const event = blk: {
-                    const trace2 = tracy.traceNamed(@src(), "parser.next()");
+            switch (event) {
+                .trace_event => |trace_event| {
+                    const trace2 = tracy.traceNamed(@src(), "profile.handle_trace_event()");
                     defer trace2.end();
-                    break :blk parser.next() catch |err| {
-                        send_load_error(profile_allocator, "Failed to parse file: {}\n{}", .{
+                    profile.handle_trace_event(trace_event) catch |err| {
+                        send_load_error(profile_allocator, "Failed to handle trace event: {}\n{}", .{
                             err,
                             parser.diagnostic,
                         });
                         return;
                     };
-                };
-
-                switch (event) {
-                    .trace_event => |trace_event| {
-                        const trace2 = tracy.traceNamed(@src(), "profile.handle_trace_event()");
-                        defer trace2.end();
-                        profile.handle_trace_event(trace_event) catch |err| {
-                            send_load_error(profile_allocator, "Failed to handle trace event: {}\n{}", .{
-                                err,
-                                parser.diagnostic,
-                            });
-                            return;
-                        };
-                    },
-                    .none => break,
-                }
-            }
-
-            if (is_gz) {
-                if (stream.avail_out != 0) {
-                    break;
-                }
-            } else {
-                break;
+                },
+                .none => break,
             }
         }
-
-        offset += file_bytes_read;
 
         _ = c.SDL_PushEvent(@constCast(&c.SDL_Event{
             .user = .{
@@ -292,14 +311,8 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
             },
         }));
 
-        if (is_gz) {
-            if (is_stream_end) {
-                break;
-            }
-        } else {
-            if (file_bytes_read == 0) {
-                break;
-            }
+        if (bytes_to_process == 0) {
+            break;
         }
     }
 
