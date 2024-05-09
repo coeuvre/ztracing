@@ -44,6 +44,13 @@ CIMGUI_API ImGuiSortDirection igTableColumnGetSortDirection(ImGuiTableSortSpecs 
     return specs->Specs[0].SortDirection;
 }
 
+CIMGUI_API void igMakeTabVisible(const char* window_name) {
+    ImGuiWindow* window = ImGui::FindWindowByName(window_name);
+    if (window == NULL || window->DockNode == NULL || window->DockNode->TabBar == NULL)
+        return;
+    window->DockNode->TabBar->NextSelectedTabId = window->TabId;
+}
+
 #ifndef ZTRACING_WASM
 
 #include "third_party/cimgui/imgui/backends/imgui_impl_sdl2.cpp"

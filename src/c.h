@@ -9,6 +9,7 @@
 
 CIMGUI_API ImS16 igTableColumnGetSortColumnIndex(ImGuiTableSortSpecs *specs);
 CIMGUI_API ImGuiSortDirection igTableColumnGetSortDirection(ImGuiTableSortSpecs *specs);
+CIMGUI_API void igMakeTabVisible(const char *window_name);
 
 #ifndef ZTRACING_WASM
 

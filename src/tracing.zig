@@ -1231,7 +1231,7 @@ const ViewState = struct {
             if (io.*.MouseClickedCount[0] == 1) {
                 self.selected_span = span;
                 self.open_selection_span = true;
-                c.igSetWindowFocus_Str("Selection");
+                c.igMakeTabVisible("Selection");
             } else if (io.*.MouseDoubleClicked[0]) {
                 self.build_statistics(span.name);
             }
@@ -1266,7 +1266,7 @@ const ViewState = struct {
         self.statistics.set_search_term(search);
         self.statistics.build(self.profile);
         self.open_statistics = true;
-        c.igSetWindowFocus_Str("Statistics");
+        c.igMakeTabVisible("Statistics");
     }
 
     fn draw_span(self: *ViewState, span: *const Span) void {
