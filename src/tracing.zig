@@ -811,8 +811,7 @@ const ViewState = struct {
             if (c.igBeginTooltip()) {
                 c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Time: {}", .{Timestamp{ .us = max_hovered_time }}) catch unreachable, null);
 
-                for (self.hovered_counters.items, 0..) |hovered, index| {
-                    _ = index;
+                for (self.hovered_counters.items) |hovered| {
                     if (hovered.value.time_us < max_hovered_time) {
                         continue;
                     }
@@ -1071,9 +1070,26 @@ const ViewState = struct {
             c.igSameLine(0, 0);
             c.igTextUnformatted(cat, null);
         }
-        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Start: {}", .{Timestamp{ .us = span.start_time_us }}) catch unreachable, null);
-        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Duration: {}", .{Timestamp{ .us = span.duration_us }}) catch unreachable, null);
-        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Self: {}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
+
+        c.igTextUnformatted("Start: ", null);
+        c.igSameLine(0, 0);
+        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.start_time_us }}) catch unreachable, null);
+
+        c.igTextUnformatted("Duration: ", null);
+        c.igSameLine(0, 0);
+        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.duration_us }}) catch unreachable, null);
+
+        c.igTextUnformatted("Self: ", null);
+        c.igSameLine(0, 0);
+        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
+
+        if (span.args.count() > 0) {
+            c.igTextUnformatted("Args: ", null);
+            var iter = span.args.iterator();
+            while (iter.next()) |arg| {
+                c.igText("    %s: %s", arg.key_ptr.*.ptr, arg.value_ptr.*.ptr);
+            }
+        }
     }
 
     pub fn on_file_load_start(self: *ViewState, tracing: *Tracing, file_name: []const u8) void {

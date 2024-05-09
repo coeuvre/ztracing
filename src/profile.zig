@@ -9,6 +9,7 @@ const TraceEvent = json_profile_parser.TraceEvent;
 const expect_optional = test_utils.expect_optional;
 const Arena = std.heap.ArenaAllocator;
 const AutoHashMap = std.AutoHashMap;
+const SpanArgs = std.StringHashMap([:0]const u8);
 
 const StringPool = struct {
     allocator: Allocator,
@@ -220,6 +221,7 @@ pub const Span = struct {
     start_time_us: i64,
     duration_us: i64,
     end_time_us: i64,
+    args: SpanArgs,
 
     self_duration_us: i64 = 0,
     category: ?[:0]const u8 = null,
@@ -378,6 +380,7 @@ pub const Thread = struct {
             .start_time_us = start_time_us,
             .duration_us = duration_us,
             .end_time_us = start_time_us + duration_us,
+            .args = SpanArgs.init(self.allocator),
         });
         return &self.spans.items[self.spans.items.len - 1];
     }
@@ -689,6 +692,22 @@ pub const Profile = struct {
         if (trace_event.cat) |cat| {
             span.category = try self.string_pool.intern(cat);
         }
+
+        if (trace_event.args) |args| switch (args) {
+            .object => |obj| {
+                var iter = obj.iterator();
+                while (iter.next()) |entry| {
+                    switch (entry.value_ptr.*) {
+                        .string => |value| {
+                            const key = try self.string_pool.intern(entry.key_ptr.*);
+                            try span.args.put(key, try self.string_pool.intern(value));
+                        },
+                        else => {},
+                    }
+                }
+            },
+            else => {},
+        };
 
         self.maybe_update_min_max(trace_event);
     }

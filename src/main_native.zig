@@ -5,7 +5,7 @@ const tracy = @import("tracy.zig");
 const builtin = @import("builtin");
 const assets = @import("assets");
 
-const is_window = builtin.target.os.tag == .windows;
+const is_windows = builtin.target.os.tag == .windows;
 
 const Tracing = @import("tracing.zig").Tracing;
 const Allocator = std.mem.Allocator;
@@ -150,7 +150,6 @@ fn InflateStream(comptime ReaderType: type) type {
                     .@"opaque" = @constCast(&self.allocator),
                 };
 
-                std.log.info("init stream", .{});
                 // Automatically detect header
                 const ret = c.inflateInit2(&self.stream.?, c.MAX_WBITS | 32);
                 if (ret != c.Z_OK) {
@@ -199,7 +198,7 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
 
     const start_counter = c.SDL_GetPerformanceCounter();
 
-    const file = std.fs.openFileAbsolute(path, .{}) catch |err| {
+    const file = std.fs.cwd().openFile(path, .{}) catch |err| {
         send_load_error(profile_allocator, "Failed to open file {s}: {}", .{ path, err });
         return;
     };
@@ -348,14 +347,13 @@ fn load_file(parent_allocator: Allocator, profile_arena: *Arena, path: []const u
 }
 
 fn get_dpi_scale(window: *c.SDL_Window) f32 {
-    if (comptime is_window) {
-        var ddpi: f32 = 0;
-        if (c.SDL_GetDisplayDPI(c.SDL_GetWindowDisplayIndex(window), &ddpi, null, null) == 0) {
-            return ddpi / 96.0;
-        }
+    var result: f32 = 1.0;
+
+    if (c.SDL_GetDisplayDPI(c.SDL_GetWindowDisplayIndex(window), &result, null, null) == 0) {
+        result /= 96.0;
     }
 
-    return 1.0;
+    return result;
 }
 
 fn sdl_malloc(size: usize) callconv(.C) ?*anyopaque {
@@ -393,7 +391,7 @@ pub fn main() !void {
 
     _ = try std.Thread.spawn(.{}, load_thread_main, .{});
 
-    if (comptime is_window) {
+    if (comptime is_windows) {
         // Allow Windows to scale up window, but still let SDL uses coordinate in pixels.
         _ = c.SDL_SetHint(c.SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
     }
@@ -415,12 +413,10 @@ pub fn main() !void {
     const dpi = get_dpi_scale(window);
 
     // Manually scale the window if dpi is > 1 when window size is in pixels (e.g. on Windows),
-    if (comptime is_window) {
-        if (dpi > 1) {
-            const new_window_w: c_int = @intFromFloat(@round(@as(f32, @floatFromInt(window_w)) * dpi));
-            const new_window_h: c_int = @intFromFloat(@round(@as(f32, @floatFromInt(window_h)) * dpi));
-            c.SDL_SetWindowSize(window, new_window_w, new_window_h);
-        }
+    if (dpi > 1) {
+        const new_window_w: c_int = @intFromFloat(@round(@as(f32, @floatFromInt(window_w)) * dpi));
+        const new_window_h: c_int = @intFromFloat(@round(@as(f32, @floatFromInt(window_h)) * dpi));
+        c.SDL_SetWindowSize(window, new_window_w, new_window_h);
     }
 
     const renderer = c.SDL_CreateRenderer(
