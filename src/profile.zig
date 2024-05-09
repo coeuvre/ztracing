@@ -396,6 +396,10 @@ pub const Thread = struct {
         const zone = tracy.trace(@src());
         defer zone.end();
 
+        if (self.name == null or self.name.?.len == 0) {
+            self.name = try std.fmt.allocPrintZ(self.allocator, "Thread {}", .{self.tid});
+        }
+
         std.sort.block(Span, self.spans.items, {}, Span.less_than);
 
         if (self.spans.items.len > 0) {

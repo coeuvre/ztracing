@@ -406,7 +406,7 @@ pub fn main() !void {
         c.SDL_WINDOWPOS_CENTERED,
         window_w,
         window_h,
-        c.SDL_WINDOW_HIDDEN | c.SDL_WINDOW_RESIZABLE,
+        c.SDL_WINDOW_HIDDEN | c.SDL_WINDOW_RESIZABLE | c.SDL_WINDOW_MAXIMIZED,
     ).?;
 
     // TODO: detect DPI change

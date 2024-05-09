@@ -34,6 +34,16 @@ static void my_debug_printf(const char *fmt, ...) {
 #include "third_party/cimgui/imgui/imgui_widgets.cpp"
 #include "third_party/cimgui/cimgui.cpp"
 
+CIMGUI_API ImS16 igTableColumnGetSortColumnIndex(ImGuiTableSortSpecs *specs) {
+    IM_ASSERT(specs->SpecsCount == 1);
+    return specs->Specs[0].ColumnIndex;
+}
+
+CIMGUI_API ImGuiSortDirection igTableColumnGetSortDirection(ImGuiTableSortSpecs *specs) {
+    IM_ASSERT(specs->SpecsCount == 1);
+    return specs->Specs[0].SortDirection;
+}
+
 #ifndef ZTRACING_WASM
 
 #include "third_party/cimgui/imgui/backends/imgui_impl_sdl2.cpp"

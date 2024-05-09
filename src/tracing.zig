@@ -403,6 +403,195 @@ const ViewStyle = struct {
 
 var is_dockspace_initialized: bool = false;
 
+const Statistics = struct {
+    const Self = @This();
+
+    const Group = struct {
+        const Sort = enum {
+            name,
+            total_wall,
+            total_self,
+            avg_wall,
+            occurence,
+        };
+
+        const SortDirection = enum {
+            none,
+            asc,
+            desc,
+        };
+
+        name: []const u8,
+        total_wall: i64,
+        total_self: i64,
+        avg_wall: i64,
+        spans: std.ArrayList(*const Span),
+
+        const Ctx = struct {
+            sort: Sort,
+            direction: SortDirection,
+        };
+
+        fn sort(ctx: Ctx, lhs: Group, rhs: Group) bool {
+            switch (ctx.sort) {
+                .name => {
+                    switch (ctx.direction) {
+                        .none, .desc => {
+                            return less_than_str(rhs.name, lhs.name);
+                        },
+                        .asc => {
+                            return less_than_str(lhs.name, rhs.name);
+                        },
+                    }
+                },
+                .total_wall => {
+                    switch (ctx.direction) {
+                        .none, .desc => {
+                            return rhs.total_wall < lhs.total_wall;
+                        },
+                        .asc => {
+                            return lhs.total_wall < rhs.total_wall;
+                        },
+                    }
+                },
+                .total_self => {
+                    switch (ctx.direction) {
+                        .none, .desc => {
+                            return rhs.total_self < lhs.total_self;
+                        },
+                        .asc => {
+                            return lhs.total_self < rhs.total_self;
+                        },
+                    }
+                },
+                .avg_wall => {
+                    switch (ctx.direction) {
+                        .none, .desc => {
+                            return rhs.avg_wall < lhs.avg_wall;
+                        },
+                        .asc => {
+                            return lhs.avg_wall < rhs.avg_wall;
+                        },
+                    }
+                },
+                .occurence => {
+                    switch (ctx.direction) {
+                        .none, .desc => {
+                            return rhs.spans.items.len < lhs.spans.items.len;
+                        },
+                        .asc => {
+                            return lhs.spans.items.len < rhs.spans.items.len;
+                        },
+                    }
+                },
+            }
+        }
+
+        fn less_than_str(lhs: []const u8, rhs: []const u8) bool {
+            const len = @min(lhs.len, rhs.len);
+            for (lhs[0..len], rhs[0..len]) |a, b| {
+                if (a != b) {
+                    return a < b;
+                }
+            }
+            return lhs.len < rhs.len;
+        }
+    };
+
+    allocator: Allocator,
+    buf: [:0]u8,
+
+    arena: *std.heap.ArenaAllocator,
+    group_sort: Group.Sort = .total_wall,
+    group_sort_direction: Group.SortDirection = .desc,
+    groups: []const Group = &.{},
+
+    fn init(allocator: Allocator) Self {
+        const arena = allocator.create(std.heap.ArenaAllocator) catch unreachable;
+        arena.* = std.heap.ArenaAllocator.init(allocator);
+        const buf = allocator.alloc(u8, 128) catch unreachable;
+        buf[0] = 0;
+        return Self{
+            .allocator = allocator,
+            .arena = arena,
+            .buf = @ptrCast(buf),
+        };
+    }
+
+    fn set_search_term(self: *Self, term: []const u8) void {
+        const len = @min(term.len, self.buf.len - 1);
+        @memcpy(self.buf[0..len], term[0..len]);
+        self.buf[len] = 0;
+    }
+
+    fn get_search_term(self: *const Self) [:0]const u8 {
+        return @ptrCast(self.buf[0..std.mem.indexOfSentinel(u8, 0, self.buf)]);
+    }
+
+    fn clear(self: *Self) void {
+        _ = self.arena.reset(.retain_capacity);
+        self.groups = &.{};
+    }
+
+    fn sort(self: *Self, group_sort: Group.Sort, group_sort_direction: Group.SortDirection) void {
+        self.group_sort = group_sort;
+        self.group_sort_direction = group_sort_direction;
+        std.sort.block(Group, @constCast(self.groups), Group.Ctx{
+            .sort = self.group_sort,
+            .direction = self.group_sort_direction,
+        }, Group.sort);
+    }
+
+    fn build(self: *Self, profile: *const Profile) void {
+        self.clear();
+        const search = self.get_search_term();
+
+        var groups = std.StringHashMap(Group).init(self.allocator);
+        var group_array = std.ArrayList(Group).init(self.arena.allocator());
+
+        for (profile.processes.items) |process| {
+            for (process.threads.items) |thread| {
+                for (thread.spans.items) |*span| {
+                    if (std.mem.indexOf(u8, span.name, search)) |_| {
+                        const entry = groups.getOrPut(span.name) catch unreachable;
+                        if (!entry.found_existing) {
+                            entry.value_ptr.* = Group{
+                                .name = span.name,
+                                .total_wall = 0,
+                                .total_self = 0,
+                                .avg_wall = 0,
+                                .spans = std.ArrayList(*const Span).init(self.arena.allocator()),
+                            };
+                        }
+                        entry.value_ptr.spans.append(span) catch unreachable;
+                    }
+                }
+            }
+        }
+
+        var group_iter = groups.iterator();
+        while (group_iter.next()) |entry| {
+            const group = entry.value_ptr;
+            for (group.spans.items) |span| {
+                group.total_wall += span.duration_us;
+                group.total_self += span.self_duration_us;
+            }
+            group.avg_wall = @divTrunc(group.total_wall, @as(i64, @intCast(group.spans.items.len)));
+            group_array.append(group.*) catch unreachable;
+        }
+        groups.deinit();
+
+        self.groups = group_array.toOwnedSlice() catch unreachable;
+        self.sort(.total_wall, .desc);
+    }
+
+    fn deinit(self: *Self) void {
+        self.allocator.free(self.buf);
+        self.arena.deinit();
+        self.allocator.destroy(self.arena);
+    }
+};
+
 const ViewState = struct {
     allocator: Allocator,
     profile: *Profile,
@@ -420,12 +609,16 @@ const ViewState = struct {
     open_selection_span: bool = false,
     selected_span: ?*const Span = null,
 
+    open_statistics: bool = false,
+    statistics: Statistics,
+
     pub fn init(allocator: Allocator, profile: *Profile) ViewState {
         const window_class = c.ImGuiWindowClass_ImGuiWindowClass();
         window_class.*.DockNodeFlagsOverrideSet = c.ImGuiDockNodeFlags_NoTabBar;
 
         const duration_us = profile.max_time_us - profile.min_time_us;
         const padding = @divTrunc(duration_us, 6);
+
         return .{
             .allocator = allocator,
             .profile = profile,
@@ -434,12 +627,15 @@ const ViewState = struct {
             .hovered_counters = std.ArrayList(HoveredCounter).init(allocator),
             .highlighted_spans = std.ArrayList(HoveredSpan).init(allocator),
             .main_window_class = window_class,
+
+            .statistics = Statistics.init(allocator),
         };
     }
 
     pub fn deinit(self: *ViewState) void {
         self.hovered_counters.deinit();
-        defer c.ImGuiWindowClass_destroy(self.main_window_class);
+        c.ImGuiWindowClass_destroy(self.main_window_class);
+        self.statistics.deinit();
     }
 
     fn calc_region(self: *ViewState, bb: c.ImRect) ViewRegion {
@@ -487,6 +683,7 @@ const ViewState = struct {
             _ = c.igDockBuilderSplitNode(dockspace_id, c.ImGuiDir_Down, 0.3, &tool_area_id, &work_area_id);
             c.igDockBuilderDockWindow("WorkArea", work_area_id);
             c.igDockBuilderDockWindow("Selection", tool_area_id);
+            c.igDockBuilderDockWindow("Statistics", tool_area_id);
             c.igDockBuilderFinish(dockspace_id);
             is_dockspace_initialized = true;
         }
@@ -500,15 +697,19 @@ const ViewState = struct {
         self.drawTimeline(timeline_height, style);
         self.draw_main_view(timeline_height, style);
 
-        if (self.selected_span) |span| {
-            if (self.open_selection_span) {
-                if (c.igBegin("Selection", &self.open_selection_span, c.ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (self.open_selection_span) {
+            if (c.igBegin("Selection", &self.open_selection_span, 0)) {
+                if (self.selected_span) |span| {
                     self.draw_span(span);
                 }
-                c.igEnd();
-            } else {
-                self.selected_span = null;
             }
+            c.igEnd();
+        }
+
+        if (self.open_statistics) {
+            if (c.igBegin("Statistics", &self.open_statistics, 0)) {}
+            self.draw_statistics();
+            c.igEnd();
         }
 
         c.igEnd();
@@ -1027,9 +1228,12 @@ const ViewState = struct {
             }
             c.igEndTooltip();
 
-            if (io.*.MouseReleased[0] and c.ImRect_Contains_Vec2(&hovered.bb, io.*.MouseClickedPos[0])) {
+            if (io.*.MouseClickedCount[0] == 1) {
                 self.selected_span = span;
                 self.open_selection_span = true;
+                c.igSetWindowFocus_Str("Selection");
+            } else if (io.*.MouseDoubleClicked[0]) {
+                self.build_statistics(span.name);
             }
         }
         self.hovered_span = hovered_span;
@@ -1058,8 +1262,17 @@ const ViewState = struct {
         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Self: {}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
     }
 
+    fn build_statistics(self: *ViewState, search: []const u8) void {
+        self.statistics.set_search_term(search);
+        self.statistics.build(self.profile);
+        self.open_statistics = true;
+        c.igSetWindowFocus_Str("Statistics");
+    }
+
     fn draw_span(self: *ViewState, span: *const Span) void {
-        _ = self;
+        if (c.igButton("Statistics", .{ .x = 0, .y = 0 })) {
+            self.build_statistics(span.name);
+        }
 
         c.igTextUnformatted("Title: ", null);
         c.igSameLine(0, 0);
@@ -1089,6 +1302,100 @@ const ViewState = struct {
             while (iter.next()) |arg| {
                 c.igText("    %s: %s", arg.key_ptr.*.ptr, arg.value_ptr.*.ptr);
             }
+        }
+    }
+
+    const column_dict = &[_]Statistics.Group.Sort{
+        .name,
+        .total_wall,
+        .total_self,
+        .avg_wall,
+        .occurence,
+    };
+    const direction_dict = &[_]Statistics.Group.SortDirection{
+        .desc,
+        .asc,
+        .desc,
+    };
+
+    fn draw_statistics(self: *ViewState) void {
+        const search_submitted = c.igInputText(
+            "##Search",
+            self.statistics.buf.ptr,
+            self.statistics.buf.len,
+            c.ImGuiInputTextFlags_EnterReturnsTrue,
+            null,
+            null,
+        );
+        if (c.igButton("Find", .{ .x = 0, .y = 0 }) or search_submitted) {
+            self.statistics.build(self.profile);
+        }
+        c.igSameLine(0, -1);
+        if (c.igButton("Clear", .{ .x = 0, .y = 0 })) {
+            self.statistics.clear();
+        }
+
+        if (c.igTreeNodeEx_Str("Group", c.ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (c.igBeginTable(
+                "##Group",
+                5,
+                c.ImGuiTableFlags_Resizable |
+                    c.ImGuiTableFlags_Sortable |
+                    c.ImGuiTableFlags_ScrollY |
+                    c.ImGuiTableFlags_SizingFixedFit,
+                .{ .x = 0, .y = 0 },
+                0,
+            )) {
+                c.igTableSetupScrollFreeze(0, 1);
+                c.igTableSetupColumn("Name", 0, 0, 0);
+                c.igTableSetupColumn("Wall Duration", c.ImGuiTableColumnFlags_DefaultSort |
+                    c.ImGuiTableColumnFlags_PreferSortDescending, 0, 0);
+                c.igTableSetupColumn("Self time", 0, 0, 0);
+                c.igTableSetupColumn("Average Wall Duration", 0, 0, 0);
+                c.igTableSetupColumn("Occurences", 0, 0, 0);
+                c.igTableHeadersRow();
+
+                if (c.igTableGetSortSpecs()) |specs| {
+                    const column_index = c.igTableColumnGetSortColumnIndex(specs);
+                    const sort_direction = c.igTableColumnGetSortDirection(specs);
+                    const sort = column_dict[@intCast(column_index)];
+                    const direction = direction_dict[@intCast(sort_direction)];
+                    if (specs.*.SpecsDirty or
+                        sort != self.statistics.group_sort or
+                        direction != self.statistics.group_sort_direction)
+                    {
+                        self.statistics.sort(sort, direction);
+                        specs.*.SpecsDirty = false;
+                    }
+                }
+
+                for (self.statistics.groups) |*group| {
+                    c.igTableNextRow(0, 0);
+
+                    _ = c.igTableNextColumn();
+                    _ = c.igSelectable_Bool(
+                        "##select",
+                        false,
+                        c.ImGuiSelectableFlags_SpanAllColumns |
+                            c.ImGuiSelectableFlags_AllowOverlap,
+                        .{},
+                    );
+                    c.igSameLine(0, 0);
+                    c.igTextUnformatted(group.name.ptr, null);
+
+                    _ = c.igTableNextColumn();
+                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.total_wall }}) catch unreachable, null);
+                    _ = c.igTableNextColumn();
+                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.total_self }}) catch unreachable, null);
+                    _ = c.igTableNextColumn();
+                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.avg_wall }}) catch unreachable, null);
+                    _ = c.igTableNextColumn();
+                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{group.spans.items.len}) catch unreachable, null);
+                }
+
+                c.igEndTable();
+            }
+            c.igTreePop();
         }
     }
 

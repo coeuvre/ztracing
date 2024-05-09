@@ -7,6 +7,9 @@
 #define CIMGUI_DEFINE_ENUMS_AND_STRUCTS 1
 #include "third_party/cimgui/cimgui.h"
 
+CIMGUI_API ImS16 igTableColumnGetSortColumnIndex(ImGuiTableSortSpecs *specs);
+CIMGUI_API ImGuiSortDirection igTableColumnGetSortDirection(ImGuiTableSortSpecs *specs);
+
 #ifndef ZTRACING_WASM
 
 #include <SDL2/SDL.h>
