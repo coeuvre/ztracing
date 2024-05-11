@@ -403,8 +403,29 @@ const ViewStyle = struct {
 
 var is_dockspace_initialized: bool = false;
 
+fn less_than_str(lhs: []const u8, rhs: []const u8) bool {
+    const len = @min(lhs.len, rhs.len);
+    for (lhs[0..len], rhs[0..len]) |a, b| {
+        if (a != b) {
+            return a < b;
+        }
+    }
+    return lhs.len < rhs.len;
+}
+
 const Statistics = struct {
     const Self = @This();
+
+    const SortDirection = enum {
+        none,
+        asc,
+        desc,
+    };
+
+    const SpanSortCtx = struct {
+        sort: SpanSort,
+        direction: SortDirection,
+    };
 
     const Group = struct {
         const Sort = enum {
@@ -413,12 +434,6 @@ const Statistics = struct {
             total_self,
             avg_wall,
             occurence,
-        };
-
-        const SortDirection = enum {
-            none,
-            asc,
-            desc,
         };
 
         name: []const u8,
@@ -486,25 +501,27 @@ const Statistics = struct {
                 },
             }
         }
+    };
 
-        fn less_than_str(lhs: []const u8, rhs: []const u8) bool {
-            const len = @min(lhs.len, rhs.len);
-            for (lhs[0..len], rhs[0..len]) |a, b| {
-                if (a != b) {
-                    return a < b;
-                }
-            }
-            return lhs.len < rhs.len;
-        }
+    const SpanSort = enum {
+        name,
+        wall_time,
+        self_time,
+        start_time,
     };
 
     allocator: Allocator,
     buf: [:0]u8,
 
     arena: *std.heap.ArenaAllocator,
+
     group_sort: Group.Sort = .total_wall,
-    group_sort_direction: Group.SortDirection = .desc,
+    group_sort_direction: SortDirection = .desc,
     groups: []const Group = &.{},
+
+    spans: []const *const Span = &.{},
+    span_sort: SpanSort = .wall_time,
+    span_sort_direction: SortDirection = .desc,
 
     fn init(allocator: Allocator) Self {
         const arena = allocator.create(std.heap.ArenaAllocator) catch unreachable;
@@ -531,9 +548,10 @@ const Statistics = struct {
     fn clear(self: *Self) void {
         _ = self.arena.reset(.retain_capacity);
         self.groups = &.{};
+        self.spans = &.{};
     }
 
-    fn sort(self: *Self, group_sort: Group.Sort, group_sort_direction: Group.SortDirection) void {
+    fn sort_group(self: *Self, group_sort: Group.Sort, group_sort_direction: SortDirection) void {
         self.group_sort = group_sort;
         self.group_sort_direction = group_sort_direction;
         std.sort.block(Group, @constCast(self.groups), Group.Ctx{
@@ -542,12 +560,67 @@ const Statistics = struct {
         }, Group.sort);
     }
 
+    fn sort_span(self: *Self, span_sort: SpanSort, span_sort_direction: SortDirection) void {
+        self.span_sort = span_sort;
+        self.span_sort_direction = span_sort_direction;
+        std.sort.block(*const Span, @constCast(self.spans), SpanSortCtx{
+            .sort = self.span_sort,
+            .direction = self.span_sort_direction,
+        }, Self.compare_span);
+    }
+
+    fn compare_span(ctx: SpanSortCtx, lhs: *const Span, rhs: *const Span) bool {
+        switch (ctx.sort) {
+            .name => {
+                switch (ctx.direction) {
+                    .none, .desc => {
+                        return less_than_str(rhs.name, lhs.name);
+                    },
+                    .asc => {
+                        return less_than_str(lhs.name, rhs.name);
+                    },
+                }
+            },
+            .wall_time => {
+                switch (ctx.direction) {
+                    .none, .desc => {
+                        return rhs.duration_us < lhs.duration_us;
+                    },
+                    .asc => {
+                        return lhs.duration_us < rhs.duration_us;
+                    },
+                }
+            },
+            .self_time => {
+                switch (ctx.direction) {
+                    .none, .desc => {
+                        return rhs.self_duration_us < lhs.self_duration_us;
+                    },
+                    .asc => {
+                        return lhs.self_duration_us < rhs.self_duration_us;
+                    },
+                }
+            },
+            .start_time => {
+                switch (ctx.direction) {
+                    .none, .desc => {
+                        return rhs.start_time_us < lhs.start_time_us;
+                    },
+                    .asc => {
+                        return lhs.start_time_us < rhs.start_time_us;
+                    },
+                }
+            },
+        }
+    }
+
     fn build(self: *Self, profile: *const Profile) void {
         self.clear();
         const search = self.get_search_term();
 
         var groups = std.StringHashMap(Group).init(self.allocator);
         var group_array = std.ArrayList(Group).init(self.arena.allocator());
+        var span_array = std.ArrayList(*const Span).init(self.arena.allocator());
 
         for (profile.processes.items) |process| {
             for (process.threads.items) |thread| {
@@ -564,6 +637,7 @@ const Statistics = struct {
                             };
                         }
                         entry.value_ptr.spans.append(span) catch unreachable;
+                        span_array.append(span) catch unreachable;
                     }
                 }
             }
@@ -582,7 +656,10 @@ const Statistics = struct {
         groups.deinit();
 
         self.groups = group_array.toOwnedSlice() catch unreachable;
-        self.sort(.total_wall, .desc);
+        self.sort_group(.total_wall, .desc);
+
+        self.spans = span_array.toOwnedSlice() catch unreachable;
+        self.sort_span(.wall_time, .desc);
     }
 
     fn deinit(self: *Self) void {
@@ -1309,14 +1386,22 @@ const ViewState = struct {
         }
     }
 
-    const column_dict = &[_]Statistics.Group.Sort{
+    const group_table_column_dict = &[_]Statistics.Group.Sort{
         .name,
         .total_wall,
         .total_self,
         .avg_wall,
         .occurence,
     };
-    const direction_dict = &[_]Statistics.Group.SortDirection{
+
+    const span_table_column_dict = &[_]Statistics.SpanSort{
+        .name,
+        .wall_time,
+        .self_time,
+        .start_time,
+    };
+
+    const direction_dict = &[_]Statistics.SortDirection{
         .desc,
         .asc,
         .desc,
@@ -1347,7 +1432,7 @@ const ViewState = struct {
                     c.ImGuiTableFlags_Sortable |
                     c.ImGuiTableFlags_ScrollY |
                     c.ImGuiTableFlags_SizingFixedFit,
-                .{ .x = 0, .y = 0 },
+                .{ .x = 0, .y = c.igGetTextLineHeightWithSpacing() * 9 },
                 0,
             )) {
                 c.igTableSetupScrollFreeze(0, 1);
@@ -1362,39 +1447,113 @@ const ViewState = struct {
                 if (c.igTableGetSortSpecs()) |specs| {
                     const column_index = c.igTableColumnGetSortColumnIndex(specs);
                     const sort_direction = c.igTableColumnGetSortDirection(specs);
-                    const sort = column_dict[@intCast(column_index)];
+                    const sort = group_table_column_dict[@intCast(column_index)];
                     const direction = direction_dict[@intCast(sort_direction)];
                     if (specs.*.SpecsDirty or
                         sort != self.statistics.group_sort or
                         direction != self.statistics.group_sort_direction)
                     {
-                        self.statistics.sort(sort, direction);
+                        self.statistics.sort_group(sort, direction);
                         specs.*.SpecsDirty = false;
                     }
                 }
 
-                for (self.statistics.groups) |*group| {
-                    c.igTableNextRow(0, 0);
+                const clipper = c.ImGuiListClipper_ImGuiListClipper();
+                c.ImGuiListClipper_Begin(clipper, @intCast(self.statistics.groups.len), 0);
 
-                    _ = c.igTableNextColumn();
-                    _ = c.igSelectable_Bool(
-                        "##select",
-                        false,
-                        c.ImGuiSelectableFlags_SpanAllColumns |
-                            c.ImGuiSelectableFlags_AllowOverlap,
-                        .{},
-                    );
-                    c.igSameLine(0, 0);
-                    c.igTextUnformatted(group.name.ptr, null);
+                while (c.ImGuiListClipper_Step(clipper)) {
+                    for (@intCast(clipper.*.DisplayStart)..@intCast(clipper.*.DisplayEnd)) |row| {
+                        const group = self.statistics.groups[row];
 
-                    _ = c.igTableNextColumn();
-                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.total_wall }}) catch unreachable, null);
-                    _ = c.igTableNextColumn();
-                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.total_self }}) catch unreachable, null);
-                    _ = c.igTableNextColumn();
-                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.avg_wall }}) catch unreachable, null);
-                    _ = c.igTableNextColumn();
-                    c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{group.spans.items.len}) catch unreachable, null);
+                        c.igTableNextRow(0, 0);
+
+                        _ = c.igTableNextColumn();
+                        _ = c.igSelectable_Bool(
+                            "##Select",
+                            false,
+                            c.ImGuiSelectableFlags_SpanAllColumns |
+                                c.ImGuiSelectableFlags_AllowOverlap,
+                            .{},
+                        );
+                        c.igSameLine(0, 0);
+                        c.igTextUnformatted(group.name.ptr, null);
+
+                        _ = c.igTableNextColumn();
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.total_wall }}) catch unreachable, null);
+                        _ = c.igTableNextColumn();
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.total_self }}) catch unreachable, null);
+                        _ = c.igTableNextColumn();
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.avg_wall }}) catch unreachable, null);
+                        _ = c.igTableNextColumn();
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{group.spans.items.len}) catch unreachable, null);
+                    }
+                }
+
+                c.igEndTable();
+            }
+            c.igTreePop();
+        }
+
+        if (c.igTreeNodeEx_Str("Samples", c.ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (c.igBeginTable(
+                "##Samples",
+                4,
+                c.ImGuiTableFlags_Resizable |
+                    c.ImGuiTableFlags_Sortable |
+                    c.ImGuiTableFlags_ScrollY |
+                    c.ImGuiTableFlags_SizingFixedFit,
+                .{ .x = 0, .y = c.igGetTextLineHeightWithSpacing() * 9 },
+                0,
+            )) {
+                c.igTableSetupScrollFreeze(0, 1);
+                c.igTableSetupColumn("Name", 0, 0, 0);
+                c.igTableSetupColumn("Wall time", c.ImGuiTableColumnFlags_DefaultSort |
+                    c.ImGuiTableColumnFlags_PreferSortDescending, 0, 0);
+                c.igTableSetupColumn("Self time", 0, 0, 0);
+                c.igTableSetupColumn("Start time", 0, 0, 0);
+                c.igTableHeadersRow();
+
+                if (c.igTableGetSortSpecs()) |specs| {
+                    const column_index = c.igTableColumnGetSortColumnIndex(specs);
+                    const sort_direction = c.igTableColumnGetSortDirection(specs);
+                    const sort = span_table_column_dict[@intCast(column_index)];
+                    const direction = direction_dict[@intCast(sort_direction)];
+                    if (specs.*.SpecsDirty or
+                        sort != self.statistics.span_sort or
+                        direction != self.statistics.span_sort_direction)
+                    {
+                        self.statistics.sort_span(sort, direction);
+                        specs.*.SpecsDirty = false;
+                    }
+                }
+
+                const clipper = c.ImGuiListClipper_ImGuiListClipper();
+                c.ImGuiListClipper_Begin(clipper, @intCast(self.statistics.spans.len), 0);
+
+                while (c.ImGuiListClipper_Step(clipper)) {
+                    for (@intCast(clipper.*.DisplayStart)..@intCast(clipper.*.DisplayEnd)) |row| {
+                        const span = self.statistics.spans[row];
+
+                        c.igTableNextRow(0, 0);
+
+                        _ = c.igTableNextColumn();
+                        _ = c.igSelectable_Bool(
+                            "##Select",
+                            false,
+                            c.ImGuiSelectableFlags_SpanAllColumns |
+                                c.ImGuiSelectableFlags_AllowOverlap,
+                            .{},
+                        );
+                        c.igSameLine(0, 0);
+                        c.igTextUnformatted(span.name.ptr, null);
+
+                        _ = c.igTableNextColumn();
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.duration_us }}) catch unreachable, null);
+                        _ = c.igTableNextColumn();
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
+                        _ = c.igTableNextColumn();
+                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.start_time_us }}) catch unreachable, null);
+                    }
                 }
 
                 c.igEndTable();
