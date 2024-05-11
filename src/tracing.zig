@@ -12,6 +12,7 @@ const CountAllocator = @import("count_alloc.zig").CountAllocator;
 const TraceEvent = json_profile_parser.TraceEvent;
 const Profile = profile_.Profile;
 const Span = profile_.Span;
+const Track = profile_.Track;
 const SeriesValue = profile_.SeriesValue;
 const Counter = profile_.Counter;
 const Thread = profile_.Thread;
@@ -515,6 +516,8 @@ const Statistics = struct {
 
     arena: *std.heap.ArenaAllocator,
 
+    selected_span: ?*const Span = null,
+
     group_sort: Group.Sort = .total_wall,
     group_sort_direction: SortDirection = .desc,
     groups: []const Group = &.{},
@@ -546,6 +549,12 @@ const Statistics = struct {
     }
 
     fn clear(self: *Self) void {
+        self.selected_span = null;
+        self.buf[0] = 0;
+        self.clear_statistics();
+    }
+
+    fn clear_statistics(self: *Self) void {
         _ = self.arena.reset(.retain_capacity);
         self.groups = &.{};
         self.spans = &.{};
@@ -615,7 +624,7 @@ const Statistics = struct {
     }
 
     fn build(self: *Self, profile: *const Profile) void {
-        self.clear();
+        self.clear_statistics();
         const search = self.get_search_term();
 
         var groups = std.StringHashMap(Group).init(self.allocator);
@@ -682,9 +691,7 @@ const ViewState = struct {
     is_dragging: bool = false,
     drag_start: ViewPos = undefined,
     hovered_span: ?HoveredSpan = null,
-
-    open_selection_span: bool = false,
-    selected_span: ?*const Span = null,
+    scroll_track: ?*const Track = null,
 
     open_statistics: bool = false,
     statistics: Statistics,
@@ -756,16 +763,11 @@ const ViewState = struct {
             std.log.info("Building dockspace ...", .{});
 
             var work_area_id: c.ImGuiID = undefined;
-            var tool_area_root_id: c.ImGuiID = undefined;
-            _ = c.igDockBuilderSplitNode(dockspace_id, c.ImGuiDir_Down, 0.3, &tool_area_root_id, &work_area_id);
+            var tool_area_id: c.ImGuiID = undefined;
+            _ = c.igDockBuilderSplitNode(dockspace_id, c.ImGuiDir_Right, 0.3, &tool_area_id, &work_area_id);
             c.igDockBuilderDockWindow("WorkArea", work_area_id);
 
-            var tool_area_left_id: c.ImGuiID = undefined;
-            var tool_area_right_id: c.ImGuiID = undefined;
-            _ = c.igDockBuilderSplitNode(tool_area_root_id, c.ImGuiDir_Right, 0.5, &tool_area_right_id, &tool_area_left_id);
-
-            c.igDockBuilderDockWindow("Selection", tool_area_left_id);
-            c.igDockBuilderDockWindow("Statistics", tool_area_right_id);
+            c.igDockBuilderDockWindow("Statistics", tool_area_id);
 
             c.igDockBuilderFinish(dockspace_id);
             is_dockspace_initialized = true;
@@ -779,15 +781,6 @@ const ViewState = struct {
 
         self.drawTimeline(timeline_height, style);
         self.draw_main_view(timeline_height, style);
-
-        if (self.open_selection_span) {
-            if (c.igBegin("Selection", &self.open_selection_span, 0)) {
-                if (self.selected_span) |span| {
-                    self.draw_span(span);
-                }
-            }
-            c.igEnd();
-        }
 
         if (self.open_statistics) {
             if (c.igBegin("Statistics", &self.open_statistics, 0)) {}
@@ -831,7 +824,7 @@ const ViewState = struct {
 
         for (self.profile.processes.items) |*process| {
             const name = std.fmt.bufPrintZ(&global_buf, "Process {}", .{process.pid}) catch unreachable;
-            if (c.igCollapsingHeader_BoolPtr(name, null, c.ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (c.igCollapsingHeader_BoolPtr(name, &process.ui.open, c.ImGuiTreeNodeFlags_DefaultOpen)) {
                 self.draw_counters(region, style, process.counters.items);
                 self.draw_threads(region, style, process.threads.items, last_hovered_span);
             }
@@ -1179,16 +1172,17 @@ const ViewState = struct {
                 const trace1 = tracy.traceNamed(@src(), "draw_threads/body");
                 defer trace1.end();
 
-                const lane_top = region.top() + c.igGetCursorPosY() - c.igGetScrollY();
-                const lane_height = @as(f32, @floatFromInt(thread.tracks.items.len)) * style.sub_lane_height;
-                const lane_bb = c.ImRect{
-                    .Min = .{ .x = region.left(), .y = lane_top },
-                    .Max = .{ .x = region.right(), .y = lane_top + lane_height },
-                };
-                c.igItemSize_Rect(lane_bb, -1);
-                if (c.igItemAdd(lane_bb, 0, null, 0)) {
-                    var sub_lane_top = lane_top;
-                    for (thread.tracks.items) |sub_lane| {
+                c.igPushStyleVar_Vec2(c.ImGuiStyleVar_ItemSpacing, .{ .x = 0, .y = 0 });
+                for (thread.tracks.items) |*sub_lane| {
+                    const sub_lane_top = region.top() + c.igGetCursorPosY() - c.igGetScrollY();
+                    const sub_lane_height = style.sub_lane_height;
+                    const sub_lane_bb = c.ImRect{
+                        .Min = .{ .x = region.left(), .y = sub_lane_top },
+                        .Max = .{ .x = region.right(), .y = sub_lane_top + sub_lane_height },
+                    };
+
+                    c.igItemSize_Rect(sub_lane_bb, -1);
+                    if (c.igItemAdd(sub_lane_bb, 0, null, 0)) {
                         const trace2 = tracy.traceNamed(@src(), "draw_threads/body/track");
                         defer trace2.end();
 
@@ -1202,7 +1196,7 @@ const ViewState = struct {
                                 const col = get_color_for_span(span);
                                 var bb = c.ImRect{
                                     .Min = .{ .x = x1, .y = sub_lane_top },
-                                    .Max = .{ .x = x2, .y = sub_lane_top + style.sub_lane_height },
+                                    .Max = .{ .x = x2, .y = sub_lane_top + sub_lane_height },
                                 };
                                 c.ImDrawList_AddRectFilled(
                                     draw_list,
@@ -1237,7 +1231,7 @@ const ViewState = struct {
                                     };
                                 }
 
-                                if (self.selected_span == span) {
+                                if (self.statistics.selected_span == span) {
                                     selected_span = .{
                                         .span = span,
                                         .bb = bb,
@@ -1251,7 +1245,7 @@ const ViewState = struct {
 
                                 const text = span.name;
                                 const text_size = ig.calc_text_size(text, false, 0);
-                                const center_y = sub_lane_top + style.sub_lane_height / 2.0;
+                                const center_y = sub_lane_top + sub_lane_height / 2.0;
 
                                 if (text_max_x - text_min_x >= text_size.x) {
                                     const center_x = text_min_x + (text_max_x - text_min_x) / 2.0;
@@ -1266,7 +1260,7 @@ const ViewState = struct {
                                     c.igRenderTextEllipsis(
                                         draw_list,
                                         .{ .x = text_min_x, .y = center_y - style.character_size.y / 2.0 },
-                                        .{ .x = text_max_x, .y = sub_lane_top + style.sub_lane_height },
+                                        .{ .x = text_max_x, .y = sub_lane_top + sub_lane_height },
                                         text_max_x,
                                         text_max_x,
                                         text,
@@ -1276,10 +1270,16 @@ const ViewState = struct {
                                 }
                             }
                         }
+                    }
 
-                        sub_lane_top += style.sub_lane_height;
+                    if (self.scroll_track) |scroll_track| {
+                        if (scroll_track == sub_lane) {
+                            c.igScrollToItem(c.ImGuiScrollFlags_AlwaysCenterY);
+                            self.scroll_track = null;
+                        }
                     }
                 }
+                c.igPopStyleVar(1);
             }
         }
 
@@ -1312,10 +1312,7 @@ const ViewState = struct {
             c.igEndTooltip();
 
             if (io.*.MouseClickedCount[0] == 1) {
-                self.selected_span = span;
-                self.open_selection_span = true;
-            } else if (io.*.MouseDoubleClicked[0]) {
-                self.build_statistics(span.name);
+                self.select_span(span);
             }
         }
         self.hovered_span = hovered_span;
@@ -1344,46 +1341,27 @@ const ViewState = struct {
         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Self: {}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
     }
 
+    fn select_span(self: *ViewState, span: *const Span) void {
+        self.statistics.selected_span = span;
+        self.build_statistics(span.name);
+    }
+
+    fn zoom_into_span(self: *ViewState, span: *const Span) void {
+        self.start_time_us = span.start_time_us;
+        self.end_time_us = self.start_time_us + span.duration_us;
+        if (!span.thread.process.ui.open) {
+            span.thread.process.ui.open = true;
+        }
+        if (!span.thread.ui.open) {
+            span.thread.ui.open = true;
+        }
+        self.scroll_track = span.track;
+    }
+
     fn build_statistics(self: *ViewState, search: []const u8) void {
         self.statistics.set_search_term(search);
         self.statistics.build(self.profile);
         self.open_statistics = true;
-    }
-
-    fn draw_span(self: *ViewState, span: *const Span) void {
-        if (c.igButton("Statistics", .{ .x = 0, .y = 0 })) {
-            self.build_statistics(span.name);
-        }
-
-        c.igTextUnformatted("Title: ", null);
-        c.igSameLine(0, 0);
-        c.igTextWrapped("%s", span.name.ptr);
-
-        if (span.category) |cat| {
-            c.igTextUnformatted("Category: ", null);
-            c.igSameLine(0, 0);
-            c.igTextUnformatted(cat, null);
-        }
-
-        c.igTextUnformatted("Start: ", null);
-        c.igSameLine(0, 0);
-        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.start_time_us }}) catch unreachable, null);
-
-        c.igTextUnformatted("Duration: ", null);
-        c.igSameLine(0, 0);
-        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.duration_us }}) catch unreachable, null);
-
-        c.igTextUnformatted("Self: ", null);
-        c.igSameLine(0, 0);
-        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
-
-        if (span.args.count() > 0) {
-            c.igTextUnformatted("Args: ", null);
-            var iter = span.args.iterator();
-            while (iter.next()) |arg| {
-                c.igText("    %s: %s", arg.key_ptr.*.ptr, arg.value_ptr.*.ptr);
-            }
-        }
     }
 
     const group_table_column_dict = &[_]Statistics.Group.Sort{
@@ -1424,8 +1402,43 @@ const ViewState = struct {
             self.statistics.clear();
         }
 
+        if (c.igTreeNodeEx_Str("Selection", c.ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (self.statistics.selected_span) |span| {
+                c.igTextUnformatted("Title: ", null);
+                c.igSameLine(0, 0);
+                c.igTextWrapped("%s", span.name.ptr);
+
+                if (span.category) |cat| {
+                    c.igTextUnformatted("Category: ", null);
+                    c.igSameLine(0, 0);
+                    c.igTextUnformatted(cat, null);
+                }
+
+                c.igTextUnformatted("Start: ", null);
+                c.igSameLine(0, 0);
+                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.start_time_us }}) catch unreachable, null);
+
+                c.igTextUnformatted("Duration: ", null);
+                c.igSameLine(0, 0);
+                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.duration_us }}) catch unreachable, null);
+
+                c.igTextUnformatted("Self: ", null);
+                c.igSameLine(0, 0);
+                c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
+
+                if (span.args.count() > 0) {
+                    c.igTextUnformatted("Args: ", null);
+                    var iter = span.args.iterator();
+                    while (iter.next()) |arg| {
+                        c.igText("    %s: %s", arg.key_ptr.*.ptr, arg.value_ptr.*.ptr);
+                    }
+                }
+            }
+            c.igTreePop();
+        }
+
         if (c.igTreeNodeEx_Str("Group", c.ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (c.igBeginTable(
+            if (self.statistics.groups.len > 0 and c.igBeginTable(
                 "##Group",
                 5,
                 c.ImGuiTableFlags_Resizable |
@@ -1495,7 +1508,7 @@ const ViewState = struct {
         }
 
         if (c.igTreeNodeEx_Str("Samples", c.ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (c.igBeginTable(
+            if (self.statistics.spans.len > 0 and c.igBeginTable(
                 "##Samples",
                 4,
                 c.ImGuiTableFlags_Resizable |
@@ -1537,13 +1550,16 @@ const ViewState = struct {
                         c.igTableNextRow(0, 0);
 
                         _ = c.igTableNextColumn();
-                        _ = c.igSelectable_Bool(
-                            "##Select",
-                            false,
+                        if (c.igSelectable_Bool(
+                            std.fmt.bufPrintZ(&global_buf, "##Select{*}", .{span}) catch unreachable,
+                            self.statistics.selected_span == span,
                             c.ImGuiSelectableFlags_SpanAllColumns |
                                 c.ImGuiSelectableFlags_AllowOverlap,
                             .{},
-                        );
+                        )) {
+                            self.statistics.selected_span = span;
+                            self.zoom_into_span(span);
+                        }
                         c.igSameLine(0, 0);
                         c.igTextUnformatted(span.name.ptr, null);
 

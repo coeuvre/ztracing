@@ -223,6 +223,9 @@ pub const Span = struct {
     end_time_us: i64,
     args: SpanArgs,
 
+    thread: *Thread = undefined,
+    track: *Track = undefined,
+
     self_duration_us: i64 = 0,
     category: ?[:0]const u8 = null,
 
@@ -259,6 +262,9 @@ pub const Track = struct {
     }
 
     fn done(self: *Track) !void {
+        for (self.spans.items) |span| {
+            span.track = self;
+        }
         self.mipmap = try generate_mipmap(
             *Span,
             self.spans.allocator,
@@ -360,6 +366,7 @@ pub const Thread = struct {
     sort_index: ?i64 = null,
 
     ui: UiState = .{},
+    process: *Process = undefined,
 
     pub fn init(allocator: Allocator, tid: i64) Thread {
         return .{
@@ -374,7 +381,12 @@ pub const Thread = struct {
         self.name = name;
     }
 
-    pub fn create_span(self: *Thread, name: ?[:0]const u8, start_time_us: i64, duration_us: i64) !*Span {
+    pub fn create_span(
+        self: *Thread,
+        name: ?[:0]const u8,
+        start_time_us: i64,
+        duration_us: i64,
+    ) !*Span {
         try self.spans.append(.{
             .name = name orelse "",
             .start_time_us = start_time_us,
@@ -401,6 +413,10 @@ pub const Thread = struct {
         }
 
         std.sort.block(Span, self.spans.items, {}, Span.less_than);
+
+        for (self.spans.items) |*span| {
+            span.thread = self;
+        }
 
         if (self.spans.items.len > 0) {
             const first_span = self.spans.items[0];
@@ -493,6 +509,8 @@ pub const Process = struct {
     thread_map: AutoHashMap(i64, usize),
     threads: ArrayList(Thread),
 
+    ui: UiState = .{},
+
     fn init(allocator: Allocator, pid: i64) Process {
         return .{
             .allocator = allocator,
@@ -513,6 +531,7 @@ pub const Process = struct {
         std.sort.block(Thread, self.threads.items, {}, Thread.less_than);
         for (self.threads.items) |*thread| {
             try thread.done();
+            thread.process = self;
         }
     }
 
