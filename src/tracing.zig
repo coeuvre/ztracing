@@ -1426,6 +1426,9 @@ const ViewState = struct {
     }
 
     fn build_statistics(self: *ViewState, search: []const u8) void {
+        const trace = tracy.trace(@src());
+        defer trace.end();
+
         self.statistics.set_search_term(search);
         self.statistics.build(self.profile);
         self.open_statistics = true;
@@ -1451,6 +1454,9 @@ const ViewState = struct {
     };
 
     fn draw_statistics(self: *ViewState) void {
+        const trace = tracy.trace(@src());
+        defer trace.end();
+
         const search_submitted = c.igInputText(
             "##Search",
             self.statistics.buf.ptr,

@@ -108,6 +108,8 @@ fn add_tracy(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
         },
     });
     tracy.linkLibC();
+    // https://github.com/wolfpld/tracy/issues/602
+    tracy.root_module.sanitize_c = false;
     if (target.result.os.tag != .windows) {
         tracy.linkLibCpp();
     }
