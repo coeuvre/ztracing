@@ -432,14 +432,12 @@ const Statistics = struct {
         const Sort = enum {
             name,
             total_wall,
-            total_self,
             avg_wall,
             occurence,
         };
 
         name: []const u8,
         total_wall: i64,
-        total_self: i64,
         avg_wall: i64,
         spans: std.ArrayList(*const Span),
 
@@ -470,16 +468,6 @@ const Statistics = struct {
                         },
                     }
                 },
-                .total_self => {
-                    switch (ctx.direction) {
-                        .none, .desc => {
-                            return rhs.total_self < lhs.total_self;
-                        },
-                        .asc => {
-                            return lhs.total_self < rhs.total_self;
-                        },
-                    }
-                },
                 .avg_wall => {
                     switch (ctx.direction) {
                         .none, .desc => {
@@ -507,8 +495,12 @@ const Statistics = struct {
     const SpanSort = enum {
         name,
         wall_time,
-        self_time,
         start_time,
+    };
+
+    const Selection = struct {
+        span: *const Span,
+        highlight: bool,
     };
 
     allocator: Allocator,
@@ -516,7 +508,7 @@ const Statistics = struct {
 
     arena: *std.heap.ArenaAllocator,
 
-    selected_span: ?*const Span = null,
+    selected_span: ?Selection = null,
 
     group_sort: Group.Sort = .total_wall,
     group_sort_direction: SortDirection = .desc,
@@ -600,16 +592,6 @@ const Statistics = struct {
                     },
                 }
             },
-            .self_time => {
-                switch (ctx.direction) {
-                    .none, .desc => {
-                        return rhs.self_duration_us < lhs.self_duration_us;
-                    },
-                    .asc => {
-                        return lhs.self_duration_us < rhs.self_duration_us;
-                    },
-                }
-            },
             .start_time => {
                 switch (ctx.direction) {
                     .none, .desc => {
@@ -640,7 +622,6 @@ const Statistics = struct {
                             entry.value_ptr.* = Group{
                                 .name = span.name,
                                 .total_wall = 0,
-                                .total_self = 0,
                                 .avg_wall = 0,
                                 .spans = std.ArrayList(*const Span).init(self.arena.allocator()),
                             };
@@ -657,7 +638,6 @@ const Statistics = struct {
             const group = entry.value_ptr;
             for (group.spans.items) |span| {
                 group.total_wall += span.duration_us;
-                group.total_self += span.self_duration_us;
             }
             group.avg_wall = @divTrunc(group.total_wall, @as(i64, @intCast(group.spans.items.len)));
             group_array.append(group.*) catch unreachable;
@@ -675,6 +655,26 @@ const Statistics = struct {
         self.allocator.free(self.buf);
         self.arena.deinit();
         self.allocator.destroy(self.arena);
+    }
+
+    fn is_selected(self: *const Self, span: *const Span) bool {
+        if (self.selected_span) |selected_span| {
+            return selected_span.span == span;
+        }
+        return false;
+    }
+
+    fn get_span_color(self: *const Self, span: *const Span) u32 {
+        var use_original_color = true;
+        if (self.selected_span) |selected_span| {
+            if (selected_span.highlight) {
+                use_original_color = selected_span.span == span;
+            }
+        }
+        if (use_original_color) {
+            return get_color_for_span(span);
+        }
+        return get_im_color_u32(rgb(152, 152, 152));
     }
 };
 
@@ -824,9 +824,13 @@ const ViewState = struct {
 
         for (self.profile.processes.items) |*process| {
             const name = std.fmt.bufPrintZ(&global_buf, "Process {}", .{process.pid}) catch unreachable;
-            if (c.igCollapsingHeader_BoolPtr(name, &process.ui.open, c.ImGuiTreeNodeFlags_DefaultOpen)) {
+            c.igSetNextItemOpen(process.ui.open, 0);
+            if (c.igCollapsingHeader_BoolPtr(name, null, c.ImGuiTreeNodeFlags_DefaultOpen)) {
+                process.ui.open = true;
                 self.draw_counters(region, style, process.counters.items);
                 self.draw_threads(region, style, process.threads.items, last_hovered_span);
+            } else {
+                process.ui.open = false;
             }
         }
 
@@ -1193,7 +1197,7 @@ const ViewState = struct {
                             x2 = @min(region.right(), x2);
 
                             {
-                                const col = get_color_for_span(span);
+                                const col = self.statistics.get_span_color(span);
                                 var bb = c.ImRect{
                                     .Min = .{ .x = x1, .y = sub_lane_top },
                                     .Max = .{ .x = x2, .y = sub_lane_top + sub_lane_height },
@@ -1231,7 +1235,7 @@ const ViewState = struct {
                                     };
                                 }
 
-                                if (self.statistics.selected_span == span) {
+                                if (self.statistics.is_selected(span)) {
                                     selected_span = .{
                                         .span = span,
                                         .bb = bb,
@@ -1342,7 +1346,7 @@ const ViewState = struct {
     }
 
     fn select_span(self: *ViewState, span: *const Span) void {
-        self.statistics.selected_span = span;
+        self.statistics.selected_span = .{ .span = span, .highlight = false };
         self.build_statistics(span.name);
     }
 
@@ -1367,7 +1371,6 @@ const ViewState = struct {
     const group_table_column_dict = &[_]Statistics.Group.Sort{
         .name,
         .total_wall,
-        .total_self,
         .avg_wall,
         .occurence,
     };
@@ -1375,7 +1378,6 @@ const ViewState = struct {
     const span_table_column_dict = &[_]Statistics.SpanSort{
         .name,
         .wall_time,
-        .self_time,
         .start_time,
     };
 
@@ -1403,7 +1405,8 @@ const ViewState = struct {
         }
 
         if (c.igTreeNodeEx_Str("Selection", c.ImGuiTreeNodeFlags_DefaultOpen)) {
-            if (self.statistics.selected_span) |span| {
+            if (self.statistics.selected_span) |selected_span| {
+                const span = selected_span.span;
                 c.igTextUnformatted("Title: ", null);
                 c.igSameLine(0, 0);
                 c.igTextWrapped("%s", span.name.ptr);
@@ -1440,7 +1443,7 @@ const ViewState = struct {
         if (c.igTreeNodeEx_Str("Group", c.ImGuiTreeNodeFlags_DefaultOpen)) {
             if (self.statistics.groups.len > 0 and c.igBeginTable(
                 "##Group",
-                5,
+                4,
                 c.ImGuiTableFlags_Resizable |
                     c.ImGuiTableFlags_Sortable |
                     c.ImGuiTableFlags_ScrollY |
@@ -1449,10 +1452,9 @@ const ViewState = struct {
                 0,
             )) {
                 c.igTableSetupScrollFreeze(0, 1);
-                c.igTableSetupColumn("Name", 0, 0, 0);
+                c.igTableSetupColumn("Name", c.ImGuiTableColumnFlags_WidthStretch, 0, 0);
                 c.igTableSetupColumn("Wall Duration", c.ImGuiTableColumnFlags_DefaultSort |
                     c.ImGuiTableColumnFlags_PreferSortDescending, 0, 0);
-                c.igTableSetupColumn("Self time", 0, 0, 0);
                 c.igTableSetupColumn("Average Wall Duration", 0, 0, 0);
                 c.igTableSetupColumn("Occurences", 0, 0, 0);
                 c.igTableHeadersRow();
@@ -1494,8 +1496,6 @@ const ViewState = struct {
                         _ = c.igTableNextColumn();
                         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.total_wall }}) catch unreachable, null);
                         _ = c.igTableNextColumn();
-                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.total_self }}) catch unreachable, null);
-                        _ = c.igTableNextColumn();
                         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = group.avg_wall }}) catch unreachable, null);
                         _ = c.igTableNextColumn();
                         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{group.spans.items.len}) catch unreachable, null);
@@ -1510,7 +1510,7 @@ const ViewState = struct {
         if (c.igTreeNodeEx_Str("Samples", c.ImGuiTreeNodeFlags_DefaultOpen)) {
             if (self.statistics.spans.len > 0 and c.igBeginTable(
                 "##Samples",
-                4,
+                3,
                 c.ImGuiTableFlags_Resizable |
                     c.ImGuiTableFlags_Sortable |
                     c.ImGuiTableFlags_ScrollY |
@@ -1519,10 +1519,9 @@ const ViewState = struct {
                 0,
             )) {
                 c.igTableSetupScrollFreeze(0, 1);
-                c.igTableSetupColumn("Name", 0, 0, 0);
+                c.igTableSetupColumn("Name", c.ImGuiTableColumnFlags_WidthStretch, 0, 0);
                 c.igTableSetupColumn("Wall time", c.ImGuiTableColumnFlags_DefaultSort |
                     c.ImGuiTableColumnFlags_PreferSortDescending, 0, 0);
-                c.igTableSetupColumn("Self time", 0, 0, 0);
                 c.igTableSetupColumn("Start time", 0, 0, 0);
                 c.igTableHeadersRow();
 
@@ -1552,12 +1551,12 @@ const ViewState = struct {
                         _ = c.igTableNextColumn();
                         if (c.igSelectable_Bool(
                             std.fmt.bufPrintZ(&global_buf, "##Select{*}", .{span}) catch unreachable,
-                            self.statistics.selected_span == span,
+                            self.statistics.is_selected(span),
                             c.ImGuiSelectableFlags_SpanAllColumns |
                                 c.ImGuiSelectableFlags_AllowOverlap,
                             .{},
                         )) {
-                            self.statistics.selected_span = span;
+                            self.statistics.selected_span = .{ .span = span, .highlight = true };
                             self.zoom_into_span(span);
                         }
                         c.igSameLine(0, 0);
@@ -1565,8 +1564,6 @@ const ViewState = struct {
 
                         _ = c.igTableNextColumn();
                         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.duration_us }}) catch unreachable, null);
-                        _ = c.igTableNextColumn();
-                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.self_duration_us }}) catch unreachable, null);
                         _ = c.igTableNextColumn();
                         c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "{}", .{Timestamp{ .us = span.start_time_us }}) catch unreachable, null);
                     }
