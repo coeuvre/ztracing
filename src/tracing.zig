@@ -414,6 +414,60 @@ fn less_than_str(lhs: []const u8, rhs: []const u8) bool {
     return lhs.len < rhs.len;
 }
 
+const Histogram = struct {
+    const Bucket = struct {
+        count: i64,
+    };
+
+    buckets: []Bucket,
+    max_count: i64,
+    duration_us_per_bucket: i64,
+    min_duration_us: i64,
+
+    fn build(allocator: Allocator, spans: []const *const Span, bucket_count: usize) Histogram {
+        const buckets = allocator.alloc(Bucket, bucket_count) catch unreachable;
+        @memset(buckets, Bucket{ .count = 0 });
+
+        var min_duration_us: i64 = std.math.maxInt(i64);
+        var max_duration_us: i64 = 0;
+        for (spans) |span| {
+            min_duration_us = @min(min_duration_us, span.duration_us);
+            max_duration_us = @max(max_duration_us, span.duration_us);
+        }
+
+        const duration_us = max_duration_us - min_duration_us;
+        const duration_us_f32: f32 = @floatFromInt(duration_us);
+        const bucket_count_f32: f32 = @floatFromInt(bucket_count - 1);
+        const duration_us_per_bucket: i64 = @intFromFloat(@round(duration_us_f32 / bucket_count_f32));
+        const duration_us_per_bucket_f32: f32 = @floatFromInt(duration_us_per_bucket);
+        var max_count: i64 = 0;
+        for (spans) |span| {
+            const index: usize = blk: {
+                if (duration_us == 0) {
+                    break :blk bucket_count / 2;
+                } else {
+                    break :blk @min(
+                        @as(usize, @intFromFloat(@as(
+                            f32,
+                            @floatFromInt(span.duration_us - min_duration_us),
+                        ) / duration_us_per_bucket_f32)),
+                        bucket_count - 1,
+                    );
+                }
+            };
+            buckets[index].count += 1;
+            max_count = @max(max_count, buckets[index].count);
+        }
+
+        return Histogram{
+            .buckets = buckets,
+            .max_count = max_count,
+            .min_duration_us = min_duration_us,
+            .duration_us_per_bucket = duration_us_per_bucket,
+        };
+    }
+};
+
 const Statistics = struct {
     const Self = @This();
 
@@ -676,6 +730,10 @@ const Statistics = struct {
         }
         return get_im_color_u32(rgb(152, 152, 152));
     }
+};
+
+const global = struct {
+    const min_duration_us: i64 = 100;
 };
 
 const ViewState = struct {
@@ -941,7 +999,7 @@ const ViewState = struct {
                     var duration_us: f64 = @floatFromInt((self.end_time_us - self.start_time_us));
                     const p_us = self.start_time_us + @as(i64, @intFromFloat(@round(p * duration_us)));
                     if (wheel_y > 0) {
-                        if (duration_us > 100) {
+                        if (duration_us > global.min_duration_us) {
                             duration_us = duration_us * 0.8;
                         }
                     } else {
@@ -1351,8 +1409,13 @@ const ViewState = struct {
     }
 
     fn zoom_into_span(self: *ViewState, span: *const Span) void {
-        self.start_time_us = span.start_time_us;
-        self.end_time_us = self.start_time_us + span.duration_us;
+        if (span.duration_us > global.min_duration_us) {
+            self.start_time_us = span.start_time_us;
+            self.end_time_us = self.start_time_us + span.duration_us;
+        } else {
+            self.start_time_us = span.start_time_us - global.min_duration_us / 2;
+            self.end_time_us = span.start_time_us + global.min_duration_us / 2;
+        }
         if (!span.thread.process.ui.open) {
             span.thread.process.ui.open = true;
         }
@@ -1504,6 +1567,111 @@ const ViewState = struct {
 
                 c.igEndTable();
             }
+            c.igTreePop();
+        }
+
+        if (c.igTreeNodeEx_Str("Histogram", c.ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (self.statistics.spans.len > 0) {
+                var bb_min: c.ImVec2 = undefined;
+                c.igGetCursorScreenPos(&bb_min);
+
+                const size = c.ImVec2{ .x = c.igGetWindowWidth() - 2 * (bb_min.x - ig.getWindowPos().x), .y = 200 };
+                var bb = c.ImRect{
+                    .Min = bb_min,
+                    .Max = .{ .x = bb_min.x + size.x, .y = bb_min.y + size.y },
+                };
+                c.igItemSize_Rect(bb, -1);
+                if (c.igItemAdd(bb, 0, null, 0)) {
+                    var arena = std.heap.ArenaAllocator.init(self.allocator);
+                    defer arena.deinit();
+
+                    const draw_list = c.igGetWindowDrawList();
+                    c.ImDrawList_AddRectFilled(
+                        draw_list,
+                        bb.Min,
+                        bb.Max,
+                        get_im_color_u32(rgb(128, 128, 128)),
+                        0,
+                        0,
+                    );
+                    c.ImDrawList_AddRect(
+                        draw_list,
+                        .{ .x = bb.Min.x - 1, .y = bb.Min.y - 1 },
+                        .{ .x = bb.Max.x + 1, .y = bb.Max.y + 1 },
+                        get_im_color_u32(rgb(0, 0, 0)),
+                        0,
+                        0,
+                        1.0,
+                    );
+
+                    const bucket_width: f32 = 4;
+                    if (size.x > bucket_width * 2) {
+                        const bucket_count: usize = @intFromFloat(size.x / bucket_width);
+                        const histogram = Histogram.build(arena.allocator(), self.statistics.spans, bucket_count);
+
+                        var x = bb.Min.x;
+                        const height = bb.Max.y - bb.Min.y;
+                        const top = bb.Min.y;
+                        const bottom = bb.Min.y + height;
+
+                        const io = c.igGetIO();
+                        const mouse_pos = io.*.MousePos;
+                        for (histogram.buckets, 0..) |bucket, index| {
+                            if (bucket.count > 0) {
+                                const bucket_height = @max(@as(f32, @floatFromInt(bucket.count)) / @as(f32, @floatFromInt(histogram.max_count)) * height, 2);
+                                const bucket_bb = c.ImRect{
+                                    .Min = .{ .x = x, .y = bottom - bucket_height },
+                                    .Max = .{ .x = x + bucket_width, .y = bottom },
+                                };
+                                c.ImDrawList_AddRectFilled(
+                                    draw_list,
+                                    bucket_bb.Min,
+                                    bucket_bb.Max,
+                                    get_im_color_u32(general_purpose_colors[4]),
+                                    0,
+                                    0,
+                                );
+
+                                var hover_bb = c.ImRect{
+                                    .Min = .{ .x = bucket_bb.Min.x, .y = top },
+                                    .Max = .{ .x = bucket_bb.Max.x, .y = bottom },
+                                };
+                                if (c.ImRect_Contains_Vec2(&hover_bb, mouse_pos)) {
+                                    if (c.igBeginTooltip()) {
+                                        c.igTextUnformatted(
+                                            std.fmt.bufPrintZ(
+                                                &global_buf,
+                                                "Time range: {} - {}",
+                                                .{
+                                                    Timestamp{ .us = histogram.min_duration_us + @as(i64, @intCast(index)) * histogram.duration_us_per_bucket },
+                                                    Timestamp{ .us = histogram.min_duration_us + @as(i64, @intCast(index + 1)) * histogram.duration_us_per_bucket },
+                                                },
+                                            ) catch unreachable,
+                                            null,
+                                        );
+                                        c.igTextUnformatted(std.fmt.bufPrintZ(&global_buf, "Count: {}", .{bucket.count}) catch unreachable, null);
+                                    }
+                                    c.igEndTooltip();
+                                }
+                            }
+
+                            x += bucket_width;
+                        }
+
+                        if (c.ImRect_Contains_Vec2(&bb, mouse_pos)) {
+                            c.ImDrawList_AddRectFilled(
+                                draw_list,
+                                .{ .x = mouse_pos.x - 0.5, .y = top },
+                                .{ .x = mouse_pos.x + 0.5, .y = bottom },
+                                get_im_color_u32(.{ .x = 1.0, .y = 1.0, .z = 1.0, .w = 0.5 }),
+                                0,
+                                0,
+                            );
+                        }
+                    }
+                }
+            }
+
             c.igTreePop();
         }
 
