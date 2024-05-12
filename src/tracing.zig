@@ -1537,8 +1537,8 @@ const ViewState = struct {
                 }
 
                 const clipper = c.ImGuiListClipper_ImGuiListClipper();
+                defer c.ImGuiListClipper_destroy(clipper);
                 c.ImGuiListClipper_Begin(clipper, @intCast(self.statistics.groups.len), 0);
-
                 while (c.ImGuiListClipper_Step(clipper)) {
                     for (@intCast(clipper.*.DisplayStart)..@intCast(clipper.*.DisplayEnd)) |row| {
                         const group = self.statistics.groups[row];
@@ -1708,8 +1708,8 @@ const ViewState = struct {
                 }
 
                 const clipper = c.ImGuiListClipper_ImGuiListClipper();
+                defer c.ImGuiListClipper_destroy(clipper);
                 c.ImGuiListClipper_Begin(clipper, @intCast(self.statistics.spans.len), 0);
-
                 while (c.ImGuiListClipper_Step(clipper)) {
                     for (@intCast(clipper.*.DisplayStart)..@intCast(clipper.*.DisplayEnd)) |row| {
                         const span = self.statistics.spans[row];
