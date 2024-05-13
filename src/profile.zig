@@ -249,6 +249,7 @@ pub const Track = struct {
     mipmap: []const []const *Span,
 
     spans: ArrayList(*Span),
+    lane_index: i32 = 0,
 
     fn init(allocator: Allocator) !Track {
         return .{
