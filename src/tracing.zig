@@ -438,7 +438,7 @@ const Histogram = struct {
         const duration_us = max_duration_us - min_duration_us;
         const duration_us_f32: f32 = @floatFromInt(duration_us);
         const bucket_count_f32: f32 = @floatFromInt(bucket_count - 1);
-        const duration_us_per_bucket: i64 = @intFromFloat(@round(duration_us_f32 / bucket_count_f32));
+        const duration_us_per_bucket = @max(1, @as(i64, @intFromFloat(@round(duration_us_f32 / bucket_count_f32))));
         const duration_us_per_bucket_f32: f32 = @floatFromInt(duration_us_per_bucket);
         var max_count: i64 = 0;
         for (spans) |span| {
