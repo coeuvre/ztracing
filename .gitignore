@@ -1,6 +1,5 @@
 .vscode/
-zig-cache/
-zig-out/
+build/
 node_modules/
 dist/
 .tasks
