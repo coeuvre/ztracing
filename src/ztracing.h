@@ -1,9 +1,12 @@
 #pragma once
 
-#include <imgui.h>
-
 #include "core.h"
 
-struct ZTracing {};
+#define IM_ASSERT(x) ASSERT(x, "")
+#include <imgui.h>
+
+struct ZTracing {
+    bool show_demo_window;
+};
 
 void ztracing_update(ZTracing *ztracing);

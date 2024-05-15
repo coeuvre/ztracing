@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdarg.h>
+#include <stddef.h>
 #include <stdint.h>
 
 typedef int8_t i8;
@@ -10,6 +12,10 @@ typedef int32_t i32;
 typedef uint32_t u32;
 typedef int64_t i64;
 typedef uint64_t u64;
+typedef size_t usize;
+typedef ptrdiff_t isize;
+
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 enum LogLevel {
     LOG_LEVEL_DEBUG,

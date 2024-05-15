@@ -1,7 +1,6 @@
 #include "core.h"
-#include <stdarg.h>
 
-SDL_LogPriority to_sdl_log_priority[NUM_LOG_LEVEL] = {
+static SDL_LogPriority TO_SDL_LOG_PRIORITY[NUM_LOG_LEVEL] = {
     [LOG_LEVEL_DEBUG] = SDL_LOG_PRIORITY_DEBUG,
     [LOG_LEVEL_INFO] = SDL_LOG_PRIORITY_INFO,
     [LOG_LEVEL_WARNING] = SDL_LOG_PRIORITY_WARN,
@@ -13,7 +12,7 @@ static void os_log_message(LogLevel level, const char *fmt, ...) {
     va_start(args, fmt);
     SDL_LogMessageV(
         SDL_LOG_CATEGORY_APPLICATION,
-        to_sdl_log_priority[level],
+        TO_SDL_LOG_PRIORITY[level],
         fmt,
         args
     );
