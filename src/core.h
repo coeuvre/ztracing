@@ -11,12 +11,6 @@ typedef uint32_t u32;
 typedef int64_t i64;
 typedef uint64_t u64;
 
-enum LogCategory {
-    LOG_CATEGORY_APPLICATION,
-    LOG_CATEGORY_ASSERT,
-    NUM_LOG_CATEGORY,
-};
-
 enum LogLevel {
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_INFO,
@@ -25,11 +19,12 @@ enum LogLevel {
     NUM_LOG_LEVEL,
 };
 
-static void
-log_message(LogCategory category, LogLevel level, const char *fmt, ...);
+static void os_log_message(LogLevel level, const char *fmt, ...);
 
-#define ASSERT(x, fmt, ...)                                                    \
+#define ASSERT(x, ...)                                                         \
     if (!(x)) {                                                                \
-        log_message(LOG_CATEGORY_ASSERT, LOG_LEVEL_ERROR, fmt, __VA_ARGS__);   \
-        abort();                                                               \
+        os_log_message(LOG_LEVEL_ERROR, __VA_ARGS__);                          \
+        __builtin_trap();                                                      \
     }
+
+#define ABORT(...) ASSERT(0, __VA_ARGS__)
