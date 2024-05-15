@@ -1,10 +1,8 @@
 #!/bin/bash
 
-CC=clang
-CFLAGS="-g -fdiagnostics-absolute-paths -Wall -Werror -fsanitize=undefined -fno-omit-frame-pointer"
-CFLAGS_DEBUG="-fsanitize=address"
-CFLAGS_RELEASE="-O2"
 RELEASE=false
+CMAKE_CONFIG=Debug
+CMAKE_GENERATOR="Ninja Multi-Config"
 
 for arg in "$@"
 do
@@ -16,13 +14,8 @@ do
 done
 
 if [ "$RELEASE" = true ] ; then
-    CFLAGS="$CFLAGS $CFLAGS_RELEASE"
-else
-    CFLAGS="$CFLAGS $CFLAGS_DEBUG"
+    CMAKE_CONFIG=Release
 fi
 
-mkdir -p build
-
-set -x
-
-$CC $CFLAGS src/main.cpp -o build/ztracing
+cmake -S . -B build -G "$CMAKE_GENERATOR" && \
+    cmake --build build --config "$CMAKE_CONFIG" --verbose --parallel
