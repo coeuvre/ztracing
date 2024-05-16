@@ -42,6 +42,10 @@ static void ui_main_window_welcome() {
     ImGui::Text(WELCOME_MESSAGE);
 }
 
+static void ui_main_window_loading(MainWindowLoading *loading) {
+
+}
+
 static void ui_main_window(MainWindow *main_window) {
     ImGuiViewport *viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
@@ -59,18 +63,52 @@ static void ui_main_window(MainWindow *main_window) {
             ui_main_window_welcome();
         } break;
 
-        default:
+        case MAIN_WINDOW_LOADING: {
+            ui_main_window_loading(&main_window->loading);
+        } break;
+
+        default: {
             UNREACHABLE;
+        } break;
         }
     }
     ImGui::End();
 }
 
-static void render_ui(UI *ui) {
+static void render_ui(UIState *ui) {
     ui_main_menu(&ui->main_menu);
     ui_main_window(&ui->main_window);
 }
 
 static void ztracing_update(ZTracing *ztracing) {
     render_ui(&ztracing->ui);
+}
+
+static int load_file_fn(void *data) {
+    LoadFileTask *task = (LoadFileTask *)data;
+    INFO("Loading file %s ...", os_file_get_path(task->file));
+    return 0;
+}
+
+static LoadFileTask *start_load_file(OsFile *file) {
+    LoadFileTask *task = (LoadFileTask *)malloc(sizeof(LoadFileTask));
+    task->file = file;
+
+    os_thread_create(load_file_fn, task);
+
+    return task;
+}
+
+static void ztracing_load_file(ZTracing *ztracing, OsFile *file) {
+    switch (ztracing->ui.main_window.state) {
+    case MAIN_WINDOW_WELCOME: {
+        ztracing->ui.main_window.state = MAIN_WINDOW_LOADING;
+        MainWindowLoading *loading = &ztracing->ui.main_window.loading;
+        loading->task = start_load_file(file);
+    } break;
+
+    default: {
+        os_file_close(file);
+    } break;
+    }
 }

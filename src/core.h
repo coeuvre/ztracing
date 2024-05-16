@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 typedef int8_t i8;
 typedef uint8_t u8;
@@ -20,20 +21,44 @@ typedef ptrdiff_t isize;
 enum LogLevel {
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_INFO,
-    LOG_LEVEL_WARNING,
+    LOG_LEVEL_WARN,
     LOG_LEVEL_ERROR,
+    LOG_LEVEL_CRITICAL,
     NUM_LOG_LEVEL,
 };
 
 static void os_log_message(LogLevel level, const char *fmt, ...);
 
-#define INFO(...) os_log_message(LOG_LEVEL_INFO, __VA_ARGS__)
+#define INFO(fmt, ...) os_log_message(LOG_LEVEL_INFO, fmt, ##__VA_ARGS__)
+#define WARN(fmt, ...) os_log_message(LOG_LEVEL_WARN, fmt, ##__VA_ARGS__)
+#define ERROR(fmt, ...) os_log_message(LOG_LEVEL_ERROR, fmt, ##__VA_ARGS__)
 
-#define ASSERT(x, ...)                                                         \
-    if (!(x)) {                                                                \
-        os_log_message(LOG_LEVEL_ERROR, __VA_ARGS__);                          \
+#define ABORT(fmt, ...)                                                        \
+    do {                                                                       \
+        os_log_message(                                                        \
+            LOG_LEVEL_CRITICAL,                                                \
+            "%s:%d: " fmt,                                                     \
+            __FILE__,                                                          \
+            __LINE__,                                                          \
+            ##__VA_ARGS__                                                      \
+        );                                                                     \
         __builtin_trap();                                                      \
+    } while (0)
+
+#define ASSERT(x, fmt, ...)                                                    \
+    if (!(x)) {                                                                \
+        ABORT(fmt, ##__VA_ARGS__);                                             \
     }
 
-#define ABORT(...) ASSERT(0, __VA_ARGS__)
 #define UNREACHABLE ABORT("UNREACHABLE")
+
+struct OsFile;
+
+static char *os_file_get_path(OsFile *file);
+static void os_file_close(OsFile *file);
+
+typedef int (*OsThreadFunction)(void *data);
+
+struct OsThread;
+
+static OsThread *os_thread_create(OsThreadFunction fn, void *data);
