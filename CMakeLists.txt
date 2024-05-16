@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.15)
 
 project(ztracing CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(SDL_SHARED OFF)
 add_subdirectory(third_party/SDL2)
 
 add_library(

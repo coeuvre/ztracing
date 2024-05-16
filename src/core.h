@@ -27,6 +27,8 @@ enum LogLevel {
 
 static void os_log_message(LogLevel level, const char *fmt, ...);
 
+#define INFO(...) os_log_message(LOG_LEVEL_INFO, __VA_ARGS__)
+
 #define ASSERT(x, ...)                                                         \
     if (!(x)) {                                                                \
         os_log_message(LOG_LEVEL_ERROR, __VA_ARGS__);                          \
@@ -34,3 +36,4 @@ static void os_log_message(LogLevel level, const char *fmt, ...);
     }
 
 #define ABORT(...) ASSERT(0, __VA_ARGS__)
+#define UNREACHABLE ABORT("UNREACHABLE")

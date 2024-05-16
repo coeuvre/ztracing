@@ -2,11 +2,30 @@
 
 #include "core.h"
 
-#define IM_ASSERT(x) ASSERT(x, "")
+#define IMGUI_DEFINE_MATH_OPERATORS
 #include <imgui.h>
 
-struct ZTracing {
+typedef ImVec2 Vec2;
+
+struct MainMenu {
     bool show_demo_window;
 };
 
-void ztracing_update(ZTracing *ztracing);
+enum MainWindowState {
+    MAIN_WINDOW_WELCOME,
+};
+
+struct MainWindow {
+    MainWindowState state;
+};
+
+struct UI {
+    MainMenu main_menu;
+    MainWindow main_window;
+};
+
+struct ZTracing {
+    UI ui;
+};
+
+static void ztracing_update(ZTracing *ztracing);
