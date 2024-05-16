@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(SDL_SHARED OFF)
 add_subdirectory(third_party/SDL2)
 
+add_subdirectory(third_party/zlib)
+
 add_library(
     imgui
     STATIC
@@ -41,4 +43,5 @@ target_link_libraries(
     ztracing
     SDL2-static
     imgui
-    imgui_impl_sdl2)
+    imgui_impl_sdl2
+    zlibstatic)

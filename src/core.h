@@ -55,6 +55,9 @@ static void os_log_message(LogLevel level, const char *fmt, ...);
 struct OsFile;
 
 static char *os_file_get_path(OsFile *file);
+// Read the content of the file into buffer. If the file is compressed, it also
+// decompresses it.
+static u32 os_file_read(OsFile *file, u8 *buf, u32 len);
 static void os_file_close(OsFile *file);
 
 typedef int (*OsThreadFunction)(void *data);

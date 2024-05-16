@@ -1,4 +1,5 @@
 #include "ztracing.h"
+#include <stdio.h>
 
 static void ui_main_menu(MainMenu *main_menu) {
     if (ImGui::BeginMainMenuBar()) {
@@ -43,7 +44,6 @@ static void ui_main_window_welcome() {
 }
 
 static void ui_main_window_loading(MainWindowLoading *loading) {
-
 }
 
 static void ui_main_window(MainWindow *main_window) {
@@ -87,6 +87,14 @@ static void ztracing_update(ZTracing *ztracing) {
 static int load_file_fn(void *data) {
     LoadFileTask *task = (LoadFileTask *)data;
     INFO("Loading file %s ...", os_file_get_path(task->file));
+
+    u8 buf[4096];
+    for (bool need_more_read = true; need_more_read;) {
+        u32 nread = os_file_read(task->file, buf, ARRAY_SIZE(buf) - 1);
+        // TODO: process buf[0..nread]
+        need_more_read = nread > 0;
+    }
+
     return 0;
 }
 

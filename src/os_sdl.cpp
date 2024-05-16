@@ -3,6 +3,7 @@
 #include <SDL.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_sdlrenderer2.h>
+#include <zlib.h>
 
 static SDL_LogPriority TO_SDL_LOG_PRIORITY[NUM_LOG_LEVEL] = {
     [LOG_LEVEL_DEBUG] = SDL_LOG_PRIORITY_DEBUG,
@@ -24,13 +25,106 @@ static void os_log_message(LogLevel level, const char *fmt, ...) {
     va_end(args);
 }
 
+enum OsFileReadState {
+    OS_FILE_READ_NONE,
+    OS_FILE_READ_NORMAL,
+    OS_FILE_READ_GZIP,
+    OS_FILE_READ_DONE,
+};
+
 struct OsFile {
     char *name;
     SDL_RWops *rw;
+    OsFileReadState read_state;
+    z_stream zstream;
+    u8 *zstream_buf;
+    u32 zstream_buf_len;
 };
 
 static char *os_file_get_path(OsFile *file) {
     return file->name;
+}
+
+static u32 os_file_read(OsFile *file, u8 *buf, u32 len) {
+    u32 nread = 0;
+    for (bool need_more_read = true; need_more_read;) {
+        switch (file->read_state) {
+        case OS_FILE_READ_NONE: {
+            u8 header_buf[2];
+            u32 header_nread = file->rw->read(file->rw, header_buf, 1, 2);
+            if (header_nread == 2 && header_buf[0] == 0x1F &&
+                header_buf[1] == 0x8B) {
+                file->read_state = OS_FILE_READ_GZIP;
+            } else {
+                file->read_state = OS_FILE_READ_NORMAL;
+            }
+            i64 offset = file->rw->seek(file->rw, 0, RW_SEEK_SET);
+            ASSERT(offset == 0, "");
+
+            int zret = inflateInit2(&file->zstream, MAX_WBITS | 32);
+            // TODO: Error handling.
+            ASSERT(zret == Z_OK, "");
+            file->zstream_buf_len = 4096;
+            file->zstream_buf = (u8 *)malloc(file->zstream_buf_len);
+        } break;
+
+        case OS_FILE_READ_NORMAL: {
+            nread = file->rw->read(file->rw, buf, 1, len);
+            need_more_read = false;
+            if (nread == 0) {
+                file->read_state = OS_FILE_READ_DONE;
+            }
+        } break;
+
+        case OS_FILE_READ_GZIP: {
+            z_stream *stream = &file->zstream;
+            if (stream->avail_in == 0) {
+                stream->avail_in = file->rw->read(
+                    file->rw,
+                    file->zstream_buf,
+                    1,
+                    file->zstream_buf_len
+                );
+                stream->next_in = file->zstream_buf;
+            }
+
+            if (stream->avail_in != 0) {
+                stream->avail_out = len;
+                stream->next_out = buf;
+                int zret = inflate(stream, Z_NO_FLUSH);
+                switch (zret) {
+                case Z_OK: {
+                    nread = len - stream->avail_out;
+                    need_more_read = nread == 0;
+                } break;
+
+                case Z_STREAM_END: {
+                    nread = len - stream->avail_out;
+                    need_more_read = false;
+                    file->read_state = OS_FILE_READ_DONE;
+                } break;
+
+                default: {
+                    // TODO: Error handling.
+                    ABORT("inflate returned %d", zret);
+                } break;
+                }
+            } else {
+                need_more_read = false;
+                file->read_state = OS_FILE_READ_DONE;
+            }
+        } break;
+
+        case OS_FILE_READ_DONE: {
+            need_more_read = false;
+        } break;
+
+        default: {
+            UNREACHABLE;
+        } break;
+        }
+    }
+    return nread;
 }
 
 static void os_file_close(OsFile *file) {
@@ -42,13 +136,16 @@ static void os_file_close(OsFile *file) {
         SDL_GetError()
     );
     free(file->name);
+    // TODO: free zstream
     free(file);
 }
 
 static void load_file(ZTracing *ztracing, char *path) {
     OsFile *file = (OsFile *)malloc(sizeof(OsFile));
     ASSERT(file, "");
+    *file = {};
     file->name = strdup(path);
+    ASSERT(file->name, "");
     file->rw = SDL_RWFromFile(path, "rb");
     if (file->rw) {
         ztracing_load_file(ztracing, file);
