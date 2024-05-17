@@ -11,6 +11,7 @@
         overflow: hidden;
       }
     </style>
+    <script src="/enable-threads.js"></script>
   </head>
   <body>
     <canvas
@@ -31,6 +32,7 @@
           canvas,
         })
         .then((app) => {
+          window.app = app;
           window.onresize = () => {
             app.set_window_size(window.innerWidth, window.innerHeight);
           };

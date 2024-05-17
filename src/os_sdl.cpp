@@ -166,6 +166,7 @@ static void load_file(ZTracing *ztracing, char *path) {
 
 static OsThread *os_thread_create(OsThreadFunction fn, void *data) {
     SDL_Thread *thread = SDL_CreateThread(fn, "Worker", data);
+    ASSERT(thread, "Failed to create thread: %s", SDL_GetError());
     return (OsThread *)thread;
 }
 
@@ -187,7 +188,8 @@ struct App {
 App APP = {};
 
 static void app_init() {
-    if (SDL_Init(SDL_INIT_EVERYTHING & ~(SDL_INIT_HAPTIC)) != 0) {
+    if (SDL_Init(SDL_INIT_EVERYTHING & ~(SDL_INIT_TIMER | SDL_INIT_HAPTIC)) !=
+        0) {
         ABORT("Failed to init SDL: %s", SDL_GetError());
     }
 
@@ -327,5 +329,10 @@ int main(int argc, char **argv) {
 EMSCRIPTEN_KEEPALIVE
 extern "C" void app_set_window_size(int width, int height) {
     SDL_SetWindowSize(APP.window, width, height);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C" void app_load_file(char *path) {
+    load_file(&APP.ztracing, path);
 }
 #endif
