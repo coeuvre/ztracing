@@ -8,6 +8,11 @@
 #include <imgui_impl_sdlrenderer2.h>
 #include <zlib.h>
 
+#if __EMSCRIPTEN__
+EM_JS(int, get_canvas_width, (), { return Module.canvas.width; });
+EM_JS(int, get_canvas_height, (), { return Module.canvas.height; });
+#endif
+
 static SDL_LogPriority TO_SDL_LOG_PRIORITY[NUM_LOG_LEVEL] = {
     [LOG_LEVEL_DEBUG] = SDL_LOG_PRIORITY_DEBUG,
     [LOG_LEVEL_INFO] = SDL_LOG_PRIORITY_INFO,
@@ -191,12 +196,20 @@ static void app_init() {
         startup_file = APP.argv[1];
     }
 
+    int width = 1280;
+    int height = 720;
+
+#if __EMSCRIPTEN__
+    width = get_canvas_width();
+    height = get_canvas_height();
+#endif
+
     SDL_Window *window = SDL_CreateWindow(
         "ztracing",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        1280,
-        720,
+        width,
+        height,
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED
     );
     ASSERT(window, "Failed to create SDL_Window: %s", SDL_GetError());
@@ -309,3 +322,10 @@ int main(int argc, char **argv) {
 #endif
     return 0;
 }
+
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+extern "C" void app_set_window_size(int width, int height) {
+    SDL_SetWindowSize(APP.window, width, height);
+}
+#endif
