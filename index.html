@@ -19,16 +19,22 @@
       tabindex="-1"
     ></canvas>
     <script type="module">
+      import init_module from "@/ztracing.js";
       import ztracing from "./index.js";
+
       const canvas = document.getElementById("canvas");
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
-      const app = await ztracing.mount({
-        canvas: canvas,
-      });
-      window.onresize = () => {
-        app.set_window_size(window.innerWidth, window.innerHeight);
-      };
+      ztracing
+        .mount({
+          init_module,
+          canvas,
+        })
+        .then((app) => {
+          window.onresize = () => {
+            app.set_window_size(window.innerWidth, window.innerHeight);
+          };
+        });
     </script>
   </body>
 </html>
