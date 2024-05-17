@@ -1,5 +1,8 @@
 #include "ztracing.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include <SDL.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_sdlrenderer2.h>
@@ -161,14 +164,31 @@ static OsThread *os_thread_create(OsThreadFunction fn, void *data) {
     return (OsThread *)thread;
 }
 
-int main(int argc, char **argv) {
-    if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+enum AppState {
+    APP_INIT,
+    APP_RUNNING,
+    APP_SHUTDOWN,
+};
+
+struct App {
+    int argc;
+    char **argv;
+    AppState state;
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    ZTracing ztracing;
+};
+
+App APP = {};
+
+static void app_init() {
+    if (SDL_Init(SDL_INIT_EVERYTHING & ~(SDL_INIT_HAPTIC)) != 0) {
         ABORT("Failed to init SDL: %s", SDL_GetError());
     }
 
     char *startup_file = 0;
-    if (argc > 1) {
-        startup_file = argv[1];
+    if (APP.argc > 1) {
+        startup_file = APP.argv[1];
     }
 
     SDL_Window *window = SDL_CreateWindow(
@@ -180,6 +200,7 @@ int main(int argc, char **argv) {
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED
     );
     ASSERT(window, "Failed to create SDL_Window: %s", SDL_GetError());
+    APP.window = window;
 
     SDL_Renderer *renderer = SDL_CreateRenderer(
         window,
@@ -187,6 +208,7 @@ int main(int argc, char **argv) {
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
     );
     ASSERT(renderer, "Failed to create SDL_Renderer: %s", SDL_GetError());
+    APP.renderer = renderer;
 
     ImGuiContext *imgui_context = ImGui::CreateContext();
     ASSERT(imgui_context, "Failed to create ImGui context");
@@ -209,47 +231,81 @@ int main(int argc, char **argv) {
         ABORT("Failed to init ImGui with SDL_Renderer");
     }
 
-    ZTracing ztracing = {};
     if (startup_file) {
-        load_file(&ztracing, startup_file);
+        load_file(&APP.ztracing, startup_file);
     }
 
-    bool running = true;
-    while (running) {
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-            if (!ImGui_ImplSDL2_ProcessEvent(&event)) {
-                switch (event.type) {
-                case SDL_QUIT: {
-                    running = false;
-                } break;
+    APP.state = APP_RUNNING;
+}
 
-                case SDL_DROPFILE: {
-                    char *file = event.drop.file;
-                    load_file(&ztracing, file);
-                    SDL_free(file);
-                } break;
-                }
+static void app_update() {
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (!ImGui_ImplSDL2_ProcessEvent(&event)) {
+            switch (event.type) {
+            case SDL_QUIT: {
+                APP.state = APP_SHUTDOWN;
+            } break;
+
+            case SDL_DROPFILE: {
+                char *file = event.drop.file;
+                load_file(&APP.ztracing, file);
+                SDL_free(file);
+            } break;
             }
         }
-
-        ImGui_ImplSDL2_NewFrame();
-        ImGui_ImplSDLRenderer2_NewFrame();
-        ImGui::NewFrame();
-
-        ztracing_update(&ztracing);
-
-        ImGui::Render();
-        ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData());
-        SDL_RenderPresent(renderer);
     }
 
+    ImGui_ImplSDL2_NewFrame();
+    ImGui_ImplSDLRenderer2_NewFrame();
+    ImGui::NewFrame();
+
+    ztracing_update(&APP.ztracing);
+
+    ImGui::Render();
+    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData());
+    SDL_RenderPresent(APP.renderer);
+}
+
+static void app_shutdown() {
     ImGui_ImplSDLRenderer2_Shutdown();
     ImGui_ImplSDL2_Shutdown();
-    ImGui::DestroyContext(imgui_context);
+    ImGui::DestroyContext();
 
-    SDL_DestroyWindow(window);
+    SDL_DestroyRenderer(APP.renderer);
+    SDL_DestroyWindow(APP.window);
     SDL_Quit();
 
+#ifdef __EMSCRIPTEN__
+    emscripten_cancel_main_loop();
+#else
+    exit(0);
+#endif
+}
+
+static void main_loop() {
+    switch (APP.state) {
+    case APP_INIT: {
+        app_init();
+    } break;
+    case APP_RUNNING: {
+        app_update();
+    } break;
+    case APP_SHUTDOWN: {
+        app_shutdown();
+    } break;
+    }
+}
+
+int main(int argc, char **argv) {
+    APP.argc = argc;
+    APP.argv = argv;
+#ifdef __EMSCRIPTEN__
+    emscripten_set_main_loop(main_loop, 0, 1);
+#else
+    while (true) {
+        main_loop();
+    }
+#endif
     return 0;
 }

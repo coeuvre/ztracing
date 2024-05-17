@@ -40,7 +40,7 @@ static void ui_main_window_welcome() {
     Vec2 window_size = ImGui::GetWindowSize();
     Vec2 logo_size = ImGui::CalcTextSize(WELCOME_MESSAGE);
     ImGui::SetCursorPos((window_size - logo_size) / 2.0f);
-    ImGui::Text(WELCOME_MESSAGE);
+    ImGui::Text("%s", WELCOME_MESSAGE);
 }
 
 static void ui_main_window_loading(MainWindowLoading *loading) {

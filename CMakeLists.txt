@@ -4,10 +4,11 @@ project(ztracing CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(SDL_SHARED OFF)
+if (NOT EMSCRIPTEN)
+set(SDL_SHARED OFF CACHE BOOL "Build a shared version of the SDL2")
 add_subdirectory(third_party/SDL2)
-
 add_subdirectory(third_party/zlib)
+endif()
 
 add_library(
     imgui
@@ -31,17 +32,21 @@ target_include_directories(
     third_party/imgui
     third_party/imgui/backends)
 
-target_link_libraries(
-    imgui_impl_sdl2
-    SDL2-static)
-
 add_executable(
     ztracing
     src/main.cpp)
 
 target_link_libraries(
     ztracing
-    SDL2-static
     imgui
-    imgui_impl_sdl2
-    zlibstatic)
+    imgui_impl_sdl2)
+
+if (EMSCRIPTEN)
+    set_target_properties(ztracing PROPERTIES SUFFIX ".html")
+    set_target_properties(imgui_impl_sdl2 PROPERTIES COMPILE_FLAGS "-sUSE_SDL=2")
+    set_target_properties(ztracing PROPERTIES COMPILE_FLAGS "-sUSE_ZLIB=1 -sUSE_SDL=2")
+    set_target_properties(ztracing PROPERTIES LINK_FLAGS "-sUSE_ZLIB=1 -sUSE_SDL=2")
+else()
+    target_link_libraries(imgui_impl_sdl2 SDL2-static)
+    target_link_libraries(ztracing zlibstatic SDL2-static)
+endif()
