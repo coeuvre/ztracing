@@ -1,7 +1,11 @@
 #include "ztracing.h"
 #include <stdio.h>
 
+char TMP_BUF[256];
+u32 TMP_BUF_SIZE = ARRAY_SIZE(TMP_BUF);
+
 static void ui_main_menu(MainMenu *main_menu) {
+    ImGuiIO *io = &ImGui::GetIO();
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Open")) {
@@ -13,6 +17,13 @@ static void ui_main_menu(MainMenu *main_menu) {
         if (ImGui::BeginMenu("About")) {
             ImGui::MenuItem("Dear ImGui", "", &main_menu->show_demo_window);
             ImGui::EndMenu();
+        }
+
+        {
+            snprintf(TMP_BUF, TMP_BUF_SIZE, "%.0f", io->Framerate);
+            Vec2 size = ImGui::CalcTextSize(TMP_BUF);
+            ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - size.x);
+            ImGui::Text("%s", TMP_BUF);
         }
 
         ImGui::EndMainMenuBar();
