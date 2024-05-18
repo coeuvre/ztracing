@@ -34,7 +34,7 @@
         .then((app) => {
           window.app = app;
           window.onresize = () => {
-            app.set_window_size(window.innerWidth, window.innerHeight);
+            app.set_canvas_size(window.innerWidth, window.innerHeight);
           };
         });
     </script>

@@ -17,6 +17,8 @@ typedef size_t usize;
 typedef ptrdiff_t isize;
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 enum LogLevel {
     LOG_LEVEL_DEBUG,
@@ -52,16 +54,14 @@ static void os_log_message(LogLevel level, const char *fmt, ...);
 
 #define UNREACHABLE ABORT("UNREACHABLE")
 
-struct OsFile;
-
-static char *os_file_get_path(OsFile *file);
-// Read the content of the file into buffer. If the file is compressed, it also
-// decompresses it.
-static u32 os_file_read(OsFile *file, u8 *buf, u32 len);
-static void os_file_close(OsFile *file);
+struct OsLoadingFile;
+static OsLoadingFile *os_loading_file_open(char *path);
+static u32 os_loading_file_next(OsLoadingFile *file, u8 *buf, u32 len);
+static void os_loading_file_close(OsLoadingFile *file);
 
 typedef int (*OsThreadFunction)(void *data);
 
 struct OsThread;
 
 static OsThread *os_thread_create(OsThreadFunction fn, void *data);
+static void os_thread_join(OsThread *thread);

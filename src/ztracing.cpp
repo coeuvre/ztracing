@@ -4,12 +4,28 @@
 char TMP_BUF[256];
 u32 TMP_BUF_SIZE = ARRAY_SIZE(TMP_BUF);
 
+static void transit_to_welcome(App *app) {
+    app->state = APP_WELCOME;
+}
+
+static void transit_to_loading(App *app, AppLoading loading) {
+    switch (app->state) {
+    case APP_WELCOME: {
+        app->state = APP_LOADING;
+        app->loading = loading;
+    } break;
+
+    default: {
+        UNREACHABLE;
+    } break;
+    }
+}
+
 static void ui_main_menu(MainMenu *main_menu) {
     ImGuiIO *io = &ImGui::GetIO();
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Open")) {
-            }
+            if (ImGui::MenuItem("Open")) {}
 
             ImGui::EndMenu();
         }
@@ -54,10 +70,17 @@ static void ui_main_window_welcome() {
     ImGui::Text("%s", WELCOME_MESSAGE);
 }
 
-static void ui_main_window_loading(MainWindowLoading *loading) {
+static void ui_main_window_loading(App *app) {
+    AppLoading *loading = &app->loading;
+
+    if (loading->task->done) {
+        os_thread_join(loading->thread);
+        free(loading->task);
+        transit_to_welcome(app);
+    }
 }
 
-static void ui_main_window(MainWindow *main_window) {
+static void ui_main_window(App *app) {
     ImGuiViewport *viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
@@ -69,13 +92,13 @@ static void ui_main_window(MainWindow *main_window) {
                 ImGuiWindowFlags_NoBringToFrontOnFocus |
                 ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDocking
         )) {
-        switch (main_window->state) {
-        case MAIN_WINDOW_WELCOME: {
+        switch (app->state) {
+        case APP_WELCOME: {
             ui_main_window_welcome();
         } break;
 
-        case MAIN_WINDOW_LOADING: {
-            ui_main_window_loading(&main_window->loading);
+        case APP_LOADING: {
+            ui_main_window_loading(app);
         } break;
 
         default: {
@@ -86,48 +109,58 @@ static void ui_main_window(MainWindow *main_window) {
     ImGui::End();
 }
 
-static void render_ui(UIState *ui) {
-    ui_main_menu(&ui->main_menu);
-    ui_main_window(&ui->main_window);
-}
-
-static void ztracing_update(ZTracing *ztracing) {
-    render_ui(&ztracing->ui);
+static void ztracing_update(App *app) {
+    ui_main_menu(&app->main_menu);
+    ui_main_window(app);
 }
 
 static int load_file_fn(void *data) {
     LoadFileTask *task = (LoadFileTask *)data;
-    INFO("Loading file %s ...", os_file_get_path(task->file));
+    INFO("Loading file ...");
 
+    isize total = 0;
     u8 buf[4096];
     for (bool need_more_read = true; need_more_read;) {
-        u32 nread = os_file_read(task->file, buf, ARRAY_SIZE(buf) - 1);
+        u32 nread = os_loading_file_next(task->file, buf, ARRAY_SIZE(buf) - 1);
+        buf[nread] = 0;
+        total += nread;
+        // INFO("(%d): %s", nread, buf);
         // TODO: process buf[0..nread]
         need_more_read = nread > 0;
     }
 
+    INFO("Processed %zd bytes.", total);
+
+    os_loading_file_close(task->file);
+
+    task->done = true;
+
     return 0;
 }
 
-static LoadFileTask *start_load_file(OsFile *file) {
+static bool ztracing_accept_load(App *app) {
+    bool result = app->state != APP_LOADING;
+    return result;
+}
+
+static void ztracing_load_file(App *app, OsLoadingFile *file) {
+    ASSERT(ztracing_accept_load(app), "");
+
     LoadFileTask *task = (LoadFileTask *)malloc(sizeof(LoadFileTask));
     task->file = file;
 
-    os_thread_create(load_file_fn, task);
+    OsThread *thread = os_thread_create(load_file_fn, task);
 
-    return task;
+    AppLoading loading = {};
+    loading.task = task;
+    loading.thread = thread;
+    transit_to_loading(app, loading);
 }
 
-static void ztracing_load_file(ZTracing *ztracing, OsFile *file) {
-    switch (ztracing->ui.main_window.state) {
-    case MAIN_WINDOW_WELCOME: {
-        ztracing->ui.main_window.state = MAIN_WINDOW_LOADING;
-        MainWindowLoading *loading = &ztracing->ui.main_window.loading;
-        loading->task = start_load_file(file);
-    } break;
-
-    default: {
-        os_file_close(file);
-    } break;
+static OsLoadingFile *ztracing_get_loading_file(App *app) {
+    OsLoadingFile *file = 0;
+    if (app->state == APP_LOADING) {
+        file = app->loading.task->file;
     }
+    return file;
 }

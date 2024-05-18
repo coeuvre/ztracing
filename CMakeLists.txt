@@ -18,6 +18,8 @@ if (EMSCRIPTEN)
         -sUSE_SDL=2
         -sEXPORT_ES6
         -sEXPORTED_RUNTIME_METHODS=cwrap,FS,WORKERFS
+        -sALLOW_BLOCKING_ON_MAIN_THREAD=1
+        -sALLOW_MEMORY_GROWTH
         -lworkerfs.js)
 else()
     set(SDL_SHARED OFF CACHE BOOL "Build a shared version of the SDL2")

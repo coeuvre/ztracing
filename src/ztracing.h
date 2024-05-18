@@ -8,37 +8,34 @@
 typedef ImVec2 Vec2;
 
 struct LoadFileTask {
-    OsFile *file;
+    OsLoadingFile *file;
+    volatile bool done;
 };
 
 struct MainMenu {
     bool show_demo_window;
 };
 
-enum MainWindowState {
-    MAIN_WINDOW_WELCOME,
-    MAIN_WINDOW_LOADING,
+enum AppState {
+    APP_WELCOME,
+    APP_LOADING,
 };
 
-struct MainWindowLoading {
+struct AppLoading {
     LoadFileTask *task;
+    OsThread *thread;
 };
 
-struct MainWindow {
-    MainWindowState state;
+struct App {
+    MainMenu main_menu;
+    AppState state;
     union {
-        MainWindowLoading loading;
+        AppLoading loading;
     };
 };
 
-struct UIState {
-    MainMenu main_menu;
-    MainWindow main_window;
-};
+static void ztracing_update(App *app);
 
-struct ZTracing {
-    UIState ui;
-};
-
-static void ztracing_update(ZTracing *ztracing);
-static void ztracing_load_file(ZTracing *ztracing, OsFile *file);
+static bool ztracing_accept_load(App *app);
+static void ztracing_load_file(App *app, OsLoadingFile *file);
+static OsLoadingFile *ztracing_get_loading_file(App *app);
