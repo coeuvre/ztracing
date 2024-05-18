@@ -20,6 +20,7 @@
       tabindex="-1"
     ></canvas>
     <script type="module">
+      import queryString from "query-string";
       import init_module from "@/ztracing.js";
       import ztracing from "./index.js";
 
@@ -36,6 +37,17 @@
           window.onresize = () => {
             app.set_canvas_size(window.innerWidth, window.innerHeight);
           };
+
+          const query = queryString.parse(location.search);
+          if (query.profile) {
+            const url = query.profile;
+            fetch(url).then((response) => {
+              const total = response.headers.get("Content-Length");
+              if (response.ok && total) {
+                app.load_profile(url, total, response.body);
+              }
+            });
+          }
         });
     </script>
   </body>

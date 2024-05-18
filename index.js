@@ -21,7 +21,7 @@ async function setup(module, canvas) {
    * @param {number} total
    * @param {ReadableStream} stream
    */
-  async function load_stream(path, total, stream) {
+  async function load_profile(path, total, stream) {
     app_on_load_begin(path, total);
     for await (const chunk of stream) {
       const len = chunk.length * chunk.BYTES_PER_ELEMENT;
@@ -43,14 +43,27 @@ async function setup(module, canvas) {
       event.dataTransfer.files.length > 0
     ) {
       const file = event.dataTransfer.files[0];
-      load_stream(file.name, file.size, file.stream());
+      load_profile(file.name, file.size, file.stream());
     }
   });
 
   return {
     module,
     set_canvas_size: app_set_window_size,
+    load_profile: load_profile,
   };
+}
+
+function print(text) {
+  if (text.startsWith("ERROR: ")) {
+    console.error(text);
+  } else if (text.startsWith("WARN: ")) {
+    console.warn(text);
+  } else if (text.startsWith("INFO: ")) {
+    console.info(text);
+  } else {
+    console.log(text);
+  }
 }
 
 export default {
@@ -59,6 +72,8 @@ export default {
     const canvas = options.canvas;
     const module = await init_module({
       canvas: canvas,
+      print: print,
+      printErr: print,
     });
     return setup(module, canvas);
   },

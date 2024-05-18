@@ -24,12 +24,6 @@ static void transit_to_loading(App *app, AppLoading loading) {
 static void ui_main_menu(MainMenu *main_menu) {
     ImGuiIO *io = &ImGui::GetIO();
     if (ImGui::BeginMainMenuBar()) {
-        if (ImGui::BeginMenu("File")) {
-            if (ImGui::MenuItem("Open")) {}
-
-            ImGui::EndMenu();
-        }
-
         if (ImGui::BeginMenu("About")) {
             ImGui::MenuItem("Dear ImGui", "", &main_menu->show_demo_window);
             ImGui::EndMenu();
@@ -72,6 +66,15 @@ static void ui_main_window_welcome() {
 
 static void ui_main_window_loading(App *app) {
     AppLoading *loading = &app->loading;
+
+    {
+        Vec2 window_size = ImGui::GetWindowSize();
+
+        snprintf(TMP_BUF, TMP_BUF_SIZE, "Loading ...");
+        Vec2 text_size = ImGui::CalcTextSize(TMP_BUF);
+        ImGui::SetCursorPos((window_size - text_size) / 2.0f);
+        ImGui::Text("%s", TMP_BUF);
+    }
 
     if (loading->task->done) {
         os_thread_join(loading->thread);
