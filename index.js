@@ -1,35 +1,38 @@
 async function setup(module, canvas) {
-  const app_set_window_size = module.cwrap("app_set_window_size", null, [
+  const AppSetWindowSize = module.cwrap("AppSetWindowSize", null, [
     "number",
     "number",
   ]);
-  const app_memory_alloc = module.cwrap("app_memory_alloc", "number", [
-    "number",
-  ]);
-  const app_on_load_begin = module.cwrap("app_on_load_begin", null, [
+  const AppMemAlloc = module.cwrap("AppMemAlloc", "number", ["number"]);
+  const AppOnLoadBegin = module.cwrap("AppOnLoadBegin", null, [
     "string",
     "number",
   ]);
-  const app_on_load_chunk = module.cwrap("app_on_load_chunk", null, [
+  const AppCanLoadChunk = module.cwrap("AppCanLoadChunk", null, []);
+  const AppOnLoadChunk = module.cwrap("AppOnLoadChunk", null, [
     "nubmer",
     "number",
   ]);
-  const app_on_load_end = module.cwrap("app_on_load_end", null, []);
+  const AppOnLoadEnd = module.cwrap("AppOnLoadEnd", null, []);
 
   /**
    * @param {String} path
    * @param {number} total
    * @param {ReadableStream} stream
    */
-  async function load_profile(path, total, stream) {
-    app_on_load_begin(path, total);
+  async function LoadProfile(path, total, stream) {
+    AppOnLoadBegin(path, total);
     for await (const chunk of stream) {
-      const len = chunk.length * chunk.BYTES_PER_ELEMENT;
-      const buf = app_memory_alloc(len);
-      module.HEAPU8.set(chunk, buf);
-      app_on_load_chunk(buf, len);
+      if (AppCanLoadChunk()) {
+        const len = chunk.length * chunk.BYTES_PER_ELEMENT;
+        const buf = AppMemAlloc(len);
+        module.HEAPU8.set(chunk, buf);
+        AppOnLoadChunk(buf, len);
+      } else {
+        break;
+      }
     }
-    app_on_load_end();
+    AppOnLoadEnd();
   }
 
   canvas.addEventListener("dragover", (event) => {
@@ -43,14 +46,14 @@ async function setup(module, canvas) {
       event.dataTransfer.files.length > 0
     ) {
       const file = event.dataTransfer.files[0];
-      load_profile(file.name, file.size, file.stream());
+      LoadProfile(file.name, file.size, file.stream());
     }
   });
 
   return {
     module,
-    set_canvas_size: app_set_window_size,
-    load_profile: load_profile,
+    setCanvasSize: AppSetWindowSize,
+    loadProfile: LoadProfile,
   };
 }
 
@@ -68,9 +71,9 @@ function print(text) {
 
 export default {
   mount: async function (options) {
-    const init_module = options.init_module;
+    const initModule = options.initModule;
     const canvas = options.canvas;
-    const module = await init_module({
+    const module = await initModule({
       canvas: canvas,
       print: print,
       printErr: print,

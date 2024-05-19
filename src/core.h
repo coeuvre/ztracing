@@ -23,24 +23,25 @@ typedef double f64;
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 enum LogLevel {
-    LOG_LEVEL_DEBUG,
-    LOG_LEVEL_INFO,
-    LOG_LEVEL_WARN,
-    LOG_LEVEL_ERROR,
-    LOG_LEVEL_CRITICAL,
-    NUM_LOG_LEVEL,
+    LogLevel_Debug,
+    LogLevel_Info,
+    LogLevel_Warn,
+    LogLevel_Error,
+    LogLevel_Critical,
+
+    LogLevel_Count,
 };
 
-static void os_log_message(LogLevel level, const char *fmt, ...);
+static void LogMessage(LogLevel level, const char *fmt, ...);
 
-#define INFO(fmt, ...) os_log_message(LOG_LEVEL_INFO, fmt, ##__VA_ARGS__)
-#define WARN(fmt, ...) os_log_message(LOG_LEVEL_WARN, fmt, ##__VA_ARGS__)
-#define ERROR(fmt, ...) os_log_message(LOG_LEVEL_ERROR, fmt, ##__VA_ARGS__)
+#define INFO(fmt, ...) LogMessage(LogLevel_Info, fmt, ##__VA_ARGS__)
+#define WARN(fmt, ...) LogMessage(LogLevel_Warn, fmt, ##__VA_ARGS__)
+#define ERROR(fmt, ...) LogMessage(LogLevel_Error, fmt, ##__VA_ARGS__)
 
 #define ABORT(fmt, ...)                                                        \
     do {                                                                       \
-        os_log_message(                                                        \
-            LOG_LEVEL_CRITICAL,                                                \
+        LogMessage(                                                            \
+            LogLevel_Critical,                                                 \
             "%s:%d: " fmt,                                                     \
             __FILE__,                                                          \
             __LINE__,                                                          \
@@ -56,9 +57,9 @@ static void os_log_message(LogLevel level, const char *fmt, ...);
 
 #define UNREACHABLE ABORT("UNREACHABLE")
 
-static void *memory_alloc(usize size);
-static void *memory_calloc(usize sum, usize size);
-static void *memory_realloc(void *ptr, usize new_size);
-static void memory_free(void *ptr);
-static usize memory_get_allocated_bytes();
-static char *memory_strdup(const char *str);
+static void *MemAlloc(usize size);
+static void *MemCAlloc(usize sum, usize size);
+static void *MemReAlloc(void *ptr, usize new_size);
+static void MemFree(void *ptr);
+static usize MemGetAllocatedBytes();
+static char *MemStrDup(const char *str);

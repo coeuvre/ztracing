@@ -1,4 +1,4 @@
-static Vec2 get_initial_window_size() {
+static Vec2 GetInitialWindowSize() {
     Vec2 result = {1280, 720};
     return result;
 }
@@ -20,17 +20,17 @@ struct OsLoadingFile {
     u32 zstream_buf_len;
 };
 
-static OsLoadingFile *os_loading_file_open(char *path) {
+static OsLoadingFile *OsLoadingFileOpen(char *path) {
     OsLoadingFile *file = 0;
     SDL_RWops *rw = SDL_RWFromFile(path, "rb");
     if (rw) {
         isize total = rw->size(rw);
         ASSERT(total >= 0, "Failed to get size of %s", path);
 
-        file = (OsLoadingFile *)memory_alloc(sizeof(OsLoadingFile));
+        file = (OsLoadingFile *)MemAlloc(sizeof(OsLoadingFile));
         ASSERT(file, "");
         *file = {};
-        file->path = memory_strdup(path);
+        file->path = MemStrDup(path);
         ASSERT(file->path, "");
         file->total = total;
         file->rw = rw;
@@ -40,15 +40,15 @@ static OsLoadingFile *os_loading_file_open(char *path) {
     return file;
 }
 
-static voidpf zlib_alloc(voidpf opaque, uInt items, uInt size) {
-    return memory_alloc(items * size);
+static voidpf ZLibAlloc(voidpf opaque, uInt items, uInt size) {
+    return MemAlloc(items * size);
 }
 
-static void zlib_free(voidpf opaque, voidpf address) {
-    memory_free(address);
+static void ZLibFree(voidpf opaque, voidpf address) {
+    MemFree(address);
 }
 
-static u32 os_loading_file_next(OsLoadingFile *file, u8 *buf, u32 len) {
+static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len) {
     u32 nread = 0;
     SDL_RWops *rw = file->rw;
     for (bool need_more_read = true; need_more_read;) {
@@ -61,14 +61,14 @@ static u32 os_loading_file_next(OsLoadingFile *file, u8 *buf, u32 len) {
                 file->state = LOADING_FILE_GZIP;
 
                 file->zstream = {};
-                file->zstream.zalloc = zlib_alloc;
-                file->zstream.zfree = zlib_free;
+                file->zstream.zalloc = ZLibAlloc;
+                file->zstream.zfree = ZLibFree;
 
                 int zret = inflateInit2(&file->zstream, MAX_WBITS | 32);
                 // TODO: Error handling.
                 ASSERT(zret == Z_OK, "");
                 file->zstream_buf_len = 4096;
-                file->zstream_buf = (u8 *)memory_alloc(file->zstream_buf_len);
+                file->zstream_buf = (u8 *)MemAlloc(file->zstream_buf_len);
             } else {
                 file->state = LOADING_FILE_NORMAL;
             }
@@ -131,13 +131,13 @@ static u32 os_loading_file_next(OsLoadingFile *file, u8 *buf, u32 len) {
     return nread;
 }
 
-static void os_loading_file_close(OsLoadingFile *file) {
+static void OsLoadingFileClose(OsLoadingFile *file) {
     int ret = file->rw->close(file->rw);
     ASSERT(ret == 0, "Failed to close file: %s", SDL_GetError());
     if (file->zstream_buf) {
         inflateEnd(&file->zstream);
-        memory_free(file->zstream_buf);
+        MemFree(file->zstream_buf);
     }
-    memory_free(file->path);
-    memory_free(file);
+    MemFree(file->path);
+    MemFree(file);
 }

@@ -18,8 +18,8 @@ struct MainMenu {
 };
 
 enum AppState {
-    APP_WELCOME,
-    APP_LOADING,
+    AppState_Welcome,
+    AppState_Loading,
 };
 
 struct AppLoading {
@@ -35,8 +35,8 @@ struct App {
     };
 };
 
-static void ztracing_update(App *app);
+static void AppUpdate(App *app);
 
-static bool ztracing_accept_load(App *app);
-static void ztracing_load_file(App *app, OsLoadingFile *file);
-static OsLoadingFile *ztracing_get_loading_file(App *app);
+static bool AppCanLoadFile(App *app);
+static void AppLoadFile(App *app, OsLoadingFile *file);
+static OsLoadingFile *AppGetLoadingFile(App *app);

@@ -8,15 +8,15 @@
 #include <imgui_impl_sdlrenderer2.h>
 #include <zlib.h>
 
-static SDL_LogPriority TO_SDL_LOG_PRIORITY[NUM_LOG_LEVEL] = {
-    [LOG_LEVEL_DEBUG] = SDL_LOG_PRIORITY_DEBUG,
-    [LOG_LEVEL_INFO] = SDL_LOG_PRIORITY_INFO,
-    [LOG_LEVEL_WARN] = SDL_LOG_PRIORITY_WARN,
-    [LOG_LEVEL_ERROR] = SDL_LOG_PRIORITY_ERROR,
-    [LOG_LEVEL_CRITICAL] = SDL_LOG_PRIORITY_CRITICAL,
+static SDL_LogPriority TO_SDL_LOG_PRIORITY[LogLevel_Count] = {
+    [LogLevel_Debug] = SDL_LOG_PRIORITY_DEBUG,
+    [LogLevel_Info] = SDL_LOG_PRIORITY_INFO,
+    [LogLevel_Warn] = SDL_LOG_PRIORITY_WARN,
+    [LogLevel_Error] = SDL_LOG_PRIORITY_ERROR,
+    [LogLevel_Critical] = SDL_LOG_PRIORITY_CRITICAL,
 };
 
-static void os_log_message(LogLevel level, const char *fmt, ...) {
+static void LogMessage(LogLevel level, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     SDL_LogMessageV(
@@ -28,31 +28,31 @@ static void os_log_message(LogLevel level, const char *fmt, ...) {
     va_end(args);
 }
 
-static OsThread *os_thread_create(OsThreadFunction fn, void *data) {
+static OsThread *OsThreadCreate(OsThreadFunction fn, void *data) {
     SDL_Thread *thread = SDL_CreateThread(fn, "Worker", data);
     ASSERT(thread, "Failed to create thread: %s", SDL_GetError());
     return (OsThread *)thread;
 }
 
-static void os_thread_join(OsThread *thread_) {
+static void OsThreadJoin(OsThread *thread_) {
     SDL_Thread *thread = (SDL_Thread *)thread_;
     int status;
     SDL_WaitThread(thread, &status);
     ASSERT(status == 0, "");
 }
 
-static void maybe_load_file(App *app, OsLoadingFile *file) {
-    if (ztracing_accept_load(app)) {
-        ztracing_load_file(app, file);
+static void MaybeLoadFile(App *app, OsLoadingFile *file) {
+    if (AppCanLoadFile(app)) {
+        AppLoadFile(app, file);
     } else {
-        os_loading_file_close(file);
+        OsLoadingFileClose(file);
     }
 }
 
 enum MainLoopState {
-    MAIN_LOOP_INIT,
-    MAIN_LOOP_UPDATE,
-    MAIN_LOOP_SHUTDOWN,
+    MainLoopState_Init,
+    MainLoopState_Update,
+    MainLoopState_Shutdown,
 };
 
 struct MainLoop {
@@ -64,12 +64,12 @@ struct MainLoop {
     App app;
 };
 
-static void *imgui_alloc(usize size, void *user_data) {
-    return memory_alloc(size);
+static void *ImGuiAlloc(usize size, void *user_data) {
+    return MemAlloc(size);
 }
 
-static void imgui_free(void *ptr, void *user_data) {
-    memory_free(ptr);
+static void ImGuiFree(void *ptr, void *user_data) {
+    MemFree(ptr);
 }
 
 struct {
@@ -77,24 +77,19 @@ struct {
     volatile usize allocated_bytes;
 } DEFAULT_ALLOCATOR;
 
-static void default_allocator_init() {
+static void DefaultAllocatorInit() {
     DEFAULT_ALLOCATOR.mutex = SDL_CreateMutex();
 
-    SDL_SetMemoryFunctions(
-        memory_alloc,
-        memory_calloc,
-        memory_realloc,
-        memory_free
-    );
+    SDL_SetMemoryFunctions(MemAlloc, MemCAlloc, MemReAlloc, MemFree);
 
-    ImGui::SetAllocatorFunctions(imgui_alloc, imgui_free);
+    ImGui::SetAllocatorFunctions(ImGuiAlloc, ImGuiFree);
 }
 
-static void default_allocator_deinit() {
-    ASSERT(memory_get_allocated_bytes() == 0, "Memory leaked!");
+static void DefaultAllocatorDeinit() {
+    ASSERT(MemGetAllocatedBytes() == 0, "Memory leaked!");
 }
 
-static void update_allocated_bytes(usize delta) {
+static void UpdateAllocatedBytes(usize delta) {
     int err = SDL_LockMutex(DEFAULT_ALLOCATOR.mutex);
     ASSERT(err == 0, "%s", SDL_GetError());
     DEFAULT_ALLOCATOR.allocated_bytes += delta;
@@ -102,7 +97,7 @@ static void update_allocated_bytes(usize delta) {
     ASSERT(err == 0, "%s", SDL_GetError());
 }
 
-static void *do_memory_alloc(usize size, bool zero) {
+static void *MemAlloc(usize size, bool zero) {
     usize total_size = sizeof(size) + size;
     usize *result = (usize *)malloc(total_size);
     if (result) {
@@ -113,20 +108,20 @@ static void *do_memory_alloc(usize size, bool zero) {
             memset(result, 0, size);
         }
 
-        update_allocated_bytes(total_size);
+        UpdateAllocatedBytes(total_size);
     }
     return result;
 }
 
-static void *memory_alloc(usize size) {
-    return do_memory_alloc(size, /* zero= */ false);
+static void *MemAlloc(usize size) {
+    return MemAlloc(size, /* zero= */ false);
 }
 
-static void *memory_calloc(usize sum, usize size) {
-    return do_memory_alloc(sum * size, /* zero= */ true);
+static void *MemCAlloc(usize sum, usize size) {
+    return MemAlloc(sum * size, /* zero= */ true);
 }
 
-static void *memory_realloc(void *ptr_, usize new_size) {
+static void *MemReAlloc(void *ptr_, usize new_size) {
     usize *ptr = (usize *)ptr_;
 
     usize total_size = 0;
@@ -141,32 +136,32 @@ static void *memory_realloc(void *ptr_, usize new_size) {
     if (ptr) {
         ptr[0] = new_total_size;
         ptr += 1;
-        update_allocated_bytes(new_total_size - total_size);
+        UpdateAllocatedBytes(new_total_size - total_size);
     }
 
     return ptr;
 }
 
-static void memory_free(void *ptr_) {
+static void MemFree(void *ptr_) {
     usize *ptr = (usize *)ptr_;
     if (ptr) {
         ptr -= 1;
         usize total_size = ptr[0];
-        update_allocated_bytes(-total_size);
+        UpdateAllocatedBytes(-total_size);
     }
     free(ptr);
 }
 
-static usize memory_get_allocated_bytes() {
+static usize MemGetAllocatedBytes() {
     return DEFAULT_ALLOCATOR.allocated_bytes;
 }
 
 static MainLoop MAIN_LOOP = {};
 
-static Vec2 get_initial_window_size();
+static Vec2 GetInitialWindowSize();
 
-static void main_loop_init(MainLoop *main_loop) {
-    default_allocator_init();
+static void MainLoopInit(MainLoop *main_loop) {
+    DefaultAllocatorInit();
 
     if (SDL_Init(SDL_INIT_EVERYTHING & ~(SDL_INIT_TIMER | SDL_INIT_HAPTIC)) !=
         0) {
@@ -178,7 +173,7 @@ static void main_loop_init(MainLoop *main_loop) {
         startup_file = main_loop->argv[1];
     }
 
-    Vec2 window_size = get_initial_window_size();
+    Vec2 window_size = GetInitialWindowSize();
 
     SDL_Window *window = SDL_CreateWindow(
         "ztracing",
@@ -221,29 +216,29 @@ static void main_loop_init(MainLoop *main_loop) {
     }
 
     if (startup_file) {
-        OsLoadingFile *file = os_loading_file_open(startup_file);
+        OsLoadingFile *file = OsLoadingFileOpen(startup_file);
         if (file) {
-            maybe_load_file(&main_loop->app, file);
+            MaybeLoadFile(&main_loop->app, file);
         }
     }
 
-    main_loop->state = MAIN_LOOP_UPDATE;
+    main_loop->state = MainLoopState_Update;
 }
 
-static void main_loop_update(MainLoop *main_loop) {
+static void MainLoopUpdate(MainLoop *main_loop) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         if (!ImGui_ImplSDL2_ProcessEvent(&event)) {
             switch (event.type) {
             case SDL_QUIT: {
-                main_loop->state = MAIN_LOOP_SHUTDOWN;
+                main_loop->state = MainLoopState_Shutdown;
             } break;
 
             case SDL_DROPFILE: {
                 char *path = event.drop.file;
-                OsLoadingFile *file = os_loading_file_open(path);
+                OsLoadingFile *file = OsLoadingFileOpen(path);
                 if (file) {
-                    maybe_load_file(&main_loop->app, file);
+                    MaybeLoadFile(&main_loop->app, file);
                 }
                 SDL_free(path);
             } break;
@@ -255,14 +250,14 @@ static void main_loop_update(MainLoop *main_loop) {
     ImGui_ImplSDLRenderer2_NewFrame();
     ImGui::NewFrame();
 
-    ztracing_update(&main_loop->app);
+    AppUpdate(&main_loop->app);
 
     ImGui::Render();
     ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData());
     SDL_RenderPresent(main_loop->renderer);
 }
 
-static void main_loop_shutdown(MainLoop *main_loop) {
+static void MainLoopShutdown(MainLoop *main_loop) {
     ImGui_ImplSDLRenderer2_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
@@ -271,7 +266,7 @@ static void main_loop_shutdown(MainLoop *main_loop) {
     SDL_DestroyWindow(main_loop->window);
     SDL_Quit();
 
-    default_allocator_deinit();
+    DefaultAllocatorDeinit();
 
 #ifdef __EMSCRIPTEN__
     emscripten_cancel_main_loop();
@@ -280,17 +275,17 @@ static void main_loop_shutdown(MainLoop *main_loop) {
 #endif
 }
 
-static void main_loop(void *arg) {
+static void RunMainLoop(void *arg) {
     MainLoop *main_loop = (MainLoop *)arg;
     switch (main_loop->state) {
-    case MAIN_LOOP_INIT: {
-        main_loop_init(main_loop);
+    case MainLoopState_Init: {
+        MainLoopInit(main_loop);
     } break;
-    case MAIN_LOOP_UPDATE: {
-        main_loop_update(main_loop);
+    case MainLoopState_Update: {
+        MainLoopUpdate(main_loop);
     } break;
-    case MAIN_LOOP_SHUTDOWN: {
-        main_loop_shutdown(main_loop);
+    case MainLoopState_Shutdown: {
+        MainLoopShutdown(main_loop);
     } break;
     }
 }
@@ -299,10 +294,10 @@ int main(int argc, char **argv) {
     MAIN_LOOP.argc = argc;
     MAIN_LOOP.argv = argv;
 #ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(main_loop, &MAIN_LOOP, 0, 0);
+    emscripten_set_main_loop_arg(RunMainLoop, &MAIN_LOOP, 0, 0);
 #else
     while (true) {
-        main_loop(&MAIN_LOOP);
+        RunMainLoop(&MAIN_LOOP);
     }
 #endif
     return 0;
