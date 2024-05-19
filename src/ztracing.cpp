@@ -2,8 +2,18 @@
 
 #include <stdio.h>
 
-char TMP_BUF[256];
-u32 TMP_BUF_SIZE = ARRAY_SIZE(TMP_BUF);
+static App *AppCreate() {
+    Arena *arena = ArenaCreate();
+    App *app = ArenaPushStruct(arena, App);
+    app->arena = arena;
+    app->frame_arena = ArenaCreate();
+    return app;
+}
+
+static void AppDestroy(App *app) {
+    ArenaDestroy(app->frame_arena);
+    ArenaDestroy(app->arena);
+}
 
 static void TransitToWelcome(App *app) {
     app->state = AppState_Welcome;
@@ -22,38 +32,33 @@ static void TransitToLoading(App *app, AppLoading loading) {
     }
 }
 
-static void MainMenu(MainMenu *main_menu) {
+static void MainMenu(App *app) {
     ImGuiIO *io = &ImGui::GetIO();
     ImGuiStyle *style = &ImGui::GetStyle();
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("About")) {
-            ImGui::MenuItem("Dear ImGui", "", &main_menu->show_demo_window);
+            ImGui::MenuItem("Dear ImGui", "", &app->show_demo_window);
             ImGui::EndMenu();
         }
 
         {
-            snprintf(
-                TMP_BUF,
-                TMP_BUF_SIZE,
-                "Memory: %.1f MB",
-                MemGetAllocatedBytes() / 1024.0f / 1024.0f
+            char *text = ArenaPushStr(
+                app->arena,
+                "%.1f MB  %.0f",
+                MemGetAllocatedBytes() / 1024.0f / 1024.0f,
+                io->Framerate
             );
-            Vec2 size = ImGui::CalcTextSize(TMP_BUF);
-            ImGui::Text("%s", TMP_BUF);
-        }
-
-        {
-            snprintf(TMP_BUF, TMP_BUF_SIZE, "%.0f", io->Framerate);
-            Vec2 size = ImGui::CalcTextSize(TMP_BUF);
+            Vec2 size = ImGui::CalcTextSize(text);
             ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - size.x);
-            ImGui::Text("%s", TMP_BUF);
+            ImGui::Text("%s", text);
+            ArenaPopStr(app->arena, text);
         }
 
         ImGui::EndMainMenuBar();
     }
 
-    if (main_menu->show_demo_window) {
-        ImGui::ShowDemoWindow(&main_menu->show_demo_window);
+    if (app->show_demo_window) {
+        ImGui::ShowDemoWindow(&app->show_demo_window);
     }
 }
 
@@ -81,12 +86,12 @@ static void MainWindowLoading(App *app) {
     AppLoading *loading = &app->loading;
 
     {
+        char *text = ArenaPushStr(app->arena, "Loading ...");
         Vec2 window_size = ImGui::GetWindowSize();
-
-        snprintf(TMP_BUF, TMP_BUF_SIZE, "Loading ...");
-        Vec2 text_size = ImGui::CalcTextSize(TMP_BUF);
+        Vec2 text_size = ImGui::CalcTextSize(text);
         ImGui::SetCursorPos((window_size - text_size) / 2.0f);
-        ImGui::Text("%s", TMP_BUF);
+        ImGui::Text("%s", text);
+        ArenaPopStr(app->arena, text);
     }
 
     if (loading->task->done) {
@@ -126,8 +131,10 @@ static void MainWindow(App *app) {
 }
 
 static void AppUpdate(App *app) {
-    MainMenu(&app->main_menu);
+    MainMenu(app);
     MainWindow(app);
+
+    ArenaClear(app->frame_arena);
 }
 
 static int DoLoadFile(void *data) {

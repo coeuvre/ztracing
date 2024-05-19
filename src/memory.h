@@ -14,10 +14,11 @@ static Arena *ArenaCreate();
 static void ArenaDestroy(Arena *arena);
 static void ArenaClear(Arena *arena);
 
+static void *ArenaPushNoZero(Arena *arena, usize size);
 static void *ArenaPush(Arena *arena, usize size);
 static void ArenaPop(Arena *arena, usize size);
 
-static char *ArenaPushStr(Arena *arena, const char *str);
+static char *ArenaPushStr(Arena *arena, const char *fmt, ...);
 static void ArenaPopStr(Arena *arena, char *str);
 
 #define ArenaPushArray(arena, type, count)                                     \
@@ -28,6 +29,8 @@ static void ArenaPopStr(Arena *arena, char *str);
 #define ArenaPushStruct(arena, type) ArenaPushArray(arena, type, 1)
 #define ArenaPopStruct(arena, type) ArenaPopArray(arena, type, 1)
 
-struct ArenaTemp;
+struct ArenaTemp {
+    Arena *arena;
+};
 static ArenaTemp *ArenaPushTemp(Arena *arena);
-static void ArenaPopTemp(Arena *arena, ArenaTemp *temp);
+static void ArenaPopTemp(ArenaTemp *temp);

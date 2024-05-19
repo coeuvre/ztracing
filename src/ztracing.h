@@ -13,10 +13,6 @@ struct LoadFileTask {
     volatile bool done;
 };
 
-struct MainMenu {
-    bool show_demo_window;
-};
-
 enum AppState {
     AppState_Welcome,
     AppState_Loading,
@@ -28,12 +24,17 @@ struct AppLoading {
 };
 
 struct App {
-    MainMenu main_menu;
+    Arena *arena;
+    Arena *frame_arena;
+    bool show_demo_window;
     AppState state;
     union {
         AppLoading loading;
     };
 };
+
+static App *AppCreate();
+static void AppDestroy(App *);
 
 static void AppUpdate(App *app);
 

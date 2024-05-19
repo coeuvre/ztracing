@@ -61,7 +61,7 @@ struct MainLoop {
     MainLoopState state;
     SDL_Window *window;
     SDL_Renderer *renderer;
-    App app;
+    App *app;
 };
 
 static void *ImGuiAlloc(usize size, void *user_data) {
@@ -217,10 +217,12 @@ static void MainLoopInit(MainLoop *main_loop) {
         ABORT("Failed to init ImGui with SDL_Renderer");
     }
 
+    main_loop->app = AppCreate();
+
     if (startup_file) {
         OsLoadingFile *file = OsLoadingFileOpen(startup_file);
         if (file) {
-            MaybeLoadFile(&main_loop->app, file);
+            MaybeLoadFile(main_loop->app, file);
         }
     }
 
@@ -240,7 +242,7 @@ static void MainLoopUpdate(MainLoop *main_loop) {
                 char *path = event.drop.file;
                 OsLoadingFile *file = OsLoadingFileOpen(path);
                 if (file) {
-                    MaybeLoadFile(&main_loop->app, file);
+                    MaybeLoadFile(main_loop->app, file);
                 }
                 SDL_free(path);
             } break;
@@ -252,7 +254,7 @@ static void MainLoopUpdate(MainLoop *main_loop) {
     ImGui_ImplSDLRenderer2_NewFrame();
     ImGui::NewFrame();
 
-    AppUpdate(&main_loop->app);
+    AppUpdate(main_loop->app);
 
     ImGui::Render();
     ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData());
@@ -260,6 +262,8 @@ static void MainLoopUpdate(MainLoop *main_loop) {
 }
 
 static void MainLoopShutdown(MainLoop *main_loop) {
+    AppDestroy(main_loop->app);
+
     ImGui_ImplSDLRenderer2_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();

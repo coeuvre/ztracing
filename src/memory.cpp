@@ -1,5 +1,6 @@
 #include "memory.h"
 
+#include <stdio.h>
 #include <string.h>
 
 static char *MemStrDup(const char *str) {
@@ -65,41 +66,53 @@ static void ArenaClear(Arena *arena) {
     }
 }
 
-static void *ArenaBlockPush(ArenaBlock *block, usize size) {
+static void *ArenaBlockPush(ArenaBlock *block, usize size, bool zero) {
     void *result = 0;
     if (block->top + size <= block->cap) {
         u8 *base = (u8 *)(block + 1);
         result = base + block->top;
         block->top += size;
 
-        memset(result, 0, size);
+        if (zero) {
+            memset(result, 0, size);
+        }
+    }
+    return result;
+}
+
+static void *ArenaPush(Arena *arena, usize size, bool zero) {
+    void *result = 0;
+    if (size > 0) {
+        while (!result) {
+            result = ArenaBlockPush(arena->block, size, zero);
+            if (!result) {
+                usize new_block_cap = arena->block->cap << 1;
+                while (new_block_cap <= size) {
+                    new_block_cap <<= 1;
+                }
+
+                ArenaBlock *new_block =
+                    (ArenaBlock *)MemAlloc(sizeof(ArenaBlock) + new_block_cap);
+                ASSERT(new_block, "");
+                new_block->cap = new_block_cap;
+                new_block->top = 0;
+                new_block->prev = arena->block;
+                new_block->next = 0;
+
+                arena->block->next = new_block;
+                arena->block = new_block;
+            }
+        }
     }
     return result;
 }
 
 static void *ArenaPush(Arena *arena, usize size) {
-    void *result = 0;
-    while (!result) {
-        result = ArenaBlockPush(arena->block, size);
-        if (!result) {
-            usize new_block_cap = arena->block->cap << 1;
-            while (new_block_cap <= size) {
-                new_block_cap <<= 1;
-            }
+    return ArenaPush(arena, size, /* zero= */ true);
+}
 
-            ArenaBlock *new_block =
-                (ArenaBlock *)MemAlloc(sizeof(ArenaBlock) + new_block_cap);
-            ASSERT(new_block, "");
-            new_block->cap = new_block_cap;
-            new_block->top = 0;
-            new_block->prev = arena->block;
-            new_block->next = 0;
-
-            arena->block->next = new_block;
-            arena->block = new_block;
-        }
-    }
-    return result;
+static void *ArenaPushNoZero(Arena *arena, usize size) {
+    return ArenaPush(arena, size, /* zero= */ false);
 }
 
 static void ArenaPop(Arena *arena, usize size) {
@@ -110,10 +123,26 @@ static void ArenaPop(Arena *arena, usize size) {
     }
 }
 
-static char *ArenaPushStr(Arena *arena, const char *str) {
-    usize size = strlen(str) + 1;
+static char *ArenaPushStr(Arena *arena, const char *fmt, ...) {
+    va_list args;
+
+    usize size = arena->block->cap - arena->block->top;
     char *result = ArenaPushArray(arena, char, size);
-    memcpy(result, str, size);
+    va_start(args, fmt);
+    usize actual_size = vsnprintf(result, size, fmt, args) + 1;
+    va_end(args);
+
+    if (actual_size < size) {
+        ArenaPopArray(arena, char, size);
+        result = (char *)ArenaPushNoZero(arena, actual_size);
+    } else if (actual_size > size) {
+        ArenaPopArray(arena, char, size);
+        result = ArenaPushArray(arena, char, actual_size);
+        va_start(args, fmt);
+        vsnprintf(result, actual_size, fmt, args);
+        va_end(args);
+    }
+
     return result;
 }
 
@@ -122,7 +151,8 @@ static void ArenaPopStr(Arena *arena, char *str) {
     ArenaPop(arena, size);
 }
 
-struct ArenaTemp {
+struct ArenaTempImpl {
+    Arena *arena;
     ArenaBlock *block;
     usize top;
 };
@@ -130,13 +160,16 @@ struct ArenaTemp {
 static ArenaTemp *ArenaPushTemp(Arena *arena) {
     ArenaBlock *block = arena->block;
     usize top = block->top;
-    ArenaTemp *temp = ArenaPushStruct(arena, ArenaTemp);
+    ArenaTempImpl *temp = ArenaPushStruct(arena, ArenaTempImpl);
+    temp->arena = arena;
     temp->block = block;
     temp->top = top;
-    return temp;
+    return (ArenaTemp *)temp;
 }
 
-static void ArenaPopTemp(Arena *arena, ArenaTemp *temp) {
+static void ArenaPopTemp(ArenaTemp *temp_) {
+    ArenaTempImpl *temp = (ArenaTempImpl *)temp_;
+    Arena *arena = temp->arena;
     arena->block = temp->block;
     arena->block->top = temp->top;
 
