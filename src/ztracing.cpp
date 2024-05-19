@@ -179,11 +179,3 @@ static void AppLoadFile(App *app, OsLoadingFile *file) {
     loading.thread = thread;
     TransitToLoading(app, loading);
 }
-
-static OsLoadingFile *AppGetLoadingFile(App *app) {
-    OsLoadingFile *file = 0;
-    if (app->state == AppState_Loading) {
-        file = app->loading.task->file;
-    }
-    return file;
-}

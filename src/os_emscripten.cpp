@@ -88,29 +88,34 @@ extern "C" void AppSetWindowSize(int width, int height) {
 }
 
 EMSCRIPTEN_KEEPALIVE
-extern "C" bool app_accept_accept_load() {
-    return AppCanLoadFile(&MAIN_LOOP.app);
+extern "C" bool AppCanLoadFile() {
+    return !MAIN_LOOP.loading_file && AppCanLoadFile(MAIN_LOOP.app);
 }
 
 EMSCRIPTEN_KEEPALIVE
 extern "C" void AppOnLoadBegin(char *path, isize total) {
+    ASSERT(AppCanLoadFile(), "");
+
     OsLoadingFile *file = (OsLoadingFile *)MemAlloc(sizeof(OsLoadingFile));
+    ASSERT(file, "");
     *file = {};
     file->mutex = SDL_CreateMutex();
     ASSERT(file->mutex, "%s", SDL_GetError());
     file->cond = SDL_CreateCond();
     ASSERT(file->cond, "%s", SDL_GetError());
-    AppLoadFile(&MAIN_LOOP.app, file);
+
+    MAIN_LOOP.loading_file = file;
+    AppLoadFile(MAIN_LOOP.app, file);
 }
 
 EMSCRIPTEN_KEEPALIVE
 extern "C" bool AppCanLoadChunk() {
     bool result = false;
-    OsLoadingFile *file = AppGetLoadingFile(&MAIN_LOOP.app);
+    OsLoadingFile *file = MAIN_LOOP.loading_file;
     if (file) {
         int err = SDL_LockMutex(file->mutex);
         ASSERT(err == 0, "%s", SDL_GetError());
-        result = file->closed;
+        result = !file->closed;
         err = SDL_UnlockMutex(file->mutex);
         ASSERT(err == 0, "%s", SDL_GetError());
     }
@@ -119,53 +124,53 @@ extern "C" bool AppCanLoadChunk() {
 
 EMSCRIPTEN_KEEPALIVE
 extern "C" void AppOnLoadChunk(u8 *buf, u32 len) {
-    OsLoadingFile *file = AppGetLoadingFile(&MAIN_LOOP.app);
-    if (file) {
-        int err = SDL_LockMutex(file->mutex);
-        ASSERT(err == 0, "%s", SDL_GetError());
-        while (file->buf) {
-            err = SDL_CondWait(file->cond, file->mutex);
-            ASSERT(err == 0, "%s", SDL_GetError());
-        }
-        file->buf = buf;
-        file->idx = 0;
-        file->len = len;
-        err = SDL_CondSignal(file->cond);
-        ASSERT(err == 0, "%s", SDL_GetError());
-        err = SDL_UnlockMutex(file->mutex);
+    ASSERT(AppCanLoadChunk(), "");
+    OsLoadingFile *file = MAIN_LOOP.loading_file;
+    int err = SDL_LockMutex(file->mutex);
+    ASSERT(err == 0, "%s", SDL_GetError());
+    while (file->buf) {
+        err = SDL_CondWait(file->cond, file->mutex);
         ASSERT(err == 0, "%s", SDL_GetError());
     }
+    file->buf = buf;
+    file->idx = 0;
+    file->len = len;
+    err = SDL_CondSignal(file->cond);
+    ASSERT(err == 0, "%s", SDL_GetError());
+    err = SDL_UnlockMutex(file->mutex);
+    ASSERT(err == 0, "%s", SDL_GetError());
 }
 
 EMSCRIPTEN_KEEPALIVE
 extern "C" void AppOnLoadEnd() {
-    OsLoadingFile *file = AppGetLoadingFile(&MAIN_LOOP.app);
-    if (file) {
-        int err = SDL_LockMutex(file->mutex);
+    OsLoadingFile *file = MAIN_LOOP.loading_file;
+    ASSERT(file, "");
+    MAIN_LOOP.loading_file = 0;
+
+    int err = SDL_LockMutex(file->mutex);
+    ASSERT(err == 0, "%s", SDL_GetError());
+
+    while (file->buf) {
+        err = SDL_CondWait(file->cond, file->mutex);
         ASSERT(err == 0, "%s", SDL_GetError());
-
-        while (file->buf) {
-            err = SDL_CondWait(file->cond, file->mutex);
-            ASSERT(err == 0, "%s", SDL_GetError());
-        }
-
-        file->eof = true;
-        err = SDL_CondSignal(file->cond);
-        ASSERT(err == 0, "%s", SDL_GetError());
-
-        while (!file->closed) {
-            err = SDL_CondWait(file->cond, file->mutex);
-            ASSERT(err == 0, "%s", SDL_GetError());
-        }
-
-        ASSERT(!file->buf, "");
-
-        ASSERT(err == 0, "%s", SDL_GetError());
-        err = SDL_UnlockMutex(file->mutex);
-        ASSERT(err == 0, "%s", SDL_GetError());
-
-        SDL_DestroyCond(file->cond);
-        SDL_DestroyMutex(file->mutex);
-        MemFree(file);
     }
+
+    file->eof = true;
+    err = SDL_CondSignal(file->cond);
+    ASSERT(err == 0, "%s", SDL_GetError());
+
+    while (!file->closed) {
+        err = SDL_CondWait(file->cond, file->mutex);
+        ASSERT(err == 0, "%s", SDL_GetError());
+    }
+
+    ASSERT(!file->buf, "");
+
+    ASSERT(err == 0, "%s", SDL_GetError());
+    err = SDL_UnlockMutex(file->mutex);
+    ASSERT(err == 0, "%s", SDL_GetError());
+
+    SDL_DestroyCond(file->cond);
+    SDL_DestroyMutex(file->mutex);
+    MemFree(file);
 }

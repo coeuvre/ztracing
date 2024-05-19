@@ -4,6 +4,7 @@ async function setup(module, canvas) {
     "number",
   ]);
   const AppMemAlloc = module.cwrap("AppMemAlloc", "number", ["number"]);
+  const AppCanLoadFile = module.cwrap("AppCanLoadFile", null, []);
   const AppOnLoadBegin = module.cwrap("AppOnLoadBegin", null, [
     "string",
     "number",
@@ -21,18 +22,20 @@ async function setup(module, canvas) {
    * @param {ReadableStream} stream
    */
   async function LoadProfile(path, total, stream) {
-    AppOnLoadBegin(path, total);
-    for await (const chunk of stream) {
-      if (AppCanLoadChunk()) {
-        const len = chunk.length * chunk.BYTES_PER_ELEMENT;
-        const buf = AppMemAlloc(len);
-        module.HEAPU8.set(chunk, buf);
-        AppOnLoadChunk(buf, len);
-      } else {
-        break;
+    if (AppCanLoadFile()) {
+      AppOnLoadBegin(path, total);
+      for await (const chunk of stream) {
+        if (AppCanLoadChunk()) {
+          const len = chunk.length * chunk.BYTES_PER_ELEMENT;
+          const buf = AppMemAlloc(len);
+          module.HEAPU8.set(chunk, buf);
+          AppOnLoadChunk(buf, len);
+        } else {
+          break;
+        }
       }
+      AppOnLoadEnd();
     }
-    AppOnLoadEnd();
   }
 
   canvas.addEventListener("dragover", (event) => {

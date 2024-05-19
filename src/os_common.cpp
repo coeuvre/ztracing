@@ -62,6 +62,7 @@ struct MainLoop {
     SDL_Window *window;
     SDL_Renderer *renderer;
     App *app;
+    OsLoadingFile *loading_file;
 };
 
 static void *ImGuiAlloc(usize size, void *user_data) {

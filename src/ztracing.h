@@ -40,4 +40,3 @@ static void AppUpdate(App *app);
 
 static bool AppCanLoadFile(App *app);
 static void AppLoadFile(App *app, OsLoadingFile *file);
-static OsLoadingFile *AppGetLoadingFile(App *app);
