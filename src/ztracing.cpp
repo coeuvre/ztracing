@@ -151,6 +151,8 @@ static int DoLoadFile(void *data) {
     LoadFileTask *task = (LoadFileTask *)data;
     INFO("Loading file ...");
 
+    u64 start_counter = OsGetPerformanceCounter();
+
     z_stream stream = {};
     stream.zalloc = ZLibAlloc;
     stream.zfree = ZLibFree;
@@ -219,7 +221,15 @@ static int DoLoadFile(void *data) {
 
     task->done = true;
 
-    INFO("Loaded %.1f MB.", total / 1024.0f / 1024.0f);
+    u64 end_counter = OsGetPerformanceCounter();
+    f32 seconds =
+        (f64)(end_counter - start_counter) / (f64)OsGetPerformanceFrequency();
+    INFO(
+        "Loaded %.1f MB in %.2f s (%.1f MB/s).",
+        total / 1024.0f / 1024.0f,
+        seconds,
+        total / seconds / 1024.0f / 1024.0f
+    );
 
     return 0;
 }

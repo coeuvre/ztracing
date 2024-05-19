@@ -11,3 +11,6 @@ struct OsThread;
 
 static OsThread *OsThreadCreate(OsThreadFunction fn, void *data);
 static void OsThreadJoin(OsThread *thread);
+
+static u64 OsGetPerformanceCounter();
+static u64 OsGetPerformanceFrequency();

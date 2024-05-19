@@ -40,6 +40,16 @@ static void OsThreadJoin(OsThread *thread_) {
     ASSERT(status == 0, "");
 }
 
+static u64 OsGetPerformanceCounter() {
+    u64 result = SDL_GetPerformanceCounter();
+    return result;
+}
+
+static u64 OsGetPerformanceFrequency() {
+    u64 result = SDL_GetPerformanceFrequency();
+    return result;
+}
+
 static void MaybeLoadFile(App *app, OsLoadingFile *file) {
     if (AppCanLoadFile(app)) {
         AppLoadFile(app, file);
