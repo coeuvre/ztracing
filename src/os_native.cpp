@@ -38,3 +38,7 @@ static void OsLoadingFileClose(OsLoadingFile *file) {
     MemFree(file->path);
     MemFree(file);
 }
+
+static char *OsLoadingFileGetPath(OsLoadingFile *file) {
+    return file->path;
+}

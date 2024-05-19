@@ -5,9 +5,10 @@
 
 static char *MemStrDup(const char *str) {
     usize size = strlen(str);
-    char *result = (char *)MemAlloc(size);
+    char *result = (char *)MemAlloc(size + 1);
     if (result) {
         memcpy(result, str, size);
+        result[size] = 0;
     }
     return result;
 }

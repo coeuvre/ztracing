@@ -4,13 +4,11 @@ async function setup(module, canvas) {
     "number",
   ]);
   const AppMemAlloc = module.cwrap("AppMemAlloc", "number", ["number"]);
-  const AppCanLoadFile = module.cwrap("AppCanLoadFile", null, []);
-  const AppOnLoadBegin = module.cwrap("AppOnLoadBegin", null, [
+  const AppOnLoadBegin = module.cwrap("AppOnLoadBegin", "boolean", [
     "string",
     "number",
   ]);
-  const AppCanLoadChunk = module.cwrap("AppCanLoadChunk", null, []);
-  const AppOnLoadChunk = module.cwrap("AppOnLoadChunk", null, [
+  const AppOnLoadChunk = module.cwrap("AppOnLoadChunk", "boolean", [
     "nubmer",
     "number",
   ]);
@@ -22,15 +20,12 @@ async function setup(module, canvas) {
    * @param {ReadableStream} stream
    */
   async function loadProfile(path, total, stream) {
-    if (AppCanLoadFile()) {
-      AppOnLoadBegin(path, total);
+    if (AppOnLoadBegin(path, total)) {
       for await (const chunk of stream) {
-        if (AppCanLoadChunk()) {
-          const len = chunk.length * chunk.BYTES_PER_ELEMENT;
-          const buf = AppMemAlloc(len);
-          module.HEAPU8.set(chunk, buf);
-          AppOnLoadChunk(buf, len);
-        } else {
+        const len = chunk.length * chunk.BYTES_PER_ELEMENT;
+        const buf = AppMemAlloc(len);
+        module.HEAPU8.set(chunk, buf);
+        if (!AppOnLoadChunk(buf, len)) {
           break;
         }
       }

@@ -96,8 +96,9 @@ static void DefaultAllocatorInit() {
 }
 
 static void DefaultAllocatorDeinit() {
-    if (MemGetAllocatedBytes() != 0) {
-        ERROR("Memory leaked!");
+    usize n = MemGetAllocatedBytes();
+    if (n != 0) {
+        ERROR("%zu bytes leaked!", n);
     }
 }
 

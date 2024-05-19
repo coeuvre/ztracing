@@ -41,6 +41,8 @@ static void MainMenu(App *app) {
             ImGui::EndMenu();
         }
 
+        f32 left = ImGui::GetCursorPosX();
+        f32 right = left;
         {
             char *text = ArenaPushStr(
                 app->arena,
@@ -49,9 +51,30 @@ static void MainMenu(App *app) {
                 io->Framerate
             );
             Vec2 size = ImGui::CalcTextSize(text);
-            ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - size.x);
+            right = ImGui::GetWindowContentRegionMax().x - size.x;
+            ImGui::SetCursorPosX(right);
             ImGui::Text("%s", text);
             ArenaPopStr(app->arena, text);
+        }
+
+        {
+            char *text = 0;
+            switch (app->state) {
+            case AppState_Loading: {
+                OsLoadingFile *file = app->loading.task->file;
+                text = OsLoadingFileGetPath(file);
+            } break;
+
+            default: {
+            } break;
+            }
+
+            if (text) {
+                Vec2 size = ImGui::CalcTextSize(text);
+                left += (right - left - size.x) / 2.0f;
+                ImGui::SetCursorPosX(left);
+                ImGui::Text("%s", text);
+            }
         }
 
         ImGui::EndMainMenuBar();
@@ -96,6 +119,7 @@ static void MainWindowLoading(App *app) {
 
     if (loading->task->done) {
         OsThreadJoin(loading->thread);
+        OsLoadingFileClose(loading->task->file);
         MemFree(loading->task);
         TransitToWelcome(app);
     }
@@ -149,7 +173,7 @@ static void ProcessFileContent(u8 *buf, u32 len) {}
 
 static int DoLoadFile(void *data) {
     LoadFileTask *task = (LoadFileTask *)data;
-    INFO("Loading file ...");
+    INFO("Loading file %s ...", OsLoadingFileGetPath(task->file));
 
     u64 start_counter = OsGetPerformanceCounter();
 
@@ -217,10 +241,6 @@ static int DoLoadFile(void *data) {
         inflateEnd(&stream);
     }
 
-    OsLoadingFileClose(task->file);
-
-    task->done = true;
-
     u64 end_counter = OsGetPerformanceCounter();
     f32 seconds =
         (f64)(end_counter - start_counter) / (f64)OsGetPerformanceFrequency();
@@ -231,6 +251,7 @@ static int DoLoadFile(void *data) {
         total / seconds / 1024.0f / 1024.0f
     );
 
+    task->done = true;
     return 0;
 }
 
