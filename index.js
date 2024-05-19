@@ -21,7 +21,7 @@ async function setup(module, canvas) {
    * @param {number} total
    * @param {ReadableStream} stream
    */
-  async function LoadProfile(path, total, stream) {
+  async function loadProfile(path, total, stream) {
     if (AppCanLoadFile()) {
       AppOnLoadBegin(path, total);
       for await (const chunk of stream) {
@@ -49,14 +49,14 @@ async function setup(module, canvas) {
       event.dataTransfer.files.length > 0
     ) {
       const file = event.dataTransfer.files[0];
-      LoadProfile(file.name, file.size, file.stream());
+      loadProfile(file.name, file.size, file.stream());
     }
   });
 
   return {
     module,
     setCanvasSize: AppSetWindowSize,
-    loadProfile: LoadProfile,
+    loadProfile: loadProfile,
   };
 }
 

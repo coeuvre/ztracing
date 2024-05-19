@@ -1,6 +1,6 @@
 #include "ztracing.h"
 
-#include <stdio.h>
+#include <zlib.h>
 
 static App *AppCreate() {
     Arena *arena = ArenaCreate();
@@ -137,26 +137,89 @@ static void AppUpdate(App *app) {
     ArenaClear(app->frame_arena);
 }
 
+static voidpf ZLibAlloc(voidpf opaque, uInt items, uInt size) {
+    return MemAlloc(items * size);
+}
+
+static void ZLibFree(voidpf opaque, voidpf address) {
+    MemFree(address);
+}
+
+static void ProcessFileContent(u8 *buf, u32 len) {}
+
 static int DoLoadFile(void *data) {
     LoadFileTask *task = (LoadFileTask *)data;
     INFO("Loading file ...");
 
-    isize total = 0;
-    u8 buf[4096];
+    z_stream stream = {};
+    stream.zalloc = ZLibAlloc;
+    stream.zfree = ZLibFree;
+    u8 zstream_buf[4096];
+    bool is_gz = false;
+
+    usize file_offset = 0;
+    u8 file_buf[4096];
+
+    usize total = 0;
     for (bool need_more_read = true; need_more_read;) {
-        u32 nread = OsLoadingFileNext(task->file, buf, ARRAY_SIZE(buf) - 1);
-        buf[nread] = 0;
-        total += nread;
-        // INFO("(%d): %s", nread, buf);
-        // TODO: process buf[0..nread]
-        need_more_read = nread > 0;
+        u32 nread =
+            OsLoadingFileNext(task->file, file_buf, ARRAY_SIZE(file_buf));
+
+        if (file_offset == 0 && nread >= 2 && file_buf[0] == 0x1F &&
+            file_buf[1] == 0x8B) {
+            int zret = inflateInit2(&stream, MAX_WBITS | 32);
+            // TODO: Error handling.
+            ASSERT(zret == Z_OK, "");
+            is_gz = true;
+        }
+
+        file_offset += nread;
+        if (nread) {
+            if (is_gz) {
+                stream.avail_in = nread;
+                stream.next_in = file_buf;
+
+                do {
+                    stream.avail_out = ARRAY_SIZE(zstream_buf);
+                    stream.next_out = zstream_buf;
+
+                    int zret = inflate(&stream, Z_NO_FLUSH);
+                    switch (zret) {
+                    case Z_OK: {
+                    } break;
+
+                    case Z_STREAM_END: {
+                        need_more_read = false;
+                    } break;
+
+                    default: {
+                        // TODO: Error handling.
+                        ABORT("inflate returned %d", zret);
+                    } break;
+                    }
+
+                    u32 have = ARRAY_SIZE(zstream_buf) - stream.avail_out;
+                    ProcessFileContent(zstream_buf, have);
+                    total += have;
+                } while (stream.avail_out == 0);
+            } else {
+                ProcessFileContent(file_buf, nread);
+                total += nread;
+            }
+        } else {
+            need_more_read = false;
+        }
     }
 
-    INFO("Processed %zd bytes.", total);
+    if (is_gz) {
+        inflateEnd(&stream);
+    }
 
     OsLoadingFileClose(task->file);
 
     task->done = true;
+
+    INFO("Loaded %.1f MB.", total / 1024.0f / 1024.0f);
 
     return 0;
 }
