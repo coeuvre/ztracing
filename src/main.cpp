@@ -1,3 +1,9 @@
+#include "core.cpp"
+
+#include "ztracing.cpp"
+
+#include "os_common.cpp"
+
 #ifdef __EMSCRIPTEN__
 #include "os_emscripten.cpp"
 #else

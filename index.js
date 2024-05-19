@@ -3,7 +3,7 @@ async function setup(module, canvas) {
     "number",
     "number",
   ]);
-  const app_memory_allocate = module.cwrap("app_memory_allocate", "number", [
+  const app_memory_alloc = module.cwrap("app_memory_alloc", "number", [
     "number",
   ]);
   const app_on_load_begin = module.cwrap("app_on_load_begin", null, [
@@ -25,7 +25,7 @@ async function setup(module, canvas) {
     app_on_load_begin(path, total);
     for await (const chunk of stream) {
       const len = chunk.length * chunk.BYTES_PER_ELEMENT;
-      const buf = app_memory_allocate(len);
+      const buf = app_memory_alloc(len);
       module.HEAPU8.set(chunk, buf);
       app_on_load_chunk(buf, len);
     }

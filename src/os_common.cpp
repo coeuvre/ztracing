@@ -64,11 +64,110 @@ struct MainLoop {
     App app;
 };
 
-MainLoop MAIN_LOOP = {};
+static void *imgui_alloc(usize size, void *user_data) {
+    return memory_alloc(size);
+}
+
+static void imgui_free(void *ptr, void *user_data) {
+    memory_free(ptr);
+}
+
+struct {
+    SDL_mutex *mutex;
+    volatile usize allocated_bytes;
+} DEFAULT_ALLOCATOR;
+
+static void default_allocator_init() {
+    DEFAULT_ALLOCATOR.mutex = SDL_CreateMutex();
+
+    SDL_SetMemoryFunctions(
+        memory_alloc,
+        memory_calloc,
+        memory_realloc,
+        memory_free
+    );
+
+    ImGui::SetAllocatorFunctions(imgui_alloc, imgui_free);
+}
+
+static void default_allocator_deinit() {
+    ASSERT(memory_get_allocated_bytes() == 0, "Memory leaked!");
+}
+
+static void update_allocated_bytes(usize delta) {
+    int err = SDL_LockMutex(DEFAULT_ALLOCATOR.mutex);
+    ASSERT(err == 0, "%s", SDL_GetError());
+    DEFAULT_ALLOCATOR.allocated_bytes += delta;
+    err = SDL_UnlockMutex(DEFAULT_ALLOCATOR.mutex);
+    ASSERT(err == 0, "%s", SDL_GetError());
+}
+
+static void *do_memory_alloc(usize size, bool zero) {
+    usize total_size = sizeof(size) + size;
+    usize *result = (usize *)malloc(total_size);
+    if (result) {
+        result[0] = total_size;
+        result += 1;
+
+        if (zero) {
+            memset(result, 0, size);
+        }
+
+        update_allocated_bytes(total_size);
+    }
+    return result;
+}
+
+static void *memory_alloc(usize size) {
+    return do_memory_alloc(size, /* zero= */ false);
+}
+
+static void *memory_calloc(usize sum, usize size) {
+    return do_memory_alloc(sum * size, /* zero= */ true);
+}
+
+static void *memory_realloc(void *ptr_, usize new_size) {
+    usize *ptr = (usize *)ptr_;
+
+    usize total_size = 0;
+    if (ptr) {
+        ptr = ptr - 1;
+        total_size = ptr[0];
+    }
+
+    usize new_total_size = sizeof(usize) + new_size;
+    ptr = (usize *)realloc(ptr, new_total_size);
+
+    if (ptr) {
+        ptr[0] = new_total_size;
+        ptr += 1;
+        update_allocated_bytes(new_total_size - total_size);
+    }
+
+    return ptr;
+}
+
+static void memory_free(void *ptr_) {
+    usize *ptr = (usize *)ptr_;
+    if (ptr) {
+        ptr -= 1;
+        usize total_size = ptr[0];
+        update_allocated_bytes(-total_size);
+    }
+    free(ptr);
+}
+
+static usize memory_get_allocated_bytes() {
+    return DEFAULT_ALLOCATOR.allocated_bytes;
+}
+
+static MainLoop MAIN_LOOP = {};
 
 static Vec2 get_initial_window_size();
 
 static void main_loop_init(MainLoop *main_loop) {
+    default_allocator_init();
+
     if (SDL_Init(SDL_INIT_EVERYTHING & ~(SDL_INIT_TIMER | SDL_INIT_HAPTIC)) !=
         0) {
         ABORT("Failed to init SDL: %s", SDL_GetError());
@@ -171,6 +270,8 @@ static void main_loop_shutdown(MainLoop *main_loop) {
     SDL_DestroyRenderer(main_loop->renderer);
     SDL_DestroyWindow(main_loop->window);
     SDL_Quit();
+
+    default_allocator_deinit();
 
 #ifdef __EMSCRIPTEN__
     emscripten_cancel_main_loop();

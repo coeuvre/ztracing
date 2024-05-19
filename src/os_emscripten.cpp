@@ -1,7 +1,3 @@
-#include "ztracing.cpp"
-
-#include "os_common.cpp"
-
 struct OsLoadingFile {
     SDL_mutex *mutex;
     SDL_cond *cond;
@@ -34,7 +30,7 @@ static u32 os_loading_file_next(OsLoadingFile *file, u8 *buf, u32 len) {
         file->idx += nread;
 
         if (file->idx == file->len) {
-            free(file->buf);
+            memory_free(file->buf);
             file->buf = 0;
             file->idx = 0;
             file->len = 0;
@@ -52,7 +48,7 @@ static void os_loading_file_close(OsLoadingFile *file) {
     int err = SDL_LockMutex(file->mutex);
     ASSERT(err == 0, "%s", SDL_GetError());
     if (file->buf) {
-        free(file->buf);
+        memory_free(file->buf);
         file->buf = 0;
         file->idx = 0;
         file->len = 0;
@@ -81,8 +77,8 @@ static Vec2 get_initial_window_size() {
 }
 
 EMSCRIPTEN_KEEPALIVE
-extern "C" void *app_memory_allocate(usize size) {
-    void *result = malloc(size);
+extern "C" void *app_memory_alloc(usize size) {
+    void *result = memory_alloc(size);
     return result;
 }
 
@@ -98,7 +94,7 @@ extern "C" bool app_accept_accept_load() {
 
 EMSCRIPTEN_KEEPALIVE
 extern "C" void app_on_load_begin(char *path, isize total) {
-    OsLoadingFile *file = (OsLoadingFile *)malloc(sizeof(OsLoadingFile));
+    OsLoadingFile *file = (OsLoadingFile *)memory_alloc(sizeof(OsLoadingFile));
     *file = {};
     file->mutex = SDL_CreateMutex();
     ASSERT(file->mutex, "%s", SDL_GetError());
@@ -170,6 +166,6 @@ extern "C" void app_on_load_end() {
 
         SDL_DestroyCond(file->cond);
         SDL_DestroyMutex(file->mutex);
-        free(file);
+        memory_free(file);
     }
 }

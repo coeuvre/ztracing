@@ -1,7 +1,3 @@
-#include "ztracing.cpp"
-
-#include "os_common.cpp"
-
 static Vec2 get_initial_window_size() {
     Vec2 result = {1280, 720};
     return result;
@@ -31,10 +27,10 @@ static OsLoadingFile *os_loading_file_open(char *path) {
         isize total = rw->size(rw);
         ASSERT(total >= 0, "Failed to get size of %s", path);
 
-        file = (OsLoadingFile *)malloc(sizeof(OsLoadingFile));
+        file = (OsLoadingFile *)memory_alloc(sizeof(OsLoadingFile));
         ASSERT(file, "");
         *file = {};
-        file->path = strdup(path);
+        file->path = memory_strdup(path);
         ASSERT(file->path, "");
         file->total = total;
         file->rw = rw;
@@ -44,8 +40,15 @@ static OsLoadingFile *os_loading_file_open(char *path) {
     return file;
 }
 
-static u32
-os_loading_file_next(OsLoadingFile *file, u8 *buf, u32 len) {
+static voidpf zlib_alloc(voidpf opaque, uInt items, uInt size) {
+    return memory_alloc(items * size);
+}
+
+static void zlib_free(voidpf opaque, voidpf address) {
+    memory_free(address);
+}
+
+static u32 os_loading_file_next(OsLoadingFile *file, u8 *buf, u32 len) {
     u32 nread = 0;
     SDL_RWops *rw = file->rw;
     for (bool need_more_read = true; need_more_read;) {
@@ -57,11 +60,15 @@ os_loading_file_next(OsLoadingFile *file, u8 *buf, u32 len) {
                 header_buf[1] == 0x8B) {
                 file->state = LOADING_FILE_GZIP;
 
+                file->zstream = {};
+                file->zstream.zalloc = zlib_alloc;
+                file->zstream.zfree = zlib_free;
+
                 int zret = inflateInit2(&file->zstream, MAX_WBITS | 32);
                 // TODO: Error handling.
                 ASSERT(zret == Z_OK, "");
                 file->zstream_buf_len = 4096;
-                file->zstream_buf = (u8 *)malloc(file->zstream_buf_len);
+                file->zstream_buf = (u8 *)memory_alloc(file->zstream_buf_len);
             } else {
                 file->state = LOADING_FILE_NORMAL;
             }
@@ -129,8 +136,8 @@ static void os_loading_file_close(OsLoadingFile *file) {
     ASSERT(ret == 0, "Failed to close file: %s", SDL_GetError());
     if (file->zstream_buf) {
         inflateEnd(&file->zstream);
-        free(file->zstream_buf);
+        memory_free(file->zstream_buf);
     }
-    free(file->path);
-    free(file);
+    memory_free(file->path);
+    memory_free(file);
 }

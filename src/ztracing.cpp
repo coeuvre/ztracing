@@ -1,4 +1,5 @@
 #include "ztracing.h"
+
 #include <stdio.h>
 
 char TMP_BUF[256];
@@ -23,10 +24,22 @@ static void transit_to_loading(App *app, AppLoading loading) {
 
 static void ui_main_menu(MainMenu *main_menu) {
     ImGuiIO *io = &ImGui::GetIO();
+    ImGuiStyle *style = &ImGui::GetStyle();
     if (ImGui::BeginMainMenuBar()) {
         if (ImGui::BeginMenu("About")) {
             ImGui::MenuItem("Dear ImGui", "", &main_menu->show_demo_window);
             ImGui::EndMenu();
+        }
+
+        {
+            snprintf(
+                TMP_BUF,
+                TMP_BUF_SIZE,
+                "Memory: %.1f MB",
+                memory_get_allocated_bytes() / 1024.0f / 1024.0f
+            );
+            Vec2 size = ImGui::CalcTextSize(TMP_BUF);
+            ImGui::Text("%s", TMP_BUF);
         }
 
         {
@@ -78,7 +91,7 @@ static void ui_main_window_loading(App *app) {
 
     if (loading->task->done) {
         os_thread_join(loading->thread);
-        free(loading->task);
+        memory_free(loading->task);
         transit_to_welcome(app);
     }
 }
@@ -149,7 +162,7 @@ static bool ztracing_accept_load(App *app) {
 static void ztracing_load_file(App *app, OsLoadingFile *file) {
     ASSERT(ztracing_accept_load(app), "");
 
-    LoadFileTask *task = (LoadFileTask *)malloc(sizeof(LoadFileTask));
+    LoadFileTask *task = (LoadFileTask *)memory_alloc(sizeof(LoadFileTask));
     task->file = file;
 
     OsThread *thread = os_thread_create(load_file_fn, task);

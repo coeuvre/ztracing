@@ -3,7 +3,6 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 typedef int8_t i8;
 typedef uint8_t u8;
@@ -15,6 +14,9 @@ typedef int64_t i64;
 typedef uint64_t u64;
 typedef size_t usize;
 typedef ptrdiff_t isize;
+
+typedef float f32;
+typedef double f64;
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -54,14 +56,9 @@ static void os_log_message(LogLevel level, const char *fmt, ...);
 
 #define UNREACHABLE ABORT("UNREACHABLE")
 
-struct OsLoadingFile;
-static OsLoadingFile *os_loading_file_open(char *path);
-static u32 os_loading_file_next(OsLoadingFile *file, u8 *buf, u32 len);
-static void os_loading_file_close(OsLoadingFile *file);
-
-typedef int (*OsThreadFunction)(void *data);
-
-struct OsThread;
-
-static OsThread *os_thread_create(OsThreadFunction fn, void *data);
-static void os_thread_join(OsThread *thread);
+static void *memory_alloc(usize size);
+static void *memory_calloc(usize sum, usize size);
+static void *memory_realloc(void *ptr, usize new_size);
+static void memory_free(void *ptr);
+static usize memory_get_allocated_bytes();
+static char *memory_strdup(const char *str);
