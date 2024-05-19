@@ -56,10 +56,3 @@ static void LogMessage(LogLevel level, const char *fmt, ...);
     }
 
 #define UNREACHABLE ABORT("UNREACHABLE")
-
-static void *MemAlloc(usize size);
-static void *MemCAlloc(usize sum, usize size);
-static void *MemReAlloc(void *ptr, usize new_size);
-static void MemFree(void *ptr);
-static usize MemGetAllocatedBytes();
-static char *MemStrDup(const char *str);

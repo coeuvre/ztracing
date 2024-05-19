@@ -11,6 +11,7 @@ enum LoadingFileState {
 };
 
 struct OsLoadingFile {
+    Arena *arena;
     char *path;
     isize total;
     SDL_RWops *rw;
@@ -27,11 +28,10 @@ static OsLoadingFile *OsLoadingFileOpen(char *path) {
         isize total = rw->size(rw);
         ASSERT(total >= 0, "Failed to get size of %s", path);
 
-        file = (OsLoadingFile *)MemAlloc(sizeof(OsLoadingFile));
-        ASSERT(file, "");
-        *file = {};
-        file->path = MemStrDup(path);
-        ASSERT(file->path, "");
+        Arena *arena = ArenaCreate();
+        file = ArenaPushStruct(arena, OsLoadingFile);
+        file->arena = arena;
+        file->path = ArenaPushStr(file->arena, path);
         file->total = total;
         file->rw = rw;
     } else {
@@ -68,7 +68,7 @@ static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len) {
                 // TODO: Error handling.
                 ASSERT(zret == Z_OK, "");
                 file->zstream_buf_len = 4096;
-                file->zstream_buf = (u8 *)MemAlloc(file->zstream_buf_len);
+                file->zstream_buf = ArenaPushArray(file->arena, u8, file->zstream_buf_len);
             } else {
                 file->state = LOADING_FILE_NORMAL;
             }
@@ -136,8 +136,6 @@ static void OsLoadingFileClose(OsLoadingFile *file) {
     ASSERT(ret == 0, "Failed to close file: %s", SDL_GetError());
     if (file->zstream_buf) {
         inflateEnd(&file->zstream);
-        MemFree(file->zstream_buf);
     }
-    MemFree(file->path);
-    MemFree(file);
+    ArenaDestroy(file->arena);
 }
