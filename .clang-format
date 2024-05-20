@@ -1,6 +1,7 @@
 ---
 BasedOnStyle: LLVM
 IndentWidth: 4
+PenaltyReturnTypeOnItsOwnLine: 99999
 AllowShortBlocksOnASingleLine: Empty
 AllowShortFunctionsOnASingleLine: Empty
 BinPackArguments: false

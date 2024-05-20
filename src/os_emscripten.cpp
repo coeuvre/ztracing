@@ -1,13 +1,15 @@
+struct Chunk {
+    u8 *buf;
+    u32 len;
+};
+
 struct OsLoadingFile {
     char *path;
     usize total;
-    SDL_mutex *mutex;
-    SDL_cond *cond;
-    bool eof;
-    bool closed;
-    u8 *buf;
-    u32 idx;
-    u32 len;
+    Channel *channel;
+
+    Chunk chunk;
+    usize offset;
 };
 
 static OsLoadingFile *OsLoadingFileOpen(char *path) {
@@ -17,78 +19,38 @@ static OsLoadingFile *OsLoadingFileOpen(char *path) {
 static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len) {
     int nread = 0;
 
-    int err = SDL_LockMutex(file->mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
-
-    ASSERT(!file->closed, "");
-
-    while (!(file->eof || file->buf)) {
-        err = SDL_CondWait(file->cond, file->mutex);
-        ASSERT(err == 0, "%s", SDL_GetError());
+    if (!file->chunk.buf) {
+        ChannelRecv(file->channel, &file->chunk);
     }
-    if (file->buf) {
-        u32 remaining = file->len - file->idx;
+
+    if (file->chunk.buf) {
+        u32 remaining = file->chunk.len - file->offset;
         nread = MIN(remaining, len);
         ASSERT(nread > 0, "");
 
-        memcpy(buf, &file->buf[file->idx], nread);
-        file->idx += nread;
+        memcpy(buf, file->chunk.buf + file->offset, nread);
+        file->offset += nread;
 
-        if (file->idx == file->len) {
-            MemFree(file->buf);
-            file->buf = 0;
-            file->idx = 0;
-            file->len = 0;
-            err = SDL_CondSignal(file->cond);
-            ASSERT(err == 0, "%s", SDL_GetError());
+        if (file->offset == file->chunk.len) {
+            MemFree(file->chunk.buf);
+            file->chunk = {};
+            file->offset = 0;
         }
     }
-    err = SDL_UnlockMutex(file->mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
 
     return nread;
 }
 
-static void MaybeDestroyOsLoadingFile(OsLoadingFile *file) {
-    bool destroy = false;
-
-    int err = SDL_LockMutex(file->mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
-
-    destroy = file->closed && file->eof;
-
-    err = SDL_UnlockMutex(file->mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
-
-    if (destroy) {
-        ASSERT(!file->buf, "");
-        SDL_DestroyCond(file->cond);
-        SDL_DestroyMutex(file->mutex);
-        MemFree(file->path);
-        MemFree(file);
-    }
+static void OsLoadingFileDestroy(OsLoadingFile *file) {
+    ASSERT(!file->chunk.buf, "");
+    MemFree(file->path);
+    MemFree(file);
 }
 
 static void OsLoadingFileClose(OsLoadingFile *file) {
-    int err = SDL_LockMutex(file->mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
-
-    ASSERT(!file->closed, "");
-    file->closed = true;
-    if (file->buf) {
-        MemFree(file->buf);
-        file->buf = 0;
-        file->idx = 0;
-        file->len = 0;
+    if (ChannelCloseRx(file->channel)) {
+        OsLoadingFileDestroy(file);
     }
-
-    err = SDL_CondSignal(file->cond);
-    ASSERT(err == 0, "%s", SDL_GetError());
-
-    err = SDL_UnlockMutex(file->mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
-
-    MaybeDestroyOsLoadingFile(file);
 }
 
 static char *OsLoadingFileGetPath(OsLoadingFile *file) {
@@ -128,11 +90,7 @@ extern "C" bool AppOnLoadBegin(char *path, usize total) {
         *file = {};
         file->path = MemStrDup(path);
         ASSERT(file->path, "");
-        file->total = total;
-        file->mutex = SDL_CreateMutex();
-        ASSERT(file->mutex, "%s", SDL_GetError());
-        file->cond = SDL_CreateCond();
-        ASSERT(file->cond, "%s", SDL_GetError());
+        file->channel = ChannelCreate(sizeof(Chunk), 1);
 
         MAIN_LOOP.loading_file = file;
         AppLoadFile(MAIN_LOOP.app, file);
@@ -143,29 +101,10 @@ extern "C" bool AppOnLoadBegin(char *path, usize total) {
 
 EMSCRIPTEN_KEEPALIVE
 extern "C" bool AppOnLoadChunk(u8 *buf, u32 len) {
-    bool result = true;
     OsLoadingFile *file = MAIN_LOOP.loading_file;
-    int err = SDL_LockMutex(file->mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
 
-    while (file->buf) {
-        err = SDL_CondWait(file->cond, file->mutex);
-        ASSERT(err == 0, "%s", SDL_GetError());
-    }
-
-    if (!file->closed) {
-        file->buf = buf;
-        file->idx = 0;
-        file->len = len;
-        err = SDL_CondSignal(file->cond);
-        ASSERT(err == 0, "%s", SDL_GetError());
-    } else {
-        result = false;
-    }
-
-    err = SDL_UnlockMutex(file->mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
-
+    Chunk chunk = {buf, len};
+    bool result = ChannelSend(file->channel, &chunk);
     if (!result) {
         MemFree(buf);
     }
@@ -178,18 +117,9 @@ extern "C" void AppOnLoadEnd() {
     OsLoadingFile *file = MAIN_LOOP.loading_file;
     ASSERT(file, "");
 
-    int err = SDL_LockMutex(file->mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
-
-    file->eof = true;
-
-    err = SDL_CondSignal(file->cond);
-    ASSERT(err == 0, "%s", SDL_GetError());
-
-    err = SDL_UnlockMutex(file->mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
-
-    MaybeDestroyOsLoadingFile(file);
+    if (ChannelCloseTx(file->channel)) {
+        OsLoadingFileDestroy(file);
+    }
 
     MAIN_LOOP.loading_file = 0;
 }

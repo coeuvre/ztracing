@@ -27,6 +27,55 @@ static void LogMessage(LogLevel level, const char *fmt, ...) {
     va_end(args);
 }
 
+static OsCond *OsCondCreate() {
+    SDL_cond *cond = SDL_CreateCond();
+    ASSERT(cond, "Failed to create condition variable: %s", SDL_GetError());
+    return (OsCond *)cond;
+}
+
+static void OsCondDestroy(OsCond *cond) {
+    SDL_DestroyCond((SDL_cond *)cond);
+}
+
+static void OsCondWait(OsCond *cond, OsMutex *mutex) {
+    int ret = SDL_CondWait((SDL_cond *)cond, (SDL_mutex *)mutex);
+    ASSERT(
+        ret == 0,
+        "Failed to wait on condition variable: %s",
+        SDL_GetError()
+    );
+}
+
+static void OsCondSingal(OsCond *cond) {
+    int ret = SDL_CondSignal((SDL_cond *)cond);
+    ASSERT(ret == 0, "Failed to singal condition variable: %s", SDL_GetError());
+}
+
+static void OsCondBroadcast(OsCond *cond) {
+    int ret = SDL_CondBroadcast((SDL_cond *)cond);
+    ASSERT(ret == 0, "Failed to singal condition variable: %s", SDL_GetError());
+}
+
+static OsMutex *OsMutexCreate() {
+    SDL_mutex *mutex = SDL_CreateMutex();
+    ASSERT(mutex, "Failed to create mutex: %s", SDL_GetError());
+    return (OsMutex *)mutex;
+}
+
+static void OsMutexDestroy(OsMutex *mutex) {
+    SDL_DestroyMutex((SDL_mutex *)mutex);
+}
+
+static void OsMutexLock(OsMutex *mutex) {
+    int ret = SDL_LockMutex((SDL_mutex *)mutex);
+    ASSERT(ret == 0, "Failed to lock mutex: %s", SDL_GetError());
+}
+
+static void OsMutexUnlock(OsMutex *mutex) {
+    int ret = SDL_UnlockMutex((SDL_mutex *)mutex);
+    ASSERT(ret == 0, "Failed to unlock mutex: %s", SDL_GetError());
+}
+
 static OsThread *OsThreadCreate(OsThreadFunction fn, void *data) {
     SDL_Thread *thread = SDL_CreateThread(fn, "Worker", data);
     ASSERT(thread, "Failed to create thread: %s", SDL_GetError());
