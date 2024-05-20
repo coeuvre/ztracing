@@ -13,7 +13,7 @@ if (EMSCRIPTEN)
 
     add_link_options(
         -pthread
-        -sPTHREAD_POOL_SIZE=2
+        -sPTHREAD_POOL_SIZE=1
         -sUSE_ZLIB=1
         -sUSE_SDL=2
         -sEXPORT_ES6

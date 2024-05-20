@@ -8,9 +8,8 @@
 
 typedef ImVec2 Vec2;
 
-struct LoadFileTask {
+struct LoadFileData {
     OsLoadingFile *file;
-    volatile bool done;
 };
 
 enum AppState {
@@ -19,8 +18,8 @@ enum AppState {
 };
 
 struct AppLoading {
-    LoadFileTask *task;
-    OsThread *thread;
+    LoadFileData *data;
+    Task *task;
 };
 
 struct App {

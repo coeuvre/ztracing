@@ -2,21 +2,22 @@
 
 #include <zlib.h>
 
+static void TransitToWelcome(App *app) {
+    app->state = AppState_Welcome;
+}
+
 static App *AppCreate() {
     Arena *arena = ArenaCreate();
     App *app = ArenaPushStruct(arena, App);
     app->arena = arena;
     app->frame_arena = ArenaCreate();
+    TransitToWelcome(app);
     return app;
 }
 
 static void AppDestroy(App *app) {
     ArenaDestroy(app->frame_arena);
     ArenaDestroy(app->arena);
-}
-
-static void TransitToWelcome(App *app) {
-    app->state = AppState_Welcome;
 }
 
 static void TransitToLoading(App *app, AppLoading loading) {
@@ -61,7 +62,7 @@ static void MainMenu(App *app) {
             char *text = 0;
             switch (app->state) {
             case AppState_Loading: {
-                OsLoadingFile *file = app->loading.task->file;
+                OsLoadingFile *file = app->loading.data->file;
                 text = OsLoadingFileGetPath(file);
             } break;
 
@@ -117,10 +118,10 @@ static void MainWindowLoading(App *app) {
         ArenaPopStr(app->arena, text);
     }
 
-    if (loading->task->done) {
-        OsThreadJoin(loading->thread);
-        OsLoadingFileClose(loading->task->file);
-        MemFree(loading->task);
+    if (TaskIsDone(loading->task)) {
+        TaskWait(loading->task);
+        OsLoadingFileClose(loading->data->file);
+        MemFree(loading->data);
         TransitToWelcome(app);
     }
 }
@@ -171,17 +172,17 @@ static void ZLibFree(voidpf opaque, voidpf address) {
 
 static void ProcessFileContent(u8 *buf, u32 len) {}
 
-static int DoLoadFile(void *data) {
-    LoadFileTask *task = (LoadFileTask *)data;
-    INFO("Loading file %s ...", OsLoadingFileGetPath(task->file));
+static void DoLoadFile(void *data_) {
+    LoadFileData *data = (LoadFileData *)data_;
+    INFO("Loading file %s ...", OsLoadingFileGetPath(data->file));
 
     u64 start_counter = OsGetPerformanceCounter();
 
     z_stream stream = {};
     stream.zalloc = ZLibAlloc;
     stream.zfree = ZLibFree;
-    u8 zstream_buf[4096];
-    bool is_gz = false;
+    usize zstream_buf_len = 0;
+    u8 *zstream_buf = 0;
 
     usize file_offset = 0;
     u8 file_buf[4096];
@@ -189,24 +190,25 @@ static int DoLoadFile(void *data) {
     usize total = 0;
     for (bool need_more_read = true; need_more_read;) {
         u32 nread =
-            OsLoadingFileNext(task->file, file_buf, ARRAY_SIZE(file_buf));
+            OsLoadingFileNext(data->file, file_buf, ARRAY_SIZE(file_buf));
 
         if (file_offset == 0 && nread >= 2 && file_buf[0] == 0x1F &&
             file_buf[1] == 0x8B) {
             int zret = inflateInit2(&stream, MAX_WBITS | 32);
             // TODO: Error handling.
             ASSERT(zret == Z_OK, "");
-            is_gz = true;
+            zstream_buf_len = 16 * 1024;
+            zstream_buf = (u8 *)MemAlloc(zstream_buf_len);
         }
 
         file_offset += nread;
         if (nread) {
-            if (is_gz) {
+            if (zstream_buf) {
                 stream.avail_in = nread;
                 stream.next_in = file_buf;
 
                 do {
-                    stream.avail_out = ARRAY_SIZE(zstream_buf);
+                    stream.avail_out = zstream_buf_len;
                     stream.next_out = zstream_buf;
 
                     int zret = inflate(&stream, Z_NO_FLUSH);
@@ -224,7 +226,7 @@ static int DoLoadFile(void *data) {
                     } break;
                     }
 
-                    u32 have = ARRAY_SIZE(zstream_buf) - stream.avail_out;
+                    u32 have = zstream_buf_len - stream.avail_out;
                     ProcessFileContent(zstream_buf, have);
                     total += have;
                 } while (stream.avail_out == 0);
@@ -237,7 +239,8 @@ static int DoLoadFile(void *data) {
         }
     }
 
-    if (is_gz) {
+    if (zstream_buf) {
+        MemFree(zstream_buf);
         inflateEnd(&stream);
     }
 
@@ -250,9 +253,6 @@ static int DoLoadFile(void *data) {
         seconds,
         total / seconds / 1024.0f / 1024.0f
     );
-
-    task->done = true;
-    return 0;
 }
 
 static bool AppCanLoadFile(App *app) {
@@ -263,13 +263,13 @@ static bool AppCanLoadFile(App *app) {
 static void AppLoadFile(App *app, OsLoadingFile *file) {
     ASSERT(AppCanLoadFile(app), "");
 
-    LoadFileTask *task = (LoadFileTask *)MemAlloc(sizeof(LoadFileTask));
-    task->file = file;
+    LoadFileData *data = (LoadFileData *)MemAlloc(sizeof(LoadFileData));
+    data->file = file;
 
-    OsThread *thread = OsThreadCreate(DoLoadFile, task);
+    Task *task = TaskCreate(DoLoadFile, data);
 
     AppLoading loading = {};
+    loading.data = data;
     loading.task = task;
-    loading.thread = thread;
     TransitToLoading(app, loading);
 }

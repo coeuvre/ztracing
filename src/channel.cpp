@@ -18,7 +18,7 @@ static Channel *ChannelCreate(usize item_size, usize cap) {
     Channel *channel = (Channel *)MemAlloc(sizeof(Channel));
     channel->mutex = OsMutexCreate();
     channel->cond = OsCondCreate();
-    channel->buffer = (u8*)MemAlloc(item_size * cap);
+    channel->buffer = (u8 *)MemAlloc(item_size * cap);
     ASSERT(channel->buffer, "");
     channel->item_size = item_size;
     channel->cap = cap;
@@ -86,6 +86,7 @@ static bool ChannelSend(Channel *channel, void *item) {
 
     if (!channel->rx_closed) {
         ASSERT(channel->len < channel->cap, "");
+        sent = true;
 
         usize index = (channel->cursor + channel->len) % channel->cap;
         u8 *dst = channel->buffer + (index * channel->item_size);

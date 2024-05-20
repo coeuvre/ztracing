@@ -76,17 +76,30 @@ static void OsMutexUnlock(OsMutex *mutex) {
     ASSERT(ret == 0, "Failed to unlock mutex: %s", SDL_GetError());
 }
 
-static OsThread *OsThreadCreate(OsThreadFunction fn, void *data) {
-    SDL_Thread *thread = SDL_CreateThread(fn, "Worker", data);
-    ASSERT(thread, "Failed to create thread: %s", SDL_GetError());
-    return (OsThread *)thread;
+
+static Channel *OS_TASK_CHANNEL;
+
+static bool OsDispatchTask(Task *task) {
+    bool sent = ChannelSend(OS_TASK_CHANNEL, &task);
+    return sent;
 }
 
-static void OsThreadJoin(OsThread *thread_) {
-    SDL_Thread *thread = (SDL_Thread *)thread_;
-    int status;
-    SDL_WaitThread(thread, &status);
-    ASSERT(status == 0, "");
+static int WorkerMain(void *data) {
+    Channel *channel = OS_TASK_CHANNEL;
+
+    Task *task;
+    while (ChannelRecv(channel, &task)) {
+        task->func(task->data);
+
+        OsMutexLock(task->mutex);
+        task->done = true;
+        OsCondBroadcast(task->cond);
+        OsMutexUnlock(task->mutex);
+    }
+
+    ChannelCloseRx(channel);
+
+    return 0;
 }
 
 static u64 OsGetPerformanceCounter() {
@@ -116,6 +129,7 @@ enum MainLoopState {
 struct MainLoop {
     int argc;
     char **argv;
+    SDL_Thread *worker_thread;
     MainLoopState state;
     SDL_Window *window;
     SDL_Renderer *renderer;
@@ -230,6 +244,10 @@ static void MainLoopInit(MainLoop *main_loop) {
         ABORT("Failed to init SDL: %s", SDL_GetError());
     }
 
+    OS_TASK_CHANNEL = ChannelCreate(sizeof(Task *), 1);
+    MAIN_LOOP.worker_thread = SDL_CreateThread(WorkerMain, "Worker", 0);
+    ASSERT(MAIN_LOOP.worker_thread, "");
+
     char *startup_file = 0;
     if (main_loop->argc > 1) {
         startup_file = main_loop->argv[1];
@@ -323,6 +341,9 @@ static void MainLoopUpdate(MainLoop *main_loop) {
 
 static void MainLoopShutdown(MainLoop *main_loop) {
     AppDestroy(main_loop->app);
+
+    ChannelCloseTx(OS_TASK_CHANNEL);
+    SDL_WaitThread(main_loop->worker_thread, 0);
 
     ImGui_ImplSDLRenderer2_Shutdown();
     ImGui_ImplSDL2_Shutdown();
