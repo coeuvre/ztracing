@@ -48,9 +48,11 @@ async function setup(module, canvas) {
     }
   });
 
-  await new Promise((resolve) => {
-    module.AppSetupResolve = resolve;
-  });
+  if (!module.AppSetupResolve) {
+    await new Promise((resolve) => {
+      module.AppSetupResolve = resolve;
+    });
+  }
 
   return {
     module,

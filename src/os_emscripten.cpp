@@ -61,7 +61,13 @@ static char *OsLoadingFileGetPath(OsLoadingFile *file) {
 
 EM_JS(int, GetCanvasWidth, (), { return Module.canvas.width; });
 EM_JS(int, GetCanvasHeight, (), { return Module.canvas.height; });
-EM_JS(void, AppSetupResolve, (), { Module.AppSetupResolve(); });
+EM_JS(void, AppSetupResolve, (), {
+    if (Module.AppSetupResolve) {
+        Module.AppSetupResolve();
+    } else {
+        Module.AppSetupResolve = true;
+    }
+});
 
 static Vec2 GetInitialWindowSize() {
     Vec2 result = {};
