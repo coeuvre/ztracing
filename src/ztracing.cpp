@@ -8,15 +8,13 @@ static void TransitToWelcome(App *app) {
 
 static App *AppCreate() {
     Arena *arena = ArenaCreate();
-    App *app = ArenaPushStruct(arena, App);
+    App *app = ArenaAllocStruct(arena, App);
     app->arena = arena;
-    app->frame_arena = ArenaCreate();
     TransitToWelcome(app);
     return app;
 }
 
 static void AppDestroy(App *app) {
-    ArenaDestroy(app->frame_arena);
     ArenaDestroy(app->arena);
 }
 
@@ -45,7 +43,7 @@ static void MainMenu(App *app) {
         f32 left = ImGui::GetCursorPosX();
         f32 right = left;
         {
-            char *text = ArenaPushString(
+            char *text = ArenaFormatString(
                 app->arena,
                 "%.1f MB  %.0f",
                 MemoryGetAlloc() / 1024.0f / 1024.0f,
@@ -55,7 +53,7 @@ static void MainMenu(App *app) {
             right = ImGui::GetWindowContentRegionMax().x - size.x;
             ImGui::SetCursorPosX(right);
             ImGui::Text("%s", text);
-            ArenaPopString(app->arena, text);
+            ArenaFree(app->arena, text);
         }
 
         {
@@ -110,12 +108,12 @@ static void MainWindowLoading(App *app) {
     AppLoading *loading = &app->loading;
 
     {
-        char *text = ArenaPushString(app->arena, "Loading ...");
+        char *text = ArenaFormatString(app->arena, "Loading ...");
         Vec2 window_size = ImGui::GetWindowSize();
         Vec2 text_size = ImGui::CalcTextSize(text);
         ImGui::SetCursorPos((window_size - text_size) / 2.0f);
         ImGui::Text("%s", text);
-        ArenaPopString(app->arena, text);
+        ArenaFree(app->arena, text);
     }
 
     if (TaskIsDone(loading->task)) {
@@ -158,8 +156,6 @@ static void MainWindow(App *app) {
 static void AppUpdate(App *app) {
     MainMenu(app);
     MainWindow(app);
-
-    ArenaClear(app->frame_arena);
 }
 
 static voidpf ZLibAlloc(voidpf opaque, uInt items, uInt size) {

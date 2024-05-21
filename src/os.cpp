@@ -79,6 +79,7 @@ static void OsMutexUnlock(OsMutex *mutex) {
 static Channel *OS_TASK_CHANNEL;
 
 static bool OsDispatchTask(Task *task) {
+    ASSERT(OS_TASK_CHANNEL, "");
     bool sent = ChannelSend(OS_TASK_CHANNEL, &task);
     return sent;
 }

@@ -24,7 +24,6 @@ struct AppLoading {
 
 struct App {
     Arena *arena;
-    Arena *frame_arena;
     bool show_demo_window;
     AppState state;
     union {
