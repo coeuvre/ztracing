@@ -244,6 +244,8 @@ static MainLoop MAIN_LOOP = {};
 
 static Vec2 GetInitialWindowSize();
 
+static void NotifyAppInitDone();
+
 static void MainLoopInit(MainLoop *main_loop) {
     DefaultAllocatorInit();
 
@@ -313,6 +315,8 @@ static void MainLoopInit(MainLoop *main_loop) {
     }
 
     main_loop->state = MainLoopState_Update;
+
+    NotifyAppInitDone();
 }
 
 static void MainLoopUpdate(MainLoop *main_loop) {

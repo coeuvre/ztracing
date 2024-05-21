@@ -3,6 +3,8 @@ static Vec2 GetInitialWindowSize() {
     return result;
 }
 
+static void NotifyAppInitDone() {}
+
 struct OsLoadingFile {
     char *path;
     usize total;
