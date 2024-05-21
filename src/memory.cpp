@@ -16,13 +16,14 @@ usize INIT_BLOCK_SIZE = 4 * 1024;
 
 struct ArenaSlice {
     usize prev_top;
-    usize total_size;
+    usize size;
 };
 
 struct ArenaBlock {
     usize cap;
     usize top;
     ArenaBlock *prev;
+    ArenaBlock *next;
 };
 
 struct Arena {
@@ -54,10 +55,11 @@ static Arena *ArenaCreate() {
     block->cap = INIT_BLOCK_SIZE;
     block->top = sizeof(ArenaSlice);
     block->prev = 0;
+    block->next = 0;
 
     ArenaSlice *slice = GetSlice(block, block->top);
     slice->prev_top = 0;
-    slice->total_size = 0;
+    slice->size = 0;
 
     return arena;
 }
@@ -82,7 +84,7 @@ static void ArenaClear(Arena *arena) {
         block->top = sizeof(ArenaSlice);
         ArenaSlice *slice = GetSlice(block, block->top);
         slice->prev_top = 0;
-        slice->total_size = 0;
+        slice->size = 0;
 
         if (block->prev) {
             arena->block = block->prev;
@@ -97,12 +99,12 @@ static void *ArenaBlockPush(ArenaBlock *block, usize size, bool zero) {
     usize total_size = sizeof(ArenaSlice) + size;
     if (block->top + total_size <= block->cap) {
         ArenaSlice *slice = GetSlice(block, block->top);
-        ASSERT(slice->total_size == 0, "");
-        slice->total_size = total_size;
+        ASSERT(slice->size == 0, "");
+        slice->size = size;
 
         ArenaSlice *next_slice = GetSlice(block, block->top + total_size);
         next_slice->prev_top = block->top;
-        next_slice->total_size = 0;
+        next_slice->size = 0;
 
         block->top += total_size;
 
@@ -120,23 +122,29 @@ static void *ArenaAlloc(Arena *arena, usize size, bool zero) {
         while (!result) {
             result = ArenaBlockPush(arena->block, size, zero);
             if (!result) {
-                usize new_block_cap = arena->block->cap << 1;
-                while (new_block_cap <= size) {
-                    new_block_cap <<= 1;
+                if (arena->block->next) {
+                    arena->block = arena->block->next;
+                } else {
+                    usize new_block_cap = arena->block->cap << 1;
+                    while (new_block_cap <= size) {
+                        new_block_cap <<= 1;
+                    }
+
+                    ArenaBlock *new_block = (ArenaBlock *)MemoryAllocNoZero(
+                        sizeof(ArenaBlock) + new_block_cap
+                    );
+                    new_block->cap = new_block_cap;
+                    new_block->top = sizeof(ArenaSlice);
+                    new_block->prev = arena->block;
+                    new_block->next = 0;
+
+                    ArenaSlice *new_slice = GetSlice(new_block, new_block->top);
+                    new_slice->prev_top = 0;
+                    new_slice->size = 0;
+
+                    arena->block->next = new_block;
+                    arena->block = new_block;
                 }
-
-                ArenaBlock *new_block = (ArenaBlock *)MemoryAllocNoZero(
-                    sizeof(ArenaBlock) + new_block_cap
-                );
-                new_block->cap = new_block_cap;
-                new_block->top = sizeof(ArenaSlice);
-                new_block->prev = arena->block;
-
-                ArenaSlice *new_slice = GetSlice(new_block, new_block->top);
-                new_slice->prev_top = 0;
-                new_slice->total_size = 0;
-
-                arena->block = new_block;
             }
         }
     }
@@ -152,9 +160,9 @@ static void *ArenaAllocNoZero(Arena *arena, usize size) {
 }
 
 static void ArenaFree(Arena *arena, void *ptr) {
-    {
+    if (ptr) {
         ArenaSlice *slice = (ArenaSlice *)ptr - 1;
-        slice->total_size = 0;
+        slice->size = 0;
     }
 
     bool done = false;
@@ -163,8 +171,10 @@ static void ArenaFree(Arena *arena, void *ptr) {
         ArenaSlice *slice = GetSlice(block, block->top);
         if (slice->prev_top > sizeof(ArenaSlice)) {
             ArenaSlice *prev_slice = GetSlice(block, slice->prev_top);
-            if (prev_slice->total_size == 0) {
+            if (prev_slice->size == 0) {
                 block->top = slice->prev_top;
+            } else {
+                done = true;
             }
         } else if (block->prev) {
             arena->block = block->prev;
@@ -180,7 +190,6 @@ static char *ArenaFormatString(Arena *arena, const char *fmt, ...) {
     usize size = ArenaBlockGetAvail(arena->block);
     char *result =
         (char *)ArenaBlockPush(arena->block, size, /* zero= */ false);
-    ASSERT(result, "");
 
     va_start(args, fmt);
     usize actual_size = vsnprintf(result, size, fmt, args) + 1;
@@ -188,11 +197,10 @@ static char *ArenaFormatString(Arena *arena, const char *fmt, ...) {
 
     if (actual_size < size) {
         ArenaFree(arena, result);
-        result = (char *)
-            ArenaBlockPush(arena->block, actual_size, /* zero= */ false);
-        ASSERT(result, "");
+        result = (char *)ArenaAllocNoZero(arena, actual_size);
     } else if (actual_size > size) {
         ArenaFree(arena, result);
+
         result = (char *)ArenaAllocNoZero(arena, actual_size);
         va_start(args, fmt);
         vsnprintf(result, actual_size, fmt, args);
