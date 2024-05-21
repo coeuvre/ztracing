@@ -4,8 +4,7 @@
 
 #include "ztracing.cpp"
 
-#include "os_common.cpp"
-
+#include "os.cpp"
 #ifdef __EMSCRIPTEN__
 #include "os_emscripten.cpp"
 #else
