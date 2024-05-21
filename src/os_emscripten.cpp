@@ -32,7 +32,7 @@ static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len) {
         file->offset += nread;
 
         if (file->offset == file->chunk.len) {
-            MemFree(file->chunk.buf);
+            MemoryFree(file->chunk.buf);
             file->chunk = {};
             file->offset = 0;
         }
@@ -43,8 +43,8 @@ static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len) {
 
 static void OsLoadingFileDestroy(OsLoadingFile *file) {
     ASSERT(!file->chunk.buf, "");
-    MemFree(file->path);
-    MemFree(file);
+    MemoryFree(file->path);
+    MemoryFree(file);
 }
 
 static void OsLoadingFileClose(OsLoadingFile *file) {
@@ -70,8 +70,8 @@ static Vec2 GetInitialWindowSize() {
 }
 
 EMSCRIPTEN_KEEPALIVE
-extern "C" void *AppMemAlloc(usize size) {
-    void *result = MemAlloc(size);
+extern "C" void *AppMemoryAlloc(usize size) {
+    void *result = MemoryAlloc(size);
     return result;
 }
 
@@ -85,11 +85,9 @@ extern "C" bool AppOnLoadBegin(char *path, usize total) {
     bool result = !MAIN_LOOP.loading_file && AppCanLoadFile(MAIN_LOOP.app);
 
     if (result) {
-        OsLoadingFile *file = (OsLoadingFile *)MemAlloc(sizeof(OsLoadingFile));
-        ASSERT(file, "");
-        *file = {};
-        file->path = MemStrDup(path);
-        ASSERT(file->path, "");
+        OsLoadingFile *file =
+            (OsLoadingFile *)MemoryAlloc(sizeof(OsLoadingFile));
+        file->path = MemoryCopyString(path);
         file->channel = ChannelCreate(sizeof(Chunk), 1);
 
         MAIN_LOOP.loading_file = file;
@@ -106,7 +104,7 @@ extern "C" bool AppOnLoadChunk(u8 *buf, u32 len) {
     Chunk chunk = {buf, len};
     bool result = ChannelSend(file->channel, &chunk);
     if (!result) {
-        MemFree(buf);
+        MemoryFree(buf);
     }
 
     return result;

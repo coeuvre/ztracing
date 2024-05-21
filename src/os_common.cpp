@@ -76,7 +76,6 @@ static void OsMutexUnlock(OsMutex *mutex) {
     ASSERT(ret == 0, "Failed to unlock mutex: %s", SDL_GetError());
 }
 
-
 static Channel *OS_TASK_CHANNEL;
 
 static bool OsDispatchTask(Task *task) {
@@ -138,11 +137,15 @@ struct MainLoop {
 };
 
 static void *ImGuiAlloc(usize size, void *user_data) {
-    return MemAlloc(size);
+    return MemoryAllocNoZero(size);
 }
 
 static void ImGuiFree(void *ptr, void *user_data) {
-    MemFree(ptr);
+    MemoryFree(ptr);
+}
+
+static void *MemoryCAlloc(usize num, usize size) {
+    return MemoryAlloc(num * size);
 }
 
 struct {
@@ -153,13 +156,18 @@ struct {
 static void DefaultAllocatorInit() {
     DEFAULT_ALLOCATOR.mutex = SDL_CreateMutex();
 
-    SDL_SetMemoryFunctions(MemAlloc, MemCAlloc, MemReAlloc, MemFree);
+    SDL_SetMemoryFunctions(
+        MemoryAllocNoZero,
+        MemoryCAlloc,
+        MemoryRealloc,
+        MemoryFree
+    );
 
     ImGui::SetAllocatorFunctions(ImGuiAlloc, ImGuiFree);
 }
 
 static void DefaultAllocatorDeinit() {
-    usize n = MemGetAllocatedBytes();
+    usize n = MemoryGetAlloc();
     if (n != 0) {
         ERROR("%zu bytes leaked!", n);
     }
@@ -173,31 +181,30 @@ static void UpdateAllocatedBytes(usize delta) {
     ASSERT(err == 0, "%s", SDL_GetError());
 }
 
-static void *MemAlloc(usize size, bool zero) {
+static void *MemoryAlloc(usize size, bool zero) {
     usize total_size = sizeof(size) + size;
     usize *result = (usize *)malloc(total_size);
+    if (zero) {
+        ASSERT(result, "");
+        memset(result, 0, total_size);
+    }
     if (result) {
         result[0] = total_size;
         result += 1;
-
-        if (zero) {
-            memset(result, 0, size);
-        }
-
         UpdateAllocatedBytes(total_size);
     }
     return result;
 }
 
-static void *MemAlloc(usize size) {
-    return MemAlloc(size, /* zero= */ false);
+static void *MemoryAlloc(usize size) {
+    return MemoryAlloc(size, /* zero= */ true);
 }
 
-static void *MemCAlloc(usize sum, usize size) {
-    return MemAlloc(sum * size, /* zero= */ true);
+static void *MemoryAllocNoZero(usize size) {
+    return MemoryAlloc(size, /* zero= */ false);
 }
 
-static void *MemReAlloc(void *ptr_, usize new_size) {
+static void *MemoryRealloc(void *ptr_, usize new_size) {
     usize *ptr = (usize *)ptr_;
 
     usize total_size = 0;
@@ -218,7 +225,7 @@ static void *MemReAlloc(void *ptr_, usize new_size) {
     return ptr;
 }
 
-static void MemFree(void *ptr_) {
+static void MemoryFree(void *ptr_) {
     usize *ptr = (usize *)ptr_;
     if (ptr) {
         ptr -= 1;
@@ -228,7 +235,7 @@ static void MemFree(void *ptr_) {
     free(ptr);
 }
 
-static usize MemGetAllocatedBytes() {
+static usize MemoryGetAlloc() {
     return DEFAULT_ALLOCATOR.allocated_bytes;
 }
 

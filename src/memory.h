@@ -2,12 +2,15 @@
 
 #include "core.h"
 
-static void *MemAlloc(usize size);
-static void *MemCAlloc(usize sum, usize size);
-static void *MemReAlloc(void *ptr, usize new_size);
-static void MemFree(void *ptr);
-static usize MemGetAllocatedBytes();
-static char *MemStrDup(const char *str);
+// Allocate a block of memory whose size is at least size bytes, assert non-null
+// and initialize it to 0.
+static void *MemoryAlloc(usize size);
+static void *MemoryAllocNoZero(usize size);
+static void *MemoryRealloc(void *ptr, usize new_size);
+static void MemoryFree(void *ptr);
+// Return current allocated memory in bytes.
+static usize MemoryGetAlloc();
+static char *MemoryCopyString(const char *str);
 
 struct Arena;
 static Arena *ArenaCreate();
@@ -18,8 +21,8 @@ static void *ArenaPushNoZero(Arena *arena, usize size);
 static void *ArenaPush(Arena *arena, usize size);
 static void ArenaPop(Arena *arena, usize size);
 
-static char *ArenaPushStr(Arena *arena, const char *fmt, ...);
-static void ArenaPopStr(Arena *arena, char *str);
+static char *ArenaPushString(Arena *arena, const char *fmt, ...);
+static void ArenaPopString(Arena *arena, char *str);
 
 #define ArenaPushArray(arena, type, count)                                     \
     ((type *)ArenaPush(arena, sizeof(type) * (count)))

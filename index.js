@@ -3,7 +3,7 @@ async function setup(module, canvas) {
     "number",
     "number",
   ]);
-  const AppMemAlloc = module.cwrap("AppMemAlloc", "number", ["number"]);
+  const AppMemoryAlloc = module.cwrap("AppMemoryAlloc", "number", ["number"]);
   const AppOnLoadBegin = module.cwrap("AppOnLoadBegin", "boolean", [
     "string",
     "number",
@@ -23,7 +23,7 @@ async function setup(module, canvas) {
     if (AppOnLoadBegin(path, total)) {
       for await (const chunk of stream) {
         const len = chunk.length * chunk.BYTES_PER_ELEMENT;
-        const buf = AppMemAlloc(len);
+        const buf = AppMemoryAlloc(len);
         module.HEAPU8.set(chunk, buf);
         if (!AppOnLoadChunk(buf, len)) {
           break;

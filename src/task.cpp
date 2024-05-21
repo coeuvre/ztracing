@@ -12,8 +12,7 @@ struct Task {
 };
 
 static Task *TaskCreate(TaskFunc func, void *data) {
-    Task *task = (Task *)MemAlloc(sizeof(Task));
-    ASSERT(task, "");
+    Task *task = (Task *)MemoryAlloc(sizeof(Task));
     task->func = func;
     task->data = data;
     task->mutex = OsMutexCreate();
@@ -42,5 +41,5 @@ static void TaskWait(Task *task) {
 
     OsCondDestroy(task->cond);
     OsMutexDestroy(task->mutex);
-    MemFree(task);
+    MemoryFree(task);
 }

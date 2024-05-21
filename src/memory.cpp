@@ -3,13 +3,12 @@
 #include <stdio.h>
 #include <string.h>
 
-static char *MemStrDup(const char *str) {
+static char *MemoryCopyString(const char *str) {
     usize size = strlen(str);
-    char *result = (char *)MemAlloc(size + 1);
-    if (result) {
-        memcpy(result, str, size);
-        result[size] = 0;
-    }
+    char *result = (char *)MemoryAllocNoZero(size + 1);
+    ASSERT(result, "");
+    memcpy(result, str, size);
+    result[size] = 0;
     return result;
 }
 
@@ -27,9 +26,9 @@ struct Arena {
 };
 
 static Arena *ArenaCreate() {
-    Arena *arena =
-        (Arena *)MemAlloc(sizeof(Arena) + sizeof(ArenaBlock) + INIT_BLOCK_SIZE);
-    ASSERT(arena, "");
+    Arena *arena = (Arena *)MemoryAlloc(
+        sizeof(Arena) + sizeof(ArenaBlock) + INIT_BLOCK_SIZE
+    );
     arena->block = (ArenaBlock *)(arena + 1);
 
     ArenaBlock *block = arena->block;
@@ -46,13 +45,13 @@ static void ArenaDestroy(Arena *arena) {
     while (!done) {
         if (arena->block->prev) {
             ArenaBlock *prev = arena->block->prev;
-            MemFree(arena->block);
+            MemoryFree(arena->block);
             arena->block = prev;
         } else {
             done = true;
         }
     }
-    MemFree(arena);
+    MemoryFree(arena);
 }
 
 static void ArenaClear(Arena *arena) {
@@ -92,9 +91,9 @@ static void *ArenaPush(Arena *arena, usize size, bool zero) {
                     new_block_cap <<= 1;
                 }
 
-                ArenaBlock *new_block =
-                    (ArenaBlock *)MemAlloc(sizeof(ArenaBlock) + new_block_cap);
-                ASSERT(new_block, "");
+                ArenaBlock *new_block = (ArenaBlock *)MemoryAlloc(
+                    sizeof(ArenaBlock) + new_block_cap
+                );
                 new_block->cap = new_block_cap;
                 new_block->top = 0;
                 new_block->prev = arena->block;
@@ -124,7 +123,7 @@ static void ArenaPop(Arena *arena, usize size) {
     }
 }
 
-static char *ArenaPushStr(Arena *arena, const char *fmt, ...) {
+static char *ArenaPushString(Arena *arena, const char *fmt, ...) {
     va_list args;
 
     usize size = arena->block->cap - arena->block->top;
@@ -147,7 +146,7 @@ static char *ArenaPushStr(Arena *arena, const char *fmt, ...) {
     return result;
 }
 
-static void ArenaPopStr(Arena *arena, char *str) {
+static void ArenaPopString(Arena *arena, char *str) {
     usize size = strlen(str) + 1;
     ArenaPop(arena, size);
 }

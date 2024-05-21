@@ -16,9 +16,8 @@ static OsLoadingFile *OsLoadingFileOpen(char *path) {
         isize total = rw->size(rw);
         ASSERT(total >= 0, "Failed to get size of %s", path);
 
-        file = (OsLoadingFile *)MemCAlloc(sizeof(OsLoadingFile), 1);
-        ASSERT(file, "");
-        file->path = MemStrDup(path);
+        file = (OsLoadingFile *)MemoryAlloc(sizeof(OsLoadingFile));
+        file->path = MemoryCopyString(path);
         file->total = total;
         file->rw = rw;
     } else {
@@ -35,8 +34,8 @@ static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len) {
 static void OsLoadingFileClose(OsLoadingFile *file) {
     int ret = file->rw->close(file->rw);
     ASSERT(ret == 0, "Failed to close file: %s", SDL_GetError());
-    MemFree(file->path);
-    MemFree(file);
+    MemoryFree(file->path);
+    MemoryFree(file);
 }
 
 static char *OsLoadingFileGetPath(OsLoadingFile *file) {

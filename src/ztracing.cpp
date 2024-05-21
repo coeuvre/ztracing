@@ -45,17 +45,17 @@ static void MainMenu(App *app) {
         f32 left = ImGui::GetCursorPosX();
         f32 right = left;
         {
-            char *text = ArenaPushStr(
+            char *text = ArenaPushString(
                 app->arena,
                 "%.1f MB  %.0f",
-                MemGetAllocatedBytes() / 1024.0f / 1024.0f,
+                MemoryGetAlloc() / 1024.0f / 1024.0f,
                 io->Framerate
             );
             Vec2 size = ImGui::CalcTextSize(text);
             right = ImGui::GetWindowContentRegionMax().x - size.x;
             ImGui::SetCursorPosX(right);
             ImGui::Text("%s", text);
-            ArenaPopStr(app->arena, text);
+            ArenaPopString(app->arena, text);
         }
 
         {
@@ -110,18 +110,18 @@ static void MainWindowLoading(App *app) {
     AppLoading *loading = &app->loading;
 
     {
-        char *text = ArenaPushStr(app->arena, "Loading ...");
+        char *text = ArenaPushString(app->arena, "Loading ...");
         Vec2 window_size = ImGui::GetWindowSize();
         Vec2 text_size = ImGui::CalcTextSize(text);
         ImGui::SetCursorPos((window_size - text_size) / 2.0f);
         ImGui::Text("%s", text);
-        ArenaPopStr(app->arena, text);
+        ArenaPopString(app->arena, text);
     }
 
     if (TaskIsDone(loading->task)) {
         TaskWait(loading->task);
         OsLoadingFileClose(loading->data->file);
-        MemFree(loading->data);
+        MemoryFree(loading->data);
         TransitToWelcome(app);
     }
 }
@@ -163,11 +163,11 @@ static void AppUpdate(App *app) {
 }
 
 static voidpf ZLibAlloc(voidpf opaque, uInt items, uInt size) {
-    return MemAlloc(items * size);
+    return MemoryAllocNoZero(items * size);
 }
 
 static void ZLibFree(voidpf opaque, voidpf address) {
-    MemFree(address);
+    MemoryFree(address);
 }
 
 static void ProcessFileContent(u8 *buf, u32 len) {}
@@ -198,7 +198,7 @@ static void DoLoadFile(void *data_) {
             // TODO: Error handling.
             ASSERT(zret == Z_OK, "");
             zstream_buf_len = 16 * 1024;
-            zstream_buf = (u8 *)MemAlloc(zstream_buf_len);
+            zstream_buf = (u8 *)MemoryAlloc(zstream_buf_len);
         }
 
         file_offset += nread;
@@ -240,7 +240,7 @@ static void DoLoadFile(void *data_) {
     }
 
     if (zstream_buf) {
-        MemFree(zstream_buf);
+        MemoryFree(zstream_buf);
         inflateEnd(&stream);
     }
 
@@ -263,7 +263,7 @@ static bool AppCanLoadFile(App *app) {
 static void AppLoadFile(App *app, OsLoadingFile *file) {
     ASSERT(AppCanLoadFile(app), "");
 
-    LoadFileData *data = (LoadFileData *)MemAlloc(sizeof(LoadFileData));
+    LoadFileData *data = (LoadFileData *)MemoryAlloc(sizeof(LoadFileData));
     data->file = file;
 
     Task *task = TaskCreate(DoLoadFile, data);
