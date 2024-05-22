@@ -17,7 +17,7 @@ if (EMSCRIPTEN)
         -sUSE_ZLIB=1
         -sUSE_SDL=2
         -sEXPORT_ES6
-        -sEXPORTED_RUNTIME_METHODS=cwrap,FS,WORKERFS
+        -sEXPORTED_RUNTIME_METHODS=cwrap
         -sALLOW_BLOCKING_ON_MAIN_THREAD=1
         -sALLOW_MEMORY_GROWTH
         -lworkerfs.js)

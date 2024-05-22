@@ -258,10 +258,7 @@ static void MainLoopInit(MainLoop *main_loop) {
     MAIN_LOOP.worker_thread = SDL_CreateThread(WorkerMain, "Worker", 0);
     ASSERT(MAIN_LOOP.worker_thread, "");
 
-    char *startup_file = 0;
-    if (main_loop->argc > 1) {
-        startup_file = main_loop->argv[1];
-    }
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
 
     Vec2 window_size = GetInitialWindowSize();
 
@@ -307,6 +304,10 @@ static void MainLoopInit(MainLoop *main_loop) {
 
     main_loop->app = AppCreate();
 
+    char *startup_file = 0;
+    if (main_loop->argc > 1) {
+        startup_file = main_loop->argv[1];
+    }
     if (startup_file) {
         OsLoadingFile *file = OsLoadingFileOpen(startup_file);
         if (file) {
