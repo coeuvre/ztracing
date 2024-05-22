@@ -348,7 +348,18 @@ static void MainLoopUpdate(MainLoop *main_loop) {
     AppUpdate(main_loop->app);
 
     ImGui::Render();
-    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData());
+    {
+        ImVec4 color = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
+        SDL_SetRenderDrawColor(
+            main_loop->renderer,
+            color.x * 255.0f,
+            color.y * 255.0f,
+            color.z * 255.0f,
+            255
+        );
+        SDL_RenderClear(main_loop->renderer);
+        ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData());
+    }
     SDL_RenderPresent(main_loop->renderer);
 }
 

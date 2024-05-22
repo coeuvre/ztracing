@@ -2,86 +2,39 @@
 
 #include <zlib.h>
 
-static void TransitToWelcome(App *app) {
-    app->state = AppState_Welcome;
+static void WaitAndDestroyTask(Arena *arena, TracingLoading *loading) {
+    TaskWait(loading->task);
+    OsLoadingFileClose(loading->data->file);
+    ArenaFree(arena, loading->data);
+}
+
+static void CancelTask(TracingLoading *loading) {
+    loading->data->cancelled = true;
+}
+
+static void TracingDestroy(Tracing *tracing) {
+    if (tracing->state == TracingState_Loading) {
+        CancelTask(&tracing->loading);
+        WaitAndDestroyTask(tracing->arena, &tracing->loading);
+    }
+    ArenaDestroy(tracing->arena);
 }
 
 static App *AppCreate() {
     Arena *arena = ArenaCreate();
     App *app = ArenaAllocStruct(arena, App);
     app->arena = arena;
-    TransitToWelcome(app);
     return app;
 }
 
 static void AppDestroy(App *app) {
+    Tracing *tracing = app->tracing;
+    while (tracing) {
+        Tracing *next = tracing->next;
+        TracingDestroy(tracing);
+        tracing = next;
+    }
     ArenaDestroy(app->arena);
-}
-
-static void TransitToLoading(App *app, AppLoading loading) {
-    switch (app->state) {
-    case AppState_Welcome: {
-        app->state = AppState_Loading;
-        app->loading = loading;
-    } break;
-
-    default: {
-        UNREACHABLE;
-    } break;
-    }
-}
-
-static void MainMenu(App *app) {
-    ImGuiIO *io = &ImGui::GetIO();
-    ImGuiStyle *style = &ImGui::GetStyle();
-    if (ImGui::BeginMainMenuBar()) {
-        if (ImGui::BeginMenu("About")) {
-            ImGui::MenuItem("Dear ImGui", "", &app->show_demo_window);
-            ImGui::EndMenu();
-        }
-
-        f32 left = ImGui::GetCursorPosX();
-        f32 right = left;
-        {
-            char *text = ArenaFormatString(
-                app->arena,
-                "%.1f MB  %.0f",
-                MemoryGetAlloc() / 1024.0f / 1024.0f,
-                io->Framerate
-            );
-            Vec2 size = ImGui::CalcTextSize(text);
-            right = ImGui::GetWindowContentRegionMax().x - size.x;
-            ImGui::SetCursorPosX(right);
-            ImGui::Text("%s", text);
-            ArenaFree(app->arena, text);
-        }
-
-        {
-            char *text = 0;
-            switch (app->state) {
-            case AppState_Loading: {
-                OsLoadingFile *file = app->loading.data->file;
-                text = OsLoadingFileGetPath(file);
-            } break;
-
-            default: {
-            } break;
-            }
-
-            if (text) {
-                Vec2 size = ImGui::CalcTextSize(text);
-                left += (right - left - size.x) / 2.0f;
-                ImGui::SetCursorPosX(left);
-                ImGui::Text("%s", text);
-            }
-        }
-
-        ImGui::EndMainMenuBar();
-    }
-
-    if (app->show_demo_window) {
-        ImGui::ShowDemoWindow(&app->show_demo_window);
-    }
 }
 
 static const char *WELCOME_MESSAGE =
@@ -97,65 +50,144 @@ static const char *WELCOME_MESSAGE =
                         Drag & Drop a trace file to start.
 )";
 
-static void MainWindowWelcome() {
-    Vec2 window_size = ImGui::GetWindowSize();
-    Vec2 logo_size = ImGui::CalcTextSize(WELCOME_MESSAGE);
-    ImGui::SetCursorPos((window_size - logo_size) / 2.0f);
-    ImGui::Text("%s", WELCOME_MESSAGE);
-}
-
-static void MainWindowLoading(App *app) {
-    AppLoading *loading = &app->loading;
-
-    {
-        char *text = ArenaFormatString(app->arena, "Loading ...");
+static void MaybeDrawWelcome(App *app) {
+    if (!app->tracing) {
         Vec2 window_size = ImGui::GetWindowSize();
-        Vec2 text_size = ImGui::CalcTextSize(text);
-        ImGui::SetCursorPos((window_size - text_size) / 2.0f);
-        ImGui::Text("%s", text);
-        ArenaFree(app->arena, text);
-    }
-
-    if (TaskIsDone(loading->task)) {
-        TaskWait(loading->task);
-        OsLoadingFileClose(loading->data->file);
-        MemoryFree(loading->data);
-        TransitToWelcome(app);
+        Vec2 logo_size = ImGui::CalcTextSize(WELCOME_MESSAGE);
+        ImGui::SetCursorPos((window_size - logo_size) / 2.0f);
+        ImGui::Text("%s", WELCOME_MESSAGE);
     }
 }
 
-static void MainWindow(App *app) {
-    ImGuiViewport *viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->WorkPos);
-    ImGui::SetNextWindowSize(viewport->WorkSize);
-    if (ImGui::Begin(
-            "MainWindow",
-            0,
-            ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
-                ImGuiWindowFlags_NoSavedSettings |
-                ImGuiWindowFlags_NoBringToFrontOnFocus |
-                ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoDocking
-        )) {
-        switch (app->state) {
-        case AppState_Welcome: {
-            MainWindowWelcome();
-        } break;
-
-        case AppState_Loading: {
-            MainWindowLoading(app);
-        } break;
-
-        default: {
-            UNREACHABLE;
-        } break;
+static void TracingUpdate(Tracing *tracing) {
+    switch (tracing->state) {
+    case TracingState_Loading: {
+        TracingLoading *loading = &tracing->loading;
+        {
+            char *text = ArenaFormatString(tracing->arena, "Loading ...");
+            Vec2 window_size = ImGui::GetWindowSize();
+            Vec2 text_size = ImGui::CalcTextSize(text);
+            ImGui::SetCursorPos((window_size - text_size) / 2.0f);
+            ImGui::Text("%s", text);
+            ArenaFree(tracing->arena, text);
         }
+
+        if (TaskIsDone(loading->task)) {
+            WaitAndDestroyTask(tracing->arena, loading);
+            tracing->state = TracingState_View;
+        }
+    } break;
+
+    case TracingState_View: {
+
+    } break;
+
+    default: {
+        UNREACHABLE;
+    } break;
     }
-    ImGui::End();
+}
+
+static void DrawMenuBar(App *app) {
+    ImGuiIO *io = &ImGui::GetIO();
+    ImGuiStyle *style = &ImGui::GetStyle();
+    if (ImGui::BeginMenuBar()) {
+        if (ImGui::BeginMenu("About")) {
+            ImGui::MenuItem("Dear ImGui", "", &app->show_demo_window);
+            ImGui::EndMenu();
+        }
+
+        f32 left = ImGui::GetCursorPosX();
+        f32 right = left;
+        {
+            char *text = ArenaFormatString(
+                app->arena,
+                "%.1f MB  %.0f",
+                MemoryGetAlloc() / 1024.0f / 1024.0f,
+                io->Framerate
+            );
+            Vec2 size = ImGui::CalcTextSize(text);
+            right = ImGui::GetWindowContentRegionMax().x - size.x -
+                    style->ItemSpacing.x;
+            ImGui::SetCursorPosX(right);
+            ImGui::Text("%s", text);
+            ArenaFree(app->arena, text);
+        }
+
+        ImGui::EndMenuBar();
+    }
 }
 
 static void AppUpdate(App *app) {
-    MainMenu(app);
-    MainWindow(app);
+    ImGuiID dockspace_id = ImGui::GetID("DockSpace");
+
+    ImGuiViewport *viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(viewport->WorkSize);
+    ImGui::SetNextWindowViewport(viewport->ID);
+    ImGuiWindowFlags window_flags =
+        ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking |
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+        ImGuiWindowFlags_NoBackground;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::Begin("Background", 0, window_flags);
+    ImGui::PopStyleVar(3);
+    {
+        ImGui::DockSpace(
+            dockspace_id,
+            ImVec2(0.0f, 0.0f),
+            ImGuiDockNodeFlags_PassthruCentralNode
+        );
+
+        DrawMenuBar(app);
+        MaybeDrawWelcome(app);
+    }
+    ImGui::End();
+
+    for (Tracing *tracing = app->tracing; tracing;) {
+        char *title = ArenaFormatString(
+            tracing->arena,
+            "%s##%d",
+            tracing->title,
+            tracing->id
+        );
+        ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
+        if (ImGui::Begin(title, &tracing->open)) {
+            TracingUpdate(tracing);
+        }
+        ImGui::End();
+        ArenaFree(tracing->arena, title);
+
+        if (!tracing->open) {
+            Tracing *next = tracing->next;
+
+            if (tracing->prev) {
+                tracing->prev->next = tracing->next;
+                tracing->prev = 0;
+            } else {
+                app->tracing = next;
+            }
+            if (tracing->next) {
+                tracing->next->prev = tracing->prev;
+                tracing->next = 0;
+            }
+
+            TracingDestroy(tracing);
+
+            tracing = next;
+        } else {
+            tracing = tracing->next;
+        }
+    }
+
+    if (app->show_demo_window) {
+        ImGui::ShowDemoWindow(&app->show_demo_window);
+    }
 }
 
 static voidpf ZLibAlloc(voidpf opaque, uInt items, uInt size) {
@@ -184,7 +216,7 @@ static void DoLoadFile(void *data_) {
     u8 file_buf[4096];
 
     usize total = 0;
-    for (bool need_more_read = true; need_more_read;) {
+    for (bool need_more_read = true; need_more_read && !data->cancelled;) {
         u32 nread =
             OsLoadingFileNext(data->file, file_buf, ARRAY_SIZE(file_buf));
 
@@ -252,20 +284,29 @@ static void DoLoadFile(void *data_) {
 }
 
 static bool AppCanLoadFile(App *app) {
-    bool result = app->state != AppState_Loading;
-    return result;
+    return true;
 }
 
 static void AppLoadFile(App *app, OsLoadingFile *file) {
-    ASSERT(AppCanLoadFile(app), "");
+    Arena *arena = ArenaCreate();
+    Tracing *tracing = ArenaAllocStruct(arena, Tracing);
+    tracing->arena = arena;
+    tracing->title = ArenaFormatString(arena, "%s", OsLoadingFileGetPath(file));
+    tracing->id = app->next_tracing_id++;
+    tracing->state = TracingState_Loading;
+    tracing->open = true;
 
-    LoadFileData *data = (LoadFileData *)MemoryAlloc(sizeof(LoadFileData));
+    LoadFileData *data = ArenaAllocStruct(arena, LoadFileData);
     data->file = file;
 
     Task *task = TaskCreate(DoLoadFile, data);
 
-    AppLoading loading = {};
-    loading.data = data;
-    loading.task = task;
-    TransitToLoading(app, loading);
+    tracing->loading.data = data;
+    tracing->loading.task = task;
+
+    tracing->next = app->tracing;
+    if (app->tracing) {
+        app->tracing->prev = tracing;
+    }
+    app->tracing = tracing;
 }

@@ -10,25 +10,37 @@ typedef ImVec2 Vec2;
 
 struct LoadFileData {
     OsLoadingFile *file;
+    volatile bool cancelled;
 };
 
-enum AppState {
-    AppState_Welcome,
-    AppState_Loading,
+enum TracingState {
+    TracingState_Loading,
+    TracingState_View,
 };
 
-struct AppLoading {
+struct TracingLoading {
     LoadFileData *data;
     Task *task;
+};
+
+struct Tracing {
+    Tracing *prev;
+    Tracing *next;
+    Arena *arena;
+    char *title;
+    u32 id;
+    TracingState state;
+    bool open;
+    union {
+        TracingLoading loading;
+    };
 };
 
 struct App {
     Arena *arena;
     bool show_demo_window;
-    AppState state;
-    union {
-        AppLoading loading;
-    };
+    u32 next_tracing_id;
+    Tracing *tracing;
 };
 
 static App *AppCreate();
