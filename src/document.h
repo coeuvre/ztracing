@@ -1,0 +1,26 @@
+#pragma once
+
+enum DocumentState {
+    DocumentState_Loading,
+    DocumentState_View,
+};
+
+struct DocumentLoading {
+    Task *task;
+    OsLoadingFile *file;
+    volatile bool cancelled;
+};
+
+struct Document {
+    Arena *arena;
+    char *path;
+
+    DocumentState state;
+    union {
+        DocumentLoading loading;
+    };
+};
+
+static Document *DocumentLoad(OsLoadingFile *file);
+static void DocumentDestroy(Document *document);
+static void DocumentUpdate(Document *document);

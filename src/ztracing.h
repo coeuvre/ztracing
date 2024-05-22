@@ -1,50 +1,26 @@
 #pragma once
 
+#include "document.h"
 #include "memory.h"
 #include "os.h"
 
-#define IMGUI_DEFINE_MATH_OPERATORS
-#include <imgui.h>
-
-typedef ImVec2 Vec2;
-
-struct LoadFileData {
-    OsLoadingFile *file;
-    volatile bool cancelled;
-};
-
-enum TracingState {
-    TracingState_Loading,
-    TracingState_View,
-};
-
-struct TracingLoading {
-    LoadFileData *data;
-    Task *task;
-};
-
-struct Tracing {
-    Tracing *prev;
-    Tracing *next;
-    Arena *arena;
-    char *title;
+struct DocumentNode {
+    DocumentNode *prev;
+    DocumentNode *next;
     u32 id;
-    TracingState state;
     bool open;
-    union {
-        TracingLoading loading;
-    };
+    Document *document;
 };
 
 struct App {
     Arena *arena;
     bool show_demo_window;
-    u32 next_tracing_id;
-    Tracing *tracing;
+    u32 next_document_id;
+    DocumentNode *node;
 };
 
 static App *AppCreate();
-static void AppDestroy(App *);
+static void AppDestroy(App *app);
 
 static void AppUpdate(App *app);
 
