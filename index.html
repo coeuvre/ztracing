@@ -42,9 +42,8 @@
           if (query.profile) {
             const url = query.profile;
             fetch(url).then((response) => {
-              const total = response.headers.get("Content-Length");
-              if (response.ok && total) {
-                app.loadProfile(url, total, response.body);
+              if (response.ok) {
+                app.loadProfile(url, 0, response.body);
               }
             });
           }

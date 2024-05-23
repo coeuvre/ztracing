@@ -8,6 +8,7 @@ enum DocumentState {
 struct DocumentLoading {
     Task *task;
     OsLoadingFile *file;
+    volatile usize loaded;
     volatile bool cancelled;
 };
 

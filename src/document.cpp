@@ -71,10 +71,12 @@ static void DoLoadDocument(void *data_) {
                     u32 have = zstream_buf_len - stream.avail_out;
                     ProcessFileContent(zstream_buf, have);
                     total += have;
+                    data->loaded += have;
                 } while (stream.avail_out == 0);
             } else {
                 ProcessFileContent(file_buf, nread);
                 total += nread;
+                data->loaded += nread;
             }
         } else {
             need_more_read = false;
@@ -126,7 +128,12 @@ static void DocumentUpdate(Document *document) {
     case DocumentState_Loading: {
         DocumentLoading *loading = &document->loading;
         {
-            char *text = ArenaFormatString(document->arena, "Loading ...");
+            char *text = ArenaFormatString(
+                document->arena,
+                "Loading %.1f MB ...",
+                loading->loaded / 1024.0f / 1024.0f,
+                OsLoadingFileGetSize(loading->file)
+            );
             Vec2 window_size = ImGui::GetWindowSize();
             Vec2 text_size = ImGui::CalcTextSize(text);
             ImGui::SetCursorPos((window_size - text_size) / 2.0f);

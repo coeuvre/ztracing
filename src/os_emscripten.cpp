@@ -53,6 +53,10 @@ static void OsLoadingFileClose(OsLoadingFile *file) {
     }
 }
 
+static usize OsLoadingFileGetSize(OsLoadingFile *file) {
+    return file->total;
+}
+
 static char *OsLoadingFileGetPath(OsLoadingFile *file) {
     return file->path;
 }
@@ -99,6 +103,7 @@ extern "C" bool AppOnLoadBegin(char *path, usize total) {
         OsLoadingFile *file =
             (OsLoadingFile *)MemoryAlloc(sizeof(OsLoadingFile));
         file->path = MemoryCopyString(path);
+        file->total = total;
         file->channel = ChannelCreate(sizeof(Chunk), 1);
 
         MAIN_LOOP.loading_file = file;
