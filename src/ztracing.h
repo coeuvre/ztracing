@@ -4,10 +4,7 @@
 #include "memory.h"
 #include "os.h"
 
-struct DocumentNode {
-    DocumentNode *prev;
-    DocumentNode *next;
-    u32 id;
+struct DocumentTab {
     bool open;
     Document *document;
 };
@@ -15,8 +12,7 @@ struct DocumentNode {
 struct App {
     Arena *arena;
     bool show_demo_window;
-    u32 next_document_id;
-    DocumentNode *node;
+    DynArray *documents;
 };
 
 static App *AppCreate();

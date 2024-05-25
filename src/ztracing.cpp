@@ -4,15 +4,14 @@ static App *AppCreate() {
     Arena *arena = ArenaCreate();
     App *app = ArenaAllocStruct(arena, App);
     app->arena = arena;
+    app->documents = DynArrayCreate(arena, sizeof(DocumentTab), 0);
     return app;
 }
 
 static void AppDestroy(App *app) {
-    DocumentNode *node = app->node;
-    while (node) {
-        DocumentNode *next = node->next;
-        DocumentDestroy(node->document);
-        node = next;
+    for (usize i = 0; i < app->documents->len; ++i) {
+        DocumentTab *tab = (DocumentTab *)DynArrayGet(app->documents, i);
+        DocumentDestroy(tab->document);
     }
     ArenaDestroy(app->arena);
 }
@@ -31,7 +30,7 @@ static const char *WELCOME_MESSAGE =
 )";
 
 static void MaybeDrawWelcome(App *app) {
-    if (!app->node) {
+    if (!app->documents->len) {
         Vec2 window_size = ImGui::GetWindowSize();
         Vec2 logo_size = ImGui::CalcTextSize(WELCOME_MESSAGE);
         ImGui::SetCursorPos((window_size - logo_size) / 2.0f);
@@ -100,40 +99,24 @@ static void AppUpdate(App *app) {
     }
     ImGui::End();
 
-    for (DocumentNode *node = app->node; node;) {
-        char *title = ArenaFormatString(
-            app->arena,
-            "%s##%d",
-            node->document->path,
-            node->id
-        );
+    for (u32 tab_index = 0; tab_index < app->documents->len;) {
+        DocumentTab *tab =
+            (DocumentTab *)DynArrayGet(app->documents, tab_index);
+        Document *document = tab->document;
+        char *title =
+            ArenaFormatString(app->arena, "%s##%u", document->path, tab_index);
         ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
-        if (ImGui::Begin(title, &node->open)) {
-            DocumentUpdate(node->document);
+        if (ImGui::Begin(title, &tab->open)) {
+            DocumentUpdate(document);
         }
         ImGui::End();
         ArenaFree(app->arena, title);
 
-        if (!node->open) {
-            DocumentNode *next = node->next;
-
-            if (node->prev) {
-                node->prev->next = node->next;
-                node->prev = 0;
-            } else {
-                app->node = next;
-            }
-            if (node->next) {
-                node->next->prev = node->prev;
-                node->next = 0;
-            }
-
-            DocumentDestroy(node->document);
-            ArenaFree(app->arena, node);
-
-            node = next;
+        if (!tab->open) {
+            DocumentDestroy(document);
+            DynArrayRemove(app->documents, tab_index);
         } else {
-            node = node->next;
+            ++tab_index;
         }
     }
 
@@ -147,14 +130,7 @@ static bool AppCanLoadFile(App *app) {
 }
 
 static void AppLoadFile(App *app, OsLoadingFile *file) {
-    DocumentNode *node = ArenaAllocStruct(app->arena, DocumentNode);
-    node->next = app->node;
-    node->id = app->next_document_id++;
-    node->open = true;
-    node->document = DocumentLoad(file);
-
-    if (app->node) {
-        app->node->prev = node;
-    }
-    app->node = node;
+    DocumentTab *tab = (DocumentTab *)DynArrayAppend(app->documents);
+    tab->open = true;
+    tab->document = DocumentLoad(file);
 }

@@ -21,15 +21,18 @@ async function setup(module, canvas) {
    */
   async function loadProfile(path, total, stream) {
     if (AppOnLoadBegin(path, total)) {
-      for await (const chunk of stream) {
-        const len = chunk.length * chunk.BYTES_PER_ELEMENT;
-        const buf = AppMemoryAlloc(len);
-        module.HEAPU8.set(chunk, buf);
-        if (!AppOnLoadChunk(buf, len)) {
-          break;
+      try {
+        for await (const chunk of stream) {
+          const len = chunk.length * chunk.BYTES_PER_ELEMENT;
+          const buf = AppMemoryAlloc(len);
+          module.HEAPU8.set(chunk, buf);
+          if (!AppOnLoadChunk(buf, len)) {
+            break;
+          }
         }
+      } finally {
+        AppOnLoadEnd();
       }
-      AppOnLoadEnd();
     }
   }
 

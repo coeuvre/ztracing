@@ -19,11 +19,26 @@ static void ArenaClear(Arena *arena);
 
 static void *ArenaAllocNoZero(Arena *arena, usize size);
 static void *ArenaAlloc(Arena *arena, usize size);
+static void *ArenaRealloc(Arena *arena, void *ptr, usize new_size);
 static void ArenaFree(Arena *arena, void *ptr);
 
 static char *ArenaFormatString(Arena *arena, const char *fmt, ...);
 
-#define ArenaAllocArray(arena, type, count)                                     \
+#define ArenaAllocArray(arena, type, count)                                    \
     ((type *)ArenaAlloc(arena, sizeof(type) * (count)))
 
 #define ArenaAllocStruct(arena, type) ArenaAllocArray(arena, type, 1)
+
+struct DynArray {
+    Arena *arena;
+    usize item_size;
+    usize cap;
+    usize len;
+    void *items;
+};
+
+static DynArray *DynArrayCreate(Arena *arena, usize item_size, usize init_cap);
+static void DynArrayDestroy(DynArray *da);
+static void *DynArrayAppend(DynArray *da);
+static void *DynArrayGet(DynArray *da, usize index);
+static void DynArrayRemove(DynArray *da, usize index);

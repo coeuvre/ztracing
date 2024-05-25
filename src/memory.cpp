@@ -45,6 +45,12 @@ static usize ArenaBlockGetAvail(ArenaBlock *block) {
     return result;
 }
 
+static usize ArenaGetSize(void *ptr) {
+    ASSERT(ptr, "");
+    ArenaSlice *slice = (ArenaSlice *)ptr - 1;
+    return slice->size;
+}
+
 static Arena *ArenaCreate() {
     Arena *arena = (Arena *)MemoryAllocNoZero(
         sizeof(Arena) + sizeof(ArenaBlock) + INIT_BLOCK_SIZE
@@ -159,6 +165,22 @@ static void *ArenaAllocNoZero(Arena *arena, usize size) {
     return ArenaAlloc(arena, size, /* zero= */ false);
 }
 
+static void *ArenaRealloc(Arena *arena, void *ptr, usize new_size) {
+    usize size = 0;
+    if (ptr) {
+        size = ArenaGetSize(ptr);
+        ArenaFree(arena, ptr);
+    }
+
+    void *new_ptr = ArenaAllocNoZero(arena, new_size);
+    if (new_ptr != ptr && size > 0) {
+        memcpy(new_ptr, ptr, size);
+    }
+    memset((u8 *)new_ptr + size, 0, new_size - size);
+
+    return new_ptr;
+}
+
 static void ArenaFree(Arena *arena, void *ptr) {
     if (ptr) {
         ArenaSlice *slice = (ArenaSlice *)ptr - 1;
@@ -208,4 +230,54 @@ static char *ArenaFormatString(Arena *arena, const char *fmt, ...) {
     }
 
     return result;
+}
+
+static DynArray *DynArrayCreate(Arena *arena, usize item_size, usize init_cap) {
+    DynArray *da = ArenaAllocStruct(arena, DynArray);
+    da->arena = arena;
+    da->item_size = item_size;
+    da->cap = init_cap;
+    da->len = 0;
+    da->items = ArenaAlloc(arena, item_size * init_cap);
+    return da;
+}
+
+static void DynArrayDestroy(DynArray *da) {
+    ArenaFree(da->arena, da->items);
+    ArenaFree(da->arena, da);
+}
+
+static void *DynArrayAppend(DynArray *da) {
+    ASSERT(da->len <= da->cap, "");
+    if (da->len == da->cap) {
+        usize new_cap = da->cap << 1;
+        if (new_cap == 0) {
+            new_cap = 1;
+        }
+        da->items = ArenaRealloc(da->arena, da->items, new_cap * da->item_size);
+        da->cap = new_cap;
+    }
+
+    ASSERT(da->len < da->cap, "");
+
+    void *result = (u8 *)da->items + (da->item_size * da->len);
+    memset(result, 0, da->item_size);
+    da->len += 1;
+    return result;
+}
+
+static void *DynArrayGet(DynArray *da, usize index) {
+    ASSERT(index < da->len, "");
+    void *result = (u8 *)da->items + (index * da->item_size);
+    return result;
+}
+
+static void DynArrayRemove(DynArray *da, usize index) {
+    ASSERT(index < da->len, "");
+    if (index + 1 < da->len) {
+        void *dst = (u8 *)da->items + (index * da->item_size);
+        void *src = (u8 *)da->items + ((index + 1) * da->item_size);
+        memmove(dst, src, da->item_size * da->len - index - 1);
+    }
+    da->len -= 1;
 }
