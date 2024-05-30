@@ -4,17 +4,21 @@
 
 #include <zlib.h>
 
-static voidpf ZLibAlloc(voidpf opaque, uInt items, uInt size) {
+static voidpf
+ZLibAlloc(voidpf opaque, uInt items, uInt size) {
     return AllocateMemoryNoZero(items * size);
 }
 
-static void ZLibFree(voidpf opaque, voidpf address) {
+static void
+ZLibFree(voidpf opaque, voidpf address) {
     DeallocateMemory(address);
 }
 
-static void ProcessFileContent(u8 *buf, u32 len) {}
+static void
+ProcessFileContent(u8 *buf, u32 len) {}
 
-static void DoLoadDocument(void *data_) {
+static void
+DoLoadDocument(void *data_) {
     DocumentLoading *data = (DocumentLoading *)data_;
     INFO("Loading file %s ...", OsLoadingFileGetPath(data->file));
 
@@ -99,37 +103,40 @@ static void DoLoadDocument(void *data_) {
     );
 }
 
-static void WaitAndDestroyTask(Arena *arena, DocumentLoading *loading) {
+static void
+WaitAndDestroyTask(DocumentLoading *loading) {
     TaskWait(loading->task);
     OsLoadingFileClose(loading->file);
 }
 
-static Document *DocumentLoad(OsLoadingFile *file) {
-    Arena *arena = ArenaCreate();
-    Document *document = ArenaAllocStruct(arena, Document);
-    document->arena = arena;
-    document->path = ArenaFormatString(arena, "%s", OsLoadingFileGetPath(file));
+static Document *
+DocumentLoad(OsLoadingFile *file) {
+    Document *document = BootstrapPushStruct(Document, arena);
+    document->path =
+        PushFormat(&document->arena, "%s", OsLoadingFileGetPath(file));
     document->state = DocumentState_Loading;
     document->loading.file = file;
     document->loading.task = TaskCreate(DoLoadDocument, &document->loading);
     return document;
 }
 
-static void DocumentDestroy(Document *document) {
+static void
+DocumentDestroy(Document *document) {
     if (document->state == DocumentState_Loading) {
         document->loading.cancelled = true;
-        WaitAndDestroyTask(document->arena, &document->loading);
+        WaitAndDestroyTask(&document->loading);
     }
-    ArenaDestroy(document->arena);
+    Clear(&document->arena);
 }
 
-static void DocumentUpdate(Document *document) {
+static void
+DocumentUpdate(Document *document, Arena *frame_arena) {
     switch (document->state) {
     case DocumentState_Loading: {
         DocumentLoading *loading = &document->loading;
         {
-            char *text = ArenaFormatString(
-                document->arena,
+            char *text = PushFormat(
+                frame_arena,
                 "Loading %.1f MB ...",
                 loading->loaded / 1024.0f / 1024.0f
             );
@@ -137,11 +144,10 @@ static void DocumentUpdate(Document *document) {
             Vec2 text_size = ImGui::CalcTextSize(text);
             ImGui::SetCursorPos((window_size - text_size) / 2.0f);
             ImGui::Text("%s", text);
-            ArenaFree(document->arena, text);
         }
 
         if (TaskIsDone(loading->task)) {
-            WaitAndDestroyTask(document->arena, loading);
+            WaitAndDestroyTask(loading);
             document->state = DocumentState_View;
         }
     } break;

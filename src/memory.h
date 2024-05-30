@@ -12,33 +12,39 @@ static void DeallocateMemory(void *ptr);
 static usize GetAllocatedBytes();
 static char *CopyString(const char *str);
 
-struct Arena;
-static Arena *ArenaCreate();
-static void ArenaDestroy(Arena *arena);
-static void ArenaClear(Arena *arena);
-
-static void *ArenaAllocNoZero(Arena *arena, usize size);
-static void *ArenaAlloc(Arena *arena, usize size);
-static void *ArenaRealloc(Arena *arena, void *ptr, usize new_size);
-static void ArenaFree(Arena *arena, void *ptr);
-
-static char *ArenaFormatString(Arena *arena, const char *fmt, ...);
-
-#define ArenaAllocArray(arena, type, count)                                    \
-    ((type *)ArenaAlloc(arena, sizeof(type) * (count)))
-
-#define ArenaAllocStruct(arena, type) ArenaAllocArray(arena, type, 1)
-
-struct DynArray {
-    Arena *arena;
-    usize item_size;
-    usize cap;
-    usize len;
-    void *items;
+struct MemoryBlock {
+    MemoryBlock *prev;
+    u8 *base;
+    usize size;
+    usize used;
 };
 
-static DynArray *DynArrayCreate(Arena *arena, usize item_size, usize init_cap);
-static void DynArrayDestroy(DynArray *da);
-static void *DynArrayAppend(DynArray *da);
-static void *DynArrayGet(DynArray *da, usize index);
-static void DynArrayRemove(DynArray *da, usize index);
+struct Arena {
+    MemoryBlock *block;
+    u32 temp_arena_count;
+};
+
+static void *BootstrapPushSize(usize struct_size, usize offset);
+
+#define BootstrapPushStruct(Type, field)                                       \
+    (Type *)BootstrapPushSize(sizeof(Type), offsetof(Type, field))
+
+static void *PushSize(Arena *arena, usize size);
+
+#define PushArray(arena, Type, size)                                           \
+    (Type *)PushSize(arena, sizeof(Type) * size)
+
+#define PushStruct(arena, Type) (Type *)PushSize(arena, sizeof(Type))
+
+static char *PushFormat(Arena *arena, const char *fmt, ...);
+
+struct TempArena {
+    Arena *arena;
+    MemoryBlock *block;
+    usize used;
+};
+
+static TempArena BeginTempArena(Arena *arena);
+static void EndTempArena(TempArena temp_arena);
+
+static void Clear(Arena *arena);

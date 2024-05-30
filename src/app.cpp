@@ -1,19 +1,18 @@
-#include "ztracing.h"
+#include "app.h"
+#include "ui.h"
 
-static App *AppCreate() {
-    Arena *arena = ArenaCreate();
-    App *app = ArenaAllocStruct(arena, App);
-    app->arena = arena;
-    app->documents = DynArrayCreate(arena, sizeof(DocumentTab), 0);
+static App *
+AppCreate() {
+    App *app = BootstrapPushStruct(App, arena);
     return app;
 }
 
-static void AppDestroy(App *app) {
-    for (usize i = 0; i < app->documents->len; ++i) {
-        DocumentTab *tab = (DocumentTab *)DynArrayGet(app->documents, i);
-        DocumentDestroy(tab->document);
+static void
+AppDestroy(App *app) {
+    if (app->document) {
+        DocumentDestroy(app->document);
     }
-    ArenaDestroy(app->arena);
+    Clear(&app->arena);
 }
 
 static const char *WELCOME_MESSAGE =
@@ -29,8 +28,9 @@ static const char *WELCOME_MESSAGE =
                         Drag & Drop a trace file to start.
 )";
 
-static void MaybeDrawWelcome(App *app) {
-    if (!app->documents->len) {
+static void
+MaybeDrawWelcome(App *app) {
+    if (!app->document) {
         Vec2 window_size = ImGui::GetWindowSize();
         Vec2 logo_size = ImGui::CalcTextSize(WELCOME_MESSAGE);
         ImGui::SetCursorPos((window_size - logo_size) / 2.0f);
@@ -38,7 +38,8 @@ static void MaybeDrawWelcome(App *app) {
     }
 }
 
-static void DrawMenuBar(App *app) {
+static void
+DrawMenuBar(Arena *frame_arena, App *app) {
     ImGuiIO *io = &ImGui::GetIO();
     ImGuiStyle *style = &ImGui::GetStyle();
     if (ImGui::BeginMainMenuBar()) {
@@ -50,8 +51,8 @@ static void DrawMenuBar(App *app) {
         f32 left = ImGui::GetCursorPosX();
         f32 right = left;
         {
-            char *text = ArenaFormatString(
-                app->arena,
+            char *text = PushFormat(
+                frame_arena,
                 "%.1f MB  %.0f",
                 GetAllocatedBytes() / 1024.0f / 1024.0f,
                 io->Framerate
@@ -61,15 +62,18 @@ static void DrawMenuBar(App *app) {
                     style->ItemSpacing.x;
             ImGui::SetCursorPosX(right);
             ImGui::Text("%s", text);
-            ArenaFree(app->arena, text);
         }
 
         ImGui::EndMainMenuBar();
     }
 }
 
-static void AppUpdate(App *app) {
-    DrawMenuBar(app);
+static void
+AppUpdate(App *app) {
+    TempArena temp_arena = BeginTempArena(&app->arena);
+    Arena *frame_arena = temp_arena.arena;
+
+    DrawMenuBar(frame_arena, app);
 
     ImGuiID dockspace_id = ImGui::GetID("DockSpace");
 
@@ -99,38 +103,32 @@ static void AppUpdate(App *app) {
     }
     ImGui::End();
 
-    for (u32 tab_index = 0; tab_index < app->documents->len;) {
-        DocumentTab *tab =
-            (DocumentTab *)DynArrayGet(app->documents, tab_index);
-        Document *document = tab->document;
-        char *title =
-            ArenaFormatString(app->arena, "%s##%u", document->path, tab_index);
+    if (app->document) {
+        Document *document = app->document;
+        char *title = PushFormat(frame_arena, "%s", document->path);
         ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
-        if (ImGui::Begin(title, &tab->open)) {
-            DocumentUpdate(document);
+        if (ImGui::Begin(title)) {
+            DocumentUpdate(document, frame_arena);
         }
         ImGui::End();
-        ArenaFree(app->arena, title);
-
-        if (!tab->open) {
-            DocumentDestroy(document);
-            DynArrayRemove(app->documents, tab_index);
-        } else {
-            ++tab_index;
-        }
     }
 
     if (app->show_demo_window) {
         ImGui::ShowDemoWindow(&app->show_demo_window);
     }
+
+    EndTempArena(temp_arena);
 }
 
-static bool AppCanLoadFile(App *app) {
+static bool
+AppCanLoadFile(App *app) {
     return true;
 }
 
-static void AppLoadFile(App *app, OsLoadingFile *file) {
-    DocumentTab *tab = (DocumentTab *)DynArrayAppend(app->documents);
-    tab->open = true;
-    tab->document = DocumentLoad(file);
+static void
+AppLoadFile(App *app, OsLoadingFile *file) {
+    if (app->document) {
+        DocumentDestroy(app->document);
+    }
+    app->document = DocumentLoad(file);
 }

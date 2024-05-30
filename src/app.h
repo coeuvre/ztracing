@@ -4,15 +4,10 @@
 #include "memory.h"
 #include "os.h"
 
-struct DocumentTab {
-    bool open;
-    Document *document;
-};
-
 struct App {
-    Arena *arena;
+    Arena arena;
     bool show_demo_window;
-    DynArray *documents;
+    Document *document;
 };
 
 static App *AppCreate();

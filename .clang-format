@@ -9,3 +9,4 @@ BinPackParameters: false
 AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
 AlignAfterOpenBracket: BlockIndent
+AlwaysBreakAfterReturnType: AllDefinitions

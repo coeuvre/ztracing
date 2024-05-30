@@ -1,5 +1,8 @@
 #pragma once
 
+#include "memory.h"
+#include "os.h"
+
 enum DocumentState {
     DocumentState_Loading,
     DocumentState_View,
@@ -13,7 +16,7 @@ struct DocumentLoading {
 };
 
 struct Document {
-    Arena *arena;
+    Arena arena;
     char *path;
 
     DocumentState state;
@@ -24,4 +27,4 @@ struct Document {
 
 static Document *DocumentLoad(OsLoadingFile *file);
 static void DocumentDestroy(Document *document);
-static void DocumentUpdate(Document *document);
+static void DocumentUpdate(Document *document, Arena *frame_arena);
