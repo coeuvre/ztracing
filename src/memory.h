@@ -4,13 +4,13 @@
 
 // Allocate a block of memory whose size is at least size bytes, assert non-null
 // and initialize it to 0.
-static void *MemoryAlloc(usize size);
-static void *MemoryAllocNoZero(usize size);
-static void *MemoryRealloc(void *ptr, usize new_size);
-static void MemoryFree(void *ptr);
+static void *AllocateMemory(usize size);
+static void *AllocateMemoryNoZero(usize size);
+static void *ReallocateMemory(void *ptr, usize new_size);
+static void DeallocateMemory(void *ptr);
 // Return current allocated memory in bytes.
-static usize MemoryGetAlloc();
-static char *MemoryCopyString(const char *str);
+static usize GetAllocatedBytes();
+static char *CopyString(const char *str);
 
 struct Arena;
 static Arena *ArenaCreate();

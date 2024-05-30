@@ -3,9 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
-static char *MemoryCopyString(const char *str) {
+static char *CopyString(const char *str) {
     usize size = strlen(str);
-    char *result = (char *)MemoryAllocNoZero(size + 1);
+    char *result = (char *)AllocateMemoryNoZero(size + 1);
     ASSERT(result, "");
     memcpy(result, str, size);
     result[size] = 0;
@@ -52,7 +52,7 @@ static usize ArenaGetSize(void *ptr) {
 }
 
 static Arena *ArenaCreate() {
-    Arena *arena = (Arena *)MemoryAllocNoZero(
+    Arena *arena = (Arena *)AllocateMemoryNoZero(
         sizeof(Arena) + sizeof(ArenaBlock) + INIT_BLOCK_SIZE
     );
     arena->block = (ArenaBlock *)(arena + 1);
@@ -76,10 +76,10 @@ static void ArenaDestroy(Arena *arena) {
         ArenaBlock *block = arena->block;
         arena->block = block->prev;
         if (block->prev) {
-            MemoryFree(block);
+            DeallocateMemory(block);
         }
     }
-    MemoryFree(arena);
+    DeallocateMemory(arena);
 }
 
 static void ArenaClear(Arena *arena) {
@@ -136,7 +136,7 @@ static void *ArenaAlloc(Arena *arena, usize size, bool zero) {
                         new_block_cap <<= 1;
                     }
 
-                    ArenaBlock *new_block = (ArenaBlock *)MemoryAllocNoZero(
+                    ArenaBlock *new_block = (ArenaBlock *)AllocateMemoryNoZero(
                         sizeof(ArenaBlock) + new_block_cap
                     );
                     new_block->cap = new_block_cap;

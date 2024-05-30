@@ -21,7 +21,6 @@ struct OsLoadingFile;
 static OsLoadingFile *OsLoadingFileOpen(char *path);
 static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len);
 static void OsLoadingFileClose(OsLoadingFile *file);
-static usize OsLoadingFileGetSize(OsLoadingFile *file);
 static char *OsLoadingFileGetPath(OsLoadingFile *file);
 
 static bool OsDispatchTask(Task *task);

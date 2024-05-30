@@ -138,15 +138,15 @@ struct MainLoop {
 };
 
 static void *ImGuiAlloc(usize size, void *user_data) {
-    return MemoryAllocNoZero(size);
+    return AllocateMemoryNoZero(size);
 }
 
 static void ImGuiFree(void *ptr, void *user_data) {
-    MemoryFree(ptr);
+    DeallocateMemory(ptr);
 }
 
 static void *MemoryCAlloc(usize num, usize size) {
-    return MemoryAlloc(num * size);
+    return AllocateMemory(num * size);
 }
 
 struct {
@@ -158,17 +158,17 @@ static void DefaultAllocatorInit() {
     DEFAULT_ALLOCATOR.mutex = SDL_CreateMutex();
 
     SDL_SetMemoryFunctions(
-        MemoryAllocNoZero,
+        AllocateMemoryNoZero,
         MemoryCAlloc,
-        MemoryRealloc,
-        MemoryFree
+        ReallocateMemory,
+        DeallocateMemory
     );
 
     ImGui::SetAllocatorFunctions(ImGuiAlloc, ImGuiFree);
 }
 
 static void DefaultAllocatorDeinit() {
-    usize n = MemoryGetAlloc();
+    usize n = GetAllocatedBytes();
     if (n != 0) {
         ERROR("%zu bytes leaked!", n);
     }
@@ -182,7 +182,7 @@ static void UpdateAllocatedBytes(usize delta) {
     ASSERT(err == 0, "%s", SDL_GetError());
 }
 
-static void *MemoryAlloc(usize size, bool zero) {
+static void *AllocateMemory(usize size, bool zero) {
     usize total_size = sizeof(size) + size;
     usize *result = (usize *)malloc(total_size);
     if (zero) {
@@ -197,15 +197,15 @@ static void *MemoryAlloc(usize size, bool zero) {
     return result;
 }
 
-static void *MemoryAlloc(usize size) {
-    return MemoryAlloc(size, /* zero= */ true);
+static void *AllocateMemory(usize size) {
+    return AllocateMemory(size, /* zero= */ true);
 }
 
-static void *MemoryAllocNoZero(usize size) {
-    return MemoryAlloc(size, /* zero= */ false);
+static void *AllocateMemoryNoZero(usize size) {
+    return AllocateMemory(size, /* zero= */ false);
 }
 
-static void *MemoryRealloc(void *ptr_, usize new_size) {
+static void *ReallocateMemory(void *ptr_, usize new_size) {
     usize *ptr = (usize *)ptr_;
 
     usize total_size = 0;
@@ -226,7 +226,7 @@ static void *MemoryRealloc(void *ptr_, usize new_size) {
     return ptr;
 }
 
-static void MemoryFree(void *ptr_) {
+static void DeallocateMemory(void *ptr_) {
     usize *ptr = (usize *)ptr_;
     if (ptr) {
         ptr -= 1;
@@ -236,7 +236,7 @@ static void MemoryFree(void *ptr_) {
     free(ptr);
 }
 
-static usize MemoryGetAlloc() {
+static usize GetAllocatedBytes() {
     return DEFAULT_ALLOCATOR.allocated_bytes;
 }
 

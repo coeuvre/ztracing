@@ -53,7 +53,7 @@ static void DrawMenuBar(App *app) {
             char *text = ArenaFormatString(
                 app->arena,
                 "%.1f MB  %.0f",
-                MemoryGetAlloc() / 1024.0f / 1024.0f,
+                GetAllocatedBytes() / 1024.0f / 1024.0f,
                 io->Framerate
             );
             Vec2 size = ImGui::CalcTextSize(text);

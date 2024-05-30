@@ -15,10 +15,10 @@ struct Channel {
 };
 
 static Channel *ChannelCreate(usize item_size, usize cap) {
-    Channel *channel = (Channel *)MemoryAlloc(sizeof(Channel));
+    Channel *channel = (Channel *)AllocateMemory(sizeof(Channel));
     channel->mutex = OsMutexCreate();
     channel->cond = OsCondCreate();
-    channel->buffer = (u8 *)MemoryAlloc(item_size * cap);
+    channel->buffer = (u8 *)AllocateMemory(item_size * cap);
     channel->item_size = item_size;
     channel->cap = cap;
     return channel;
@@ -28,8 +28,8 @@ static void ChannelDestroy(Channel *channel) {
     ASSERT(channel->rx_closed && channel->tx_closed, "");
     OsCondDestroy(channel->cond);
     OsMutexDestroy(channel->mutex);
-    MemoryFree(channel->buffer);
-    MemoryFree(channel);
+    DeallocateMemory(channel->buffer);
+    DeallocateMemory(channel);
 }
 
 static bool ChannelCloseRx(Channel *channel) {

@@ -5,11 +5,11 @@
 #include <zlib.h>
 
 static voidpf ZLibAlloc(voidpf opaque, uInt items, uInt size) {
-    return MemoryAllocNoZero(items * size);
+    return AllocateMemoryNoZero(items * size);
 }
 
 static void ZLibFree(voidpf opaque, voidpf address) {
-    MemoryFree(address);
+    DeallocateMemory(address);
 }
 
 static void ProcessFileContent(u8 *buf, u32 len) {}
@@ -40,7 +40,7 @@ static void DoLoadDocument(void *data_) {
             // TODO: Error handling.
             ASSERT(zret == Z_OK, "");
             zstream_buf_len = 16 * 1024;
-            zstream_buf = (u8 *)MemoryAlloc(zstream_buf_len);
+            zstream_buf = (u8 *)AllocateMemory(zstream_buf_len);
         }
 
         file_offset += nread;
@@ -84,7 +84,7 @@ static void DoLoadDocument(void *data_) {
     }
 
     if (zstream_buf) {
-        MemoryFree(zstream_buf);
+        DeallocateMemory(zstream_buf);
         inflateEnd(&stream);
     }
 
@@ -131,8 +131,7 @@ static void DocumentUpdate(Document *document) {
             char *text = ArenaFormatString(
                 document->arena,
                 "Loading %.1f MB ...",
-                loading->loaded / 1024.0f / 1024.0f,
-                OsLoadingFileGetSize(loading->file)
+                loading->loaded / 1024.0f / 1024.0f
             );
             Vec2 window_size = ImGui::GetWindowSize();
             Vec2 text_size = ImGui::CalcTextSize(text);
