@@ -78,10 +78,10 @@ static void OsMutexUnlock(OsMutex *mutex) {
 
 static Channel *OS_TASK_CHANNEL;
 
-static bool OsDispatchTask(Task *task) {
+static void OsDispatchTask(Task *task) {
     ASSERT(OS_TASK_CHANNEL, "");
     bool sent = ChannelSend(OS_TASK_CHANNEL, &task);
-    return sent;
+    ASSERT(sent, "");
 }
 
 static int WorkerMain(void *data) {
@@ -89,7 +89,7 @@ static int WorkerMain(void *data) {
 
     Task *task;
     while (ChannelRecv(channel, &task)) {
-        task->func(task->data);
+        task->func(task);
 
         OsMutexLock(task->mutex);
         task->done = true;

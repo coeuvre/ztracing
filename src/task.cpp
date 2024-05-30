@@ -2,37 +2,45 @@
 
 #include "os.h"
 
-struct Task {
-    TaskFunc func;
-    void *data;
-
-    OsMutex *mutex;
-    OsCond *cond;
-    bool done;
-};
-
-static Task *TaskCreate(TaskFunc func, void *data) {
-    Task *task = (Task *)AllocateMemory(sizeof(Task));
+static Task *
+CreateTask(TaskFunc func, void *data) {
+    Task *task = BootstrapPushStruct(Task, arena);
     task->func = func;
     task->data = data;
     task->mutex = OsMutexCreate();
     task->cond = OsCondCreate();
     task->done = false;
 
-    bool dispatched = OsDispatchTask(task);
-    ASSERT(dispatched, "");
+    OsDispatchTask(task);
 
     return task;
 }
 
-static bool TaskIsDone(Task *task) {
+static bool
+IsTaskDone(Task *task) {
     OsMutexLock(task->mutex);
     bool done = task->done;
     OsMutexUnlock(task->mutex);
     return done;
 }
 
-static void TaskWait(Task *task) {
+static void
+CancelTask(Task *task) {
+    OsMutexLock(task->mutex);
+    task->cancelled = true;
+    OsMutexUnlock(task->mutex);
+}
+
+static bool
+IsTaskCancelled(Task *task) {
+    OsMutexLock(task->mutex);
+    bool cancelled = task->cancelled;
+    OsMutexUnlock(task->mutex);
+    return cancelled;
+}
+
+static void
+WaitTask(Task *task) {
     OsMutexLock(task->mutex);
     while (!task->done) {
         OsCondWait(task->cond, task->mutex);
@@ -41,5 +49,6 @@ static void TaskWait(Task *task) {
 
     OsCondDestroy(task->cond);
     OsMutexDestroy(task->mutex);
-    DeallocateMemory(task);
+
+    Clear(&task->arena);
 }

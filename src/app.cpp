@@ -10,7 +10,7 @@ AppCreate() {
 static void
 AppDestroy(App *app) {
     if (app->document) {
-        DocumentDestroy(app->document);
+        UnloadDocument(app->document);
     }
     Clear(&app->arena);
 }
@@ -70,8 +70,8 @@ DrawMenuBar(Arena *frame_arena, App *app) {
 
 static void
 AppUpdate(App *app) {
-    TempArena temp_arena = BeginTempArena(&app->arena);
-    Arena *frame_arena = temp_arena.arena;
+    TempArena temp_frame_arena = BeginTempArena(&app->arena);
+    Arena *frame_arena = temp_frame_arena.arena;
 
     DrawMenuBar(frame_arena, app);
 
@@ -108,7 +108,7 @@ AppUpdate(App *app) {
         char *title = PushFormat(frame_arena, "%s", document->path);
         ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
         if (ImGui::Begin(title)) {
-            DocumentUpdate(document, frame_arena);
+            RenderDocument(document, frame_arena);
         }
         ImGui::End();
     }
@@ -117,7 +117,7 @@ AppUpdate(App *app) {
         ImGui::ShowDemoWindow(&app->show_demo_window);
     }
 
-    EndTempArena(temp_arena);
+    EndTempArena(temp_frame_arena);
 }
 
 static bool
@@ -128,7 +128,7 @@ AppCanLoadFile(App *app) {
 static void
 AppLoadFile(App *app, OsLoadingFile *file) {
     if (app->document) {
-        DocumentDestroy(app->document);
+        UnloadDocument(app->document);
     }
-    app->document = DocumentLoad(file);
+    app->document = LoadDocument(file);
 }

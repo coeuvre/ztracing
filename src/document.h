@@ -8,11 +8,9 @@ enum DocumentState {
     DocumentState_View,
 };
 
-struct DocumentLoading {
-    Task *task;
+struct LoadState {
     OsLoadingFile *file;
     volatile usize loaded;
-    volatile bool cancelled;
 };
 
 struct Document {
@@ -21,10 +19,13 @@ struct Document {
 
     DocumentState state;
     union {
-        DocumentLoading loading;
+        struct {
+            Task *task;
+            LoadState state;
+        } loading;
     };
 };
 
-static Document *DocumentLoad(OsLoadingFile *file);
-static void DocumentDestroy(Document *document);
-static void DocumentUpdate(Document *document, Arena *frame_arena);
+static Document *LoadDocument(OsLoadingFile *file);
+static void UnloadDocument(Document *document);
+static void RenderDocument(Document *document, Arena *frame_arena);

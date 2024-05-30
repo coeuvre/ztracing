@@ -18,33 +18,33 @@ static void
 ProcessFileContent(u8 *buf, u32 len) {}
 
 static void
-DoLoadDocument(void *data_) {
-    DocumentLoading *data = (DocumentLoading *)data_;
-    INFO("Loading file %s ...", OsLoadingFileGetPath(data->file));
+DoLoadDocument(Task *task) {
+    LoadState *state = (LoadState *)task->data;
+    INFO("Loading file %s ...", OsLoadingFileGetPath(state->file));
 
     u64 start_counter = OsGetPerformanceCounter();
 
     z_stream stream = {};
     stream.zalloc = ZLibAlloc;
     stream.zfree = ZLibFree;
-    usize zstream_buf_len = 0;
+    usize zstream_buf_size = 4096;
     u8 *zstream_buf = 0;
 
     usize file_offset = 0;
-    u8 file_buf[4096];
+    usize file_buf_size = 4096;
+    u8 *file_buf = PushArray(&task->arena, u8, file_buf_size);
 
     usize total = 0;
-    for (bool need_more_read = true; need_more_read && !data->cancelled;) {
-        u32 nread =
-            OsLoadingFileNext(data->file, file_buf, ARRAY_SIZE(file_buf));
+    for (bool need_more_read = true;
+         need_more_read && !IsTaskCancelled(task);) {
+        u32 nread = OsLoadingFileNext(state->file, file_buf, file_buf_size);
 
-        if (file_offset == 0 && nread >= 2 && file_buf[0] == 0x1F &&
-            file_buf[1] == 0x8B) {
+        if (file_offset == 0 && nread >= 2 &&
+            (file_buf[0] == 0x1F && file_buf[1] == 0x8B)) {
             int zret = inflateInit2(&stream, MAX_WBITS | 32);
             // TODO: Error handling.
             ASSERT(zret == Z_OK, "");
-            zstream_buf_len = 16 * 1024;
-            zstream_buf = (u8 *)AllocateMemory(zstream_buf_len);
+            zstream_buf = PushArray(&task->arena, u8, zstream_buf_size);
         }
 
         file_offset += nread;
@@ -54,7 +54,7 @@ DoLoadDocument(void *data_) {
                 stream.next_in = file_buf;
 
                 do {
-                    stream.avail_out = zstream_buf_len;
+                    stream.avail_out = zstream_buf_size;
                     stream.next_out = zstream_buf;
 
                     int zret = inflate(&stream, Z_NO_FLUSH);
@@ -72,15 +72,15 @@ DoLoadDocument(void *data_) {
                     } break;
                     }
 
-                    u32 have = zstream_buf_len - stream.avail_out;
+                    u32 have = zstream_buf_size - stream.avail_out;
                     ProcessFileContent(zstream_buf, have);
                     total += have;
-                    data->loaded += have;
+                    state->loaded += have;
                 } while (stream.avail_out == 0);
             } else {
                 ProcessFileContent(file_buf, nread);
                 total += nread;
-                data->loaded += nread;
+                state->loaded += nread;
             }
         } else {
             need_more_read = false;
@@ -88,7 +88,6 @@ DoLoadDocument(void *data_) {
     }
 
     if (zstream_buf) {
-        DeallocateMemory(zstream_buf);
         inflateEnd(&stream);
     }
 
@@ -104,41 +103,41 @@ DoLoadDocument(void *data_) {
 }
 
 static void
-WaitAndDestroyTask(DocumentLoading *loading) {
-    TaskWait(loading->task);
-    OsLoadingFileClose(loading->file);
+WaitLoading(Document *document) {
+    ASSERT(document->state == DocumentState_Loading, "");
+    WaitTask(document->loading.task);
+    OsLoadingFileClose(document->loading.state.file);
 }
 
 static Document *
-DocumentLoad(OsLoadingFile *file) {
+LoadDocument(OsLoadingFile *file) {
     Document *document = BootstrapPushStruct(Document, arena);
     document->path =
         PushFormat(&document->arena, "%s", OsLoadingFileGetPath(file));
     document->state = DocumentState_Loading;
-    document->loading.file = file;
-    document->loading.task = TaskCreate(DoLoadDocument, &document->loading);
+    document->loading.task = CreateTask(DoLoadDocument, &document->loading.state);
+    document->loading.state.file = file;
     return document;
 }
 
 static void
-DocumentDestroy(Document *document) {
+UnloadDocument(Document *document) {
     if (document->state == DocumentState_Loading) {
-        document->loading.cancelled = true;
-        WaitAndDestroyTask(&document->loading);
+        CancelTask(document->loading.task);
+        WaitLoading(document);
     }
     Clear(&document->arena);
 }
 
 static void
-DocumentUpdate(Document *document, Arena *frame_arena) {
+RenderDocument(Document *document, Arena *frame_arena) {
     switch (document->state) {
     case DocumentState_Loading: {
-        DocumentLoading *loading = &document->loading;
         {
             char *text = PushFormat(
                 frame_arena,
                 "Loading %.1f MB ...",
-                loading->loaded / 1024.0f / 1024.0f
+                document->loading.state.loaded / 1024.0f / 1024.0f
             );
             Vec2 window_size = ImGui::GetWindowSize();
             Vec2 text_size = ImGui::CalcTextSize(text);
@@ -146,8 +145,8 @@ DocumentUpdate(Document *document, Arena *frame_arena) {
             ImGui::Text("%s", text);
         }
 
-        if (TaskIsDone(loading->task)) {
-            WaitAndDestroyTask(loading);
+        if (IsTaskDone(document->loading.task)) {
+            WaitLoading(document);
             document->state = DocumentState_View;
         }
     } break;

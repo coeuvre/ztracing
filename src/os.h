@@ -1,10 +1,11 @@
 #pragma once
 
 #include "core.h"
-#include "task.h"
 
 struct OsCond;
 struct OsMutex;
+
+#include "task.h"
 
 static OsCond *OsCondCreate();
 static void OsCondDestroy(OsCond *cond);
@@ -23,7 +24,7 @@ static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len);
 static void OsLoadingFileClose(OsLoadingFile *file);
 static char *OsLoadingFileGetPath(OsLoadingFile *file);
 
-static bool OsDispatchTask(Task *task);
+static void OsDispatchTask(Task *task);
 
 static u64 OsGetPerformanceCounter();
 static u64 OsGetPerformanceFrequency();
