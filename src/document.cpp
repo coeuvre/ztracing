@@ -2,6 +2,7 @@
 
 #include "ui.h"
 
+#include <iostream>
 #include <zlib.h>
 
 static voidpf
@@ -14,8 +15,126 @@ ZLibFree(voidpf opaque, voidpf address) {
     DeallocateMemory(address);
 }
 
+enum LoadProgress {
+    LoadProgress_Init,
+    LoadProgress_Regular,
+    LoadProgress_Gz,
+    LoadProgress_Done,
+};
+
+struct Load {
+    TempArena temp_arena;
+    OsLoadingFile *file;
+
+    LoadProgress progress;
+
+    z_stream zstream;
+    usize zstream_buf_size;
+    u8 *zstream_buf;
+};
+
+static Load *
+BeginLoad(Arena *arena, OsLoadingFile *file) {
+    TempArena temp_arena = BeginTempArena(arena);
+    Load *load = PushStruct(arena, Load);
+    load->file = file;
+    load->temp_arena = temp_arena;
+    load->zstream.zalloc = ZLibAlloc;
+    load->zstream.zfree = ZLibFree;
+    return load;
+}
+
+static u32
+LoadIntoBuffer(Load *load, u8 *buf, usize size) {
+    u32 nread = 0;
+    bool done = false;
+    while (!done) {
+        switch (load->progress) {
+        case LoadProgress_Init: {
+            nread = OsLoadingFileNext(load->file, buf, size);
+            if (nread >= 2 && (buf[0] == 0x1F && buf[1] == 0x8B)) {
+                int zret = inflateInit2(&load->zstream, MAX_WBITS | 32);
+                // TODO: Error handling.
+                ASSERT(zret == Z_OK, "");
+                load->zstream_buf_size = MAX(4096, size);
+                load->zstream_buf = PushArray(
+                    load->temp_arena.arena,
+                    u8,
+                    load->zstream_buf_size
+                );
+                memcpy(load->zstream_buf, buf, size);
+                load->zstream.avail_in = size;
+                load->zstream.next_in = load->zstream_buf;
+                load->progress = LoadProgress_Gz;
+            } else {
+                load->progress = LoadProgress_Regular;
+                done = true;
+            }
+        } break;
+
+        case LoadProgress_Regular: {
+            nread = OsLoadingFileNext(load->file, buf, size);
+            if (nread == 0) {
+                load->progress = LoadProgress_Done;
+            }
+            done = true;
+        } break;
+
+        case LoadProgress_Gz: {
+            if (load->zstream.avail_in == 0) {
+                load->zstream.avail_in = OsLoadingFileNext(
+                    load->file,
+                    load->zstream_buf,
+                    load->zstream_buf_size
+                );
+                load->zstream.next_in = load->zstream_buf;
+            }
+
+            if (load->zstream.avail_in != 0) {
+                load->zstream.avail_out = size;
+                load->zstream.next_out = buf;
+
+                int zret = inflate(&load->zstream, Z_NO_FLUSH);
+                switch (zret) {
+                case Z_OK: {
+                } break;
+
+                case Z_STREAM_END: {
+                    load->progress = LoadProgress_Done;
+                } break;
+
+                default: {
+                    // TODO: Error handling.
+                    ABORT("inflate returned %d", zret);
+                } break;
+                }
+
+                nread = size - load->zstream.avail_out;
+            } else {
+                load->progress = LoadProgress_Done;
+            }
+
+            done = true;
+        } break;
+
+        case LoadProgress_Done: {
+            done = true;
+        } break;
+
+        default:
+            UNREACHABLE;
+        }
+    }
+    return nread;
+}
+
 static void
-ProcessFileContent(u8 *buf, u32 len) {}
+EndLoad(Load *load) {
+    if (load->zstream_buf) {
+        inflateEnd(&load->zstream);
+    }
+    EndTempArena(load->temp_arena);
+}
 
 static void
 DoLoadDocument(Task *task) {
@@ -24,81 +143,24 @@ DoLoadDocument(Task *task) {
 
     u64 start_counter = OsGetPerformanceCounter();
 
-    z_stream stream = {};
-    stream.zalloc = ZLibAlloc;
-    stream.zfree = ZLibFree;
-    usize zstream_buf_size = 4096;
-    u8 *zstream_buf = 0;
-
-    usize file_offset = 0;
-    usize file_buf_size = 4096;
-    u8 *file_buf = PushArray(&task->arena, u8, file_buf_size);
-
-    usize total = 0;
-    for (bool need_more_read = true;
-         need_more_read && !IsTaskCancelled(task);) {
-        u32 nread = OsLoadingFileNext(state->file, file_buf, file_buf_size);
-
-        if (file_offset == 0 && nread >= 2 &&
-            (file_buf[0] == 0x1F && file_buf[1] == 0x8B)) {
-            int zret = inflateInit2(&stream, MAX_WBITS | 32);
-            // TODO: Error handling.
-            ASSERT(zret == Z_OK, "");
-            zstream_buf = PushArray(&task->arena, u8, zstream_buf_size);
-        }
-
-        file_offset += nread;
-        if (nread) {
-            if (zstream_buf) {
-                stream.avail_in = nread;
-                stream.next_in = file_buf;
-
-                do {
-                    stream.avail_out = zstream_buf_size;
-                    stream.next_out = zstream_buf;
-
-                    int zret = inflate(&stream, Z_NO_FLUSH);
-                    switch (zret) {
-                    case Z_OK: {
-                    } break;
-
-                    case Z_STREAM_END: {
-                        need_more_read = false;
-                    } break;
-
-                    default: {
-                        // TODO: Error handling.
-                        ABORT("inflate returned %d", zret);
-                    } break;
-                    }
-
-                    u32 have = zstream_buf_size - stream.avail_out;
-                    ProcessFileContent(zstream_buf, have);
-                    total += have;
-                    state->loaded += have;
-                } while (stream.avail_out == 0);
-            } else {
-                ProcessFileContent(file_buf, nread);
-                total += nread;
-                state->loaded += nread;
-            }
-        } else {
-            need_more_read = false;
-        }
+    Load *load = BeginLoad(&task->arena, state->file);
+    usize size = 4096;
+    u8 *buf = PushArray(&task->arena, u8, size);
+    u32 nread = 0;
+    while (!IsTaskCancelled(task) &&
+           ((nread = LoadIntoBuffer(load, buf, size)) != 0)) {
+        state->loaded += nread;
     }
-
-    if (zstream_buf) {
-        inflateEnd(&stream);
-    }
+    EndLoad(load);
 
     u64 end_counter = OsGetPerformanceCounter();
     f32 seconds =
         (f64)(end_counter - start_counter) / (f64)OsGetPerformanceFrequency();
     INFO(
         "Loaded %.1f MB in %.2f s (%.1f MB/s).",
-        total / 1024.0f / 1024.0f,
+        state->loaded / 1024.0f / 1024.0f,
         seconds,
-        total / seconds / 1024.0f / 1024.0f
+        state->loaded / seconds / 1024.0f / 1024.0f
     );
 }
 
