@@ -31,7 +31,9 @@ LogMessage(LogLevel level, const char *fmt, ...) {
 static OsCond *
 OsCondCreate() {
     SDL_cond *cond = SDL_CreateCond();
-    ASSERT(cond, "Failed to create condition variable: %s", SDL_GetError());
+    if (!cond) {
+        ABORT("Failed to create condition variable: %s", SDL_GetError());
+    }
     return (OsCond *)cond;
 }
 
@@ -43,29 +45,33 @@ OsCondDestroy(OsCond *cond) {
 static void
 OsCondWait(OsCond *cond, OsMutex *mutex) {
     int ret = SDL_CondWait((SDL_cond *)cond, (SDL_mutex *)mutex);
-    ASSERT(
-        ret == 0,
-        "Failed to wait on condition variable: %s",
-        SDL_GetError()
-    );
+    if (ret != 0) {
+        ABORT("Failed to wait on condition variable: %s", SDL_GetError());
+    }
 }
 
 static void
 OsCondSingal(OsCond *cond) {
     int ret = SDL_CondSignal((SDL_cond *)cond);
-    ASSERT(ret == 0, "Failed to singal condition variable: %s", SDL_GetError());
+    if (ret != 0) {
+        ABORT("Failed to singal condition variable: %s", SDL_GetError());
+    }
 }
 
 static void
 OsCondBroadcast(OsCond *cond) {
     int ret = SDL_CondBroadcast((SDL_cond *)cond);
-    ASSERT(ret == 0, "Failed to singal condition variable: %s", SDL_GetError());
+    if (ret != 0) {
+        ABORT("Failed to singal condition variable: %s", SDL_GetError());
+    }
 }
 
 static OsMutex *
 OsMutexCreate() {
     SDL_mutex *mutex = SDL_CreateMutex();
-    ASSERT(mutex, "Failed to create mutex: %s", SDL_GetError());
+    if (!mutex) {
+        ABORT("Failed to create mutex: %s", SDL_GetError());
+    }
     return (OsMutex *)mutex;
 }
 
@@ -77,22 +83,26 @@ OsMutexDestroy(OsMutex *mutex) {
 static void
 OsMutexLock(OsMutex *mutex) {
     int ret = SDL_LockMutex((SDL_mutex *)mutex);
-    ASSERT(ret == 0, "Failed to lock mutex: %s", SDL_GetError());
+    if (ret != 0) {
+        ABORT("Failed to lock mutex: %s", SDL_GetError());
+    }
 }
 
 static void
 OsMutexUnlock(OsMutex *mutex) {
     int ret = SDL_UnlockMutex((SDL_mutex *)mutex);
-    ASSERT(ret == 0, "Failed to unlock mutex: %s", SDL_GetError());
+    if (ret != 0) {
+        ABORT("Failed to unlock mutex: %s", SDL_GetError());
+    }
 }
 
 static Channel *OS_TASK_CHANNEL;
 
 static void
 OsDispatchTask(Task *task) {
-    ASSERT(OS_TASK_CHANNEL, "");
+    ASSERT(OS_TASK_CHANNEL);
     bool sent = ChannelSend(OS_TASK_CHANNEL, &task);
-    ASSERT(sent, "");
+    ASSERT(sent);
 }
 
 static int
@@ -197,10 +207,14 @@ DefaultAllocatorDeinit() {
 static void
 UpdateAllocatedBytes(usize delta) {
     int err = SDL_LockMutex(DEFAULT_ALLOCATOR.mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
+    if (err != 0) {
+        ABORT("%s", SDL_GetError());
+    }
     DEFAULT_ALLOCATOR.allocated_bytes += delta;
     err = SDL_UnlockMutex(DEFAULT_ALLOCATOR.mutex);
-    ASSERT(err == 0, "%s", SDL_GetError());
+    if (err != 0) {
+        ABORT("%s", SDL_GetError());
+    }
 }
 
 static void *
@@ -208,7 +222,7 @@ AllocateMemory(usize size, bool zero) {
     usize total_size = sizeof(size) + size;
     usize *result = (usize *)malloc(total_size);
     if (zero) {
-        ASSERT(result, "");
+        ASSERT(result);
         memset(result, 0, total_size);
     }
     if (result) {
@@ -284,7 +298,7 @@ MainLoopInit(MainLoop *main_loop) {
 
     OS_TASK_CHANNEL = ChannelCreate(sizeof(Task *), 1);
     MAIN_LOOP.worker_thread = SDL_CreateThread(WorkerMain, "Worker", 0);
-    ASSERT(MAIN_LOOP.worker_thread, "");
+    ASSERT(MAIN_LOOP.worker_thread);
 
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
 
@@ -298,7 +312,9 @@ MainLoopInit(MainLoop *main_loop) {
         window_size.y,
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED
     );
-    ASSERT(window, "Failed to create SDL_Window: %s", SDL_GetError());
+    if (!window) {
+        ABORT("Failed to create SDL_Window: %s", SDL_GetError());
+    }
     main_loop->window = window;
 
     SDL_Renderer *renderer = SDL_CreateRenderer(
@@ -306,11 +322,15 @@ MainLoopInit(MainLoop *main_loop) {
         -1,
         SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
     );
-    ASSERT(renderer, "Failed to create SDL_Renderer: %s", SDL_GetError());
+    if (!renderer) {
+        ABORT("Failed to create SDL_Renderer: %s", SDL_GetError());
+    }
     main_loop->renderer = renderer;
 
     ImGuiContext *imgui_context = ImGui::CreateContext();
-    ASSERT(imgui_context, "Failed to create ImGui context");
+    if (!imgui_context) {
+        ABORT("Failed to create ImGui context");
+    }
 
     {
         ImGuiIO *io = &ImGui::GetIO();

@@ -1,9 +1,10 @@
 #include "document.h"
 
-#include "ui.h"
-
 #include <iostream>
 #include <zlib.h>
+
+#include "json.h"
+#include "ui.h"
 
 static voidpf
 ZLibAlloc(voidpf opaque, uInt items, uInt size) {
@@ -45,25 +46,25 @@ BeginLoad(Arena *arena, OsLoadingFile *file) {
 }
 
 static u32
-LoadIntoBuffer(Load *load, u8 *buf, usize size) {
+LoadIntoBuffer(Load *load, Buffer buf) {
     u32 nread = 0;
     bool done = false;
     while (!done) {
         switch (load->progress) {
         case LoadProgress_Init: {
-            nread = OsLoadingFileNext(load->file, buf, size);
-            if (nread >= 2 && (buf[0] == 0x1F && buf[1] == 0x8B)) {
+            nread = OsLoadingFileNext(load->file, buf.data, buf.size);
+            if (nread >= 2 && (buf.data[0] == 0x1F && buf.data[1] == 0x8B)) {
                 int zret = inflateInit2(&load->zstream, MAX_WBITS | 32);
                 // TODO: Error handling.
-                ASSERT(zret == Z_OK, "");
-                load->zstream_buf_size = MAX(4096, size);
+                ASSERT(zret == Z_OK);
+                load->zstream_buf_size = MAX(4096, buf.size);
                 load->zstream_buf = PushArray(
                     load->temp_arena.arena,
                     u8,
                     load->zstream_buf_size
                 );
-                memcpy(load->zstream_buf, buf, size);
-                load->zstream.avail_in = size;
+                memcpy(load->zstream_buf, buf.data, nread);
+                load->zstream.avail_in = nread;
                 load->zstream.next_in = load->zstream_buf;
                 load->progress = LoadProgress_Gz;
             } else {
@@ -73,7 +74,7 @@ LoadIntoBuffer(Load *load, u8 *buf, usize size) {
         } break;
 
         case LoadProgress_Regular: {
-            nread = OsLoadingFileNext(load->file, buf, size);
+            nread = OsLoadingFileNext(load->file, buf.data, buf.size);
             if (nread == 0) {
                 load->progress = LoadProgress_Done;
             }
@@ -91,8 +92,8 @@ LoadIntoBuffer(Load *load, u8 *buf, usize size) {
             }
 
             if (load->zstream.avail_in != 0) {
-                load->zstream.avail_out = size;
-                load->zstream.next_out = buf;
+                load->zstream.avail_out = buf.size;
+                load->zstream.next_out = buf.data;
 
                 int zret = inflate(&load->zstream, Z_NO_FLUSH);
                 switch (zret) {
@@ -109,7 +110,7 @@ LoadIntoBuffer(Load *load, u8 *buf, usize size) {
                 } break;
                 }
 
-                nread = size - load->zstream.avail_out;
+                nread = buf.size - load->zstream.avail_out;
             } else {
                 load->progress = LoadProgress_Done;
             }
@@ -136,6 +137,23 @@ EndLoad(Load *load) {
     EndTempArena(load->temp_arena);
 }
 
+struct GetJsonInputData {
+    Task *task;
+    Load *load;
+    Buffer buf;
+};
+
+static Buffer
+GetJsonInput(void *data_) {
+    Buffer result = {};
+    GetJsonInputData *data = (GetJsonInputData *)data_;
+    if (!IsTaskCancelled(data->task)) {
+        result.size = LoadIntoBuffer(data->load, data->buf);
+        result.data = data->buf.data;
+    }
+    return result;
+}
+
 static void
 DoLoadDocument(Task *task) {
     LoadState *state = (LoadState *)task->data;
@@ -145,12 +163,39 @@ DoLoadDocument(Task *task) {
 
     Load *load = BeginLoad(&task->arena, state->file);
     usize size = 4096;
-    u8 *buf = PushArray(&task->arena, u8, size);
-    u32 nread = 0;
-    while (!IsTaskCancelled(task) &&
-           ((nread = LoadIntoBuffer(load, buf, size)) != 0)) {
-        state->loaded += nread;
+    Buffer buf = PushBuffer(&task->arena, size);
+
+    GetJsonInputData get_json_input_data = {};
+    get_json_input_data.task = task;
+    get_json_input_data.load = load;
+    get_json_input_data.buf = buf;
+
+    JsonParser parser = {};
+    parser.arena = &task->arena;
+    parser.get_json_input = GetJsonInput;
+    parser.get_json_input_data = &get_json_input_data;
+
+    // u32 nread = 0;
+    // while (!IsTaskCancelled(task) && (nread = LoadIntoBuffer(load, buf))) {
+    //     state->loaded += nread;
+    // }
+
+    bool done = false;
+    while (!done) {
+        JsonToken token = GetJsonToken(&parser);
+        switch (token.type) {
+        case JsonToken_Error: {
+            ERROR("%s", token.value.data);
+            done = true;
+        } break;
+
+        default:
+            UNREACHABLE;
+        }
     }
+
+    EndJsonParse(&parser);
+
     EndLoad(load);
 
     u64 end_counter = OsGetPerformanceCounter();
@@ -166,7 +211,7 @@ DoLoadDocument(Task *task) {
 
 static void
 WaitLoading(Document *document) {
-    ASSERT(document->state == DocumentState_Loading, "");
+    ASSERT(document->state == DocumentState_Loading);
     WaitTask(document->loading.task);
     OsLoadingFileClose(document->loading.state.file);
 }
@@ -175,7 +220,7 @@ static Document *
 LoadDocument(OsLoadingFile *file) {
     Document *document = BootstrapPushStruct(Document, arena);
     document->path =
-        PushFormat(&document->arena, "%s", OsLoadingFileGetPath(file));
+        PushFormatZ(&document->arena, "%s", OsLoadingFileGetPath(file));
     document->state = DocumentState_Loading;
     document->loading.task =
         CreateTask(DoLoadDocument, &document->loading.state);
@@ -197,7 +242,7 @@ RenderDocument(Document *document, Arena *frame_arena) {
     switch (document->state) {
     case DocumentState_Loading: {
         {
-            char *text = PushFormat(
+            char *text = PushFormatZ(
                 frame_arena,
                 "Loading %.1f MB ...",
                 document->loading.state.loaded / 1024.0f / 1024.0f

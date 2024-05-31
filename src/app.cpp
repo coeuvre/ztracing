@@ -30,7 +30,7 @@ static const char *WELCOME_MESSAGE =
 
 static void
 RenderWelcome(App *app) {
-    ASSERT(!app->document, "");
+    ASSERT(!app->document);
     Vec2 window_size = ImGui::GetWindowSize();
     Vec2 logo_size = ImGui::CalcTextSize(WELCOME_MESSAGE);
     ImGui::SetCursorPos((window_size - logo_size) / 2.0f);
@@ -50,7 +50,7 @@ DrawMenuBar(Arena *frame_arena, App *app) {
         f32 left = ImGui::GetCursorPosX();
         f32 right = left;
         {
-            char *text = PushFormat(
+            char *text = PushFormatZ(
                 frame_arena,
                 "%.1f MB  %.0f",
                 GetAllocatedBytes() / 1024.0f / 1024.0f,
@@ -110,7 +110,7 @@ AppUpdate(App *app) {
             ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove
     );
     if (app->document) {
-        char *title = PushFormat(frame_arena, "%s", app->document->path);
+        char *title = PushFormatZ(frame_arena, "%s", app->document->path);
         RenderDocument(app->document, frame_arena);
     } else {
         RenderWelcome(app);

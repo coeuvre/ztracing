@@ -36,7 +36,12 @@ static void *PushSize(Arena *arena, usize size);
 
 #define PushStruct(arena, Type) (Type *)PushSize(arena, sizeof(Type))
 
-static char *PushFormat(Arena *arena, const char *fmt, ...);
+static Buffer PushBuffer(Arena *arena, usize size);
+
+static Buffer PushFormat(Arena *arena, const char *fmt, ...);
+
+#define PushFormatZ(arena, fmt, ...)                                           \
+    ((char *)PushFormat(arena, fmt, ##__VA_ARGS__).data)
 
 struct TempArena {
     Arena *arena;

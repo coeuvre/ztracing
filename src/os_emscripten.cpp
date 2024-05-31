@@ -26,7 +26,7 @@ static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len) {
     if (file->chunk.buf) {
         u32 remaining = file->chunk.len - file->offset;
         nread = MIN(remaining, len);
-        ASSERT(nread > 0, "");
+        ASSERT(nread > 0);
 
         memcpy(buf, file->chunk.buf + file->offset, nread);
         file->offset += nread;
@@ -42,7 +42,7 @@ static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len) {
 }
 
 static void OsLoadingFileDestroy(OsLoadingFile *file) {
-    ASSERT(!file->chunk.buf, "");
+    ASSERT(!file->chunk.buf);
     DeallocateMemory(file->path);
     DeallocateMemory(file);
 }
@@ -125,7 +125,7 @@ extern "C" bool AppOnLoadChunk(u8 *buf, u32 len) {
 EMSCRIPTEN_KEEPALIVE
 extern "C" void AppOnLoadEnd() {
     OsLoadingFile *file = MAIN_LOOP.loading_file;
-    ASSERT(file, "");
+    ASSERT(file);
 
     if (ChannelCloseTx(file->channel)) {
         OsLoadingFileDestroy(file);

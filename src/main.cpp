@@ -1,6 +1,7 @@
 #include "app.cpp"
 #include "channel.cpp"
 #include "document.cpp"
+#include "json.cpp"
 #include "memory.cpp"
 #include "task.cpp"
 

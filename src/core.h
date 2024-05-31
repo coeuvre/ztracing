@@ -50,9 +50,14 @@ static void LogMessage(LogLevel level, const char *fmt, ...);
         __builtin_trap();                                                      \
     } while (0)
 
-#define ASSERT(x, fmt, ...)                                                    \
+#define ASSERT(x)                                                              \
     if (!(x)) {                                                                \
-        ABORT(fmt, ##__VA_ARGS__);                                             \
+        ABORT("%s", #x);                                                       \
     }
 
 #define UNREACHABLE ABORT("UNREACHABLE")
+
+struct Buffer {
+    u8 *data;
+    usize size;
+};

@@ -7,7 +7,7 @@ static char *
 CopyString(const char *str) {
     usize size = strlen(str);
     char *result = (char *)AllocateMemoryNoZero(size + 1);
-    ASSERT(result, "");
+    ASSERT(result);
     memcpy(result, str, size);
     result[size] = 0;
     return result;
@@ -43,7 +43,7 @@ PushSize(Arena *arena, usize size, bool zero) {
         arena->block = block;
     }
 
-    ASSERT(arena->block->used + size <= arena->block->size, "");
+    ASSERT(arena->block->used + size <= arena->block->size);
     void *result = arena->block->base + arena->block->used;
     arena->block->used += size;
 
@@ -59,6 +59,14 @@ PushSize(Arena *arena, usize size) {
     return PushSize(arena, size, /* zero = */ true);
 }
 
+static Buffer
+PushBuffer(Arena *arena, usize size) {
+    Buffer buffer = {};
+    buffer.data = (u8 *)PushSize(arena, size);
+    buffer.size = size;
+    return buffer;
+}
+
 static usize
 GetRemaining(Arena *arena) {
     usize result = 0;
@@ -68,26 +76,28 @@ GetRemaining(Arena *arena) {
     return result;
 }
 
-static char *
+static Buffer
 PushFormat(Arena *arena, const char *fmt, ...) {
+    Buffer result = {};
+
     va_list args;
 
     TempArena temp_arena = BeginTempArena(arena);
     usize size = GetRemaining(arena);
     char *buf = (char *)PushSize(arena, size, /* zero= */ false);
     va_start(args, fmt);
-    usize actual_size = vsnprintf(buf, size, fmt, args) + 1;
+    result.size = vsnprintf(buf, size, fmt, args) + 1;
     va_end(args);
     EndTempArena(temp_arena);
 
-    char *result = buf;
-    if (actual_size < size) {
-        result = (char *)PushSize(arena, size, /* zero= */ false);
-        ASSERT(result == buf, "");
-    } else if (actual_size > size) {
-        result = (char *)PushSize(arena, actual_size, /* zero= */ false);
+    result.data = (u8 *)buf;
+    if (result.size < size) {
+        result.data = (u8 *)PushSize(arena, size, /* zero= */ false);
+        ASSERT(result.data == (u8 *)buf);
+    } else if (result.size > size) {
+        result.data = (u8 *)PushSize(arena, result.size, /* zero= */ false);
         va_start(args, fmt);
-        vsnprintf(result, actual_size, fmt, args);
+        vsnprintf((char *)result.data, result.size, fmt, args);
         va_end(args);
     }
 
@@ -121,17 +131,17 @@ EndTempArena(TempArena temp_arena) {
     }
 
     if (arena->block) {
-        ASSERT(arena->block->used >= temp_arena.used, "");
+        ASSERT(arena->block->used >= temp_arena.used);
         arena->block->used = temp_arena.used;
     }
 
-    ASSERT(arena->temp_arena_count > 0, "");
+    ASSERT(arena->temp_arena_count > 0);
     --arena->temp_arena_count;
 }
 
 static void
 Clear(Arena *arena) {
-    ASSERT(arena->temp_arena_count == 0, "");
+    ASSERT(arena->temp_arena_count == 0);
 
     bool has_block = arena->block != 0;
     while (has_block) {

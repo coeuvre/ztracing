@@ -25,7 +25,7 @@ static Channel *ChannelCreate(usize item_size, usize cap) {
 }
 
 static void ChannelDestroy(Channel *channel) {
-    ASSERT(channel->rx_closed && channel->tx_closed, "");
+    ASSERT(channel->rx_closed && channel->tx_closed);
     OsCondDestroy(channel->cond);
     OsMutexDestroy(channel->mutex);
     DeallocateMemory(channel->buffer);
@@ -35,7 +35,7 @@ static void ChannelDestroy(Channel *channel) {
 static bool ChannelCloseRx(Channel *channel) {
     OsMutexLock(channel->mutex);
 
-    ASSERT(!channel->rx_closed, "");
+    ASSERT(!channel->rx_closed);
 
     channel->rx_closed = true;
     OsCondBroadcast(channel->cond);
@@ -54,7 +54,7 @@ static bool ChannelCloseRx(Channel *channel) {
 static bool ChannelCloseTx(Channel *channel) {
     OsMutexLock(channel->mutex);
 
-    ASSERT(!channel->tx_closed, "");
+    ASSERT(!channel->tx_closed);
 
     channel->tx_closed = true;
     OsCondBroadcast(channel->cond);
@@ -80,7 +80,7 @@ static bool ChannelSend(Channel *channel, void *item) {
     }
 
     if (!channel->rx_closed) {
-        ASSERT(channel->len < channel->cap, "");
+        ASSERT(channel->len < channel->cap);
         sent = true;
 
         usize index = (channel->cursor + channel->len) % channel->cap;
