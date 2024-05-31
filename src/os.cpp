@@ -15,7 +15,8 @@ static SDL_LogPriority TO_SDL_LOG_PRIORITY[LogLevel_Count] = {
     [LogLevel_Critical] = SDL_LOG_PRIORITY_CRITICAL,
 };
 
-static void LogMessage(LogLevel level, const char *fmt, ...) {
+static void
+LogMessage(LogLevel level, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     SDL_LogMessageV(
@@ -27,17 +28,20 @@ static void LogMessage(LogLevel level, const char *fmt, ...) {
     va_end(args);
 }
 
-static OsCond *OsCondCreate() {
+static OsCond *
+OsCondCreate() {
     SDL_cond *cond = SDL_CreateCond();
     ASSERT(cond, "Failed to create condition variable: %s", SDL_GetError());
     return (OsCond *)cond;
 }
 
-static void OsCondDestroy(OsCond *cond) {
+static void
+OsCondDestroy(OsCond *cond) {
     SDL_DestroyCond((SDL_cond *)cond);
 }
 
-static void OsCondWait(OsCond *cond, OsMutex *mutex) {
+static void
+OsCondWait(OsCond *cond, OsMutex *mutex) {
     int ret = SDL_CondWait((SDL_cond *)cond, (SDL_mutex *)mutex);
     ASSERT(
         ret == 0,
@@ -46,45 +50,53 @@ static void OsCondWait(OsCond *cond, OsMutex *mutex) {
     );
 }
 
-static void OsCondSingal(OsCond *cond) {
+static void
+OsCondSingal(OsCond *cond) {
     int ret = SDL_CondSignal((SDL_cond *)cond);
     ASSERT(ret == 0, "Failed to singal condition variable: %s", SDL_GetError());
 }
 
-static void OsCondBroadcast(OsCond *cond) {
+static void
+OsCondBroadcast(OsCond *cond) {
     int ret = SDL_CondBroadcast((SDL_cond *)cond);
     ASSERT(ret == 0, "Failed to singal condition variable: %s", SDL_GetError());
 }
 
-static OsMutex *OsMutexCreate() {
+static OsMutex *
+OsMutexCreate() {
     SDL_mutex *mutex = SDL_CreateMutex();
     ASSERT(mutex, "Failed to create mutex: %s", SDL_GetError());
     return (OsMutex *)mutex;
 }
 
-static void OsMutexDestroy(OsMutex *mutex) {
+static void
+OsMutexDestroy(OsMutex *mutex) {
     SDL_DestroyMutex((SDL_mutex *)mutex);
 }
 
-static void OsMutexLock(OsMutex *mutex) {
+static void
+OsMutexLock(OsMutex *mutex) {
     int ret = SDL_LockMutex((SDL_mutex *)mutex);
     ASSERT(ret == 0, "Failed to lock mutex: %s", SDL_GetError());
 }
 
-static void OsMutexUnlock(OsMutex *mutex) {
+static void
+OsMutexUnlock(OsMutex *mutex) {
     int ret = SDL_UnlockMutex((SDL_mutex *)mutex);
     ASSERT(ret == 0, "Failed to unlock mutex: %s", SDL_GetError());
 }
 
 static Channel *OS_TASK_CHANNEL;
 
-static void OsDispatchTask(Task *task) {
+static void
+OsDispatchTask(Task *task) {
     ASSERT(OS_TASK_CHANNEL, "");
     bool sent = ChannelSend(OS_TASK_CHANNEL, &task);
     ASSERT(sent, "");
 }
 
-static int WorkerMain(void *data) {
+static int
+WorkerMain(void *data) {
     Channel *channel = OS_TASK_CHANNEL;
 
     Task *task;
@@ -102,17 +114,20 @@ static int WorkerMain(void *data) {
     return 0;
 }
 
-static u64 OsGetPerformanceCounter() {
+static u64
+OsGetPerformanceCounter() {
     u64 result = SDL_GetPerformanceCounter();
     return result;
 }
 
-static u64 OsGetPerformanceFrequency() {
+static u64
+OsGetPerformanceFrequency() {
     u64 result = SDL_GetPerformanceFrequency();
     return result;
 }
 
-static void MaybeLoadFile(App *app, OsLoadingFile *file) {
+static void
+MaybeLoadFile(App *app, OsLoadingFile *file) {
     if (AppCanLoadFile(app)) {
         AppLoadFile(app, file);
     } else {
@@ -137,15 +152,18 @@ struct MainLoop {
     OsLoadingFile *loading_file;
 };
 
-static void *ImGuiAlloc(usize size, void *user_data) {
+static void *
+ImGuiAlloc(usize size, void *user_data) {
     return AllocateMemoryNoZero(size);
 }
 
-static void ImGuiFree(void *ptr, void *user_data) {
+static void
+ImGuiFree(void *ptr, void *user_data) {
     DeallocateMemory(ptr);
 }
 
-static void *MemoryCAlloc(usize num, usize size) {
+static void *
+MemoryCAlloc(usize num, usize size) {
     return AllocateMemory(num * size);
 }
 
@@ -154,7 +172,8 @@ struct {
     volatile usize allocated_bytes;
 } DEFAULT_ALLOCATOR;
 
-static void DefaultAllocatorInit() {
+static void
+DefaultAllocatorInit() {
     DEFAULT_ALLOCATOR.mutex = SDL_CreateMutex();
 
     SDL_SetMemoryFunctions(
@@ -167,14 +186,16 @@ static void DefaultAllocatorInit() {
     ImGui::SetAllocatorFunctions(ImGuiAlloc, ImGuiFree);
 }
 
-static void DefaultAllocatorDeinit() {
+static void
+DefaultAllocatorDeinit() {
     usize n = GetAllocatedBytes();
     if (n != 0) {
         ERROR("%zu bytes leaked!", n);
     }
 }
 
-static void UpdateAllocatedBytes(usize delta) {
+static void
+UpdateAllocatedBytes(usize delta) {
     int err = SDL_LockMutex(DEFAULT_ALLOCATOR.mutex);
     ASSERT(err == 0, "%s", SDL_GetError());
     DEFAULT_ALLOCATOR.allocated_bytes += delta;
@@ -182,7 +203,8 @@ static void UpdateAllocatedBytes(usize delta) {
     ASSERT(err == 0, "%s", SDL_GetError());
 }
 
-static void *AllocateMemory(usize size, bool zero) {
+static void *
+AllocateMemory(usize size, bool zero) {
     usize total_size = sizeof(size) + size;
     usize *result = (usize *)malloc(total_size);
     if (zero) {
@@ -197,15 +219,18 @@ static void *AllocateMemory(usize size, bool zero) {
     return result;
 }
 
-static void *AllocateMemory(usize size) {
+static void *
+AllocateMemory(usize size) {
     return AllocateMemory(size, /* zero= */ true);
 }
 
-static void *AllocateMemoryNoZero(usize size) {
+static void *
+AllocateMemoryNoZero(usize size) {
     return AllocateMemory(size, /* zero= */ false);
 }
 
-static void *ReallocateMemory(void *ptr_, usize new_size) {
+static void *
+ReallocateMemory(void *ptr_, usize new_size) {
     usize *ptr = (usize *)ptr_;
 
     usize total_size = 0;
@@ -226,7 +251,8 @@ static void *ReallocateMemory(void *ptr_, usize new_size) {
     return ptr;
 }
 
-static void DeallocateMemory(void *ptr_) {
+static void
+DeallocateMemory(void *ptr_) {
     usize *ptr = (usize *)ptr_;
     if (ptr) {
         ptr -= 1;
@@ -236,7 +262,8 @@ static void DeallocateMemory(void *ptr_) {
     free(ptr);
 }
 
-static usize GetAllocatedBytes() {
+static usize
+GetAllocatedBytes() {
     return DEFAULT_ALLOCATOR.allocated_bytes;
 }
 
@@ -246,7 +273,8 @@ static Vec2 GetInitialWindowSize();
 
 static void NotifyAppInitDone();
 
-static void MainLoopInit(MainLoop *main_loop) {
+static void
+MainLoopInit(MainLoop *main_loop) {
     DefaultAllocatorInit();
 
     if (SDL_Init(SDL_INIT_EVERYTHING & ~(SDL_INIT_TIMER | SDL_INIT_HAPTIC)) !=
@@ -320,7 +348,8 @@ static void MainLoopInit(MainLoop *main_loop) {
     NotifyAppInitDone();
 }
 
-static void MainLoopUpdate(MainLoop *main_loop) {
+static void
+MainLoopUpdate(MainLoop *main_loop) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         if (!ImGui_ImplSDL2_ProcessEvent(&event)) {
@@ -348,22 +377,12 @@ static void MainLoopUpdate(MainLoop *main_loop) {
     AppUpdate(main_loop->app);
 
     ImGui::Render();
-    {
-        ImVec4 color = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
-        SDL_SetRenderDrawColor(
-            main_loop->renderer,
-            color.x * 255.0f,
-            color.y * 255.0f,
-            color.z * 255.0f,
-            255
-        );
-        SDL_RenderClear(main_loop->renderer);
-        ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData());
-    }
+    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData());
     SDL_RenderPresent(main_loop->renderer);
 }
 
-static void MainLoopShutdown(MainLoop *main_loop) {
+static void
+MainLoopShutdown(MainLoop *main_loop) {
     AppDestroy(main_loop->app);
 
     ChannelCloseTx(OS_TASK_CHANNEL);
@@ -386,7 +405,8 @@ static void MainLoopShutdown(MainLoop *main_loop) {
 #endif
 }
 
-static void RunMainLoop(void *arg) {
+static void
+RunMainLoop(void *arg) {
     MainLoop *main_loop = (MainLoop *)arg;
     switch (main_loop->state) {
     case MainLoopState_Init: {
@@ -401,7 +421,8 @@ static void RunMainLoop(void *arg) {
     }
 }
 
-int main(int argc, char **argv) {
+int
+main(int argc, char **argv) {
     MAIN_LOOP.argc = argc;
     MAIN_LOOP.argv = argv;
 #ifdef __EMSCRIPTEN__

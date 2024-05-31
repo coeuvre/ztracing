@@ -29,13 +29,12 @@ static const char *WELCOME_MESSAGE =
 )";
 
 static void
-MaybeDrawWelcome(App *app) {
-    if (!app->document) {
-        Vec2 window_size = ImGui::GetWindowSize();
-        Vec2 logo_size = ImGui::CalcTextSize(WELCOME_MESSAGE);
-        ImGui::SetCursorPos((window_size - logo_size) / 2.0f);
-        ImGui::Text("%s", WELCOME_MESSAGE);
-    }
+RenderWelcome(App *app) {
+    ASSERT(!app->document, "");
+    Vec2 window_size = ImGui::GetWindowSize();
+    Vec2 logo_size = ImGui::CalcTextSize(WELCOME_MESSAGE);
+    ImGui::SetCursorPos((window_size - logo_size) / 2.0f);
+    ImGui::Text("%s", WELCOME_MESSAGE);
 }
 
 static void
@@ -90,28 +89,33 @@ AppUpdate(App *app) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::Begin("Background", 0, window_flags);
+    ImGui::Begin("MainWindow", 0, window_flags);
     ImGui::PopStyleVar(3);
-    {
-        ImGui::DockSpace(
-            dockspace_id,
-            ImVec2(0.0f, 0.0f),
-            ImGuiDockNodeFlags_PassthruCentralNode
-        );
-
-        MaybeDrawWelcome(app);
-    }
+    ImGui::DockSpace(
+        dockspace_id,
+        ImVec2(0.0f, 0.0f),
+        ImGuiDockNodeFlags_PassthruCentralNode
+    );
     ImGui::End();
 
+    ImGuiWindowClass window_class;
+    window_class.DockNodeFlagsOverrideSet =
+        ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_NoDockingOverMe;
+    ImGui::SetNextWindowDockID(dockspace_id);
+    ImGui::SetNextWindowClass(&window_class);
+    ImGui::Begin(
+        "Document",
+        0,
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+            ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove
+    );
     if (app->document) {
-        Document *document = app->document;
-        char *title = PushFormat(frame_arena, "%s", document->path);
-        ImGui::SetNextWindowDockID(dockspace_id, ImGuiCond_FirstUseEver);
-        if (ImGui::Begin(title)) {
-            RenderDocument(document, frame_arena);
-        }
-        ImGui::End();
+        char *title = PushFormat(frame_arena, "%s", app->document->path);
+        RenderDocument(app->document, frame_arena);
+    } else {
+        RenderWelcome(app);
     }
+    ImGui::End();
 
     if (app->show_demo_window) {
         ImGui::ShowDemoWindow(&app->show_demo_window);

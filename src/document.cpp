@@ -115,7 +115,8 @@ LoadDocument(OsLoadingFile *file) {
     document->path =
         PushFormat(&document->arena, "%s", OsLoadingFileGetPath(file));
     document->state = DocumentState_Loading;
-    document->loading.task = CreateTask(DoLoadDocument, &document->loading.state);
+    document->loading.task =
+        CreateTask(DoLoadDocument, &document->loading.state);
     document->loading.state.file = file;
     return document;
 }
