@@ -39,6 +39,8 @@ static void *PushSize(Arena *arena, usize size);
 
 static Buffer PushBuffer(Arena *arena, usize size);
 
+static Buffer PushBuffer(Arena *arena, Buffer src);
+
 static Buffer PushFormat(Arena *arena, const char *fmt, ...);
 
 #define PushFormatZ(arena, fmt, ...)                                           \

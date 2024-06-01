@@ -28,11 +28,22 @@ struct JsonToken {
     Buffer value;
 };
 
+enum JsonValueType {
+    JsonValue_Object,
+    JsonValue_Array,
+    JsonValue_String,
+    JsonValue_Number,
+    JsonValue_True,
+    JsonValue_False,
+    JsonValue_Null,
+};
+
 struct JsonValue {
+    JsonValueType type;
     Buffer label;
     Buffer value;
-    JsonValue *first_child;
-    JsonValue *next_sibling;
+    JsonValue *child;
+    JsonValue *next;
 };
 
 typedef Buffer (*GetJsonInputFunc)(void *data);
@@ -46,6 +57,10 @@ struct JsonParser {
     u8 tmp;
     Buffer buffer;
     usize cursor;
+
+    Arena *value_arena;
+    TempArena value_temp_arena;
+    Buffer error;
 };
 
 static JsonParser *BeginJsonParse(
@@ -54,5 +69,6 @@ static JsonParser *BeginJsonParse(
     void *data
 );
 static JsonToken GetJsonToken(JsonParser *parser);
-static JsonValue GetJsonValue(JsonParser *parser);
+static JsonValue *GetJsonValue(JsonParser *parser);
+static Buffer GetJsonError(JsonParser *parser);
 static void EndJsonParse(JsonParser *parser);

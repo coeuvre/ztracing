@@ -72,6 +72,13 @@ PushBuffer(Arena *arena, usize size) {
     return buffer;
 }
 
+static Buffer
+PushBuffer(Arena *arena, Buffer src) {
+    Buffer dst = PushBuffer(arena, src.size);
+    CopyMemory(dst.data, src.data, src.size);
+    return dst;
+}
+
 static usize
 GetRemaining(Arena *arena) {
     usize result = 0;

@@ -157,12 +157,6 @@ GetJsonInput(void *data_) {
     return result;
 }
 
-static bool
-ExpectToken(JsonParser *parser, JsonTokenType type, JsonToken *out) {
-    *out = GetJsonToken(parser);
-    return out->type == type;
-}
-
 // Skip tokens until next key-value pair in this object. Returns true if EOF
 // reached.
 static bool
@@ -195,7 +189,7 @@ SkipObjectValue(JsonParser *parser) {
         } break;
 
         case JsonToken_Error: {
-            ERROR("%s", token.value.data);
+            ERROR("%.*s", token.value.size, token.value.data);
             done = true;
             eof = true;
         } break;
@@ -219,12 +213,46 @@ ParseJsonTraceEventArray(JsonParser *parser) {
     JsonToken token = GetJsonToken(parser);
     switch (token.type) {
     case JsonToken_OpenBracket: {
-        // TODO
-        eof = true;
+        bool done = false;
+        while (!done) {
+            JsonValue *value = GetJsonValue(parser);
+            if (value) {
+                if (value->child) {
+                    // TODO: process value
+                    // Buffer label = value->child->label;
+                    // INFO("%.*s", label.size, label.data);
+                }
+
+                token = GetJsonToken(parser);
+                switch (token.type) {
+                case JsonToken_Comma: {
+                } break;
+
+                case JsonToken_CloseBracket: {
+                    done = true;
+                } break;
+
+                default: {
+                    ERROR(
+                        "Unexpected token '%.*s'",
+                        token.value.size,
+                        token.value.data
+                    );
+                    done = true;
+                    eof = true;
+                } break;
+                }
+            } else {
+                Buffer error = GetJsonError(parser);
+                ERROR("%.*s", error.size, error.data);
+                done = true;
+                eof = true;
+            }
+        }
     } break;
 
     case JsonToken_Error: {
-        ERROR("%s", token.value.data);
+        ERROR("%.*s", token.value.size, token.value.data);
         eof = true;
     } break;
 
@@ -268,7 +296,7 @@ ParseJsonTrace(JsonParser *parser) {
             } break;
 
             case JsonToken_Error: {
-                ERROR("%s", token.value.data);
+                ERROR("%.*s", token.value.size, token.value.data);
                 done = true;
             } break;
 
@@ -285,7 +313,7 @@ ParseJsonTrace(JsonParser *parser) {
     } break;
 
     case JsonToken_Error: {
-        ERROR("%s", token.value.data);
+        ERROR("%.*s", token.value.size, token.value.data);
     } break;
 
     default: {
