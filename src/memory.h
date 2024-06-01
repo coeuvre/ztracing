@@ -15,6 +15,7 @@ static char *CopyString(const char *str);
 
 struct MemoryBlock {
     MemoryBlock *prev;
+    MemoryBlock *next;
     u8 *base;
     usize size;
     usize used;

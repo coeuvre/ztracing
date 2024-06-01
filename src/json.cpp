@@ -69,7 +69,7 @@ static void
 MaybeEndTokenTempArena(JsonParser *parser) {
     if (parser->token_temp_arena.arena) {
         EndTempArena(parser->token_temp_arena);
-        parser->token_temp_arena = {};
+        parser->token_temp_arena.arena = 0;
     }
 }
 
@@ -120,39 +120,30 @@ GetJsonToken(JsonParser *parser) {
     switch (val) {
     case '{': {
         token.type = JsonToken_OpenBrace;
-        token.value = PushBuffer(arena, STRING_LITERAL("{"));
     } break;
 
     case '}': {
         token.type = JsonToken_CloseBrace;
-        token.value = PushBuffer(arena, 1);
-        token.value = PushBuffer(arena, STRING_LITERAL("}"));
     } break;
 
     case '[': {
         token.type = JsonToken_OpenBracket;
-        token.value = PushBuffer(arena, 1);
-        token.value = PushBuffer(arena, STRING_LITERAL("["));
     } break;
 
     case ']': {
         token.type = JsonToken_CloseBracket;
-        token.value = PushBuffer(arena, STRING_LITERAL("]"));
     } break;
 
     case ',': {
         token.type = JsonToken_Comma;
-        token.value = PushBuffer(arena, STRING_LITERAL(","));
     } break;
 
     case ':': {
         token.type = JsonToken_Colon;
-        token.value = PushBuffer(arena, STRING_LITERAL(":"));
     } break;
 
     case ';': {
         token.type = JsonToken_SemiColon;
-        token.value = PushBuffer(arena, STRING_LITERAL(";"));
     } break;
 
     case 't': {
@@ -160,7 +151,6 @@ GetJsonToken(JsonParser *parser) {
         Buffer suffix = TakeInput(parser, expected_suffix.size);
         if (AreEqual(expected_suffix, suffix)) {
             token.type = JsonToken_True;
-            token.value = PushBuffer(arena, STRING_LITERAL("true"));
         } else {
             token.type = JsonToken_Error;
             token.value = PushFormat(
@@ -177,7 +167,6 @@ GetJsonToken(JsonParser *parser) {
         Buffer suffix = TakeInput(parser, expected_suffix.size);
         if (AreEqual(expected_suffix, suffix)) {
             token.type = JsonToken_False;
-            token.value = PushBuffer(arena, STRING_LITERAL("false"));
         } else {
             token.type = JsonToken_Error;
             token.value = PushFormat(
@@ -194,7 +183,6 @@ GetJsonToken(JsonParser *parser) {
         Buffer suffix = TakeInput(parser, expected_suffix.size);
         if (AreEqual(expected_suffix, suffix)) {
             token.type = JsonToken_Null;
-            token.value = PushBuffer(arena, STRING_LITERAL("null"));
         } else {
             token.type = JsonToken_Error;
             token.value = PushFormat(
@@ -211,7 +199,8 @@ GetJsonToken(JsonParser *parser) {
         bool done = false;
         bool found_close_quote = false;
 
-        Buffer buffer = PushBuffer(arena, 4096);
+        // TODO: Prefer use input directly
+        Buffer buffer = PushBuffer(arena, 1024);
         usize cursor = 0;
 
         while (!done) {
@@ -249,7 +238,8 @@ GetJsonToken(JsonParser *parser) {
     case '7':
     case '8':
     case '9': {
-        Buffer buffer = PushBuffer(arena, 4096);
+        // TODO: Prefer use input directly
+        Buffer buffer = PushBuffer(arena, 1024);
         usize cursor = 0;
         Append(arena, &buffer, &cursor, val);
 
@@ -356,7 +346,7 @@ static void
 MaybeEndValueTempArena(JsonParser *parser) {
     if (parser->value_temp_arena.arena) {
         EndTempArena(parser->value_temp_arena);
-        parser->value_temp_arena = {};
+        parser->value_temp_arena.arena = 0;
     }
 }
 

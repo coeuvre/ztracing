@@ -30,6 +30,11 @@ BootstrapPushSize(usize struct_size, usize offset) {
 
 static void *
 PushSize(Arena *arena, usize size, bool zero) {
+    while (arena->block && arena->block->used + size > arena->block->size &&
+           arena->block->next) {
+        arena->block = arena->block->next;
+    }
+
     if (!arena->block || arena->block->used + size > arena->block->size) {
         usize new_size = INIT_BLOCK_SIZE;
         if (arena->block) {
@@ -44,11 +49,15 @@ PushSize(Arena *arena, usize size, bool zero) {
         block->base = (u8 *)(block + 1);
         block->size = new_size;
         block->used = 0;
+        if (arena->block) {
+            ASSERT(!arena->block->next);
+            arena->block->next = block;
+        }
 
         arena->block = block;
     }
 
-    ASSERT(arena->block->used + size <= arena->block->size);
+    ASSERT(arena->block && arena->block->used + size <= arena->block->size);
     void *result = arena->block->base + arena->block->used;
     arena->block->used += size;
 
@@ -67,7 +76,7 @@ PushSize(Arena *arena, usize size) {
 static Buffer
 PushBuffer(Arena *arena, usize size) {
     Buffer buffer = {};
-    buffer.data = (u8 *)PushSize(arena, size);
+    buffer.data = (u8 *)PushSize(arena, size, /* zero = */ false);
     buffer.size = size;
     return buffer;
 }
@@ -129,22 +138,21 @@ BeginTempArena(Arena *arena) {
 }
 
 static void
-FreeLastBlock(Arena *arena) {
-    MemoryBlock *block = arena->block;
-    arena->block = block->prev;
-    DeallocateMemory(block);
-}
-
-static void
 EndTempArena(TempArena temp_arena) {
     Arena *arena = temp_arena.arena;
-    while (arena->block != temp_arena.block) {
-        FreeLastBlock(arena);
-    }
-
-    if (arena->block) {
+    if (temp_arena.block) {
+        while (arena->block != temp_arena.block) {
+            arena->block->used = 0;
+            arena->block = arena->block->prev;
+        }
         ASSERT(arena->block->used >= temp_arena.used);
         arena->block->used = temp_arena.used;
+    } else if (arena->block) {
+        while (arena->block->prev) {
+            arena->block->used = 0;
+            arena->block = arena->block->prev;
+        }
+        arena->block->used = 0;
     }
 
     ASSERT(arena->temp_arena_count > 0);
@@ -152,8 +160,22 @@ EndTempArena(TempArena temp_arena) {
 }
 
 static void
+FreeLastBlock(Arena *arena) {
+    MemoryBlock *block = arena->block;
+    arena->block = block->prev;
+    DeallocateMemory(block);
+    if (arena->block) {
+        arena->block->next = 0;
+    }
+}
+
+static void
 Clear(Arena *arena) {
     ASSERT(arena->temp_arena_count == 0);
+
+    while (arena->block && arena->block->next) {
+        arena->block = arena->block->next;
+    }
 
     bool has_block = arena->block != 0;
     while (has_block) {
