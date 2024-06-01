@@ -150,8 +150,148 @@ GetJsonInput(void *data_) {
     if (!IsTaskCancelled(data->task)) {
         result.size = LoadIntoBuffer(data->load, data->buf);
         result.data = data->buf.data;
+
+        LoadState *state = (LoadState *)data->task->data;
+        state->loaded += result.size;
     }
     return result;
+}
+
+static bool
+ExpectToken(JsonParser *parser, JsonTokenType type, JsonToken *out) {
+    *out = GetJsonToken(parser);
+    return out->type == type;
+}
+
+// Skip tokens until next key-value pair in this object. Returns true if EOF
+// reached.
+static bool
+SkipObjectValue(JsonParser *parser) {
+    bool eof = false;
+    u32 open = 0;
+    bool done = false;
+    while (!done) {
+        JsonToken token = GetJsonToken(parser);
+        switch (token.type) {
+        case JsonToken_Comma: {
+            if (open == 0) {
+                done = true;
+            }
+        } break;
+
+        case JsonToken_OpenBrace:
+        case JsonToken_OpenBracket: {
+            open++;
+        } break;
+
+        case JsonToken_CloseBrace:
+        case JsonToken_CloseBracket: {
+            open--;
+        } break;
+
+        case JsonToken_Eof: {
+            done = true;
+            eof = true;
+        } break;
+
+        case JsonToken_Error: {
+            ERROR("%s", token.value.data);
+            done = true;
+            eof = true;
+        } break;
+
+        default: {
+        } break;
+        }
+    }
+    return eof;
+}
+
+static bool
+SkipToken(JsonParser *parser, JsonTokenType type) {
+    JsonToken token = GetJsonToken(parser);
+    return token.type == type;
+}
+
+static bool
+ParseJsonTraceEventArray(JsonParser *parser) {
+    bool eof = false;
+    JsonToken token = GetJsonToken(parser);
+    switch (token.type) {
+    case JsonToken_OpenBracket: {
+        // TODO
+        eof = true;
+    } break;
+
+    case JsonToken_Error: {
+        ERROR("%s", token.value.data);
+        eof = true;
+    } break;
+
+    default: {
+        ERROR("Unexpected token: '%.*s'", token.value.size, token.value.data);
+        eof = true;
+    } break;
+    }
+
+    return eof;
+}
+
+static void
+ParseJsonTrace(JsonParser *parser) {
+    JsonToken token = GetJsonToken(parser);
+    switch (token.type) {
+    case JsonToken_OpenBrace: {
+        bool done = false;
+        while (!done) {
+            token = GetJsonToken(parser);
+            switch (token.type) {
+            case JsonToken_StringLiteral: {
+                if (AreEqual(token.value, STRING_LITERAL("traceEvents"))) {
+                    if (SkipToken(parser, JsonToken_Colon)) {
+                        done = ParseJsonTraceEventArray(parser);
+                    } else {
+                        ERROR(
+                            "Unexpected token: '%.*s'",
+                            token.value.size,
+                            token.value.data
+                        );
+                        done = true;
+                    }
+                } else {
+                    done = SkipObjectValue(parser);
+                }
+            } break;
+
+            case JsonToken_CloseBrace: {
+                done = true;
+            } break;
+
+            case JsonToken_Error: {
+                ERROR("%s", token.value.data);
+                done = true;
+            } break;
+
+            default: {
+                ERROR(
+                    "Unexpected token: '%.*s'",
+                    token.value.size,
+                    token.value.data
+                );
+                done = true;
+            } break;
+            }
+        }
+    } break;
+
+    case JsonToken_Error: {
+        ERROR("%s", token.value.data);
+    } break;
+
+    default: {
+        ERROR("Unexpected token: '%.*s'", token.value.size, token.value.data);
+    } break;
+    }
 }
 
 static void
@@ -170,31 +310,10 @@ DoLoadDocument(Task *task) {
     get_json_input_data.load = load;
     get_json_input_data.buf = buf;
 
-    JsonParser parser = {};
-    parser.arena = &task->arena;
-    parser.get_json_input = GetJsonInput;
-    parser.get_json_input_data = &get_json_input_data;
-
-    // u32 nread = 0;
-    // while (!IsTaskCancelled(task) && (nread = LoadIntoBuffer(load, buf))) {
-    //     state->loaded += nread;
-    // }
-
-    bool done = false;
-    while (!done) {
-        JsonToken token = GetJsonToken(&parser);
-        switch (token.type) {
-        case JsonToken_Error: {
-            ERROR("%s", token.value.data);
-            done = true;
-        } break;
-
-        default:
-            UNREACHABLE;
-        }
-    }
-
-    EndJsonParse(&parser);
+    JsonParser *parser =
+        BeginJsonParse(&task->arena, GetJsonInput, &get_json_input_data);
+    ParseJsonTrace(parser);
+    EndJsonParse(parser);
 
     EndLoad(load);
 

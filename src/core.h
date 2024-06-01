@@ -36,7 +36,8 @@ static void LogMessage(LogLevel level, const char *fmt, ...);
 
 #define INFO(fmt, ...) LogMessage(LogLevel_Info, fmt, ##__VA_ARGS__)
 #define WARN(fmt, ...) LogMessage(LogLevel_Warn, fmt, ##__VA_ARGS__)
-#define ERROR(fmt, ...) LogMessage(LogLevel_Error, fmt, ##__VA_ARGS__)
+#define ERROR(fmt, ...)                                                        \
+    LogMessage(LogLevel_Error, "%s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
 
 #define ABORT(fmt, ...)                                                        \
     do {                                                                       \
@@ -61,3 +62,21 @@ struct Buffer {
     u8 *data;
     usize size;
 };
+
+inline bool
+AreEqual(Buffer a, Buffer b) {
+    if (a.size != b.size) {
+        return false;
+    }
+
+    for (usize index = 0; index < a.size; ++index) {
+        if (a.data[index] != b.data[index]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+#define STRING_LITERAL(string)                                                 \
+    { (u8 *)(string), sizeof(string) - 1 }
