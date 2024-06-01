@@ -29,7 +29,7 @@ enum LogLevel {
     LogLevel_Error,
     LogLevel_Critical,
 
-    LogLevel_Count,
+    LogLevel_COUNT,
 };
 
 static void LogMessage(LogLevel level, const char *fmt, ...);
@@ -38,6 +38,14 @@ static void LogMessage(LogLevel level, const char *fmt, ...);
 #define WARN(fmt, ...) LogMessage(LogLevel_Warn, fmt, ##__VA_ARGS__)
 #define ERROR(fmt, ...)                                                        \
     LogMessage(LogLevel_Error, "%s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
+
+#ifdef _MSC_VER
+#define DEBUGTRAP __debugbreak
+#elif __has_builtin(__builtin_debugtrap)
+#define DEBUGTRAP __builtin_debugtrap
+#else
+#define DEBUGTRAP __builtin_trap
+#endif
 
 #define ABORT(fmt, ...)                                                        \
     do {                                                                       \
@@ -48,7 +56,7 @@ static void LogMessage(LogLevel level, const char *fmt, ...);
             __LINE__,                                                          \
             ##__VA_ARGS__                                                      \
         );                                                                     \
-        __builtin_trap();                                                      \
+        DEBUGTRAP();                                                           \
     } while (0)
 
 #define ASSERT(x)                                                              \
@@ -78,5 +86,4 @@ AreEqual(Buffer a, Buffer b) {
     return true;
 }
 
-#define STRING_LITERAL(string)                                                 \
-    { (u8 *)(string), sizeof(string) - 1 }
+#define STRING_LITERAL(string) {(u8 *)(string), sizeof(string) - 1}

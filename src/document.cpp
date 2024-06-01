@@ -63,7 +63,7 @@ LoadIntoBuffer(Load *load, Buffer buf) {
                     u8,
                     load->zstream_buf_size
                 );
-                memcpy(load->zstream_buf, buf.data, nread);
+                CopyMemory(load->zstream_buf, buf.data, nread);
                 load->zstream.avail_in = nread;
                 load->zstream.next_in = load->zstream_buf;
                 load->progress = LoadProgress_Gz;

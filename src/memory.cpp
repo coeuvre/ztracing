@@ -3,12 +3,17 @@
 #include <stdio.h>
 #include <string.h>
 
+static void
+CopyMemory(void *dst, const void *src, usize size) {
+    memcpy(dst, src, size);
+}
+
 static char *
 CopyString(const char *str) {
     usize size = strlen(str);
     char *result = (char *)AllocateMemoryNoZero(size + 1);
     ASSERT(result);
-    memcpy(result, str, size);
+    CopyMemory(result, str, size);
     result[size] = 0;
     return result;
 }

@@ -85,7 +85,7 @@ static bool ChannelSend(Channel *channel, void *item) {
 
         usize index = (channel->cursor + channel->len) % channel->cap;
         u8 *dst = channel->buffer + (index * channel->item_size);
-        memcpy(dst, item, channel->item_size);
+        CopyMemory(dst, item, channel->item_size);
         channel->len += 1;
 
         OsCondBroadcast(channel->cond);
@@ -110,7 +110,7 @@ static bool ChannelRecv(Channel *channel, void *out_item) {
 
         usize index = channel->cursor;
         u8 *src = channel->buffer + (index * channel->item_size);
-        memcpy(out_item, src, channel->item_size);
+        CopyMemory(out_item, src, channel->item_size);
 
         channel->cursor = (channel->cursor + 1) % channel->cap;
         channel->len -= 1;

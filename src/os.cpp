@@ -1,18 +1,21 @@
 #include "app.h"
+#include "channel.h"
+#include "ui.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
+#define SDL_MAIN_HANDLED
 #include <SDL.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_sdlrenderer2.h>
 
-static SDL_LogPriority TO_SDL_LOG_PRIORITY[LogLevel_Count] = {
-    [LogLevel_Debug] = SDL_LOG_PRIORITY_DEBUG,
-    [LogLevel_Info] = SDL_LOG_PRIORITY_INFO,
-    [LogLevel_Warn] = SDL_LOG_PRIORITY_WARN,
-    [LogLevel_Error] = SDL_LOG_PRIORITY_ERROR,
-    [LogLevel_Critical] = SDL_LOG_PRIORITY_CRITICAL,
+static SDL_LogPriority TO_SDL_LOG_PRIORITY[LogLevel_COUNT] = {
+    SDL_LOG_PRIORITY_DEBUG,
+    SDL_LOG_PRIORITY_INFO,
+    SDL_LOG_PRIORITY_WARN,
+    SDL_LOG_PRIORITY_ERROR,
+    SDL_LOG_PRIORITY_CRITICAL
 };
 
 static void

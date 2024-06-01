@@ -28,7 +28,7 @@ static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len) {
         nread = MIN(remaining, len);
         ASSERT(nread > 0);
 
-        memcpy(buf, file->chunk.buf + file->offset, nread);
+        CopyMemory(buf, file->chunk.buf + file->offset, nread);
         file->offset += nread;
 
         if (file->offset == file->chunk.len) {

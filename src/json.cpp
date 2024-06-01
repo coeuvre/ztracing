@@ -3,7 +3,7 @@
 static JsonParser *
 BeginJsonParse(Arena *arena, GetJsonInputFunc get_json_input, void *data) {
     JsonParser *parser = PushStruct(arena, JsonParser);
-    parser->get_json_input = GetJsonInput;
+    parser->get_json_input = get_json_input;
     parser->get_json_input_data = data;
     return parser;
 }
@@ -83,7 +83,7 @@ static void
 Append(Arena *arena, Buffer *buffer, usize *cursor, u8 val) {
     if (*cursor >= buffer->size) {
         Buffer new_buffer = PushBuffer(arena, buffer->size << 1);
-        memcpy(new_buffer.data, buffer->data, buffer->size);
+        CopyMemory(new_buffer.data, buffer->data, buffer->size);
         *buffer = new_buffer;
     }
     buffer->data[(*cursor)++] = val;

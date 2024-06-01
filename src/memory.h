@@ -10,6 +10,7 @@ static void *ReallocateMemory(void *ptr, usize new_size);
 static void DeallocateMemory(void *ptr);
 // Return current allocated memory in bytes.
 static usize GetAllocatedBytes();
+static void CopyMemory(void *dst, const void *src, usize size);
 static char *CopyString(const char *str);
 
 struct MemoryBlock {
