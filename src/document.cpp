@@ -157,10 +157,14 @@ GetJsonInput(void *data_) {
     return result;
 }
 
+struct ParseResult {
+    Buffer error;
+};
+
 // Skip tokens until next key-value pair in this object. Returns true if EOF
 // reached.
 static bool
-SkipObjectValue(JsonParser *parser) {
+SkipObjectValue(Arena *arena, JsonParser *parser, ParseResult *result) {
     bool eof = false;
     u32 open = 0;
     bool done = false;
@@ -189,7 +193,8 @@ SkipObjectValue(JsonParser *parser) {
         } break;
 
         case JsonToken_Error: {
-            ERROR("%.*s", token.value.size, token.value.data);
+            result->error =
+                PushFormat(arena, "%.*s", token.value.size, token.value.data);
             done = true;
             eof = true;
         } break;
@@ -302,8 +307,9 @@ ParseJsonTraceEventArray(JsonParser *parser) {
     return eof;
 }
 
-static void
-ParseJsonTrace(JsonParser *parser) {
+static ParseResult
+ParseJsonTrace(Arena *arena, JsonParser *parser) {
+    ParseResult result = {};
     JsonToken token = GetJsonToken(parser);
     switch (token.type) {
     case JsonToken_OpenBrace: {
@@ -316,7 +322,8 @@ ParseJsonTrace(JsonParser *parser) {
                     if (SkipToken(parser, JsonToken_Colon)) {
                         done = ParseJsonTraceEventArray(parser);
                     } else {
-                        ERROR(
+                        result.error = PushFormat(
+                            arena,
                             "Unexpected token: '%.*s'",
                             token.value.size,
                             token.value.data
@@ -324,7 +331,7 @@ ParseJsonTrace(JsonParser *parser) {
                         done = true;
                     }
                 } else {
-                    done = SkipObjectValue(parser);
+                    done = SkipObjectValue(arena, parser, &result);
                 }
             } break;
 
@@ -333,12 +340,18 @@ ParseJsonTrace(JsonParser *parser) {
             } break;
 
             case JsonToken_Error: {
-                ERROR("%.*s", token.value.size, token.value.data);
+                result.error = PushFormat(
+                    arena,
+                    "%.*s",
+                    token.value.size,
+                    token.value.data
+                );
                 done = true;
             } break;
 
             default: {
-                ERROR(
+                result.error = PushFormat(
+                    arena,
                     "Unexpected token: '%.*s'",
                     token.value.size,
                     token.value.data
@@ -350,13 +363,20 @@ ParseJsonTrace(JsonParser *parser) {
     } break;
 
     case JsonToken_Error: {
-        ERROR("%.*s", token.value.size, token.value.data);
+        result.error =
+            PushFormat(arena, "%.*s", token.value.size, token.value.data);
     } break;
 
     default: {
-        ERROR("Unexpected token: '%.*s'", token.value.size, token.value.data);
+        result.error = PushFormat(
+            arena,
+            "Unexpected token: '%.*s'",
+            token.value.size,
+            token.value.data
+        );
     } break;
     }
+    return result;
 }
 
 static void
@@ -377,27 +397,43 @@ DoLoadDocument(Task *task) {
 
     JsonParser *parser =
         BeginJsonParse(&task->arena, GetJsonInput, &get_json_input_data);
-    ParseJsonTrace(parser);
+    ParseResult result = ParseJsonTrace(state->document_arena, parser);
+    state->error = result.error;
     EndJsonParse(parser);
 
     EndLoad(load);
 
+    OsLoadingFileClose(state->file);
+
     u64 end_counter = OsGetPerformanceCounter();
     f32 seconds =
         (f64)(end_counter - start_counter) / (f64)OsGetPerformanceFrequency();
-    INFO(
-        "Loaded %.1f MB in %.2f s (%.1f MB/s).",
-        state->loaded / 1024.0f / 1024.0f,
-        seconds,
-        state->loaded / seconds / 1024.0f / 1024.0f
-    );
+    if (result.error.data) {
+        ERROR("%s", result.error.data);
+    } else {
+        INFO(
+            "Loaded %.1f MB in %.2f s (%.1f MB/s).",
+            state->loaded / 1024.0f / 1024.0f,
+            seconds,
+            state->loaded / seconds / 1024.0f / 1024.0f
+        );
+    }
 }
 
 static void
 WaitLoading(Document *document) {
     ASSERT(document->state == DocumentState_Loading);
     WaitTask(document->loading.task);
-    OsLoadingFileClose(document->loading.state.file);
+
+    LoadState *state = &document->loading.state;
+
+    if (state->error.data) {
+        Buffer message = state->error;
+        document->state = DocumentState_Error;
+        document->error.message = message;
+    } else {
+        document->state = DocumentState_View;
+    }
 }
 
 static Document *
@@ -408,6 +444,7 @@ LoadDocument(OsLoadingFile *file) {
     document->state = DocumentState_Loading;
     document->loading.task =
         CreateTask(DoLoadDocument, &document->loading.state);
+    document->loading.state.document_arena = &document->arena;
     document->loading.state.file = file;
     return document;
 }
@@ -439,8 +476,15 @@ RenderDocument(Document *document, Arena *frame_arena) {
 
         if (IsTaskDone(document->loading.task)) {
             WaitLoading(document);
-            document->state = DocumentState_View;
         }
+    } break;
+
+    case DocumentState_Error: {
+        ImGui::Text(
+            "Failed to load \"%s\": %s",
+            document->path,
+            document->error.message.data
+        );
     } break;
 
     case DocumentState_View: {

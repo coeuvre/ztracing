@@ -42,7 +42,9 @@ static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len) {
 }
 
 static void OsLoadingFileDestroy(OsLoadingFile *file) {
-    ASSERT(!file->chunk.buf);
+    if (file->chunk.buf) {
+        DeallocateMemory(file->chunk.buf);
+    }
     DeallocateMemory(file->path);
     DeallocateMemory(file);
 }

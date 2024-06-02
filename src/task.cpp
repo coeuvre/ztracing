@@ -1,7 +1,5 @@
 #include "task.h"
 
-#include "os.h"
-
 static Task *
 CreateTask(TaskFunc func, void *data) {
     Task *task = BootstrapPushStruct(Task, arena);

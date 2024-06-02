@@ -2,15 +2,19 @@
 
 #include "memory.h"
 #include "os.h"
+#include "task.h"
 
 enum DocumentState {
     DocumentState_Loading,
+    DocumentState_Error,
     DocumentState_View,
 };
 
 struct LoadState {
+    Arena *document_arena;
     OsLoadingFile *file;
     volatile usize loaded;
+    Buffer error;
 };
 
 struct Document {
@@ -23,6 +27,10 @@ struct Document {
             Task *task;
             LoadState state;
         } loading;
+
+        struct {
+            Buffer message;
+        } error;
     };
 };
 

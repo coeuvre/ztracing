@@ -5,8 +5,6 @@
 struct OsCond;
 struct OsMutex;
 
-#include "task.h"
-
 static OsCond *OsCondCreate();
 static void OsCondDestroy(OsCond *cond);
 static void OsCondWait(OsCond *cond, OsMutex *mutex);
@@ -24,6 +22,7 @@ static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len);
 static void OsLoadingFileClose(OsLoadingFile *file);
 static char *OsLoadingFileGetPath(OsLoadingFile *file);
 
+struct Task;
 static void OsDispatchTask(Task *task);
 
 static u64 OsGetPerformanceCounter();
