@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (EMSCRIPTEN)
     add_compile_options(
-        -Wno-c99-designator
         -pthread
         -sUSE_ZLIB=1
         -sUSE_SDL=2)
@@ -16,7 +15,9 @@ if (EMSCRIPTEN)
         -sPTHREAD_POOL_SIZE=1
         -sUSE_ZLIB=1
         -sUSE_SDL=2
+        -sMODULARIZE=1
         -sEXPORT_ES6
+        -sENVIRONMENT=web,worker
         -sEXPORTED_RUNTIME_METHODS=cwrap
         -sALLOW_BLOCKING_ON_MAIN_THREAD=1
         -sALLOW_MEMORY_GROWTH

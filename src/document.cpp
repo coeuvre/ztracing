@@ -207,6 +207,19 @@ SkipToken(JsonParser *parser, JsonTokenType type) {
     return token.type == type;
 }
 
+static void
+ProcessTraceEvent(JsonValue *value) {
+    for (JsonValue *entry = value->child; entry; entry = entry->next) {
+        if (AreEqual(entry->label, STRING_LITERAL("name"))) {
+        } else if (AreEqual(entry->label, STRING_LITERAL("ph"))) {
+        } else if (AreEqual(entry->label, STRING_LITERAL("ts"))) {
+        } else if (AreEqual(entry->label, STRING_LITERAL("pid"))) {
+        } else if (AreEqual(entry->label, STRING_LITERAL("tid"))) {
+        } else if (AreEqual(entry->label, STRING_LITERAL("args"))) {
+        }
+    }
+}
+
 static bool
 ParseJsonTraceEventArray(JsonParser *parser) {
     bool eof = false;
@@ -217,10 +230,8 @@ ParseJsonTraceEventArray(JsonParser *parser) {
         while (!done) {
             JsonValue *value = GetJsonValue(parser);
             if (value) {
-                if (value->child) {
-                    // TODO: process value
-                    // Buffer label = value->child->label;
-                    // INFO("%.*s", label.size, label.data);
+                if (value->type == JsonValue_Object) {
+                    ProcessTraceEvent(value);
                 }
 
                 token = GetJsonToken(parser);

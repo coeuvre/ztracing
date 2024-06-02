@@ -3,7 +3,9 @@ async function setup(module, canvas) {
     "number",
     "number",
   ]);
-  const AppAllocateMemory = module.cwrap("AppAllocateMemory", "number", ["number"]);
+  const AppAllocateMemory = module.cwrap("AppAllocateMemory", "number", [
+    "number",
+  ]);
   const AppOnLoadBegin = module.cwrap("AppOnLoadBegin", "boolean", [
     "string",
     "number",
