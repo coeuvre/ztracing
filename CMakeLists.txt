@@ -4,6 +4,15 @@ project(ztracing CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Enable LTO in release mode.
+if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    if (EMSCRIPTEN)
+        add_compile_options(-flto)
+    else()
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    endif()
+endif()
+
 if (EMSCRIPTEN)
     add_compile_options(
         -pthread
