@@ -226,7 +226,7 @@ struct TraceEvent {
 };
 
 static void
-ProcessTraceEvent(JsonValue *value) {
+ProcessTraceEvent(Arena *arena, JsonValue *value) {
     TraceEvent trace_event = {};
     for (JsonValue *entry = value->child; entry; entry = entry->next) {
         if (AreEqual(entry->label, STRING_LITERAL("name"))) {
@@ -249,10 +249,20 @@ ProcessTraceEvent(JsonValue *value) {
             trace_event.args = entry;
         }
     }
+
+    switch (trace_event.ph) {
+    // Counter event
+    case 'C': {
+        // TODO: handle trace_event.id
+    } break;
+
+    default: {
+    } break;
+    }
 }
 
 static bool
-ParseJsonTraceEventArray(JsonParser *parser) {
+ParseJsonTraceEventArray(Arena *arena, JsonParser *parser) {
     bool eof = false;
     JsonToken token = GetJsonToken(parser);
     switch (token.type) {
@@ -262,7 +272,7 @@ ParseJsonTraceEventArray(JsonParser *parser) {
             JsonValue *value = GetJsonValue(parser);
             if (value) {
                 if (value->type == JsonValue_Object) {
-                    ProcessTraceEvent(value);
+                    ProcessTraceEvent(arena, value);
                 }
 
                 token = GetJsonToken(parser);
@@ -320,7 +330,7 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
             case JsonToken_StringLiteral: {
                 if (AreEqual(token.value, STRING_LITERAL("traceEvents"))) {
                     if (SkipToken(parser, JsonToken_Colon)) {
-                        done = ParseJsonTraceEventArray(parser);
+                        done = ParseJsonTraceEventArray(arena, parser);
                     } else {
                         result.error = PushFormat(
                             arena,
@@ -403,8 +413,6 @@ DoLoadDocument(Task *task) {
 
     EndLoadFile(load);
 
-    OsCloseFile(state->file);
-
     u64 end_counter = OsGetPerformanceCounter();
     f32 seconds =
         (f64)(end_counter - start_counter) / (f64)OsGetPerformanceFrequency();
@@ -418,6 +426,8 @@ DoLoadDocument(Task *task) {
             state->loaded / seconds / 1024.0f / 1024.0f
         );
     }
+
+    OsCloseFile(state->file);
 }
 
 static void

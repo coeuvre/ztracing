@@ -28,6 +28,18 @@ struct JsonToken {
     Buffer value;
 };
 
+typedef Buffer (*GetJsonInputFunc)(void *data);
+
+struct JsonTokenizer {
+    Arena arena;
+    TempArena temp_arena;
+    u8 tmp;
+    Buffer buffer;
+    usize cursor;
+    GetJsonInputFunc get_json_input;
+    void *get_json_input_data;
+};
+
 enum JsonValueType {
     JsonValue_Object,
     JsonValue_Array,
@@ -46,20 +58,11 @@ struct JsonValue {
     JsonValue *next;
 };
 
-typedef Buffer (*GetJsonInputFunc)(void *data);
-
 struct JsonParser {
-    GetJsonInputFunc get_json_input;
-    void *get_json_input_data;
+    JsonTokenizer tokenizer;
 
-    Arena token_arena;
-    TempArena token_temp_arena;
-    u8 tmp;
-    Buffer buffer;
-    usize cursor;
-
-    Arena *value_arena;
-    TempArena value_temp_arena;
+    Arena *arena;
+    TempArena temp_arena;
     Buffer error;
 };
 

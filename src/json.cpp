@@ -5,43 +5,43 @@
 JsonParser *
 BeginJsonParse(Arena *arena, GetJsonInputFunc get_json_input, void *data) {
     JsonParser *parser = PushStruct(arena, JsonParser);
-    parser->get_json_input = get_json_input;
-    parser->get_json_input_data = data;
-    parser->value_arena = arena;
+    parser->arena = arena;
+    parser->tokenizer.get_json_input = get_json_input;
+    parser->tokenizer.get_json_input_data = data;
     return parser;
 }
 
 static void
-ReturnInput(JsonParser *parser, u8 val) {
-    ASSERT(parser->tmp == 0);
-    parser->tmp = val;
+ReturnInput(JsonTokenizer *tokenizer, u8 val) {
+    ASSERT(tokenizer->tmp == 0);
+    tokenizer->tmp = val;
 }
 
 static u8
-TakeInput(JsonParser *parser) {
-    u8 val = parser->tmp;
+TakeInput(JsonTokenizer *tokenizer) {
+    u8 val = tokenizer->tmp;
     if (val) {
-        parser->tmp = 0;
+        tokenizer->tmp = 0;
     } else {
-        if (parser->cursor >= parser->buffer.size) {
+        if (tokenizer->cursor >= tokenizer->buffer.size) {
             // TODO: Handle read error
-            parser->buffer =
-                parser->get_json_input(parser->get_json_input_data);
-            parser->cursor = 0;
+            tokenizer->buffer =
+                tokenizer->get_json_input(tokenizer->get_json_input_data);
+            tokenizer->cursor = 0;
         }
-        if (parser->cursor < parser->buffer.size) {
-            val = parser->buffer.data[parser->cursor];
-            parser->cursor++;
+        if (tokenizer->cursor < tokenizer->buffer.size) {
+            val = tokenizer->buffer.data[tokenizer->cursor];
+            tokenizer->cursor++;
         }
     }
     return val;
 }
 
 static Buffer
-TakeInput(JsonParser *parser, usize count) {
-    Buffer buffer = PushBuffer(parser->token_temp_arena.arena, count);
+TakeInput(JsonTokenizer *tokenizer, usize count) {
+    Buffer buffer = PushBuffer(&tokenizer->arena, count);
     for (usize index = 0; index < count; ++index) {
-        u8 val = TakeInput(parser);
+        u8 val = TakeInput(tokenizer);
         if (val == 0) {
             break;
         }
@@ -57,29 +57,29 @@ IsJsonWhitespace(u8 val) {
 }
 
 static void
-SkipWhitespace(JsonParser *parser) {
+SkipWhitespace(JsonTokenizer *tokenizer) {
     while (true) {
-        u8 val = TakeInput(parser);
+        u8 val = TakeInput(tokenizer);
         if (!IsJsonWhitespace(val)) {
-            ReturnInput(parser, val);
+            ReturnInput(tokenizer, val);
             return;
         }
     }
 }
 
 static void
-MaybeEndTokenTempArena(JsonParser *parser) {
-    if (parser->token_temp_arena.arena) {
-        EndTempArena(parser->token_temp_arena);
-        parser->token_temp_arena.arena = 0;
+MaybeEndTokenTempArena(JsonTokenizer *tokenizer) {
+    if (tokenizer->temp_arena.arena) {
+        EndTempArena(tokenizer->temp_arena);
+        tokenizer->temp_arena.arena = 0;
     }
 }
 
 static Arena *
-BeginTempTokenArena(JsonParser *parser) {
-    ASSERT(!parser->token_temp_arena.arena);
-    parser->token_temp_arena = BeginTempArena(&parser->token_arena);
-    return parser->token_temp_arena.arena;
+BeginTempTokenArena(JsonTokenizer *tokenizer) {
+    ASSERT(!tokenizer->temp_arena.arena);
+    tokenizer->temp_arena = BeginTempArena(&tokenizer->arena);
+    return tokenizer->temp_arena.arena;
 }
 
 static void
@@ -93,32 +93,37 @@ Append(Arena *arena, Buffer *buffer, usize *cursor, u8 val) {
 }
 
 static bool
-ParseDigits(JsonParser *parser, Arena *arena, Buffer *buffer, usize *cursor) {
+ParseDigits(
+    JsonTokenizer *tokenizer,
+    Arena *arena,
+    Buffer *buffer,
+    usize *cursor
+) {
     bool has_digits = false;
     bool done = false;
     while (!done) {
-        u8 val = TakeInput(parser);
+        u8 val = TakeInput(tokenizer);
         if (val >= '0' && val <= '9') {
             Append(arena, buffer, cursor, val);
             has_digits = true;
         } else {
-            ReturnInput(parser, val);
+            ReturnInput(tokenizer, val);
             done = true;
         }
     }
     return has_digits;
 }
 
-JsonToken
-GetJsonToken(JsonParser *parser) {
+static JsonToken
+GetJsonToken(JsonTokenizer *tokenizer) {
     JsonToken token = {};
 
-    MaybeEndTokenTempArena(parser);
-    Arena *arena = BeginTempTokenArena(parser);
+    MaybeEndTokenTempArena(tokenizer);
+    Arena *arena = BeginTempTokenArena(tokenizer);
 
-    SkipWhitespace(parser);
+    SkipWhitespace(tokenizer);
 
-    u8 val = TakeInput(parser);
+    u8 val = TakeInput(tokenizer);
     switch (val) {
     case '{': {
         token.type = JsonToken_OpenBrace;
@@ -150,7 +155,7 @@ GetJsonToken(JsonParser *parser) {
 
     case 't': {
         Buffer expected_suffix = STRING_LITERAL("rue");
-        Buffer suffix = TakeInput(parser, expected_suffix.size);
+        Buffer suffix = TakeInput(tokenizer, expected_suffix.size);
         if (AreEqual(expected_suffix, suffix)) {
             token.type = JsonToken_True;
         } else {
@@ -166,7 +171,7 @@ GetJsonToken(JsonParser *parser) {
 
     case 'f': {
         Buffer expected_suffix = STRING_LITERAL("alse");
-        Buffer suffix = TakeInput(parser, expected_suffix.size);
+        Buffer suffix = TakeInput(tokenizer, expected_suffix.size);
         if (AreEqual(expected_suffix, suffix)) {
             token.type = JsonToken_False;
         } else {
@@ -182,7 +187,7 @@ GetJsonToken(JsonParser *parser) {
 
     case 'n': {
         Buffer expected_suffix = STRING_LITERAL("ull");
-        Buffer suffix = TakeInput(parser, expected_suffix.size);
+        Buffer suffix = TakeInput(tokenizer, expected_suffix.size);
         if (AreEqual(expected_suffix, suffix)) {
             token.type = JsonToken_Null;
         } else {
@@ -206,7 +211,7 @@ GetJsonToken(JsonParser *parser) {
         usize cursor = 0;
 
         while (!done) {
-            u8 val = TakeInput(parser);
+            u8 val = TakeInput(tokenizer);
             if (val == 0) {
                 done = true;
             } else if (val == '"' && (prev[1] != '\\' || prev[0] == '\\')) {
@@ -247,11 +252,11 @@ GetJsonToken(JsonParser *parser) {
 
         bool done = false;
         if (val == '-') {
-            val = TakeInput(parser);
+            val = TakeInput(tokenizer);
             if (val >= '0' && val <= '9') {
                 Append(arena, &buffer, &cursor, val);
             } else {
-                ReturnInput(parser, val);
+                ReturnInput(tokenizer, val);
 
                 token.type = JsonToken_Error;
                 token.value = PushFormat(
@@ -265,16 +270,16 @@ GetJsonToken(JsonParser *parser) {
         }
 
         if (!done && val != '0') {
-            ParseDigits(parser, arena, &buffer, &cursor);
+            ParseDigits(tokenizer, arena, &buffer, &cursor);
         }
 
         if (!done) {
-            val = TakeInput(parser);
+            val = TakeInput(tokenizer);
             if (val == '.') {
                 Append(arena, &buffer, &cursor, val);
-                if (!ParseDigits(parser, arena, &buffer, &cursor)) {
-                    val = TakeInput(parser);
-                    ReturnInput(parser, val);
+                if (!ParseDigits(tokenizer, arena, &buffer, &cursor)) {
+                    val = TakeInput(tokenizer);
+                    ReturnInput(tokenizer, val);
 
                     token.type = JsonToken_Error;
                     token.value = PushFormat(
@@ -287,7 +292,7 @@ GetJsonToken(JsonParser *parser) {
                     done = true;
                 }
             } else {
-                ReturnInput(parser, val);
+                ReturnInput(tokenizer, val);
 
                 token.type = JsonToken_Number;
                 token.value.data = buffer.data;
@@ -297,12 +302,12 @@ GetJsonToken(JsonParser *parser) {
         }
 
         if (!done) {
-            val = TakeInput(parser);
+            val = TakeInput(tokenizer);
             if (val == 'e' || val == 'E') {
                 Append(arena, &buffer, &cursor, val);
-                if (!ParseDigits(parser, arena, &buffer, &cursor)) {
-                    val = TakeInput(parser);
-                    ReturnInput(parser, val);
+                if (!ParseDigits(tokenizer, arena, &buffer, &cursor)) {
+                    val = TakeInput(tokenizer);
+                    ReturnInput(tokenizer, val);
 
                     token.type = JsonToken_Error;
                     token.value = PushFormat(
@@ -320,7 +325,7 @@ GetJsonToken(JsonParser *parser) {
                     done = true;
                 }
             } else {
-                ReturnInput(parser, val);
+                ReturnInput(tokenizer, val);
                 token.type = JsonToken_Number;
                 token.value.data = buffer.data;
                 token.value.size = cursor;
@@ -344,19 +349,24 @@ GetJsonToken(JsonParser *parser) {
     return token;
 }
 
+JsonToken
+GetJsonToken(JsonParser *parser) {
+    return GetJsonToken(&parser->tokenizer);
+}
+
 static void
 MaybeEndValueTempArena(JsonParser *parser) {
-    if (parser->value_temp_arena.arena) {
-        EndTempArena(parser->value_temp_arena);
-        parser->value_temp_arena.arena = 0;
+    if (parser->temp_arena.arena) {
+        EndTempArena(parser->temp_arena);
+        parser->temp_arena.arena = 0;
     }
 }
 
 static Arena *
 BeginValueTempArena(JsonParser *parser) {
-    ASSERT(!parser->value_temp_arena.arena);
-    parser->value_temp_arena = BeginTempArena(parser->value_arena);
-    return parser->value_temp_arena.arena;
+    ASSERT(!parser->temp_arena.arena);
+    parser->temp_arena = BeginTempArena(parser->arena);
+    return parser->temp_arena.arena;
 }
 
 static bool
@@ -556,8 +566,8 @@ GetJsonError(JsonParser *parser) {
 
 void
 EndJsonParse(JsonParser *parser) {
-    MaybeEndTokenTempArena(parser);
-    ClearArena(&parser->token_arena);
+    MaybeEndTokenTempArena(&parser->tokenizer);
+    ClearArena(&parser->tokenizer.arena);
 
     MaybeEndValueTempArena(parser);
 }
