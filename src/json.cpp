@@ -1,5 +1,7 @@
 #include "json.h"
 
+#include <math.h>
+
 static JsonParser *
 BeginJsonParse(Arena *arena, GetJsonInputFunc get_json_input, void *data) {
     JsonParser *parser = PushStruct(arena, JsonParser);
@@ -558,4 +560,69 @@ EndJsonParse(JsonParser *parser) {
     Clear(&parser->token_arena);
 
     MaybeEndValueTempArena(parser);
+}
+
+static f64
+ConvertSign(Buffer buffer, usize *cursor) {
+    f64 sign = 1.0;
+    if (buffer.data[*cursor] == '-') {
+        sign = -1.0;
+        (*cursor)++;
+    }
+    return sign;
+}
+
+static f64
+ConvertNumber(Buffer buffer, usize *out_cursor) {
+    f64 result = 0.0;
+    usize cursor = *out_cursor;
+    while (cursor < buffer.size) {
+        u8 val = buffer.data[cursor] - '0';
+        if (val < 10) {
+            result = 10.0 * result + (f64)val;
+            ++cursor;
+        } else {
+            break;
+        }
+    }
+    *out_cursor = cursor;
+    return result;
+}
+
+static f64
+ConvertJsonValueToF64(JsonValue *value) {
+    Buffer buffer = value->value;
+    usize cursor = 0;
+    f64 sign = ConvertSign(buffer, &cursor);
+    f64 number = ConvertNumber(buffer, &cursor);
+
+    if (cursor < buffer.size && buffer.data[cursor] == '.') {
+        ++cursor;
+        f64 c = 1.0 / 10.0;
+        while (cursor < buffer.size) {
+            u8 val = buffer.data[cursor] - '0';
+            if (val < 10) {
+                number = number + c * (f64)val;
+                c *= 1.0 / 10.0;
+                ++cursor;
+            } else {
+                break;
+            }
+        }
+    }
+
+    if (cursor < buffer.size &&
+        (buffer.data[cursor] == 'e' || buffer.data[cursor] == 'E')) {
+        ++cursor;
+        if (cursor < buffer.size && buffer.data[cursor] == '+') {
+            ++cursor;
+        }
+
+        f64 exponent_sign = ConvertSign(buffer, &cursor);
+        f64 exponent = exponent_sign * ConvertNumber(buffer, &cursor);
+        number *= pow(10.0, exponent);
+    }
+
+    f64 result = sign * number;
+    return result;
 }

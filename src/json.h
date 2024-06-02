@@ -72,3 +72,5 @@ static JsonToken GetJsonToken(JsonParser *parser);
 static JsonValue *GetJsonValue(JsonParser *parser);
 static Buffer GetJsonError(JsonParser *parser);
 static void EndJsonParse(JsonParser *parser);
+
+static f64 ConvertJsonValueToF64(JsonValue *value);
