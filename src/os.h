@@ -5,25 +5,25 @@
 struct OsCond;
 struct OsMutex;
 
-static OsCond *OsCondCreate();
-static void OsCondDestroy(OsCond *cond);
-static void OsCondWait(OsCond *cond, OsMutex *mutex);
-static void OsCondSingal(OsCond *cond);
-static void OsCondBroadcast(OsCond *cond);
+OsCond *OsCreateCond();
+void OsDestroyCond(OsCond *cond);
+void OsWaitCond(OsCond *cond, OsMutex *mutex);
+void OsSignal(OsCond *cond);
+void OsBroadcast(OsCond *cond);
 
-static OsMutex *OsMutexCreate();
-static void OsMutexDestroy(OsMutex *mutex);
-static void OsMutexLock(OsMutex *mutex);
-static void OsMutexUnlock(OsMutex *mutex);
+OsMutex *OsCreateMutex();
+void OsDestroyMutex(OsMutex *mutex);
+void OsLockMutex(OsMutex *mutex);
+void OsUnlockMutex(OsMutex *mutex);
 
 struct OsLoadingFile;
-static OsLoadingFile *OsLoadingFileOpen(char *path);
-static u32 OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len);
-static void OsLoadingFileClose(OsLoadingFile *file);
-static char *OsLoadingFileGetPath(OsLoadingFile *file);
+OsLoadingFile *OsOpenFile(char *path);
+u32 OsReadFile(OsLoadingFile *file, u8 *buf, u32 len);
+void OsCloseFile(OsLoadingFile *file);
+char *OsGetFilePath(OsLoadingFile *file);
 
 struct Task;
-static void OsDispatchTask(Task *task);
+void OsDispatchTask(Task *task);
 
-static u64 OsGetPerformanceCounter();
-static u64 OsGetPerformanceFrequency();
+u64 OsGetPerformanceCounter();
+u64 OsGetPerformanceFrequency();

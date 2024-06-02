@@ -1,12 +1,12 @@
 #include "task.h"
 
-static Task *
+Task *
 CreateTask(TaskFunc func, void *data) {
     Task *task = BootstrapPushStruct(Task, arena);
     task->func = func;
     task->data = data;
-    task->mutex = OsMutexCreate();
-    task->cond = OsCondCreate();
+    task->mutex = OsCreateMutex();
+    task->cond = OsCreateCond();
     task->done = false;
 
     OsDispatchTask(task);
@@ -14,39 +14,39 @@ CreateTask(TaskFunc func, void *data) {
     return task;
 }
 
-static bool
+bool
 IsTaskDone(Task *task) {
-    OsMutexLock(task->mutex);
+    OsLockMutex(task->mutex);
     bool done = task->done;
-    OsMutexUnlock(task->mutex);
+    OsUnlockMutex(task->mutex);
     return done;
 }
 
-static void
+void
 CancelTask(Task *task) {
-    OsMutexLock(task->mutex);
+    OsLockMutex(task->mutex);
     task->cancelled = true;
-    OsMutexUnlock(task->mutex);
+    OsUnlockMutex(task->mutex);
 }
 
-static bool
+bool
 IsTaskCancelled(Task *task) {
-    OsMutexLock(task->mutex);
+    OsLockMutex(task->mutex);
     bool cancelled = task->cancelled;
-    OsMutexUnlock(task->mutex);
+    OsUnlockMutex(task->mutex);
     return cancelled;
 }
 
-static void
+void
 WaitTask(Task *task) {
-    OsMutexLock(task->mutex);
+    OsLockMutex(task->mutex);
     while (!task->done) {
-        OsCondWait(task->cond, task->mutex);
+        OsWaitCond(task->cond, task->mutex);
     }
-    OsMutexUnlock(task->mutex);
+    OsUnlockMutex(task->mutex);
 
-    OsCondDestroy(task->cond);
-    OsMutexDestroy(task->mutex);
+    OsDestroyCond(task->cond);
+    OsDestroyMutex(task->mutex);
 
-    Clear(&task->arena);
+    ClearArena(&task->arena);
 }

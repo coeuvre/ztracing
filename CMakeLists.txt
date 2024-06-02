@@ -51,9 +51,22 @@ target_include_directories(
     third_party/imgui
     third_party/imgui/backends)
 
-add_executable(
-    ztracing
-    src/main.cpp)
+SET(ZTRACING_SRCS
+    src/app.cpp
+    src/channel.cpp
+    src/document.cpp
+    src/json.cpp
+    src/memory.cpp
+    src/os.cpp
+    src/task.cpp)
+
+if (EMSCRIPTEN)
+    SET(ZTRACING_SRCS ${ZTRACING_SRCS} src/os_emscripten.cpp)
+else()
+    SET(ZTRACING_SRCS ${ZTRACING_SRCS} src/os_native.cpp)
+endif()
+
+add_executable(ztracing ${ZTRACING_SRCS})
 
 target_link_libraries(
     ztracing

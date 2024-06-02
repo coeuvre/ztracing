@@ -34,6 +34,6 @@ struct Document {
     };
 };
 
-static Document *LoadDocument(OsLoadingFile *file);
-static void UnloadDocument(Document *document);
-static void RenderDocument(Document *document, Arena *frame_arena);
+Document *LoadDocument(OsLoadingFile *file);
+void UnloadDocument(Document *document);
+void RenderDocument(Document *document, Arena *frame_arena);

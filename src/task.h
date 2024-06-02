@@ -18,9 +18,9 @@ struct Task {
     bool cancelled;
 };
 
-static Task *CreateTask(TaskFunc func, void *data);
-static bool IsTaskDone(Task *task);
-static void CancelTask(Task *task);
-static bool IsTaskCancelled(Task *task);
+Task *CreateTask(TaskFunc func, void *data);
+bool IsTaskDone(Task *task);
+void CancelTask(Task *task);
+bool IsTaskCancelled(Task *task);
 // Wait for task to be done and release all its resources.
-static void WaitTask(Task *task);
+void WaitTask(Task *task);

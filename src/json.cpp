@@ -2,7 +2,7 @@
 
 #include <math.h>
 
-static JsonParser *
+JsonParser *
 BeginJsonParse(Arena *arena, GetJsonInputFunc get_json_input, void *data) {
     JsonParser *parser = PushStruct(arena, JsonParser);
     parser->get_json_input = get_json_input;
@@ -109,7 +109,7 @@ ParseDigits(JsonParser *parser, Arena *arena, Buffer *buffer, usize *cursor) {
     return has_digits;
 }
 
-static JsonToken
+JsonToken
 GetJsonToken(JsonParser *parser) {
     JsonToken token = {};
 
@@ -541,7 +541,7 @@ ParseJsonValue(JsonParser *parser, Arena *arena) {
     return result;
 }
 
-static JsonValue *
+JsonValue *
 GetJsonValue(JsonParser *parser) {
     MaybeEndValueTempArena(parser);
     Arena *arena = BeginValueTempArena(parser);
@@ -549,15 +549,15 @@ GetJsonValue(JsonParser *parser) {
     return result;
 }
 
-static Buffer
+Buffer
 GetJsonError(JsonParser *parser) {
     return parser->error;
 }
 
-static void
+void
 EndJsonParse(JsonParser *parser) {
     MaybeEndTokenTempArena(parser);
-    Clear(&parser->token_arena);
+    ClearArena(&parser->token_arena);
 
     MaybeEndValueTempArena(parser);
 }
@@ -589,7 +589,7 @@ ConvertNumber(Buffer buffer, usize *out_cursor) {
     return result;
 }
 
-static f64
+f64
 ConvertJsonValueToF64(JsonValue *value) {
     Buffer buffer = value->value;
     usize cursor = 0;

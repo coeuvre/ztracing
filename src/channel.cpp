@@ -2,6 +2,9 @@
 
 #include <memory.h>
 
+#include "memory.h"
+#include "os.h"
+
 struct Channel {
     OsMutex *mutex;
     OsCond *cond;
@@ -14,35 +17,38 @@ struct Channel {
     bool tx_closed;
 };
 
-static Channel *ChannelCreate(usize item_size, usize cap) {
+Channel *
+CreateChannel(usize item_size, usize cap) {
     Channel *channel = (Channel *)AllocateMemory(sizeof(Channel));
-    channel->mutex = OsMutexCreate();
-    channel->cond = OsCondCreate();
+    channel->mutex = OsCreateMutex();
+    channel->cond = OsCreateCond();
     channel->buffer = (u8 *)AllocateMemory(item_size * cap);
     channel->item_size = item_size;
     channel->cap = cap;
     return channel;
 }
 
-static void ChannelDestroy(Channel *channel) {
+void
+ChannelDestroy(Channel *channel) {
     ASSERT(channel->rx_closed && channel->tx_closed);
-    OsCondDestroy(channel->cond);
-    OsMutexDestroy(channel->mutex);
+    OsDestroyCond(channel->cond);
+    OsDestroyMutex(channel->mutex);
     DeallocateMemory(channel->buffer);
     DeallocateMemory(channel);
 }
 
-static bool ChannelCloseRx(Channel *channel) {
-    OsMutexLock(channel->mutex);
+bool
+CloseChannelRx(Channel *channel) {
+    OsLockMutex(channel->mutex);
 
     ASSERT(!channel->rx_closed);
 
     channel->rx_closed = true;
-    OsCondBroadcast(channel->cond);
+    OsBroadcast(channel->cond);
 
     bool all_closed = channel->rx_closed && channel->tx_closed;
 
-    OsMutexUnlock(channel->mutex);
+    OsUnlockMutex(channel->mutex);
 
     if (all_closed) {
         ChannelDestroy(channel);
@@ -51,17 +57,18 @@ static bool ChannelCloseRx(Channel *channel) {
     return all_closed;
 }
 
-static bool ChannelCloseTx(Channel *channel) {
-    OsMutexLock(channel->mutex);
+bool
+CloseChannelTx(Channel *channel) {
+    OsLockMutex(channel->mutex);
 
     ASSERT(!channel->tx_closed);
 
     channel->tx_closed = true;
-    OsCondBroadcast(channel->cond);
+    OsBroadcast(channel->cond);
 
     bool all_closed = channel->rx_closed && channel->tx_closed;
 
-    OsMutexUnlock(channel->mutex);
+    OsUnlockMutex(channel->mutex);
 
     if (all_closed) {
         ChannelDestroy(channel);
@@ -70,13 +77,14 @@ static bool ChannelCloseTx(Channel *channel) {
     return all_closed;
 }
 
-static bool ChannelSend(Channel *channel, void *item) {
+bool
+SendToChannel(Channel *channel, void *item) {
     bool sent = false;
 
-    OsMutexLock(channel->mutex);
+    OsLockMutex(channel->mutex);
 
     while (!(channel->len < channel->cap || channel->rx_closed)) {
-        OsCondWait(channel->cond, channel->mutex);
+        OsWaitCond(channel->cond, channel->mutex);
     }
 
     if (!channel->rx_closed) {
@@ -88,21 +96,22 @@ static bool ChannelSend(Channel *channel, void *item) {
         CopyMemory(dst, item, channel->item_size);
         channel->len += 1;
 
-        OsCondBroadcast(channel->cond);
+        OsBroadcast(channel->cond);
     }
 
-    OsMutexUnlock(channel->mutex);
+    OsUnlockMutex(channel->mutex);
 
     return sent;
 }
 
-static bool ChannelRecv(Channel *channel, void *out_item) {
+bool
+ReceiveFromChannel(Channel *channel, void *out_item) {
     bool received = false;
 
-    OsMutexLock(channel->mutex);
+    OsLockMutex(channel->mutex);
 
     while (!(channel->len != 0 || channel->tx_closed)) {
-        OsCondWait(channel->cond, channel->mutex);
+        OsWaitCond(channel->cond, channel->mutex);
     }
 
     if (channel->len != 0) {
@@ -115,10 +124,10 @@ static bool ChannelRecv(Channel *channel, void *out_item) {
         channel->cursor = (channel->cursor + 1) % channel->cap;
         channel->len -= 1;
 
-        OsCondBroadcast(channel->cond);
+        OsBroadcast(channel->cond);
     }
 
-    OsMutexUnlock(channel->mutex);
+    OsUnlockMutex(channel->mutex);
 
     return received;
 }

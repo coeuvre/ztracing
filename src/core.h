@@ -32,7 +32,7 @@ enum LogLevel {
     LogLevel_COUNT,
 };
 
-static void LogMessage(LogLevel level, const char *fmt, ...);
+void LogMessage(LogLevel level, const char *fmt, ...);
 
 #define INFO(fmt, ...) LogMessage(LogLevel_Info, fmt, ##__VA_ARGS__)
 #define WARN(fmt, ...) LogMessage(LogLevel_Warn, fmt, ##__VA_ARGS__)

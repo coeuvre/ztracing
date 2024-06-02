@@ -1,10 +1,12 @@
-static Vec2
+#include "os_impl.h"
+
+Vec2
 GetInitialWindowSize() {
     Vec2 result = {1280, 720};
     return result;
 }
 
-static void
+void
 NotifyAppInitDone() {}
 
 struct OsLoadingFile {
@@ -13,8 +15,8 @@ struct OsLoadingFile {
     SDL_RWops *rw;
 };
 
-static OsLoadingFile *
-OsLoadingFileOpen(char *path) {
+OsLoadingFile *
+OsOpenFile(char *path) {
     OsLoadingFile *file = 0;
     SDL_RWops *rw = SDL_RWFromFile(path, "rb");
     if (rw) {
@@ -33,14 +35,14 @@ OsLoadingFileOpen(char *path) {
     return file;
 }
 
-static u32
-OsLoadingFileNext(OsLoadingFile *file, u8 *buf, u32 len) {
+u32
+OsReadFile(OsLoadingFile *file, u8 *buf, u32 len) {
     u32 nread = file->rw->read(file->rw, buf, 1, len);
     return nread;
 }
 
-static void
-OsLoadingFileClose(OsLoadingFile *file) {
+void
+OsCloseFile(OsLoadingFile *file) {
     int ret = file->rw->close(file->rw);
     if (ret != 0) {
         ABORT("Failed to close file: %s", SDL_GetError());
@@ -49,7 +51,7 @@ OsLoadingFileClose(OsLoadingFile *file) {
     DeallocateMemory(file);
 }
 
-static char *
-OsLoadingFileGetPath(OsLoadingFile *file) {
+char *
+OsGetFilePath(OsLoadingFile *file) {
     return file->path;
 }

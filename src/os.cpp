@@ -1,14 +1,4 @@
-#include "app.h"
-#include "channel.h"
-#include "ui.h"
-
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
-#define SDL_MAIN_HANDLED
-#include <SDL.h>
-#include <imgui_impl_sdl2.h>
-#include <imgui_impl_sdlrenderer2.h>
+#include "os_impl.h"
 
 static SDL_LogPriority TO_SDL_LOG_PRIORITY[LogLevel_COUNT] = {
     SDL_LOG_PRIORITY_DEBUG,
@@ -18,7 +8,7 @@ static SDL_LogPriority TO_SDL_LOG_PRIORITY[LogLevel_COUNT] = {
     SDL_LOG_PRIORITY_CRITICAL
 };
 
-static void
+void
 LogMessage(LogLevel level, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -31,8 +21,8 @@ LogMessage(LogLevel level, const char *fmt, ...) {
     va_end(args);
 }
 
-static OsCond *
-OsCondCreate() {
+OsCond *
+OsCreateCond() {
     SDL_cond *cond = SDL_CreateCond();
     if (!cond) {
         ABORT("Failed to create condition variable: %s", SDL_GetError());
@@ -40,37 +30,37 @@ OsCondCreate() {
     return (OsCond *)cond;
 }
 
-static void
-OsCondDestroy(OsCond *cond) {
+void
+OsDestroyCond(OsCond *cond) {
     SDL_DestroyCond((SDL_cond *)cond);
 }
 
-static void
-OsCondWait(OsCond *cond, OsMutex *mutex) {
+void
+OsWaitCond(OsCond *cond, OsMutex *mutex) {
     int ret = SDL_CondWait((SDL_cond *)cond, (SDL_mutex *)mutex);
     if (ret != 0) {
         ABORT("Failed to wait on condition variable: %s", SDL_GetError());
     }
 }
 
-static void
-OsCondSingal(OsCond *cond) {
+void
+OsSignal(OsCond *cond) {
     int ret = SDL_CondSignal((SDL_cond *)cond);
     if (ret != 0) {
         ABORT("Failed to singal condition variable: %s", SDL_GetError());
     }
 }
 
-static void
-OsCondBroadcast(OsCond *cond) {
+void
+OsBroadcast(OsCond *cond) {
     int ret = SDL_CondBroadcast((SDL_cond *)cond);
     if (ret != 0) {
         ABORT("Failed to singal condition variable: %s", SDL_GetError());
     }
 }
 
-static OsMutex *
-OsMutexCreate() {
+OsMutex *
+OsCreateMutex() {
     SDL_mutex *mutex = SDL_CreateMutex();
     if (!mutex) {
         ABORT("Failed to create mutex: %s", SDL_GetError());
@@ -78,21 +68,21 @@ OsMutexCreate() {
     return (OsMutex *)mutex;
 }
 
-static void
-OsMutexDestroy(OsMutex *mutex) {
+void
+OsDestroyMutex(OsMutex *mutex) {
     SDL_DestroyMutex((SDL_mutex *)mutex);
 }
 
-static void
-OsMutexLock(OsMutex *mutex) {
+void
+OsLockMutex(OsMutex *mutex) {
     int ret = SDL_LockMutex((SDL_mutex *)mutex);
     if (ret != 0) {
         ABORT("Failed to lock mutex: %s", SDL_GetError());
     }
 }
 
-static void
-OsMutexUnlock(OsMutex *mutex) {
+void
+OsUnlockMutex(OsMutex *mutex) {
     int ret = SDL_UnlockMutex((SDL_mutex *)mutex);
     if (ret != 0) {
         ABORT("Failed to unlock mutex: %s", SDL_GetError());
@@ -101,10 +91,10 @@ OsMutexUnlock(OsMutex *mutex) {
 
 static Channel *OS_TASK_CHANNEL;
 
-static void
+void
 OsDispatchTask(Task *task) {
     ASSERT(OS_TASK_CHANNEL);
-    bool sent = ChannelSend(OS_TASK_CHANNEL, &task);
+    bool sent = SendToChannel(OS_TASK_CHANNEL, &task);
     ASSERT(sent);
 }
 
@@ -113,27 +103,27 @@ WorkerMain(void *data) {
     Channel *channel = OS_TASK_CHANNEL;
 
     Task *task;
-    while (ChannelRecv(channel, &task)) {
+    while (ReceiveFromChannel(channel, &task)) {
         task->func(task);
 
-        OsMutexLock(task->mutex);
+        OsLockMutex(task->mutex);
         task->done = true;
-        OsCondBroadcast(task->cond);
-        OsMutexUnlock(task->mutex);
+        OsBroadcast(task->cond);
+        OsUnlockMutex(task->mutex);
     }
 
-    ChannelCloseRx(channel);
+    CloseChannelRx(channel);
 
     return 0;
 }
 
-static u64
+u64
 OsGetPerformanceCounter() {
     u64 result = SDL_GetPerformanceCounter();
     return result;
 }
 
-static u64
+u64
 OsGetPerformanceFrequency() {
     u64 result = SDL_GetPerformanceFrequency();
     return result;
@@ -144,26 +134,9 @@ MaybeLoadFile(App *app, OsLoadingFile *file) {
     if (AppCanLoadFile(app)) {
         AppLoadFile(app, file);
     } else {
-        OsLoadingFileClose(file);
+        OsCloseFile(file);
     }
 }
-
-enum MainLoopState {
-    MainLoopState_Init,
-    MainLoopState_Update,
-    MainLoopState_Shutdown,
-};
-
-struct MainLoop {
-    int argc;
-    char **argv;
-    SDL_Thread *worker_thread;
-    MainLoopState state;
-    SDL_Window *window;
-    SDL_Renderer *renderer;
-    App *app;
-    OsLoadingFile *loading_file;
-};
 
 static void *
 ImGuiAlloc(usize size, void *user_data) {
@@ -236,17 +209,17 @@ AllocateMemory(usize size, bool zero) {
     return result;
 }
 
-static void *
+void *
 AllocateMemory(usize size) {
     return AllocateMemory(size, /* zero= */ true);
 }
 
-static void *
+void *
 AllocateMemoryNoZero(usize size) {
     return AllocateMemory(size, /* zero= */ false);
 }
 
-static void *
+void *
 ReallocateMemory(void *ptr_, usize new_size) {
     usize *ptr = (usize *)ptr_;
 
@@ -268,7 +241,7 @@ ReallocateMemory(void *ptr_, usize new_size) {
     return ptr;
 }
 
-static void
+void
 DeallocateMemory(void *ptr_) {
     usize *ptr = (usize *)ptr_;
     if (ptr) {
@@ -279,16 +252,12 @@ DeallocateMemory(void *ptr_) {
     free(ptr);
 }
 
-static usize
+usize
 GetAllocatedBytes() {
     return DEFAULT_ALLOCATOR.allocated_bytes;
 }
 
-static MainLoop MAIN_LOOP = {};
-
-static Vec2 GetInitialWindowSize();
-
-static void NotifyAppInitDone();
+MainLoop MAIN_LOOP = {};
 
 static void
 MainLoopInit(MainLoop *main_loop) {
@@ -299,7 +268,7 @@ MainLoopInit(MainLoop *main_loop) {
         ABORT("Failed to init SDL: %s", SDL_GetError());
     }
 
-    OS_TASK_CHANNEL = ChannelCreate(sizeof(Task *), 1);
+    OS_TASK_CHANNEL = CreateChannel(sizeof(Task *), 1);
     MAIN_LOOP.worker_thread = SDL_CreateThread(WorkerMain, "Worker", 0);
     ASSERT(MAIN_LOOP.worker_thread);
 
@@ -360,7 +329,7 @@ MainLoopInit(MainLoop *main_loop) {
         startup_file = main_loop->argv[1];
     }
     if (startup_file) {
-        OsLoadingFile *file = OsLoadingFileOpen(startup_file);
+        OsLoadingFile *file = OsOpenFile(startup_file);
         if (file) {
             MaybeLoadFile(main_loop->app, file);
         }
@@ -383,7 +352,7 @@ MainLoopUpdate(MainLoop *main_loop) {
 
             case SDL_DROPFILE: {
                 char *path = event.drop.file;
-                OsLoadingFile *file = OsLoadingFileOpen(path);
+                OsLoadingFile *file = OsOpenFile(path);
                 if (file) {
                     MaybeLoadFile(main_loop->app, file);
                 }
@@ -408,7 +377,7 @@ static void
 MainLoopShutdown(MainLoop *main_loop) {
     AppDestroy(main_loop->app);
 
-    ChannelCloseTx(OS_TASK_CHANNEL);
+    CloseChannelTx(OS_TASK_CHANNEL);
     SDL_WaitThread(main_loop->worker_thread, 0);
 
     ImGui_ImplSDLRenderer2_Shutdown();

@@ -63,14 +63,14 @@ struct JsonParser {
     Buffer error;
 };
 
-static JsonParser *BeginJsonParse(
+JsonParser *BeginJsonParse(
     Arena *arena,
     GetJsonInputFunc get_json_input,
     void *data
 );
-static JsonToken GetJsonToken(JsonParser *parser);
-static JsonValue *GetJsonValue(JsonParser *parser);
-static Buffer GetJsonError(JsonParser *parser);
-static void EndJsonParse(JsonParser *parser);
+JsonToken GetJsonToken(JsonParser *parser);
+JsonValue *GetJsonValue(JsonParser *parser);
+Buffer GetJsonError(JsonParser *parser);
+void EndJsonParse(JsonParser *parser);
 
-static f64 ConvertJsonValueToF64(JsonValue *value);
+f64 ConvertJsonValueToF64(JsonValue *value);

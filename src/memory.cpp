@@ -3,12 +3,12 @@
 #include <stdio.h>
 #include <string.h>
 
-static void
+void
 CopyMemory(void *dst, const void *src, usize size) {
     memcpy(dst, src, size);
 }
 
-static char *
+char *
 CopyString(const char *str) {
     usize size = strlen(str);
     char *result = (char *)AllocateMemoryNoZero(size + 1);
@@ -20,7 +20,7 @@ CopyString(const char *str) {
 
 static usize INIT_BLOCK_SIZE = 4 * 1024;
 
-static void *
+void *
 BootstrapPushSize(usize struct_size, usize offset) {
     Arena arena = {};
     void *result = PushSize(&arena, struct_size);
@@ -68,12 +68,12 @@ PushSize(Arena *arena, usize size, bool zero) {
     return result;
 }
 
-static void *
+void *
 PushSize(Arena *arena, usize size) {
     return PushSize(arena, size, /* zero = */ true);
 }
 
-static Buffer
+Buffer
 PushBuffer(Arena *arena, usize size) {
     Buffer buffer = {};
     buffer.data = (u8 *)PushSize(arena, size, /* zero = */ false);
@@ -81,7 +81,7 @@ PushBuffer(Arena *arena, usize size) {
     return buffer;
 }
 
-static Buffer
+Buffer
 PushBuffer(Arena *arena, Buffer src) {
     Buffer dst = PushBuffer(arena, src.size);
     CopyMemory(dst.data, src.data, src.size);
@@ -97,7 +97,7 @@ GetRemaining(Arena *arena) {
     return result;
 }
 
-static Buffer
+Buffer
 PushFormat(Arena *arena, const char *fmt, ...) {
     Buffer result = {};
 
@@ -125,7 +125,7 @@ PushFormat(Arena *arena, const char *fmt, ...) {
     return result;
 }
 
-static TempArena
+TempArena
 BeginTempArena(Arena *arena) {
     TempArena temp_arena = {};
     temp_arena.arena = arena;
@@ -137,7 +137,7 @@ BeginTempArena(Arena *arena) {
     return temp_arena;
 }
 
-static void
+void
 EndTempArena(TempArena temp_arena) {
     Arena *arena = temp_arena.arena;
     if (temp_arena.block) {
@@ -169,8 +169,8 @@ FreeLastBlock(Arena *arena) {
     }
 }
 
-static void
-Clear(Arena *arena) {
+void
+ClearArena(Arena *arena) {
     ASSERT(arena->temp_arena_count == 0);
 
     while (arena->block && arena->block->next) {

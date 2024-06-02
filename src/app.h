@@ -10,10 +10,10 @@ struct App {
     Document *document;
 };
 
-static App *AppCreate();
-static void AppDestroy(App *app);
+App *AppCreate();
+void AppDestroy(App *app);
 
-static void AppUpdate(App *app);
+void AppUpdate(App *app);
 
-static bool AppCanLoadFile(App *app);
-static void AppLoadFile(App *app, OsLoadingFile *file);
+bool AppCanLoadFile(App *app);
+void AppLoadFile(App *app, OsLoadingFile *file);

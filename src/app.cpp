@@ -1,18 +1,18 @@
 #include "app.h"
 #include "ui.h"
 
-static App *
+App *
 AppCreate() {
     App *app = BootstrapPushStruct(App, arena);
     return app;
 }
 
-static void
+void
 AppDestroy(App *app) {
     if (app->document) {
         UnloadDocument(app->document);
     }
-    Clear(&app->arena);
+    ClearArena(&app->arena);
 }
 
 static const char *WELCOME_MESSAGE =
@@ -67,7 +67,7 @@ DrawMenuBar(Arena *frame_arena, App *app) {
     }
 }
 
-static void
+void
 AppUpdate(App *app) {
     TempArena temp_frame_arena = BeginTempArena(&app->arena);
     Arena *frame_arena = temp_frame_arena.arena;
@@ -124,12 +124,12 @@ AppUpdate(App *app) {
     EndTempArena(temp_frame_arena);
 }
 
-static bool
+bool
 AppCanLoadFile(App *app) {
     return true;
 }
 
-static void
+void
 AppLoadFile(App *app, OsLoadingFile *file) {
     if (app->document) {
         UnloadDocument(app->document);

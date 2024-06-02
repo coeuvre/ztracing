@@ -4,3 +4,4 @@ build_web/
 node_modules/
 dist/
 .tasks
+.cache/
