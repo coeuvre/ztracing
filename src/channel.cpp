@@ -12,7 +12,7 @@ struct ItemNode {
 };
 
 struct Channel {
-    Arena *arena;
+    Arena arena;
     OsMutex *mutex;
     OsCond *cond;
     usize item_size;
@@ -40,7 +40,7 @@ DestroyChannel(Channel *channel) {
     ASSERT(channel->rx_closed && channel->tx_closed);
     OsDestroyCond(channel->cond);
     OsDestroyMutex(channel->mutex);
-    ClearArena(channel->arena);
+    ClearArena(&channel->arena);
 }
 
 bool
@@ -103,8 +103,10 @@ SendToChannel(Channel *channel, void *item) {
             item_node = channel->free;
             channel->free = item_node->next;
         } else {
-            item_node = (ItemNode *)
-                PushSize(channel->arena, sizeof(ItemNode) + channel->item_size);
+            item_node = (ItemNode *)PushSize(
+                &channel->arena,
+                sizeof(ItemNode) + channel->item_size
+            );
         }
 
         item_node->next = 0;
