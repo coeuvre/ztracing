@@ -1,3 +1,4 @@
+#include "os.h"
 #include "os_impl.h"
 
 static SDL_LogPriority TO_SDL_LOG_PRIORITY[LogLevel_COUNT] = {
@@ -154,13 +155,13 @@ MemoryCAlloc(usize num, usize size) {
 }
 
 struct {
-    SDL_mutex *mutex;
+    OsMutex *mutex;
     volatile usize allocated_bytes;
 } DEFAULT_ALLOCATOR;
 
 static void
 DefaultAllocatorInit() {
-    DEFAULT_ALLOCATOR.mutex = SDL_CreateMutex();
+    DEFAULT_ALLOCATOR.mutex = OsCreateMutex();
 
     SDL_SetMemoryFunctions(
         AllocateMemoryNoZero,
@@ -182,15 +183,9 @@ DefaultAllocatorDeinit() {
 
 static void
 UpdateAllocatedBytes(usize delta) {
-    int err = SDL_LockMutex(DEFAULT_ALLOCATOR.mutex);
-    if (err != 0) {
-        ABORT("%s", SDL_GetError());
-    }
+    OsLockMutex(DEFAULT_ALLOCATOR.mutex);
     DEFAULT_ALLOCATOR.allocated_bytes += delta;
-    err = SDL_UnlockMutex(DEFAULT_ALLOCATOR.mutex);
-    if (err != 0) {
-        ABORT("%s", SDL_GetError());
-    }
+    OsUnlockMutex(DEFAULT_ALLOCATOR.mutex);
 }
 
 static void *
@@ -268,7 +263,7 @@ MainLoopInit(MainLoop *main_loop) {
         ABORT("Failed to init SDL: %s", SDL_GetError());
     }
 
-    OS_TASK_CHANNEL = CreateChannel(sizeof(Task *), 1);
+    OS_TASK_CHANNEL = CreateChannel(sizeof(Task *), 0);
     MAIN_LOOP.worker_thread = SDL_CreateThread(WorkerMain, "Worker", 0);
     ASSERT(MAIN_LOOP.worker_thread);
 

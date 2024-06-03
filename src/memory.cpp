@@ -44,8 +44,9 @@ PushSize(Arena *arena, usize size, bool zero) {
             new_size <<= 1;
         }
         MemoryBlock *block =
-            (MemoryBlock *)AllocateMemory(sizeof(MemoryBlock) + new_size);
+            (MemoryBlock *)AllocateMemoryNoZero(sizeof(MemoryBlock) + new_size);
         block->prev = arena->block;
+        block->next = 0;
         block->base = (u8 *)(block + 1);
         block->size = new_size;
         block->used = 0;

@@ -1,16 +1,11 @@
 #include "os_impl.h"
 
-struct Chunk {
-    u8 *buf;
-    u32 len;
-};
-
 struct OsLoadingFile {
     char *path;
     usize total;
     Channel *channel;
 
-    Chunk chunk;
+    Buffer chunk;
     usize offset;
 };
 
@@ -23,20 +18,20 @@ u32
 OsReadFile(OsLoadingFile *file, u8 *buf, u32 len) {
     int nread = 0;
 
-    if (!file->chunk.buf) {
+    if (!file->chunk.data) {
         ReceiveFromChannel(file->channel, &file->chunk);
     }
 
-    if (file->chunk.buf) {
-        u32 remaining = file->chunk.len - file->offset;
+    if (file->chunk.data) {
+        u32 remaining = file->chunk.size - file->offset;
         nread = MIN(remaining, len);
         ASSERT(nread > 0);
 
-        CopyMemory(buf, file->chunk.buf + file->offset, nread);
+        CopyMemory(buf, file->chunk.data + file->offset, nread);
         file->offset += nread;
 
-        if (file->offset == file->chunk.len) {
-            DeallocateMemory(file->chunk.buf);
+        if (file->offset == file->chunk.size) {
+            DeallocateMemory(file->chunk.data);
             file->chunk = {};
             file->offset = 0;
         }
@@ -47,8 +42,8 @@ OsReadFile(OsLoadingFile *file, u8 *buf, u32 len) {
 
 static void
 OsLoadingFileDestroy(OsLoadingFile *file) {
-    if (file->chunk.buf) {
-        DeallocateMemory(file->chunk.buf);
+    if (file->chunk.data) {
+        DeallocateMemory(file->chunk.data);
     }
     DeallocateMemory(file->path);
     DeallocateMemory(file);
@@ -114,7 +109,7 @@ AppOnLoadBegin(char *path, usize total) {
             (OsLoadingFile *)AllocateMemory(sizeof(OsLoadingFile));
         file->path = CopyString(path);
         file->total = total;
-        file->channel = CreateChannel(sizeof(Chunk), 1);
+        file->channel = CreateChannel(sizeof(Buffer), 0);
 
         MAIN_LOOP.loading_file = file;
         AppLoadFile(MAIN_LOOP.app, file);
@@ -128,7 +123,9 @@ extern "C" bool
 AppOnLoadChunk(u8 *buf, u32 len) {
     OsLoadingFile *file = MAIN_LOOP.loading_file;
 
-    Chunk chunk = {buf, len};
+    Buffer chunk = {};
+    chunk.data = buf;
+    chunk.size = len;
     bool result = SendToChannel(file->channel, &chunk);
     if (!result) {
         DeallocateMemory(buf);
