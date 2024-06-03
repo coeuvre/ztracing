@@ -170,7 +170,7 @@ SkipObjectValue(Arena *arena, JsonParser *parser, ParseResult *result) {
     u32 open = 0;
     bool done = false;
     while (!done) {
-        JsonToken token = GetJsonToken(parser);
+        JsonToken token = GetJsonToken(&parser->tokenizer);
         switch (token.type) {
         case JsonToken_Comma: {
             if (open == 0) {
@@ -209,7 +209,7 @@ SkipObjectValue(Arena *arena, JsonParser *parser, ParseResult *result) {
 
 static bool
 SkipToken(JsonParser *parser, JsonTokenType type) {
-    JsonToken token = GetJsonToken(parser);
+    JsonToken token = GetJsonToken(&parser->tokenizer);
     return token.type == type;
 }
 
@@ -269,7 +269,7 @@ ParseJsonTraceEventArray(
     ParseResult *result
 ) {
     bool eof = false;
-    JsonToken token = GetJsonToken(parser);
+    JsonToken token = GetJsonToken(&parser->tokenizer);
     switch (token.type) {
     case JsonToken_OpenBracket: {
         bool done = false;
@@ -280,7 +280,7 @@ ParseJsonTraceEventArray(
                     ProcessTraceEvent(arena, value);
                 }
 
-                token = GetJsonToken(parser);
+                token = GetJsonToken(&parser->tokenizer);
                 switch (token.type) {
                 case JsonToken_Comma: {
                 } break;
@@ -330,12 +330,12 @@ ParseJsonTraceEventArray(
 static ParseResult
 ParseJsonTrace(Arena *arena, JsonParser *parser) {
     ParseResult result = {};
-    JsonToken token = GetJsonToken(parser);
+    JsonToken token = GetJsonToken(&parser->tokenizer);
     switch (token.type) {
     case JsonToken_OpenBrace: {
         bool done = false;
         while (!done) {
-            token = GetJsonToken(parser);
+            token = GetJsonToken(&parser->tokenizer);
             switch (token.type) {
             case JsonToken_StringLiteral: {
                 if (AreEqual(token.value, STRING_LITERAL("traceEvents"))) {

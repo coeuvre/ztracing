@@ -40,6 +40,8 @@ struct JsonTokenizer {
     void *get_json_input_data;
 };
 
+JsonToken GetJsonToken(JsonTokenizer *tokenizer);
+
 enum JsonValueType {
     JsonValue_Object,
     JsonValue_Array,
@@ -71,7 +73,6 @@ JsonParser *BeginJsonParse(
     GetJsonInputFunc get_json_input,
     void *data
 );
-JsonToken GetJsonToken(JsonParser *parser);
 JsonValue *GetJsonValue(JsonParser *parser);
 Buffer GetJsonError(JsonParser *parser);
 void EndJsonParse(JsonParser *parser);

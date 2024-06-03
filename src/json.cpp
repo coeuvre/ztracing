@@ -82,7 +82,7 @@ BeginTempTokenArena(JsonTokenizer *tokenizer) {
     return tokenizer->temp_arena.arena;
 }
 
-static void
+static inline void
 Append(Arena *arena, Buffer *buffer, usize *cursor, u8 val) {
     if (*cursor >= buffer->size) {
         Buffer new_buffer = PushBuffer(arena, buffer->size << 1);
@@ -92,7 +92,7 @@ Append(Arena *arena, Buffer *buffer, usize *cursor, u8 val) {
     buffer->data[(*cursor)++] = val;
 }
 
-static bool
+static inline bool
 ParseDigits(
     JsonTokenizer *tokenizer,
     Arena *arena,
@@ -114,7 +114,7 @@ ParseDigits(
     return has_digits;
 }
 
-static JsonToken
+JsonToken
 GetJsonToken(JsonTokenizer *tokenizer) {
     JsonToken token = {};
 
@@ -356,11 +356,6 @@ GetJsonToken(JsonTokenizer *tokenizer) {
     return token;
 }
 
-JsonToken
-GetJsonToken(JsonParser *parser) {
-    return GetJsonToken(&parser->tokenizer);
-}
-
 static void
 MaybeEndValueTempArena(JsonParser *parser) {
     if (parser->temp_arena.arena) {
@@ -379,7 +374,7 @@ BeginValueTempArena(JsonParser *parser) {
 static bool
 ExpectToken(JsonParser *parser, Arena *arena, JsonTokenType type) {
     bool got = false;
-    JsonToken token = GetJsonToken(parser);
+    JsonToken token = GetJsonToken(&parser->tokenizer);
     if (token.type == type) {
         got = true;
     } else {
@@ -403,7 +398,7 @@ ParseJsonObject(JsonParser *parser, Arena *arena) {
     bool has_value = false;
     bool done = false;
     while (!done) {
-        JsonToken token = GetJsonToken(parser);
+        JsonToken token = GetJsonToken(&parser->tokenizer);
         switch (token.type) {
         case JsonToken_StringLiteral: {
             Buffer key = PushBuffer(arena, token.value);
@@ -479,7 +474,7 @@ ParseJsonArray(JsonParser *parser, Arena *arena) {
             }
             last_child = child;
 
-            JsonToken token = GetJsonToken(parser);
+            JsonToken token = GetJsonToken(&parser->tokenizer);
             switch (token.type) {
             case JsonToken_Comma: {
             } break;
@@ -509,7 +504,7 @@ static JsonValue *
 ParseJsonValue(JsonParser *parser, Arena *arena) {
     JsonValue *result = 0;
 
-    JsonToken token = GetJsonToken(parser);
+    JsonToken token = GetJsonToken(&parser->tokenizer);
     switch (token.type) {
     case JsonToken_OpenBrace: {
         result = ParseJsonObject(parser, arena);
