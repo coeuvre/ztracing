@@ -284,7 +284,8 @@ GetJsonToken(JsonTokenizer *tokenizer) {
                     token.type = JsonToken_Error;
                     token.value = PushFormat(
                         arena,
-                        "Invalid number '%.*s', expecting digits but got '%c'",
+                        "Invalid number '%.*s', expecting digits after '.' but "
+                        "got '%c'",
                         buffer.size,
                         buffer.data,
                         val
@@ -305,23 +306,29 @@ GetJsonToken(JsonTokenizer *tokenizer) {
             val = TakeInput(tokenizer);
             if (val == 'e' || val == 'E') {
                 Append(arena, &buffer, &cursor, val);
-                if (!ParseDigits(tokenizer, arena, &buffer, &cursor)) {
-                    val = TakeInput(tokenizer);
+
+                val = TakeInput(tokenizer);
+                if (val == '-' || val >= '0' && val <= '9') {
+                    Append(arena, &buffer, &cursor, val);
+
+                    ParseDigits(tokenizer, arena, &buffer, &cursor);
+
+                    token.type = JsonToken_Number;
+                    token.value.data = buffer.data;
+                    token.value.size = cursor;
+                    done = true;
+                } else {
                     ReturnInput(tokenizer, val);
 
                     token.type = JsonToken_Error;
                     token.value = PushFormat(
                         arena,
-                        "Invalid number '%.*s', expecting digits but got '%c'",
+                        "Invalid number '%.*s', expecting sign or digits after "
+                        "'E' but got '%c'",
                         buffer.size,
                         buffer.data,
                         val
                     );
-                    done = true;
-                } else {
-                    token.type = JsonToken_Number;
-                    token.value.data = buffer.data;
-                    token.value.size = cursor;
                     done = true;
                 }
             } else {

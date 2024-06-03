@@ -4,6 +4,7 @@
 
 #include "json.h"
 #include "memory.h"
+#include "task.h"
 #include "ui.h"
 
 static voidpf
@@ -262,7 +263,11 @@ ProcessTraceEvent(Arena *arena, JsonValue *value) {
 }
 
 static bool
-ParseJsonTraceEventArray(Arena *arena, JsonParser *parser) {
+ParseJsonTraceEventArray(
+    Arena *arena,
+    JsonParser *parser,
+    ParseResult *result
+) {
     bool eof = false;
     JsonToken token = GetJsonToken(parser);
     switch (token.type) {
@@ -285,7 +290,8 @@ ParseJsonTraceEventArray(Arena *arena, JsonParser *parser) {
                 } break;
 
                 default: {
-                    ERROR(
+                    result->error = PushFormat(
+                        arena,
                         "Unexpected token '%.*s'",
                         token.value.size,
                         token.value.data
@@ -295,8 +301,7 @@ ParseJsonTraceEventArray(Arena *arena, JsonParser *parser) {
                 } break;
                 }
             } else {
-                Buffer error = GetJsonError(parser);
-                ERROR("%.*s", error.size, error.data);
+                result->error = PushBuffer(arena, GetJsonError(parser));
                 done = true;
                 eof = true;
             }
@@ -304,12 +309,17 @@ ParseJsonTraceEventArray(Arena *arena, JsonParser *parser) {
     } break;
 
     case JsonToken_Error: {
-        ERROR("%.*s", token.value.size, token.value.data);
+        result->error = PushBuffer(arena, token.value);
         eof = true;
     } break;
 
     default: {
-        ERROR("Unexpected token: '%.*s'", token.value.size, token.value.data);
+        result->error = PushFormat(
+            arena,
+            "Unexpected token: '%.*s'",
+            token.value.size,
+            token.value.data
+        );
         eof = true;
     } break;
     }
@@ -330,7 +340,7 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
             case JsonToken_StringLiteral: {
                 if (AreEqual(token.value, STRING_LITERAL("traceEvents"))) {
                     if (SkipToken(parser, JsonToken_Colon)) {
-                        done = ParseJsonTraceEventArray(arena, parser);
+                        done = ParseJsonTraceEventArray(arena, parser, &result);
                     } else {
                         result.error = PushFormat(
                             arena,
@@ -350,12 +360,7 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
             } break;
 
             case JsonToken_Error: {
-                result.error = PushFormat(
-                    arena,
-                    "%.*s",
-                    token.value.size,
-                    token.value.data
-                );
+                result.error = PushBuffer(arena, token.value);
                 done = true;
             } break;
 
@@ -416,18 +421,21 @@ DoLoadDocument(Task *task) {
     u64 end_counter = OsGetPerformanceCounter();
     f32 seconds =
         (f64)(end_counter - start_counter) / (f64)OsGetPerformanceFrequency();
-    if (result.error.data) {
-        ERROR("%s", result.error.data);
-    } else {
-        INFO(
-            "Loaded %.1f MB in %.2f s (%.1f MB/s).",
-            state->loaded / 1024.0f / 1024.0f,
-            seconds,
-            state->loaded / seconds / 1024.0f / 1024.0f
-        );
-    }
 
     OsCloseFile(state->file);
+
+    if (!IsTaskCancelled(task)) {
+        if (result.error.data) {
+            WARN("%s", result.error.data);
+        } else {
+            INFO(
+                "Loaded %.1f MB in %.2f s (%.1f MB/s).",
+                state->loaded / 1024.0f / 1024.0f,
+                seconds,
+                state->loaded / seconds / 1024.0f / 1024.0f
+            );
+        }
+    }
 }
 
 static void
