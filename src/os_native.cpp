@@ -1,4 +1,8 @@
+#include "core.h"
 #include "os_impl.h"
+
+#include "memory.h"
+#include <cstring>
 
 Vec2
 GetInitialWindowSize() {
@@ -10,7 +14,8 @@ void
 NotifyAppInitDone() {}
 
 struct OsLoadingFile {
-    char *path;
+    Arena arena;
+    Buffer path;
     usize total;
     SDL_RWops *rw;
 };
@@ -25,8 +30,11 @@ OsOpenFile(char *path) {
             ABORT("Failed to get size of %s", path);
         }
 
-        file = (OsLoadingFile *)AllocateMemory(sizeof(OsLoadingFile));
-        file->path = CopyString(path);
+        file = BootstrapPushStruct(OsLoadingFile, arena);
+        Buffer src = {};
+        src.data = (u8 *)path;
+        src.size = strlen(path);
+        file->path = PushBuffer(&file->arena, src);
         file->total = total;
         file->rw = rw;
     } else {
@@ -47,11 +55,10 @@ OsCloseFile(OsLoadingFile *file) {
     if (ret != 0) {
         ABORT("Failed to close file: %s", SDL_GetError());
     }
-    DeallocateMemory(file->path);
-    DeallocateMemory(file);
+    ClearArena(&file->arena);
 }
 
-char *
+Buffer
 OsGetFilePath(OsLoadingFile *file) {
     return file->path;
 }

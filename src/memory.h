@@ -2,24 +2,20 @@
 
 #include "core.h"
 
-// Allocate a block of memory whose size is at least size bytes, assert non-null
-// and initialize it to 0.
+#include <string.h>
+
 void *AllocateMemory(usize size);
-void *AllocateMemoryNoZero(usize size);
 void *ReallocateMemory(void *ptr, usize new_size);
 void DeallocateMemory(void *ptr);
 // Return current allocated memory in bytes.
 usize GetAllocatedBytes();
-void CopyMemory(void *dst, const void *src, usize size);
-char *CopyString(const char *str);
 
-struct MemoryBlock {
-    MemoryBlock *prev;
-    MemoryBlock *next;
-    u8 *base;
-    usize size;
-    usize used;
-};
+static inline void
+CopyMemory(void *dst, const void *src, usize size) {
+    memcpy(dst, src, size);
+}
+
+struct MemoryBlock;
 
 struct Arena {
     MemoryBlock *block;

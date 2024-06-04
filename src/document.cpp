@@ -9,7 +9,7 @@
 
 static voidpf
 ZLibAlloc(voidpf opaque, uInt items, uInt size) {
-    return AllocateMemoryNoZero(items * size);
+    return AllocateMemory(items * size);
 }
 
 static void
@@ -397,7 +397,8 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
 static void
 DoLoadDocument(Task *task) {
     LoadState *state = (LoadState *)task->data;
-    INFO("Loading file %s ...", OsGetFilePath(state->file));
+    Buffer path = OsGetFilePath(state->file);
+    INFO("Loading file %.*s ...", (int)path.size, path.data);
 
     u64 start_counter = OsGetPerformanceCounter();
 
@@ -457,7 +458,7 @@ WaitLoading(Document *document) {
 Document *
 LoadDocument(OsLoadingFile *file) {
     Document *document = BootstrapPushStruct(Document, arena);
-    document->path = PushFormatZ(&document->arena, "%s", OsGetFilePath(file));
+    document->path = PushBuffer(&document->arena, OsGetFilePath(file));
     document->state = DocumentState_Loading;
     document->loading.task =
         CreateTask(DoLoadDocument, &document->loading.state);
@@ -498,8 +499,9 @@ RenderDocument(Document *document, Arena *frame_arena) {
 
     case DocumentState_Error: {
         ImGui::Text(
-            "Failed to load \"%s\": %s",
-            document->path,
+            "Failed to load \"%.*s\": %s",
+            (int)document->path.size,
+            document->path.data,
             document->error.message.data
         );
     } break;

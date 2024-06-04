@@ -2,22 +2,14 @@
 
 #include <stdarg.h>
 #include <stdio.h>
-#include <string.h>
 
-void
-CopyMemory(void *dst, const void *src, usize size) {
-    memcpy(dst, src, size);
-}
-
-char *
-CopyString(const char *str) {
-    usize size = strlen(str);
-    char *result = (char *)AllocateMemoryNoZero(size + 1);
-    ASSERT(result);
-    CopyMemory(result, str, size);
-    result[size] = 0;
-    return result;
-}
+struct MemoryBlock {
+    MemoryBlock *prev;
+    MemoryBlock *next;
+    u8 *base;
+    usize size;
+    usize used;
+};
 
 static usize INIT_BLOCK_SIZE = 4 * 1024;
 
@@ -45,7 +37,7 @@ PushSize(Arena *arena, usize size, bool zero) {
             new_size <<= 1;
         }
         MemoryBlock *block =
-            (MemoryBlock *)AllocateMemoryNoZero(sizeof(MemoryBlock) + new_size);
+            (MemoryBlock *)AllocateMemory(sizeof(MemoryBlock) + new_size);
         block->prev = arena->block;
         block->next = 0;
         block->base = (u8 *)(block + 1);

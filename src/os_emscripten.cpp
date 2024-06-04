@@ -1,7 +1,10 @@
 #include "os_impl.h"
 
+#include "memory.h"
+
 struct OsLoadingFile {
-    char *path;
+    Arena arena;
+    Buffer path;
     usize total;
     Channel *channel;
 
@@ -45,8 +48,7 @@ OsLoadingFileDestroy(OsLoadingFile *file) {
     if (file->chunk.data) {
         DeallocateMemory(file->chunk.data);
     }
-    DeallocateMemory(file->path);
-    DeallocateMemory(file);
+    ClearArena(&file->arena);
 }
 
 void
@@ -56,7 +58,7 @@ OsCloseFile(OsLoadingFile *file) {
     }
 }
 
-char *
+Buffer
 OsGetFilePath(OsLoadingFile *file) {
     return file->path;
 }
@@ -105,9 +107,11 @@ AppOnLoadBegin(char *path, usize total) {
     bool result = !MAIN_LOOP.loading_file && AppCanLoadFile(MAIN_LOOP.app);
 
     if (result) {
-        OsLoadingFile *file =
-            (OsLoadingFile *)AllocateMemory(sizeof(OsLoadingFile));
-        file->path = CopyString(path);
+        OsLoadingFile *file = BootstrapPushStruct(OsLoadingFile, arena);
+        Buffer src = {};
+        src.data = (u8 *)path;
+        src.size = strlen(path);
+        file->path = PushBuffer(&file->arena, src);
         file->total = total;
         file->channel = CreateChannel(sizeof(Buffer), 0);
 

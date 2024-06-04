@@ -19,7 +19,7 @@ struct LoadState {
 
 struct Document {
     Arena arena;
-    char *path;
+    Buffer path;
 
     DocumentState state;
     union {

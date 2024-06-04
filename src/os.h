@@ -20,7 +20,7 @@ struct OsLoadingFile;
 OsLoadingFile *OsOpenFile(char *path);
 u32 OsReadFile(OsLoadingFile *file, u8 *buf, u32 len);
 void OsCloseFile(OsLoadingFile *file);
-char *OsGetFilePath(OsLoadingFile *file);
+Buffer OsGetFilePath(OsLoadingFile *file);
 
 struct Task;
 void OsDispatchTask(Task *task);

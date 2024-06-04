@@ -141,7 +141,7 @@ MaybeLoadFile(App *app, OsLoadingFile *file) {
 
 static void *
 ImGuiAlloc(usize size, void *user_data) {
-    return AllocateMemoryNoZero(size);
+    return AllocateMemory(size);
 }
 
 static void
@@ -149,10 +149,7 @@ ImGuiFree(void *ptr, void *user_data) {
     DeallocateMemory(ptr);
 }
 
-static void *
-MemoryCAlloc(usize num, usize size) {
-    return AllocateMemory(num * size);
-}
+static void *CountAllocateMemory(usize num, usize size);
 
 struct {
     OsMutex *mutex;
@@ -164,8 +161,8 @@ DefaultAllocatorInit() {
     DEFAULT_ALLOCATOR.mutex = OsCreateMutex();
 
     SDL_SetMemoryFunctions(
-        AllocateMemoryNoZero,
-        MemoryCAlloc,
+        AllocateMemory,
+        CountAllocateMemory,
         ReallocateMemory,
         DeallocateMemory
     );
@@ -188,30 +185,23 @@ UpdateAllocatedBytes(usize delta) {
     OsUnlockMutex(DEFAULT_ALLOCATOR.mutex);
 }
 
-static void *
-AllocateMemory(usize size, bool zero) {
+void *
+AllocateMemory(usize size) {
     usize total_size = sizeof(size) + size;
     usize *result = (usize *)malloc(total_size);
-    if (zero) {
-        ASSERT(result);
-        memset(result, 0, total_size);
-    }
-    if (result) {
-        result[0] = total_size;
-        result += 1;
-        UpdateAllocatedBytes(total_size);
-    }
+    ASSERT(result);
+    result[0] = total_size;
+    result += 1;
+    UpdateAllocatedBytes(total_size);
     return result;
 }
 
-void *
-AllocateMemory(usize size) {
-    return AllocateMemory(size, /* zero= */ true);
-}
-
-void *
-AllocateMemoryNoZero(usize size) {
-    return AllocateMemory(size, /* zero= */ false);
+static void *
+CountAllocateMemory(usize num, usize size) {
+    usize total_size = num * size;
+    void *result = AllocateMemory(total_size);
+    memset(result, 0, total_size);
+    return result;
 }
 
 void *
