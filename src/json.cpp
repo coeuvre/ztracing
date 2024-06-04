@@ -1,4 +1,5 @@
 #include "json.h"
+#include "memory.h"
 
 #include <math.h>
 
@@ -67,21 +68,6 @@ SkipWhitespace(JsonTokenizer *tokenizer) {
     }
 }
 
-static void
-MaybeEndTokenTempArena(JsonTokenizer *tokenizer) {
-    if (tokenizer->temp_arena.arena) {
-        EndTempArena(tokenizer->temp_arena);
-        tokenizer->temp_arena.arena = 0;
-    }
-}
-
-static Arena *
-BeginTempTokenArena(JsonTokenizer *tokenizer) {
-    ASSERT(!tokenizer->temp_arena.arena);
-    tokenizer->temp_arena = BeginTempArena(&tokenizer->arena);
-    return tokenizer->temp_arena.arena;
-}
-
 static inline void
 Append(Arena *arena, Buffer *buffer, usize *cursor, u8 val) {
     if (*cursor >= buffer->size) {
@@ -118,8 +104,8 @@ JsonToken
 GetJsonToken(JsonTokenizer *tokenizer) {
     JsonToken token = {};
 
-    MaybeEndTokenTempArena(tokenizer);
-    Arena *arena = BeginTempTokenArena(tokenizer);
+    TempArena temp_arena = BeginTempArena(&tokenizer->arena);
+    Arena *arena = temp_arena.arena;
 
     SkipWhitespace(tokenizer);
 
@@ -156,7 +142,7 @@ GetJsonToken(JsonTokenizer *tokenizer) {
     case 't': {
         Buffer expected_suffix = STRING_LITERAL("rue");
         Buffer suffix = TakeInput(tokenizer, expected_suffix.size);
-        if (AreEqual(expected_suffix, suffix)) {
+        if (Equal(expected_suffix, suffix)) {
             token.type = JsonToken_True;
         } else {
             token.type = JsonToken_Error;
@@ -172,7 +158,7 @@ GetJsonToken(JsonTokenizer *tokenizer) {
     case 'f': {
         Buffer expected_suffix = STRING_LITERAL("alse");
         Buffer suffix = TakeInput(tokenizer, expected_suffix.size);
-        if (AreEqual(expected_suffix, suffix)) {
+        if (Equal(expected_suffix, suffix)) {
             token.type = JsonToken_False;
         } else {
             token.type = JsonToken_Error;
@@ -188,7 +174,7 @@ GetJsonToken(JsonTokenizer *tokenizer) {
     case 'n': {
         Buffer expected_suffix = STRING_LITERAL("ull");
         Buffer suffix = TakeInput(tokenizer, expected_suffix.size);
-        if (AreEqual(expected_suffix, suffix)) {
+        if (Equal(expected_suffix, suffix)) {
             token.type = JsonToken_Null;
         } else {
             token.type = JsonToken_Error;
@@ -353,22 +339,9 @@ GetJsonToken(JsonTokenizer *tokenizer) {
     } break;
     }
 
+    EndTempArena(temp_arena);
+
     return token;
-}
-
-static void
-MaybeEndValueTempArena(JsonParser *parser) {
-    if (parser->temp_arena.arena) {
-        EndTempArena(parser->temp_arena);
-        parser->temp_arena.arena = 0;
-    }
-}
-
-static Arena *
-BeginValueTempArena(JsonParser *parser) {
-    ASSERT(!parser->temp_arena.arena);
-    parser->temp_arena = BeginTempArena(parser->arena);
-    return parser->temp_arena.arena;
 }
 
 static bool
@@ -555,9 +528,9 @@ ParseJsonValue(JsonParser *parser, Arena *arena) {
 
 JsonValue *
 GetJsonValue(JsonParser *parser) {
-    MaybeEndValueTempArena(parser);
-    Arena *arena = BeginValueTempArena(parser);
-    JsonValue *result = ParseJsonValue(parser, arena);
+    TempArena temp_arena = BeginTempArena(parser->arena);
+    JsonValue *result = ParseJsonValue(parser, temp_arena.arena);
+    EndTempArena(temp_arena);
     return result;
 }
 
@@ -568,10 +541,7 @@ GetJsonError(JsonParser *parser) {
 
 void
 EndJsonParse(JsonParser *parser) {
-    MaybeEndTokenTempArena(&parser->tokenizer);
     ClearArena(&parser->tokenizer.arena);
-
-    MaybeEndValueTempArena(parser);
 }
 
 static f64

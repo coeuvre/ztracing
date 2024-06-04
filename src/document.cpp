@@ -230,23 +230,23 @@ static void
 ProcessTraceEvent(Arena *arena, JsonValue *value) {
     TraceEvent trace_event = {};
     for (JsonValue *entry = value->child; entry; entry = entry->next) {
-        if (AreEqual(entry->label, STRING_LITERAL("name"))) {
+        if (Equal(entry->label, STRING_LITERAL("name"))) {
             trace_event.name = entry->value;
-        } else if (AreEqual(entry->label, STRING_LITERAL("ph"))) {
+        } else if (Equal(entry->label, STRING_LITERAL("ph"))) {
             if (entry->value.size > 0) {
                 trace_event.ph = entry->value.data[0];
             }
-        } else if (AreEqual(entry->label, STRING_LITERAL("ts"))) {
+        } else if (Equal(entry->label, STRING_LITERAL("ts"))) {
             trace_event.ts = ConvertJsonValueToF64(entry);
-        } else if (AreEqual(entry->label, STRING_LITERAL("tts"))) {
+        } else if (Equal(entry->label, STRING_LITERAL("tts"))) {
             trace_event.tts = ConvertJsonValueToF64(entry);
-        } else if (AreEqual(entry->label, STRING_LITERAL("pid"))) {
+        } else if (Equal(entry->label, STRING_LITERAL("pid"))) {
             trace_event.pid = ConvertJsonValueToF64(entry);
-        } else if (AreEqual(entry->label, STRING_LITERAL("tid"))) {
+        } else if (Equal(entry->label, STRING_LITERAL("tid"))) {
             trace_event.tid = ConvertJsonValueToF64(entry);
-        } else if (AreEqual(entry->label, STRING_LITERAL("dur"))) {
+        } else if (Equal(entry->label, STRING_LITERAL("dur"))) {
             trace_event.dur = ConvertJsonValueToF64(entry);
-        } else if (AreEqual(entry->label, STRING_LITERAL("args"))) {
+        } else if (Equal(entry->label, STRING_LITERAL("args"))) {
             trace_event.args = entry;
         }
     }
@@ -338,7 +338,7 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
             token = GetJsonToken(&parser->tokenizer);
             switch (token.type) {
             case JsonToken_StringLiteral: {
-                if (AreEqual(token.value, STRING_LITERAL("traceEvents"))) {
+                if (Equal(token.value, STRING_LITERAL("traceEvents"))) {
                     if (SkipToken(parser, JsonToken_Colon)) {
                         done = ParseJsonTraceEventArray(arena, parser, &result);
                     } else {
@@ -426,7 +426,7 @@ DoLoadDocument(Task *task) {
 
     if (!IsTaskCancelled(task)) {
         if (result.error.data) {
-            WARN("%s", result.error.data);
+            ERROR("%s", result.error.data);
         } else {
             INFO(
                 "Loaded %.1f MB in %.2f s (%.1f MB/s).",

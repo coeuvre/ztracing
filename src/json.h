@@ -32,7 +32,6 @@ typedef Buffer (*GetJsonInputFunc)(void *data);
 
 struct JsonTokenizer {
     Arena arena;
-    TempArena temp_arena;
     u8 tmp;
     Buffer buffer;
     usize cursor;
@@ -64,7 +63,6 @@ struct JsonParser {
     JsonTokenizer tokenizer;
 
     Arena *arena;
-    TempArena temp_arena;
     Buffer error;
 };
 

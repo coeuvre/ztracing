@@ -1,6 +1,5 @@
 #pragma once
 
-#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -72,7 +71,7 @@ struct Buffer {
 };
 
 inline bool
-AreEqual(Buffer a, Buffer b) {
+Equal(Buffer a, Buffer b) {
     if (a.size != b.size) {
         return false;
     }
@@ -86,4 +85,5 @@ AreEqual(Buffer a, Buffer b) {
     return true;
 }
 
-#define STRING_LITERAL(string) {(u8 *)(string), sizeof(string) - 1}
+#define STRING_LITERAL(string)                                                 \
+    { (u8 *)(string), sizeof(string) - 1 }
