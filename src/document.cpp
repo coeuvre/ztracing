@@ -9,25 +9,12 @@
 
 static voidpf
 ZLibAlloc(voidpf opaque, uInt items, uInt size) {
-    isize total_size = sizeof(isize) + items * size;
-    isize *ptr = (isize *)AllocateMemory(total_size);
-    if (ptr) {
-        ptr[0] = total_size;
-        ptr += 1;
-    }
-    return ptr;
+    Arena *arena = (Arena *)opaque;
+    return PushSize(arena, items * size);
 }
 
 static void
-ZLibFree(voidpf opaque, voidpf address) {
-    isize *ptr = 0;
-    isize size = 0;
-    if (address) {
-        ptr = (isize *)address - 1;
-        size = ptr[0];
-    }
-    DeallocateMemory(ptr, size);
-}
+ZLibFree(voidpf opaque, voidpf address) {}
 
 enum LoadProgress {
     LoadProgress_Init,
@@ -144,9 +131,6 @@ LoadIntoBuffer(Load *load, Buffer buf) {
 
 static void
 EndLoadFile(Load *load) {
-    if (load->zstream_buf) {
-        inflateEnd(&load->zstream);
-    }
     EndTempArena(load->temp_arena);
 }
 
@@ -170,8 +154,50 @@ GetJsonInput(void *data_) {
     return result;
 }
 
+struct CounterResult {
+    Buffer name;
+};
+
+struct ProcessResult {
+    i64 pid;
+    HashMap counters;
+    isize counter_size;
+};
+
+static CounterResult *
+UpsertCounterResult(Arena *arena, ProcessResult *process, Buffer name) {
+    CounterResult **counter =
+        (CounterResult **)Upsert(arena, &process->counters, name);
+    if (!*counter) {
+        CounterResult *new_counter = PushStruct(arena, CounterResult);
+        new_counter->name = GetKey(counter);
+        *counter = new_counter;
+        process->counter_size += 1;
+    }
+    return *counter;
+}
+
+struct ProfileResult {
+    HashMap processes;
+    isize process_size;
+};
+
+static ProcessResult *
+UpsertProcessResult(Arena *arena, ProfileResult *profile, i64 pid) {
+    ProcessResult **process = (ProcessResult **)
+        Upsert(arena, &profile->processes, Buffer{(u8 *)&pid, sizeof(pid)});
+    if (!*process) {
+        ProcessResult *new_process = PushStruct(arena, ProcessResult);
+        new_process->pid = pid;
+        *process = new_process;
+        profile->process_size += 1;
+    }
+    return *process;
+}
+
 struct ParseResult {
     Buffer error;
+    ProfileResult profile;
 };
 
 // Skip tokens until next key-value pair in this object. Returns true if EOF
@@ -239,7 +265,7 @@ struct TraceEvent {
 };
 
 static void
-ProcessTraceEvent(Arena *arena, JsonValue *value) {
+ProcessTraceEvent(Arena *arena, JsonValue *value, ProfileResult *profile) {
     TraceEvent trace_event = {};
     for (JsonValue *entry = value->child; entry; entry = entry->next) {
         if (Equal(entry->label, STRING_LITERAL("name"))) {
@@ -267,6 +293,10 @@ ProcessTraceEvent(Arena *arena, JsonValue *value) {
     // Counter event
     case 'C': {
         // TODO: handle trace_event.id
+        ProcessResult *process =
+            UpsertProcessResult(arena, profile, trace_event.pid);
+        CounterResult *counter =
+            UpsertCounterResult(arena, process, trace_event.name);
     } break;
 
     default: {
@@ -289,7 +319,7 @@ ParseJsonTraceEventArray(
             JsonValue *value = GetJsonValue(parser);
             if (value) {
                 if (value->type == JsonValue_Object) {
-                    ProcessTraceEvent(arena, value);
+                    ProcessTraceEvent(arena, value, &result->profile);
                 }
 
                 token = GetJsonToken(&parser->tokenizer);
@@ -414,22 +444,27 @@ DoLoadDocument(Task *task) {
 
     u64 start_counter = OsGetPerformanceCounter();
 
-    Load *load = BeginLoadFile(&task->arena, state->file);
     isize size = 4096;
     Buffer buf = PushBuffer(&task->arena, size);
+    Load *load = BeginLoadFile(&task->arena, state->file);
 
     GetJsonInputData get_json_input_data = {};
     get_json_input_data.task = task;
     get_json_input_data.load = load;
     get_json_input_data.buf = buf;
 
+    Arena json_arena = {};
+    Arena parse_arena = {};
     JsonParser *parser =
-        BeginJsonParse(&task->arena, GetJsonInput, &get_json_input_data);
-    ParseResult result = ParseJsonTrace(state->document_arena, parser);
+        BeginJsonParse(&json_arena, GetJsonInput, &get_json_input_data);
+    ParseResult result = ParseJsonTrace(&parse_arena, parser);
     state->error = result.error;
     EndJsonParse(parser);
 
     EndLoadFile(load);
+    ClearArena(&json_arena);
+
+    ClearArena(&parse_arena);
 
     u64 end_counter = OsGetPerformanceCounter();
     f32 seconds =

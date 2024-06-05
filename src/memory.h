@@ -59,3 +59,21 @@ TempArena BeginTempArena(Arena *arena);
 void EndTempArena(TempArena temp_arena);
 
 void ClearArena(Arena *arena);
+
+struct HashNode {
+    HashNode *child[4];
+    Buffer key;
+    void *value;
+};
+
+struct HashMap {
+    HashNode *root;
+};
+
+void **Upsert(Arena *arena, HashMap *m, Buffer key);
+
+static inline Buffer
+GetKey(void *val_ptr) {
+    HashNode *node = (HashNode *)((u8 *)val_ptr - offsetof(HashNode, value));
+    return node->key;
+}

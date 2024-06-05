@@ -175,3 +175,27 @@ ClearArena(Arena *arena) {
         FreeLastBlock(arena);
     }
 }
+
+static inline u64
+Hash(Buffer buffer) {
+    u64 h = 0x100;
+    for (isize i = 0; i < buffer.size; i++) {
+        h ^= buffer.data[i];
+        h *= 1111111111111111111u;
+    }
+    return h;
+}
+
+void **
+Upsert(Arena *arena, HashMap *m, Buffer key) {
+    HashNode **node = &m->root;
+    for (u64 hash = Hash(key); *node; hash <<= 2) {
+        if (Equal(key, (*node)->key)) {
+            return &(*node)->value;
+        }
+        node = &(*node)->child[hash >> 62];
+    }
+    *node = PushStruct(arena, HashNode);
+    (*node)->key = PushBuffer(arena, key);
+    return &(*node)->value;
+}
