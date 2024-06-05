@@ -15,9 +15,9 @@ struct Channel {
     Arena arena;
     OsMutex *mutex;
     OsCond *cond;
-    usize item_size;
-    usize cap;
-    usize len;
+    isize item_size;
+    isize cap;
+    isize len;
     ItemNode *first;
     ItemNode *last;
     ItemNode *free;
@@ -26,7 +26,7 @@ struct Channel {
 };
 
 Channel *
-CreateChannel(usize item_size, usize cap) {
+CreateChannel(isize item_size, isize cap) {
     Channel *channel = BootstrapPushStruct(Channel, arena);
     channel->mutex = OsCreateMutex();
     channel->cond = OsCreateCond();

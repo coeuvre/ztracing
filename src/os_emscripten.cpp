@@ -5,11 +5,11 @@
 struct OsLoadingFile {
     Arena arena;
     Buffer path;
-    usize total;
+    isize total;
     Channel *channel;
 
     Buffer chunk;
-    usize offset;
+    isize offset;
 };
 
 OsLoadingFile *
@@ -90,7 +90,7 @@ NotifyAppInitDone() {
 
 EMSCRIPTEN_KEEPALIVE
 extern "C" void *
-AppAllocateMemory(usize size) {
+AppAllocateMemory(isize size) {
     void *result = AllocateMemory(size);
     return result;
 }
@@ -103,7 +103,7 @@ AppSetWindowSize(int width, int height) {
 
 EMSCRIPTEN_KEEPALIVE
 extern "C" bool
-AppOnLoadBegin(char *path, usize total) {
+AppOnLoadBegin(char *path, isize total) {
     bool result = !MAIN_LOOP.loading_file && AppCanLoadFile(MAIN_LOOP.app);
 
     if (result) {

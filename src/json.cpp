@@ -39,9 +39,9 @@ TakeInput(JsonTokenizer *tokenizer) {
 }
 
 static Buffer
-TakeInput(JsonTokenizer *tokenizer, usize count) {
+TakeInput(JsonTokenizer *tokenizer, isize count) {
     Buffer buffer = PushBuffer(&tokenizer->arena, count);
-    for (usize index = 0; index < count; ++index) {
+    for (isize index = 0; index < count; ++index) {
         u8 val = TakeInput(tokenizer);
         if (val == 0) {
             break;
@@ -69,7 +69,7 @@ SkipWhitespace(JsonTokenizer *tokenizer) {
 }
 
 static inline void
-Append(Arena *arena, Buffer *buffer, usize *cursor, u8 val) {
+Append(Arena *arena, Buffer *buffer, isize *cursor, u8 val) {
     if (*cursor >= buffer->size) {
         Buffer new_buffer = PushBuffer(arena, buffer->size << 1);
         CopyMemory(new_buffer.data, buffer->data, buffer->size);
@@ -83,7 +83,7 @@ ParseDigits(
     JsonTokenizer *tokenizer,
     Arena *arena,
     Buffer *buffer,
-    usize *cursor
+    isize *cursor
 ) {
     bool has_digits = false;
     bool done = false;
@@ -194,7 +194,7 @@ GetJsonToken(JsonTokenizer *tokenizer) {
 
         // TODO: Prefer use input directly
         Buffer buffer = PushBuffer(arena, 1024);
-        usize cursor = 0;
+        isize cursor = 0;
 
         while (!done) {
             u8 val = TakeInput(tokenizer);
@@ -233,7 +233,7 @@ GetJsonToken(JsonTokenizer *tokenizer) {
     case '9': {
         // TODO: Prefer use input directly
         Buffer buffer = PushBuffer(arena, 1024);
-        usize cursor = 0;
+        isize cursor = 0;
         Append(arena, &buffer, &cursor, val);
 
         bool done = false;
@@ -545,7 +545,7 @@ EndJsonParse(JsonParser *parser) {
 }
 
 static f64
-ConvertSign(Buffer buffer, usize *cursor) {
+ConvertSign(Buffer buffer, isize *cursor) {
     f64 sign = 1.0;
     if (buffer.data[*cursor] == '-') {
         sign = -1.0;
@@ -555,9 +555,9 @@ ConvertSign(Buffer buffer, usize *cursor) {
 }
 
 static f64
-ConvertNumber(Buffer buffer, usize *out_cursor) {
+ConvertNumber(Buffer buffer, isize *out_cursor) {
     f64 result = 0.0;
-    usize cursor = *out_cursor;
+    isize cursor = *out_cursor;
     while (cursor < buffer.size) {
         u8 val = buffer.data[cursor] - '0';
         if (val < 10) {
@@ -574,7 +574,7 @@ ConvertNumber(Buffer buffer, usize *out_cursor) {
 f64
 ConvertJsonValueToF64(JsonValue *value) {
     Buffer buffer = value->value;
-    usize cursor = 0;
+    isize cursor = 0;
     f64 sign = ConvertSign(buffer, &cursor);
     f64 number = ConvertNumber(buffer, &cursor);
 

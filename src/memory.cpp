@@ -3,18 +3,12 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-struct MemoryBlock {
-    MemoryBlock *prev;
-    MemoryBlock *next;
-    u8 *base;
-    usize size;
-    usize used;
-};
+#include "core.h"
 
-static usize INIT_BLOCK_SIZE = 4 * 1024;
+static isize INIT_BLOCK_SIZE = 4 * 1024;
 
 void *
-BootstrapPushSize(usize struct_size, usize offset) {
+BootstrapPushSize(isize struct_size, isize offset) {
     Arena arena = {};
     void *result = PushSize(&arena, struct_size);
     *(Arena *)((u8 *)result + offset) = arena;
@@ -22,16 +16,18 @@ BootstrapPushSize(usize struct_size, usize offset) {
 }
 
 static void *
-PushSize(Arena *arena, usize size, bool zero) {
-    while (arena->block && arena->block->used + size > arena->block->size &&
+PushSize(Arena *arena, isize size, bool zero) {
+    ASSERT(size >= 0);
+
+    while (arena->block && arena->block->at + size > arena->block->end &&
            arena->block->next) {
         arena->block = arena->block->next;
     }
 
-    if (!arena->block || arena->block->used + size > arena->block->size) {
-        usize new_size = INIT_BLOCK_SIZE;
+    if (!arena->block || arena->block->at + size > arena->block->end) {
+        isize new_size = INIT_BLOCK_SIZE;
         if (arena->block) {
-            new_size = arena->block->size << 1;
+            new_size = (arena->block->end - arena->block->begin) << 1;
         }
         while (new_size < size) {
             new_size <<= 1;
@@ -40,9 +36,9 @@ PushSize(Arena *arena, usize size, bool zero) {
             (MemoryBlock *)AllocateMemory(sizeof(MemoryBlock) + new_size);
         block->prev = arena->block;
         block->next = 0;
-        block->base = (u8 *)(block + 1);
-        block->size = new_size;
-        block->used = 0;
+        block->begin = (u8 *)(block + 1);
+        block->at = block->begin;
+        block->end = block->begin + new_size;
         if (arena->block) {
             ASSERT(!arena->block->next);
             arena->block->next = block;
@@ -51,9 +47,9 @@ PushSize(Arena *arena, usize size, bool zero) {
         arena->block = block;
     }
 
-    ASSERT(arena->block && arena->block->used + size <= arena->block->size);
-    void *result = arena->block->base + arena->block->used;
-    arena->block->used += size;
+    ASSERT(arena->block && arena->block->at + size <= arena->block->end);
+    void *result = arena->block->at;
+    arena->block->at += size;
 
     if (zero) {
         memset(result, 0, size);
@@ -63,12 +59,12 @@ PushSize(Arena *arena, usize size, bool zero) {
 }
 
 void *
-PushSize(Arena *arena, usize size) {
+PushSize(Arena *arena, isize size) {
     return PushSize(arena, size, /* zero = */ true);
 }
 
 Buffer
-PushBuffer(Arena *arena, usize size) {
+PushBuffer(Arena *arena, isize size) {
     Buffer buffer = {};
     buffer.data = (u8 *)PushSize(arena, size, /* zero = */ false);
     buffer.size = size;
@@ -82,11 +78,11 @@ PushBuffer(Arena *arena, Buffer src) {
     return dst;
 }
 
-static usize
+static isize
 GetRemaining(Arena *arena) {
-    usize result = 0;
+    isize result = 0;
     if (arena->block) {
-        result = arena->block->size - arena->block->used;
+        result = arena->block->end - arena->block->at;
     }
     return result;
 }
@@ -98,7 +94,7 @@ PushFormat(Arena *arena, const char *fmt, ...) {
     va_list args;
 
     TempArena temp_arena = BeginTempArena(arena);
-    usize size = GetRemaining(arena);
+    isize size = GetRemaining(arena);
     char *buf = (char *)PushSize(arena, size, /* zero= */ false);
     va_start(args, fmt);
     result.size = vsnprintf(buf, size, fmt, args) + 1;
@@ -125,7 +121,7 @@ BeginTempArena(Arena *arena) {
     temp_arena.arena = arena;
     temp_arena.block = arena->block;
     if (temp_arena.block) {
-        temp_arena.used = temp_arena.block->used;
+        temp_arena.at = temp_arena.block->at;
     }
     ++arena->temp_arena_count;
     return temp_arena;
@@ -136,17 +132,17 @@ EndTempArena(TempArena temp_arena) {
     Arena *arena = temp_arena.arena;
     if (temp_arena.block) {
         while (arena->block != temp_arena.block) {
-            arena->block->used = 0;
+            arena->block->at = arena->block->begin;
             arena->block = arena->block->prev;
         }
-        ASSERT(arena->block->used >= temp_arena.used);
-        arena->block->used = temp_arena.used;
+        ASSERT(arena->block->at >= temp_arena.at);
+        arena->block->at = temp_arena.at;
     } else if (arena->block) {
         while (arena->block->prev) {
-            arena->block->used = 0;
+            arena->block->at = arena->block->begin;
             arena->block = arena->block->prev;
         }
-        arena->block->used = 0;
+        arena->block->at = arena->block->begin;
     }
 
     ASSERT(arena->temp_arena_count > 0);

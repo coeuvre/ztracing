@@ -4,7 +4,7 @@
 
 struct Channel;
 
-Channel *CreateChannel(usize item_size, usize cap);
+Channel *CreateChannel(isize item_size, isize cap);
 // Returns true if the channel is destroyed after this call.
 bool CloseChannelRx(Channel *channel);
 // Returns true if the channel is destroyed after this call.

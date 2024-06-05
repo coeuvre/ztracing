@@ -67,7 +67,7 @@ void LogMessage(LogLevel level, const char *fmt, ...);
 
 struct Buffer {
     u8 *data;
-    usize size;
+    isize size;
 };
 
 inline bool
@@ -76,7 +76,7 @@ Equal(Buffer a, Buffer b) {
         return false;
     }
 
-    for (usize index = 0; index < a.size; ++index) {
+    for (isize index = 0; index < a.size; ++index) {
         if (a.data[index] != b.data[index]) {
             return false;
         }

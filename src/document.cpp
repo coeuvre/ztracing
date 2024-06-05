@@ -31,7 +31,7 @@ struct Load {
     LoadProgress progress;
 
     z_stream zstream;
-    usize zstream_buf_size;
+    isize zstream_buf_size;
     u8 *zstream_buf;
 };
 
@@ -403,7 +403,7 @@ DoLoadDocument(Task *task) {
     u64 start_counter = OsGetPerformanceCounter();
 
     Load *load = BeginLoadFile(&task->arena, state->file);
-    usize size = 4096;
+    isize size = 4096;
     Buffer buf = PushBuffer(&task->arena, size);
 
     GetJsonInputData get_json_input_data = {};

@@ -13,7 +13,7 @@ enum DocumentState {
 struct LoadState {
     Arena *document_arena;
     OsLoadingFile *file;
-    volatile usize loaded;
+    volatile isize loaded;
     Buffer error;
 };
 

@@ -4,37 +4,43 @@
 
 #include <string.h>
 
-void *AllocateMemory(usize size);
-void *ReallocateMemory(void *ptr, usize new_size);
+void *AllocateMemory(isize size);
+void *ReallocateMemory(void *ptr, isize new_size);
 void DeallocateMemory(void *ptr);
 // Return current allocated memory in bytes.
-usize GetAllocatedBytes();
+isize GetAllocatedBytes();
 
 static inline void
-CopyMemory(void *dst, const void *src, usize size) {
+CopyMemory(void *dst, const void *src, isize size) {
     memcpy(dst, src, size);
 }
 
-struct MemoryBlock;
+struct MemoryBlock {
+    MemoryBlock *prev;
+    MemoryBlock *next;
+    u8 *begin;
+    u8 *at;
+    u8 *end;
+};
 
 struct Arena {
     MemoryBlock *block;
     u32 temp_arena_count;
 };
 
-void *BootstrapPushSize(usize struct_size, usize offset);
+void *BootstrapPushSize(isize struct_size, isize offset);
 
 #define BootstrapPushStruct(Type, field)                                       \
     (Type *)BootstrapPushSize(sizeof(Type), offsetof(Type, field))
 
-void *PushSize(Arena *arena, usize size);
+void *PushSize(Arena *arena, isize size);
 
 #define PushArray(arena, Type, size)                                           \
     (Type *)PushSize(arena, sizeof(Type) * size)
 
 #define PushStruct(arena, Type) (Type *)PushSize(arena, sizeof(Type))
 
-Buffer PushBuffer(Arena *arena, usize size);
+Buffer PushBuffer(Arena *arena, isize size);
 
 Buffer PushBuffer(Arena *arena, Buffer src);
 
@@ -46,7 +52,7 @@ Buffer PushFormat(Arena *arena, const char *fmt, ...);
 struct TempArena {
     Arena *arena;
     MemoryBlock *block;
-    usize used;
+    u8 *at;
 };
 
 TempArena BeginTempArena(Arena *arena);

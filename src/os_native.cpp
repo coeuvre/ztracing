@@ -16,7 +16,7 @@ NotifyAppInitDone() {}
 struct OsLoadingFile {
     Arena arena;
     Buffer path;
-    usize total;
+    isize total;
     SDL_RWops *rw;
 };
 

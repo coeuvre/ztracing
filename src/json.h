@@ -34,7 +34,7 @@ struct JsonTokenizer {
     Arena arena;
     u8 tmp;
     Buffer buffer;
-    usize cursor;
+    isize cursor;
     GetJsonInputFunc get_json_input;
     void *get_json_input_data;
 };
