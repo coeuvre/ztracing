@@ -1,4 +1,5 @@
 #include "os.h"
+#include "core.h"
 #include "os_impl.h"
 
 #include "memory.h"
@@ -141,16 +142,6 @@ MaybeLoadFile(App *app, OsLoadingFile *file) {
     }
 }
 
-static void *
-ImGuiMalloc(usize size, void *user_data) {
-    return AllocateMemory(size);
-}
-
-static void
-ImGuiFree(void *ptr, void *user_data) {
-    DeallocateMemory(ptr);
-}
-
 struct {
     OsMutex *mutex;
     volatile isize allocated_bytes;
@@ -158,27 +149,69 @@ struct {
 
 static void *
 SDLMalloc(usize size) {
-    return AllocateMemory(size);
+    usize total_size = sizeof(isize) + size;
+    isize *ptr = (isize *)AllocateMemory(total_size);
+    if (ptr) {
+        ptr[0] = total_size;
+        ptr += 1;
+    }
+    return ptr;
 }
 
 static void *
 SDLCalloc(usize num, usize size) {
     usize total_size = num * size;
-    void *result = AllocateMemory(total_size);
-    memset(result, 0, total_size);
-    return result;
+    void *ptr = SDLMalloc(total_size);
+    if (ptr) {
+        memset(ptr, 0, total_size);
+    }
+    return ptr;
 }
 
 static void *
-SDLRealloc(void *ptr, usize size) {
-    return ReallocateMemory(ptr, size);
+SDLRealloc(void *ptr_, usize size) {
+    isize *ptr = 0;
+    isize old_size = 0;
+    if (ptr_) {
+        ptr = (isize *)ptr_ - 1;
+        old_size = ptr[0];
+    }
+
+    isize new_size = sizeof(isize) + size;
+    ptr = (isize *)ReallocateMemory(ptr, old_size, new_size);
+    if (ptr) {
+        ptr[0] = new_size;
+        ptr += 1;
+    }
+    return ptr;
+}
+
+static void
+SDLFree(void *ptr_) {
+    isize *ptr = 0;
+    isize size = 0;
+    if (ptr_) {
+        ptr = (isize *)ptr_ - 1;
+        size = ptr[0];
+    }
+    DeallocateMemory(ptr, size);
+}
+
+static void *
+ImGuiMalloc(usize size, void *user_data) {
+    return SDLMalloc(size);
+}
+
+static void
+ImGuiFree(void *ptr, void *user_data) {
+    SDLFree(ptr);
 }
 
 static void
 DefaultAllocatorInit() {
     DEFAULT_ALLOCATOR.mutex = OsCreateMutex();
 
-    SDL_SetMemoryFunctions(SDLMalloc, SDLCalloc, SDLRealloc, DeallocateMemory);
+    SDL_SetMemoryFunctions(SDLMalloc, SDLCalloc, SDLRealloc, SDLFree);
 
     ImGui::SetAllocatorFunctions(ImGuiMalloc, ImGuiFree);
 }
@@ -200,46 +233,28 @@ UpdateAllocatedBytes(isize delta) {
 
 void *
 AllocateMemory(isize size) {
-    isize total_size = sizeof(size) + size;
-    isize *result = (isize *)malloc(total_size);
-    ASSERT(result);
-    result[0] = total_size;
-    result += 1;
-    UpdateAllocatedBytes(total_size);
+    void *result = malloc(size);
+    if (result) {
+        UpdateAllocatedBytes(size);
+    }
     return result;
 }
 
 void *
-ReallocateMemory(void *ptr_, isize new_size) {
-    isize *ptr = (isize *)ptr_;
-
-    isize total_size = 0;
+ReallocateMemory(void *ptr, isize old_size, isize new_size) {
+    isize delta = -old_size;
+    ptr = (isize *)realloc(ptr, new_size);
     if (ptr) {
-        ptr = ptr - 1;
-        total_size = ptr[0];
+        delta += new_size;
     }
-
-    isize new_total_size = sizeof(isize) + new_size;
-    ptr = (isize *)realloc(ptr, new_total_size);
-
-    if (ptr) {
-        ptr[0] = new_total_size;
-        ptr += 1;
-        UpdateAllocatedBytes(new_total_size - total_size);
-    }
-
+    UpdateAllocatedBytes(delta);
     return ptr;
 }
 
 void
-DeallocateMemory(void *ptr_) {
-    isize *ptr = (isize *)ptr_;
-    if (ptr) {
-        ptr -= 1;
-        isize total_size = ptr[0];
-        UpdateAllocatedBytes(-total_size);
-    }
+DeallocateMemory(void *ptr, isize size) {
     free(ptr);
+    UpdateAllocatedBytes(-size);
 }
 
 isize

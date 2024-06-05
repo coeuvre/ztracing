@@ -5,8 +5,8 @@
 #include <string.h>
 
 void *AllocateMemory(isize size);
-void *ReallocateMemory(void *ptr, isize new_size);
-void DeallocateMemory(void *ptr);
+void *ReallocateMemory(void *ptr, isize old_size, isize new_size);
+void DeallocateMemory(void *ptr, isize size);
 // Return current allocated memory in bytes.
 isize GetAllocatedBytes();
 

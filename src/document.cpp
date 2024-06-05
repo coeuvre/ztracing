@@ -9,12 +9,24 @@
 
 static voidpf
 ZLibAlloc(voidpf opaque, uInt items, uInt size) {
-    return AllocateMemory(items * size);
+    isize total_size = sizeof(isize) + items * size;
+    isize *ptr = (isize *)AllocateMemory(total_size);
+    if (ptr) {
+        ptr[0] = total_size;
+        ptr += 1;
+    }
+    return ptr;
 }
 
 static void
 ZLibFree(voidpf opaque, voidpf address) {
-    DeallocateMemory(address);
+    isize *ptr = 0;
+    isize size = 0;
+    if (address) {
+        ptr = (isize *)address - 1;
+        size = ptr[0];
+    }
+    DeallocateMemory(ptr, size);
 }
 
 enum LoadProgress {

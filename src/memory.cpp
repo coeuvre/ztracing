@@ -153,10 +153,10 @@ static void
 FreeLastBlock(Arena *arena) {
     MemoryBlock *block = arena->block;
     arena->block = block->prev;
-    DeallocateMemory(block);
     if (arena->block) {
         arena->block->next = 0;
     }
+    DeallocateMemory(block, sizeof(MemoryBlock) + block->end - block->begin);
 }
 
 void

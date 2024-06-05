@@ -34,7 +34,7 @@ OsReadFile(OsLoadingFile *file, u8 *buf, u32 len) {
         file->offset += nread;
 
         if (file->offset == file->chunk.size) {
-            DeallocateMemory(file->chunk.data);
+            DeallocateMemory(file->chunk.data, file->chunk.size);
             file->chunk = {};
             file->offset = 0;
         }
@@ -46,7 +46,7 @@ OsReadFile(OsLoadingFile *file, u8 *buf, u32 len) {
 static void
 OsLoadingFileDestroy(OsLoadingFile *file) {
     if (file->chunk.data) {
-        DeallocateMemory(file->chunk.data);
+        DeallocateMemory(file->chunk.data, file->chunk.size);
     }
     ClearArena(&file->arena);
 }
@@ -124,7 +124,7 @@ AppOnLoadBegin(char *path, isize total) {
 
 EMSCRIPTEN_KEEPALIVE
 extern "C" bool
-AppOnLoadChunk(u8 *buf, u32 len) {
+AppOnLoadChunk(u8 *buf, isize len) {
     OsLoadingFile *file = MAIN_LOOP.loading_file;
 
     Buffer chunk = {};
@@ -132,7 +132,7 @@ AppOnLoadChunk(u8 *buf, u32 len) {
     chunk.size = len;
     bool result = SendToChannel(file->channel, &chunk);
     if (!result) {
-        DeallocateMemory(buf);
+        DeallocateMemory(chunk.data, chunk.size);
     }
 
     return result;
