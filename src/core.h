@@ -70,7 +70,7 @@ struct Buffer {
     isize size;
 };
 
-inline bool
+static inline bool
 Equal(Buffer a, Buffer b) {
     if (a.size != b.size) {
         return false;

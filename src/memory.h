@@ -73,7 +73,31 @@ struct HashMap {
 void **Upsert(Arena *arena, HashMap *m, Buffer key);
 
 static inline Buffer
-GetKey(void *val_ptr) {
-    HashNode *node = (HashNode *)((u8 *)val_ptr - offsetof(HashNode, value));
+GetKey(void **value_ptr) {
+    HashNode *node = (HashNode *)((u8 *)value_ptr - offsetof(HashNode, value));
     return node->key;
 }
+
+struct HashMapIterNode {
+    HashNode *node;
+    HashMapIterNode *next;
+};
+
+struct HashMapIter {
+    Arena *arena;
+    HashMapIterNode *next;
+    HashMapIterNode *first_free;
+};
+
+static inline HashMapIter
+IterateHashMap(Arena *arena, HashMap *m) {
+    HashMapIter iter = {};
+    iter.arena = arena;
+    if (m->root) {
+        iter.next = PushStruct(arena, HashMapIterNode);
+        iter.next->node = m->root;
+    }
+    return iter;
+}
+
+HashNode *GetNext(HashMapIter *iter);

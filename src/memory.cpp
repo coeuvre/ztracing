@@ -199,3 +199,37 @@ Upsert(Arena *arena, HashMap *m, Buffer key) {
     (*node)->key = PushBuffer(arena, key);
     return &(*node)->value;
 }
+
+HashNode *
+GetNext(HashMapIter *iter) {
+    HashNode *result = 0;
+    if (iter->next) {
+        result = iter->next->node;
+        HashMapIterNode *free = iter->next;
+        iter->next = iter->next->next;
+
+        free->next = iter->first_free;
+        iter->first_free = free;
+    }
+
+    if (result) {
+        for (isize i = 0; i < 4; ++i) {
+            HashNode *node = result->child[i];
+            if (node) {
+                HashMapIterNode *next = 0;
+                if (iter->first_free) {
+                    next = iter->first_free;
+                    iter->first_free = next->next;
+                } else {
+                    next = PushStruct(iter->arena, HashMapIterNode);
+                }
+                next->node = result->child[i];
+                next->next = iter->next;
+
+                iter->next = next;
+            }
+        }
+    }
+    ASSERT(!result || result->value);
+    return result;
+}

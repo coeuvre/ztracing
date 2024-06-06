@@ -2,6 +2,7 @@
 
 #include <zlib.h>
 
+#include "core.h"
 #include "json.h"
 #include "memory.h"
 #include "task.h"
@@ -154,9 +155,59 @@ GetJsonInput(void *data_) {
     return result;
 }
 
+struct SampleResult {
+    i64 time;
+    f64 value;
+    SampleResult *next;
+    isize sample_count;
+};
+
+struct SeriesResult {
+    Buffer name;
+    SampleResult *first;
+    SampleResult *last;
+    isize sample_size;
+};
+
 struct CounterResult {
     Buffer name;
+    HashMap series;
+    isize series_count;
 };
+
+static SeriesResult *
+UpsertSeries(Arena *arena, CounterResult *counter, Buffer name) {
+    void **value_ptr = Upsert(arena, &counter->series, name);
+    SeriesResult **series = (SeriesResult **)value_ptr;
+    if (!*series) {
+        SeriesResult *new_series = PushStruct(arena, SeriesResult);
+        new_series->name = GetKey(value_ptr);
+        *series = new_series;
+        counter->series_count += 1;
+    }
+    return *series;
+}
+
+static void
+AppendSample(
+    Arena *arena,
+    CounterResult *counter,
+    Buffer name,
+    i64 time,
+    f64 value
+) {
+    SeriesResult *series = UpsertSeries(arena, counter, name);
+    SampleResult *sample = PushStruct(arena, SampleResult);
+    sample->time = time;
+    sample->value = value;
+    if (series->last) {
+        series->last->next = sample;
+    } else {
+        series->first = sample;
+    }
+    series->last = sample;
+    ++series->sample_size;
+}
 
 struct ProcessResult {
     i64 pid;
@@ -166,11 +217,11 @@ struct ProcessResult {
 
 static CounterResult *
 UpsertCounterResult(Arena *arena, ProcessResult *process, Buffer name) {
-    CounterResult **counter =
-        (CounterResult **)Upsert(arena, &process->counters, name);
+    void **value_ptr = Upsert(arena, &process->counters, name);
+    CounterResult **counter = (CounterResult **)value_ptr;
     if (!*counter) {
         CounterResult *new_counter = PushStruct(arena, CounterResult);
-        new_counter->name = GetKey(counter);
+        new_counter->name = GetKey(value_ptr);
         *counter = new_counter;
         process->counter_size += 1;
     }
@@ -293,10 +344,18 @@ ProcessTraceEvent(Arena *arena, JsonValue *value, ProfileResult *profile) {
     // Counter event
     case 'C': {
         // TODO: handle trace_event.id
-        ProcessResult *process =
-            UpsertProcessResult(arena, profile, trace_event.pid);
-        CounterResult *counter =
-            UpsertCounterResult(arena, process, trace_event.name);
+        if (trace_event.args->type == JsonValue_Object) {
+            ProcessResult *process =
+                UpsertProcessResult(arena, profile, trace_event.pid);
+            CounterResult *counter =
+                UpsertCounterResult(arena, process, trace_event.name);
+
+            for (JsonValue *arg = trace_event.args->child; arg;
+                 arg = arg->next) {
+                f64 value = ConvertJsonValueToF64(arg);
+                AppendSample(arena, counter, arg->label, trace_event.ts, value);
+            }
+        }
     } break;
 
     default: {
@@ -436,6 +495,81 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
     return result;
 }
 
+struct SeriesValue {
+    i64 time;
+    f64 value;
+};
+
+struct Series {
+    Buffer name;
+    SeriesValue *values;
+    isize value_size;
+};
+
+struct Counter {
+    Series *series;
+    isize series_size;
+};
+
+struct Process {
+    i64 pid;
+    Counter *counters;
+    isize counter_size;
+};
+
+struct Profile {
+    Process *processes;
+    isize process_size;
+};
+
+static void
+BuildCounter(
+    Arena *perm,
+    Arena *scratch,
+    CounterResult *counter_result,
+    Counter *counter
+) {
+    // TODO
+    INFO("Counter: %.*s", counter_result->name.size, counter_result->name.data);
+}
+
+static Profile *
+BuildProfile(Arena *perm, Arena *scratch, ProfileResult *profile_result) {
+    Profile *profile = PushStruct(perm, Profile);
+    profile->process_size = profile_result->process_size;
+    profile->processes = PushArray(perm, Process, profile->process_size);
+
+    HashMapIter process_result_iter =
+        IterateHashMap(scratch, &profile_result->processes);
+
+    for (isize process_index = 0; process_index < profile->process_size;
+         ++process_index) {
+        HashNode *process_result_node = GetNext(&process_result_iter);
+        ASSERT(process_result_node);
+        ProcessResult *process_result =
+            (ProcessResult *)process_result_node->value;
+
+        Process *process = profile->processes + process_index;
+        process->pid = process->pid;
+        process->counter_size = process_result->counter_size;
+        process->counters = PushArray(perm, Counter, process->counter_size);
+
+        HashMapIter counter_result_iter =
+            IterateHashMap(scratch, &process_result->counters);
+        for (isize counter_index = 0; counter_index < process->counter_size;
+             ++counter_index) {
+            HashNode *counter_result_node = GetNext(&counter_result_iter);
+            ASSERT(counter_result_node);
+            CounterResult *counter_result =
+                (CounterResult *)counter_result_node->value;
+            Counter *counter = process->counters + counter_index;
+            BuildCounter(perm, scratch, counter_result, counter);
+        }
+    }
+
+    return profile;
+}
+
 static void
 DoLoadDocument(Task *task) {
     LoadState *state = (LoadState *)task->data;
@@ -463,6 +597,10 @@ DoLoadDocument(Task *task) {
 
     EndLoadFile(load);
     ClearArena(&json_arena);
+
+    if (!IsTaskCancelled(task) && result.profile.process_size) {
+        BuildProfile(state->document_arena, &task->arena, &result.profile);
+    }
 
     ClearArena(&parse_arena);
 
