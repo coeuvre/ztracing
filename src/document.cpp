@@ -620,7 +620,7 @@ DoLoadDocument(Task *task) {
     u64 start_counter = OsGetPerformanceCounter();
 
     isize size = 4096;
-    Buffer buf = PushBuffer(&task->arena, size);
+    Buffer buf = PushBufferNoZero(&task->arena, size);
     Load *load = BeginLoadFile(&task->arena, state->file);
 
     GetJsonInputData get_json_input_data = {};

@@ -18,6 +18,7 @@ struct MemoryBlock {
 
 struct Arena {
     MemoryBlock *block;
+    MemoryBlock *first;
     u32 temp_arena_count;
 };
 
@@ -43,21 +44,15 @@ static void
 EndTempArena(TempArena temp_arena) {
     Arena *arena = temp_arena.arena;
     if (temp_arena.block) {
-        while (arena->block != temp_arena.block) {
-            arena->block->at = arena->block->begin;
-            arena->block = arena->block->prev;
-        }
-        ASSERT(arena->block->at >= temp_arena.at);
+        DEBUG_ASSERT(temp_arena.block->at >= temp_arena.at);
+        arena->block = temp_arena.block;
         arena->block->at = temp_arena.at;
-    } else if (arena->block) {
-        while (arena->block->prev) {
-            arena->block->at = arena->block->begin;
-            arena->block = arena->block->prev;
-        }
+    } else if (arena->first) {
+        arena->block = arena->first;
         arena->block->at = arena->block->begin;
     }
 
-    ASSERT(arena->temp_arena_count > 0);
+    DEBUG_ASSERT(arena->temp_arena_count > 0);
     --arena->temp_arena_count;
 }
 
@@ -65,37 +60,47 @@ static isize INIT_BLOCK_SIZE = 4 * 1024;
 
 static void *
 PushSize(Arena *arena, isize size, bool zero) {
-    ASSERT(size >= 0);
-
-    while (arena->block && arena->block->at + size > arena->block->end &&
-           arena->block->next) {
-        arena->block = arena->block->next;
-    }
+    DEBUG_ASSERT(size >= 0);
 
     if (!arena->block || arena->block->at + size > arena->block->end) {
-        isize new_size = INIT_BLOCK_SIZE;
-        if (arena->block) {
-            new_size = (arena->block->end - arena->block->begin) << 1;
+        while (true) {
+            if (arena->block && arena->block->next) {
+                MemoryBlock *next = arena->block->next;
+                arena->block = next;
+                next->at = next->begin;
+                if (next->at + size <= next->end) {
+                    break;
+                }
+            } else {
+                isize new_size = INIT_BLOCK_SIZE;
+                if (arena->block) {
+                    new_size = (arena->block->end - arena->block->begin) << 1;
+                }
+                while (new_size < size) {
+                    new_size <<= 1;
+                }
+                MemoryBlock *block = (MemoryBlock *)AllocateMemory(
+                    sizeof(MemoryBlock) + new_size
+                );
+                block->prev = arena->block;
+                block->next = 0;
+                block->begin = (u8 *)(block + 1);
+                block->at = block->begin;
+                block->end = block->begin + new_size;
+                if (arena->block) {
+                    ASSERT(!arena->block->next);
+                    arena->block->next = block;
+                }
+                arena->block = block;
+                if (!arena->first) {
+                    arena->first = block;
+                }
+                break;
+            }
         }
-        while (new_size < size) {
-            new_size <<= 1;
-        }
-        MemoryBlock *block =
-            (MemoryBlock *)AllocateMemory(sizeof(MemoryBlock) + new_size);
-        block->prev = arena->block;
-        block->next = 0;
-        block->begin = (u8 *)(block + 1);
-        block->at = block->begin;
-        block->end = block->begin + new_size;
-        if (arena->block) {
-            ASSERT(!arena->block->next);
-            arena->block->next = block;
-        }
-
-        arena->block = block;
     }
 
-    ASSERT(arena->block && arena->block->at + size <= arena->block->end);
+    DEBUG_ASSERT(arena->block && arena->block->at + size <= arena->block->end);
     void *result = arena->block->at;
     arena->block->at += size;
 
@@ -128,7 +133,7 @@ BootstrapPushSize(isize struct_size, isize offset) {
 #define PushStruct(arena, Type) (Type *)PushSize(arena, sizeof(Type))
 
 static Buffer
-PushBuffer(Arena *arena, isize size) {
+PushBufferNoZero(Arena *arena, isize size) {
     Buffer buffer = {};
     buffer.data = (u8 *)PushSize(arena, size, /* zero = */ false);
     buffer.size = size;
@@ -137,7 +142,7 @@ PushBuffer(Arena *arena, isize size) {
 
 static Buffer
 PushBuffer(Arena *arena, Buffer src) {
-    Buffer dst = PushBuffer(arena, src.size);
+    Buffer dst = PushBufferNoZero(arena, src.size);
     CopyMemory(dst.data, src.data, src.size);
     return dst;
 }

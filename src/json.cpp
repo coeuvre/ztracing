@@ -96,7 +96,7 @@ TakeInput(JsonTokenizer *tokenizer) {
 
 static Buffer
 TakeInput(JsonTokenizer *tokenizer, isize count) {
-    Buffer buffer = PushBuffer(&tokenizer->arena, count);
+    Buffer buffer = PushBufferNoZero(&tokenizer->arena, count);
     for (isize index = 0; index < count; ++index) {
         u8 val = TakeInput(tokenizer);
         if (val == 0) {
@@ -127,7 +127,7 @@ SkipWhitespace(JsonTokenizer *tokenizer) {
 static inline void
 Append(Arena *arena, Buffer *buffer, isize *cursor, u8 val) {
     if (*cursor >= buffer->size) {
-        Buffer new_buffer = PushBuffer(arena, buffer->size << 1);
+        Buffer new_buffer = PushBufferNoZero(arena, buffer->size << 1);
         CopyMemory(new_buffer.data, buffer->data, buffer->size);
         *buffer = new_buffer;
     }
@@ -249,7 +249,7 @@ GetJsonToken(JsonTokenizer *tokenizer) {
         bool found_close_quote = false;
 
         // TODO: Prefer use input directly
-        Buffer buffer = PushBuffer(arena, 1024);
+        Buffer buffer = PushBufferNoZero(arena, 1024);
         isize cursor = 0;
 
         while (!done) {
@@ -288,7 +288,7 @@ GetJsonToken(JsonTokenizer *tokenizer) {
     case '8':
     case '9': {
         // TODO: Prefer use input directly
-        Buffer buffer = PushBuffer(arena, 1024);
+        Buffer buffer = PushBufferNoZero(arena, 1024);
         isize cursor = 0;
         Append(arena, &buffer, &cursor, val);
 

@@ -58,6 +58,12 @@ static void LogMessage(LogLevel level, const char *fmt, ...);
         ABORT("%s", #x);                                                       \
     }
 
+#ifdef NDEBUG
+#define DEBUG_ASSERT(x)
+#else
+#define DEBUG_ASSERT(x) ASSERT(x)
+#endif
+
 #define UNREACHABLE ABORT("UNREACHABLE")
 
 struct Buffer {
