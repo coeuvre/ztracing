@@ -1,7 +1,3 @@
-#include "os_impl.h"
-
-#include "memory.h"
-
 struct OsLoadingFile {
     Arena arena;
     Buffer path;
@@ -12,12 +8,12 @@ struct OsLoadingFile {
     isize offset;
 };
 
-OsLoadingFile *
+static OsLoadingFile *
 OsOpenFile(char *path) {
     return 0;
 }
 
-u32
+static u32
 OsReadFile(OsLoadingFile *file, u8 *buf, u32 len) {
     int nread = 0;
 
@@ -51,19 +47,17 @@ OsLoadingFileDestroy(OsLoadingFile *file) {
     ClearArena(&file->arena);
 }
 
-void
+static void
 OsCloseFile(OsLoadingFile *file) {
     if (CloseChannelRx(file->channel)) {
         OsLoadingFileDestroy(file);
     }
 }
 
-Buffer
+static Buffer
 OsGetFilePath(OsLoadingFile *file) {
     return file->path;
 }
-
-#include <emscripten.h>
 
 EM_JS(int, GetCanvasWidth, (), { return Module.canvas.width; });
 EM_JS(int, GetCanvasHeight, (), { return Module.canvas.height; });
@@ -75,7 +69,7 @@ EM_JS(void, AppSetupResolve, (), {
     }
 });
 
-Vec2
+static Vec2
 GetInitialWindowSize() {
     Vec2 result = {};
     result.x = GetCanvasWidth();
@@ -83,7 +77,7 @@ GetInitialWindowSize() {
     return result;
 }
 
-void
+static void
 NotifyAppInitDone() {
     AppSetupResolve();
 }

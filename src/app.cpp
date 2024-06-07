@@ -1,13 +1,16 @@
-#include "app.h"
-#include "ui.h"
+struct App {
+    Arena arena;
+    bool show_demo_window;
+    Document *document;
+};
 
-App *
+static App *
 AppCreate() {
     App *app = BootstrapPushStruct(App, arena);
     return app;
 }
 
-void
+static void
 AppDestroy(App *app) {
     if (app->document) {
         UnloadDocument(app->document);
@@ -67,7 +70,7 @@ DrawMenuBar(Arena *frame_arena, App *app) {
     }
 }
 
-void
+static void
 AppUpdate(App *app) {
     TempArena temp_frame_arena = BeginTempArena(&app->arena);
     Arena *frame_arena = temp_frame_arena.arena;
@@ -124,12 +127,12 @@ AppUpdate(App *app) {
     EndTempArena(temp_frame_arena);
 }
 
-bool
+static bool
 AppCanLoadFile(App *app) {
     return true;
 }
 
-void
+static void
 AppLoadFile(App *app, OsLoadingFile *file) {
     if (app->document) {
         UnloadDocument(app->document);

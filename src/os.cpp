@@ -1,8 +1,22 @@
-#include "os.h"
-#include "core.h"
-#include "os_impl.h"
+enum MainLoopState {
+    MainLoopState_Init,
+    MainLoopState_Update,
+    MainLoopState_Shutdown,
+};
 
-#include "memory.h"
+struct MainLoop {
+    int argc;
+    char **argv;
+    SDL_Thread *worker_thread;
+    MainLoopState state;
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    App *app;
+    OsLoadingFile *loading_file;
+};
+
+static Vec2 GetInitialWindowSize();
+static void NotifyAppInitDone();
 
 static SDL_LogPriority TO_SDL_LOG_PRIORITY[LogLevel_COUNT] = {
     SDL_LOG_PRIORITY_DEBUG,
@@ -12,7 +26,7 @@ static SDL_LogPriority TO_SDL_LOG_PRIORITY[LogLevel_COUNT] = {
     SDL_LOG_PRIORITY_CRITICAL
 };
 
-void
+static void
 LogMessage(LogLevel level, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
@@ -25,7 +39,7 @@ LogMessage(LogLevel level, const char *fmt, ...) {
     va_end(args);
 }
 
-OsCond *
+static OsCond *
 OsCreateCond() {
     SDL_cond *cond = SDL_CreateCond();
     if (!cond) {
@@ -34,12 +48,12 @@ OsCreateCond() {
     return (OsCond *)cond;
 }
 
-void
+static void
 OsDestroyCond(OsCond *cond) {
     SDL_DestroyCond((SDL_cond *)cond);
 }
 
-void
+static void
 OsWaitCond(OsCond *cond, OsMutex *mutex) {
     int ret = SDL_CondWait((SDL_cond *)cond, (SDL_mutex *)mutex);
     if (ret != 0) {
@@ -47,7 +61,7 @@ OsWaitCond(OsCond *cond, OsMutex *mutex) {
     }
 }
 
-void
+static void
 OsSignal(OsCond *cond) {
     int ret = SDL_CondSignal((SDL_cond *)cond);
     if (ret != 0) {
@@ -55,7 +69,7 @@ OsSignal(OsCond *cond) {
     }
 }
 
-void
+static void
 OsBroadcast(OsCond *cond) {
     int ret = SDL_CondBroadcast((SDL_cond *)cond);
     if (ret != 0) {
@@ -63,7 +77,7 @@ OsBroadcast(OsCond *cond) {
     }
 }
 
-OsMutex *
+static OsMutex *
 OsCreateMutex() {
     SDL_mutex *mutex = SDL_CreateMutex();
     if (!mutex) {
@@ -72,12 +86,12 @@ OsCreateMutex() {
     return (OsMutex *)mutex;
 }
 
-void
+static void
 OsDestroyMutex(OsMutex *mutex) {
     SDL_DestroyMutex((SDL_mutex *)mutex);
 }
 
-void
+static void
 OsLockMutex(OsMutex *mutex) {
     int ret = SDL_LockMutex((SDL_mutex *)mutex);
     if (ret != 0) {
@@ -85,7 +99,7 @@ OsLockMutex(OsMutex *mutex) {
     }
 }
 
-void
+static void
 OsUnlockMutex(OsMutex *mutex) {
     int ret = SDL_UnlockMutex((SDL_mutex *)mutex);
     if (ret != 0) {
@@ -95,7 +109,7 @@ OsUnlockMutex(OsMutex *mutex) {
 
 static Channel *OS_TASK_CHANNEL;
 
-void
+static void
 OsDispatchTask(Task *task) {
     ASSERT(OS_TASK_CHANNEL);
     bool sent = SendToChannel(OS_TASK_CHANNEL, &task);
@@ -121,13 +135,13 @@ WorkerMain(void *data) {
     return 0;
 }
 
-u64
+static u64
 OsGetPerformanceCounter() {
     u64 result = SDL_GetPerformanceCounter();
     return result;
 }
 
-u64
+static u64
 OsGetPerformanceFrequency() {
     u64 result = SDL_GetPerformanceFrequency();
     return result;
@@ -227,11 +241,13 @@ DefaultAllocatorDeinit() {
 static void
 UpdateAllocatedBytes(isize delta) {
     OsLockMutex(DEFAULT_ALLOCATOR.mutex);
-    DEFAULT_ALLOCATOR.allocated_bytes += delta;
+    isize allocated_bytes = DEFAULT_ALLOCATOR.allocated_bytes;
+    allocated_bytes += delta;
+    DEFAULT_ALLOCATOR.allocated_bytes = allocated_bytes;
     OsUnlockMutex(DEFAULT_ALLOCATOR.mutex);
 }
 
-void *
+static void *
 AllocateMemory(isize size) {
     void *result = malloc(size);
     if (result) {
@@ -240,7 +256,7 @@ AllocateMemory(isize size) {
     return result;
 }
 
-void *
+static void *
 ReallocateMemory(void *ptr, isize old_size, isize new_size) {
     isize delta = -old_size;
     ptr = (isize *)realloc(ptr, new_size);
@@ -251,18 +267,18 @@ ReallocateMemory(void *ptr, isize old_size, isize new_size) {
     return ptr;
 }
 
-void
+static void
 DeallocateMemory(void *ptr, isize size) {
     free(ptr);
     UpdateAllocatedBytes(-size);
 }
 
-isize
+static isize
 GetAllocatedBytes() {
     return DEFAULT_ALLOCATOR.allocated_bytes;
 }
 
-MainLoop MAIN_LOOP = {};
+static MainLoop MAIN_LOOP = {};
 
 static void
 MainLoopInit(MainLoop *main_loop) {

@@ -1,6 +1,18 @@
-#include "task.h"
+struct Task;
+typedef void (*TaskFunc)(Task *data);
 
-Task *
+struct Task {
+    Arena arena;
+    TaskFunc func;
+    void *data;
+
+    OsMutex *mutex;
+    OsCond *cond;
+    bool done;
+    bool cancelled;
+};
+
+static Task *
 CreateTask(TaskFunc func, void *data) {
     Task *task = BootstrapPushStruct(Task, arena);
     task->func = func;
@@ -14,7 +26,7 @@ CreateTask(TaskFunc func, void *data) {
     return task;
 }
 
-bool
+static bool
 IsTaskDone(Task *task) {
     OsLockMutex(task->mutex);
     bool done = task->done;
@@ -22,14 +34,14 @@ IsTaskDone(Task *task) {
     return done;
 }
 
-void
+static void
 CancelTask(Task *task) {
     OsLockMutex(task->mutex);
     task->cancelled = true;
     OsUnlockMutex(task->mutex);
 }
 
-bool
+static bool
 IsTaskCancelled(Task *task) {
     OsLockMutex(task->mutex);
     bool cancelled = task->cancelled;
@@ -37,7 +49,8 @@ IsTaskCancelled(Task *task) {
     return cancelled;
 }
 
-void
+// Wait for task to be done and release all its resources.
+static void
 WaitTask(Task *task) {
     OsLockMutex(task->mutex);
     while (!task->done) {

@@ -1,19 +1,67 @@
-#include "memory.h"
+static void *AllocateMemory(isize size);
+static void *ReallocateMemory(void *ptr, isize old_size, isize new_size);
+static void DeallocateMemory(void *ptr, isize size);
+static isize GetAllocatedBytes();
 
-#include <stdarg.h>
-#include <stdio.h>
+static inline void
+CopyMemory(void *dst, const void *src, isize size) {
+    memcpy(dst, src, size);
+}
 
-#include "core.h"
+struct MemoryBlock {
+    MemoryBlock *prev;
+    MemoryBlock *next;
+    u8 *begin;
+    u8 *at;
+    u8 *end;
+};
+
+struct Arena {
+    MemoryBlock *block;
+    u32 temp_arena_count;
+};
+
+struct TempArena {
+    Arena *arena;
+    MemoryBlock *block;
+    u8 *at;
+};
+
+static TempArena
+BeginTempArena(Arena *arena) {
+    TempArena temp_arena = {};
+    temp_arena.arena = arena;
+    temp_arena.block = arena->block;
+    if (temp_arena.block) {
+        temp_arena.at = temp_arena.block->at;
+    }
+    ++arena->temp_arena_count;
+    return temp_arena;
+}
+
+static void
+EndTempArena(TempArena temp_arena) {
+    Arena *arena = temp_arena.arena;
+    if (temp_arena.block) {
+        while (arena->block != temp_arena.block) {
+            arena->block->at = arena->block->begin;
+            arena->block = arena->block->prev;
+        }
+        ASSERT(arena->block->at >= temp_arena.at);
+        arena->block->at = temp_arena.at;
+    } else if (arena->block) {
+        while (arena->block->prev) {
+            arena->block->at = arena->block->begin;
+            arena->block = arena->block->prev;
+        }
+        arena->block->at = arena->block->begin;
+    }
+
+    ASSERT(arena->temp_arena_count > 0);
+    --arena->temp_arena_count;
+}
 
 static isize INIT_BLOCK_SIZE = 4 * 1024;
-
-void *
-BootstrapPushSize(isize struct_size, isize offset) {
-    Arena arena = {};
-    void *result = PushSize(&arena, struct_size);
-    *(Arena *)((u8 *)result + offset) = arena;
-    return result;
-}
 
 static void *
 PushSize(Arena *arena, isize size, bool zero) {
@@ -58,12 +106,28 @@ PushSize(Arena *arena, isize size, bool zero) {
     return result;
 }
 
-void *
+static void *
 PushSize(Arena *arena, isize size) {
     return PushSize(arena, size, /* zero = */ true);
 }
 
-Buffer
+static void *
+BootstrapPushSize(isize struct_size, isize offset) {
+    Arena arena = {};
+    void *result = PushSize(&arena, struct_size);
+    *(Arena *)((u8 *)result + offset) = arena;
+    return result;
+}
+
+#define BootstrapPushStruct(Type, field)                                       \
+    (Type *)BootstrapPushSize(sizeof(Type), offsetof(Type, field))
+
+#define PushArray(arena, Type, size)                                           \
+    (Type *)PushSize(arena, sizeof(Type) * size)
+
+#define PushStruct(arena, Type) (Type *)PushSize(arena, sizeof(Type))
+
+static Buffer
 PushBuffer(Arena *arena, isize size) {
     Buffer buffer = {};
     buffer.data = (u8 *)PushSize(arena, size, /* zero = */ false);
@@ -71,7 +135,7 @@ PushBuffer(Arena *arena, isize size) {
     return buffer;
 }
 
-Buffer
+static Buffer
 PushBuffer(Arena *arena, Buffer src) {
     Buffer dst = PushBuffer(arena, src.size);
     CopyMemory(dst.data, src.data, src.size);
@@ -87,7 +151,7 @@ GetRemaining(Arena *arena) {
     return result;
 }
 
-Buffer
+static Buffer
 PushFormat(Arena *arena, const char *fmt, ...) {
     Buffer result = {};
 
@@ -115,39 +179,8 @@ PushFormat(Arena *arena, const char *fmt, ...) {
     return result;
 }
 
-TempArena
-BeginTempArena(Arena *arena) {
-    TempArena temp_arena = {};
-    temp_arena.arena = arena;
-    temp_arena.block = arena->block;
-    if (temp_arena.block) {
-        temp_arena.at = temp_arena.block->at;
-    }
-    ++arena->temp_arena_count;
-    return temp_arena;
-}
-
-void
-EndTempArena(TempArena temp_arena) {
-    Arena *arena = temp_arena.arena;
-    if (temp_arena.block) {
-        while (arena->block != temp_arena.block) {
-            arena->block->at = arena->block->begin;
-            arena->block = arena->block->prev;
-        }
-        ASSERT(arena->block->at >= temp_arena.at);
-        arena->block->at = temp_arena.at;
-    } else if (arena->block) {
-        while (arena->block->prev) {
-            arena->block->at = arena->block->begin;
-            arena->block = arena->block->prev;
-        }
-        arena->block->at = arena->block->begin;
-    }
-
-    ASSERT(arena->temp_arena_count > 0);
-    --arena->temp_arena_count;
-}
+#define PushFormatZ(arena, fmt, ...)                                           \
+    ((char *)PushFormat(arena, fmt, ##__VA_ARGS__).data)
 
 static void
 FreeLastBlock(Arena *arena) {
@@ -159,7 +192,7 @@ FreeLastBlock(Arena *arena) {
     DeallocateMemory(block, sizeof(MemoryBlock) + block->end - block->begin);
 }
 
-void
+static void
 ClearArena(Arena *arena) {
     ASSERT(arena->temp_arena_count == 0);
 
@@ -186,7 +219,17 @@ Hash(Buffer buffer) {
     return h;
 }
 
-void **
+struct HashNode {
+    HashNode *child[4];
+    Buffer key;
+    void *value;
+};
+
+struct HashMap {
+    HashNode *root;
+};
+
+static void **
 Upsert(Arena *arena, HashMap *m, Buffer key) {
     HashNode **node = &m->root;
     for (u64 hash = Hash(key); *node; hash <<= 2) {
@@ -200,7 +243,35 @@ Upsert(Arena *arena, HashMap *m, Buffer key) {
     return &(*node)->value;
 }
 
-HashNode *
+static inline Buffer
+GetKey(void **value_ptr) {
+    HashNode *node = (HashNode *)((u8 *)value_ptr - offsetof(HashNode, value));
+    return node->key;
+}
+
+struct HashMapIterNode {
+    HashNode *node;
+    HashMapIterNode *next;
+};
+
+struct HashMapIter {
+    Arena *arena;
+    HashMapIterNode *next;
+    HashMapIterNode *first_free;
+};
+
+static inline HashMapIter
+IterateHashMap(Arena *arena, HashMap *m) {
+    HashMapIter iter = {};
+    iter.arena = arena;
+    if (m->root) {
+        iter.next = PushStruct(arena, HashMapIterNode);
+        iter.next->node = m->root;
+    }
+    return iter;
+}
+
+static HashNode *
 GetNext(HashMapIter *iter) {
     HashNode *result = 0;
     if (iter->next) {

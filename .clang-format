@@ -10,3 +10,4 @@ AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
 AlignAfterOpenBracket: BlockIndent
 AlwaysBreakAfterReturnType: AllDefinitions
+SortIncludes: Never

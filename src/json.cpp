@@ -1,9 +1,65 @@
-#include "json.h"
-#include "memory.h"
+enum JsonTokenType {
+    JsonToken_Eof,
+    JsonToken_Error,
 
-#include <math.h>
+    JsonToken_OpenBrace,
+    JsonToken_OpenBracket,
+    JsonToken_CloseBrace,
+    JsonToken_CloseBracket,
+    JsonToken_Comma,
+    JsonToken_Colon,
+    JsonToken_SemiColon,
+    JsonToken_StringLiteral,
+    JsonToken_Number,
+    JsonToken_True,
+    JsonToken_False,
+    JsonToken_Null,
 
-JsonParser *
+    JsonToken_COUNT,
+};
+
+struct JsonToken {
+    JsonTokenType type;
+    Buffer value;
+};
+
+typedef Buffer (*GetJsonInputFunc)(void *data);
+
+struct JsonTokenizer {
+    Arena arena;
+    u8 tmp;
+    Buffer buffer;
+    isize cursor;
+    GetJsonInputFunc get_json_input;
+    void *get_json_input_data;
+};
+
+enum JsonValueType {
+    JsonValue_Object,
+    JsonValue_Array,
+    JsonValue_String,
+    JsonValue_Number,
+    JsonValue_True,
+    JsonValue_False,
+    JsonValue_Null,
+};
+
+struct JsonValue {
+    JsonValueType type;
+    Buffer label;
+    Buffer value;
+    JsonValue *child;
+    JsonValue *next;
+};
+
+struct JsonParser {
+    JsonTokenizer tokenizer;
+
+    Arena *arena;
+    Buffer error;
+};
+
+static JsonParser *
 BeginJsonParse(Arena *arena, GetJsonInputFunc get_json_input, void *data) {
     JsonParser *parser = PushStruct(arena, JsonParser);
     parser->arena = arena;
@@ -100,7 +156,7 @@ ParseDigits(
     return has_digits;
 }
 
-JsonToken
+static JsonToken
 GetJsonToken(JsonTokenizer *tokenizer) {
     JsonToken token = {};
 
@@ -543,7 +599,7 @@ ParseJsonValue(JsonParser *parser, Arena *arena) {
     return result;
 }
 
-JsonValue *
+static JsonValue *
 GetJsonValue(JsonParser *parser) {
     TempArena temp_arena = BeginTempArena(parser->arena);
     JsonValue *result = ParseJsonValue(parser, temp_arena.arena);
@@ -551,12 +607,12 @@ GetJsonValue(JsonParser *parser) {
     return result;
 }
 
-Buffer
+static Buffer
 GetJsonError(JsonParser *parser) {
     return parser->error;
 }
 
-void
+static void
 EndJsonParse(JsonParser *parser) {
     ClearArena(&parser->tokenizer.arena);
 }
@@ -588,7 +644,7 @@ ConvertNumber(Buffer buffer, isize *out_cursor) {
     return result;
 }
 
-f64
+static f64
 ConvertJsonValueToF64(JsonValue *value) {
     Buffer buffer = value->value;
     isize cursor = 0;

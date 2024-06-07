@@ -4,15 +4,6 @@ project(ztracing CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Enable LTO in release mode.
-if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
-    if (EMSCRIPTEN)
-        add_compile_options(-flto)
-    else()
-        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-    endif()
-endif()
-
 if (EMSCRIPTEN)
     add_compile_options(
         -pthread
@@ -60,22 +51,7 @@ target_include_directories(
     third_party/imgui
     third_party/imgui/backends)
 
-SET(ZTRACING_SRCS
-    src/app.cpp
-    src/channel.cpp
-    src/document.cpp
-    src/json.cpp
-    src/memory.cpp
-    src/os.cpp
-    src/task.cpp)
-
-if (EMSCRIPTEN)
-    SET(ZTRACING_SRCS ${ZTRACING_SRCS} src/os_emscripten.cpp)
-else()
-    SET(ZTRACING_SRCS ${ZTRACING_SRCS} src/os_native.cpp)
-endif()
-
-add_executable(ztracing ${ZTRACING_SRCS})
+add_executable(ztracing src/main.cpp)
 
 target_link_libraries(
     ztracing

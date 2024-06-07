@@ -1,10 +1,3 @@
-#include "channel.h"
-
-#include <memory.h>
-
-#include "core.h"
-#include "memory.h"
-#include "os.h"
 
 struct ItemNode {
     ItemNode *next;
@@ -25,7 +18,7 @@ struct Channel {
     bool tx_closed;
 };
 
-Channel *
+static Channel *
 CreateChannel(isize item_size, isize cap) {
     Channel *channel = BootstrapPushStruct(Channel, arena);
     channel->mutex = OsCreateMutex();
@@ -43,7 +36,8 @@ DestroyChannel(Channel *channel) {
     ClearArena(&channel->arena);
 }
 
-bool
+// Returns true if the channel is destroyed after this call.
+static bool
 CloseChannelRx(Channel *channel) {
     OsLockMutex(channel->mutex);
 
@@ -63,7 +57,8 @@ CloseChannelRx(Channel *channel) {
     return all_closed;
 }
 
-bool
+// Returns true if the channel is destroyed after this call.
+static bool
 CloseChannelTx(Channel *channel) {
     OsLockMutex(channel->mutex);
 
@@ -83,7 +78,8 @@ CloseChannelTx(Channel *channel) {
     return all_closed;
 }
 
-bool
+// Returns false if the rx is closed.
+static bool
 SendToChannel(Channel *channel, void *item) {
     bool sent = false;
 
@@ -128,7 +124,9 @@ SendToChannel(Channel *channel, void *item) {
     return sent;
 }
 
-bool
+// Returns false if no item in the buffer and tx is closed. out_item must has at
+// least item_size space.
+static bool
 ReceiveFromChannel(Channel *channel, void *out_item) {
     bool received = false;
 

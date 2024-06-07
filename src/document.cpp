@@ -1,12 +1,32 @@
-#include "document.h"
+enum DocumentState {
+    DocumentState_Loading,
+    DocumentState_Error,
+    DocumentState_View,
+};
 
-#include <zlib.h>
+struct LoadState {
+    Arena *document_arena;
+    OsLoadingFile *file;
+    volatile isize loaded;
+    Buffer error;
+};
 
-#include "core.h"
-#include "json.h"
-#include "memory.h"
-#include "task.h"
-#include "ui.h"
+struct Document {
+    Arena arena;
+    Buffer path;
+
+    DocumentState state;
+    union {
+        struct {
+            Task *task;
+            LoadState state;
+        } loading;
+
+        struct {
+            Buffer message;
+        } error;
+    };
+};
 
 static voidpf
 ZLibAlloc(voidpf opaque, uInt items, uInt size) {
@@ -668,7 +688,7 @@ WaitLoading(Document *document) {
     }
 }
 
-Document *
+static Document *
 LoadDocument(OsLoadingFile *file) {
     Document *document = BootstrapPushStruct(Document, arena);
     document->path = PushBuffer(&document->arena, OsGetFilePath(file));
@@ -680,7 +700,7 @@ LoadDocument(OsLoadingFile *file) {
     return document;
 }
 
-void
+static void
 UnloadDocument(Document *document) {
     if (document->state == DocumentState_Loading) {
         CancelTask(document->loading.task);
@@ -689,7 +709,7 @@ UnloadDocument(Document *document) {
     ClearArena(&document->arena);
 }
 
-void
+static void
 RenderDocument(Document *document, Arena *frame_arena) {
     switch (document->state) {
     case DocumentState_Loading: {

@@ -1,16 +1,10 @@
-#include "core.h"
-#include "os_impl.h"
-
-#include "memory.h"
-#include <cstring>
-
-Vec2
+static Vec2
 GetInitialWindowSize() {
     Vec2 result = {1280, 720};
     return result;
 }
 
-void
+static void
 NotifyAppInitDone() {}
 
 struct OsLoadingFile {
@@ -20,7 +14,7 @@ struct OsLoadingFile {
     SDL_RWops *rw;
 };
 
-OsLoadingFile *
+static OsLoadingFile *
 OsOpenFile(char *path) {
     OsLoadingFile *file = 0;
     SDL_RWops *rw = SDL_RWFromFile(path, "rb");
@@ -43,13 +37,13 @@ OsOpenFile(char *path) {
     return file;
 }
 
-u32
+static u32
 OsReadFile(OsLoadingFile *file, u8 *buf, u32 len) {
     u32 nread = file->rw->read(file->rw, buf, 1, len);
     return nread;
 }
 
-void
+static void
 OsCloseFile(OsLoadingFile *file) {
     int ret = file->rw->close(file->rw);
     if (ret != 0) {
@@ -58,7 +52,7 @@ OsCloseFile(OsLoadingFile *file) {
     ClearArena(&file->arena);
 }
 
-Buffer
+static Buffer
 OsGetFilePath(OsLoadingFile *file) {
     return file->path;
 }

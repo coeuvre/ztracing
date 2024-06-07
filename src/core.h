@@ -1,8 +1,3 @@
-#pragma once
-
-#include <stddef.h>
-#include <stdint.h>
-
 typedef int8_t i8;
 typedef uint8_t u8;
 typedef int16_t i16;
@@ -31,7 +26,7 @@ enum LogLevel {
     LogLevel_COUNT,
 };
 
-void LogMessage(LogLevel level, const char *fmt, ...);
+static void LogMessage(LogLevel level, const char *fmt, ...);
 
 #define INFO(fmt, ...) LogMessage(LogLevel_Info, fmt, ##__VA_ARGS__)
 #define WARN(fmt, ...) LogMessage(LogLevel_Warn, fmt, ##__VA_ARGS__)
