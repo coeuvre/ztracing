@@ -43,6 +43,7 @@ BeginLoadFile(Arena *arena, OsLoadingFile *file) {
     load->temp_arena = temp_arena;
     load->zstream.zalloc = ZLibAlloc;
     load->zstream.zfree = ZLibFree;
+    load->zstream.opaque = arena;
     return load;
 }
 
@@ -150,7 +151,9 @@ GetJsonInput(void *data_) {
         result.data = data->buf.data;
 
         LoadState *state = (LoadState *)data->task->data;
-        state->loaded += result.size;
+        isize loaded = state->loaded;
+        loaded += result.size;
+        state->loaded = loaded;
     }
     return result;
 }
@@ -283,8 +286,7 @@ SkipObjectValue(Arena *arena, JsonParser *parser, ParseResult *result) {
         } break;
 
         case JsonToken_Error: {
-            result->error =
-                PushFormat(arena, "%.*s", token.value.size, token.value.data);
+            result->error = PushBuffer(arena, token.value);
             done = true;
             eof = true;
         } break;
@@ -297,9 +299,28 @@ SkipObjectValue(Arena *arena, JsonParser *parser, ParseResult *result) {
 }
 
 static bool
-SkipToken(JsonParser *parser, JsonTokenType type) {
+SkipToken(
+    JsonParser *parser,
+    JsonTokenType type,
+    Arena *arena,
+    ParseResult *result
+) {
+    bool skipped = true;
     JsonToken token = GetJsonToken(&parser->tokenizer);
-    return token.type == type;
+    if (token.type != type) {
+        skipped = false;
+        if (token.type == JsonToken_Error) {
+            result->error = PushBuffer(arena, token.value);
+        } else {
+            result->error = PushFormat(
+                arena,
+                "Unexpected token: '%.*s'",
+                token.value.size,
+                token.value.data
+            );
+        }
+    }
+    return skipped;
 }
 
 struct TraceEvent {
@@ -390,6 +411,12 @@ ParseJsonTraceEventArray(
                     done = true;
                 } break;
 
+                case JsonToken_Error: {
+                    result->error = PushBuffer(arena, token.value);
+                    done = true;
+                    eof = true;
+                } break;
+
                 default: {
                     result->error = PushFormat(
                         arena,
@@ -440,15 +467,9 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
             switch (token.type) {
             case JsonToken_StringLiteral: {
                 if (Equal(token.value, STRING_LITERAL("traceEvents"))) {
-                    if (SkipToken(parser, JsonToken_Colon)) {
+                    if (SkipToken(parser, JsonToken_Colon, arena, &result)) {
                         done = ParseJsonTraceEventArray(arena, parser, &result);
                     } else {
-                        result.error = PushFormat(
-                            arena,
-                            "Unexpected token: '%.*s'",
-                            token.value.size,
-                            token.value.data
-                        );
                         done = true;
                     }
                 } else {
@@ -591,15 +612,22 @@ DoLoadDocument(Task *task) {
     Arena parse_arena = {};
     JsonParser *parser =
         BeginJsonParse(&json_arena, GetJsonInput, &get_json_input_data);
-    ParseResult result = ParseJsonTrace(&parse_arena, parser);
-    state->error = result.error;
+    ParseResult parse_result = ParseJsonTrace(&parse_arena, parser);
     EndJsonParse(parser);
 
     EndLoadFile(load);
     ClearArena(&json_arena);
 
-    if (!IsTaskCancelled(task) && result.profile.process_size) {
-        BuildProfile(state->document_arena, &task->arena, &result.profile);
+    if (!IsTaskCancelled(task)) {
+        if (parse_result.error.data) {
+            state->error =
+                PushBuffer(state->document_arena, parse_result.error);
+        } else
+            BuildProfile(
+                state->document_arena,
+                &task->arena,
+                &parse_result.profile
+            );
     }
 
     ClearArena(&parse_arena);
@@ -611,8 +639,8 @@ DoLoadDocument(Task *task) {
     OsCloseFile(state->file);
 
     if (!IsTaskCancelled(task)) {
-        if (result.error.data) {
-            ERROR("%s", result.error.data);
+        if (state->error.data) {
+            ERROR("%s", state->error.data);
         } else {
             INFO(
                 "Loaded %.1f MB in %.2f s (%.1f MB/s).",

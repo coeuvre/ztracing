@@ -350,6 +350,8 @@ ExpectToken(JsonParser *parser, Arena *arena, JsonTokenType type) {
     JsonToken token = GetJsonToken(&parser->tokenizer);
     if (token.type == type) {
         got = true;
+    } else if (token.type == JsonToken_Error) {
+        parser->error = PushBuffer(arena, token.value);
     } else {
         parser->error = PushFormat(
             arena,
@@ -416,6 +418,12 @@ ParseJsonObject(JsonParser *parser, Arena *arena) {
             done = true;
         } break;
 
+        case JsonToken_Error: {
+            parser->error = PushBuffer(arena, token.value);
+            result = 0;
+            done = true;
+        } break;
+
         default: {
             parser->error = PushFormat(
                 arena,
@@ -452,6 +460,11 @@ ParseJsonArray(JsonParser *parser, Arena *arena) {
             case JsonToken_Comma: {
             } break;
             case JsonToken_CloseBracket: {
+                done = true;
+            } break;
+            case JsonToken_Error: {
+                parser->error = PushBuffer(arena, token.value);
+                result = 0;
                 done = true;
             } break;
             default: {
@@ -512,6 +525,10 @@ ParseJsonValue(JsonParser *parser, Arena *arena) {
     case JsonToken_Null: {
         result = PushStruct(arena, JsonValue);
         result->type = JsonValue_Null;
+    } break;
+
+    case JsonToken_Error: {
+        parser->error = PushBuffer(arena, token.value);
     } break;
 
     default: {
