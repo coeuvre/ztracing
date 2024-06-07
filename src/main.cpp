@@ -5,15 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-#include <zlib.h>
-
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
 
 #include "core.h"
 #include "memory.cpp"
 #include "json.cpp"
+#include "json_trace.cpp"
 
 #include "os.h"
 #include "channel.cpp"
@@ -23,6 +19,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 typedef ImVec2 Vec2;
+#include <zlib.h>
 
 #include "document.cpp"
 #include "app.cpp"
@@ -31,6 +28,9 @@ typedef ImVec2 Vec2;
 #include <SDL.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_sdlrenderer2.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include "os.cpp"
 #ifdef __EMSCRIPTEN__
 #include "os_emscripten.cpp"
