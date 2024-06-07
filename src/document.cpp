@@ -195,7 +195,7 @@ struct SeriesResult {
 struct CounterResult {
     Buffer name;
     HashMap series;
-    isize series_count;
+    isize series_size;
 };
 
 static SeriesResult *
@@ -206,7 +206,7 @@ UpsertSeries(Arena *arena, CounterResult *counter, Buffer name) {
         SeriesResult *new_series = PushStruct(arena, SeriesResult);
         new_series->name = GetKey(value_ptr);
         *series = new_series;
-        counter->series_count += 1;
+        counter->series_size += 1;
     }
     return *series;
 }
@@ -536,18 +536,19 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
     return result;
 }
 
-struct SeriesValue {
+struct SeriesSample {
     i64 time;
     f64 value;
 };
 
 struct Series {
     Buffer name;
-    SeriesValue *values;
-    isize value_size;
+    SeriesSample *samples;
+    isize sample_size;
 };
 
 struct Counter {
+    Buffer name;
     Series *series;
     isize series_size;
 };
@@ -563,6 +564,35 @@ struct Profile {
     isize process_size;
 };
 
+static int
+CompareSeriesSample(const void *a_, const void *b_) {
+    SeriesSample *a = (SeriesSample *)a_;
+    SeriesSample *b = (SeriesSample *)b_;
+    return a->time - b->time;
+}
+
+static void
+BuildSeries(Arena *perm, SeriesResult *series_result, Series *series) {
+    series->name = PushBuffer(perm, series_result->name);
+    series->sample_size = series_result->sample_size;
+    series->samples = PushArray(perm, SeriesSample, series->sample_size);
+    SampleResult *sample_result = series_result->first;
+    for (isize sample_index; sample_index < series->sample_size;
+         ++sample_index) {
+        SeriesSample *sample = series->samples + sample_index;
+        ASSERT(sample_result);
+        sample->time = sample_result->time;
+        sample->value = sample_result->value;
+        sample_result = sample_result->next;
+    }
+    qsort(
+        series->samples,
+        series->sample_size,
+        sizeof(series->samples[0]),
+        CompareSeriesSample
+    );
+}
+
 static void
 BuildCounter(
     Arena *perm,
@@ -570,8 +600,20 @@ BuildCounter(
     CounterResult *counter_result,
     Counter *counter
 ) {
-    // TODO
-    INFO("Counter: %.*s", counter_result->name.size, counter_result->name.data);
+    counter->name = PushBuffer(perm, counter_result->name);
+    counter->series_size = counter_result->series_size;
+    counter->series = PushArray(perm, Series, counter->series_size);
+
+    HashMapIter series_result_iter =
+        IterateHashMap(scratch, &counter_result->series);
+    for (isize series_index = 0; series_index < counter->series_size;
+         ++series_index) {
+        HashNode *series_result_node = GetNext(&series_result_iter);
+        ASSERT(series_result_node);
+        SeriesResult *series_result = (SeriesResult *)series_result_node->value;
+        Series *series = counter->series + series_index;
+        BuildSeries(perm, series_result, series);
+    }
 }
 
 static Profile *
@@ -619,8 +661,7 @@ DoLoadDocument(Task *task) {
 
     u64 start_counter = OsGetPerformanceCounter();
 
-    isize size = 4096;
-    Buffer buf = PushBufferNoZero(&task->arena, size);
+    Buffer buf = PushBufferNoZero(&task->arena, 4096);
     Load *load = BeginLoadFile(&task->arena, state->file);
 
     GetJsonInputData get_json_input_data = {};
