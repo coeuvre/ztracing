@@ -392,10 +392,10 @@ CompareSeriesSample(const void *a_, const void *b_) {
 }
 
 static void
-BuildSeries(Arena *perm, SeriesResult *series_result, Series *series) {
-    series->name = PushBuffer(perm, series_result->name);
+BuildSeries(Arena *arena, SeriesResult *series_result, Series *series) {
+    series->name = PushBuffer(arena, series_result->name);
     series->sample_size = series_result->sample_size;
-    series->samples = PushArray(perm, SeriesSample, series->sample_size);
+    series->samples = PushArray(arena, SeriesSample, series->sample_size);
     SampleResult *sample_result = series_result->first;
     for (isize sample_index = 0; sample_index < series->sample_size;
          ++sample_index) {
@@ -415,59 +415,66 @@ BuildSeries(Arena *perm, SeriesResult *series_result, Series *series) {
 
 static void
 BuildCounter(
-    Arena *perm,
-    Arena *scratch,
+    Arena *arena,
+    Arena scratch,
     CounterResult *counter_result,
     Counter *counter
 ) {
-    counter->name = PushBuffer(perm, counter_result->name);
+    counter->name = PushBuffer(arena, counter_result->name);
     counter->series_size = counter_result->series_size;
-    counter->series = PushArray(perm, Series, counter->series_size);
+    counter->series = PushArray(arena, Series, counter->series_size);
 
     HashMapIter series_result_iter =
-        IterateHashMap(scratch, &counter_result->series);
+        InitHashMapIter(&scratch, &counter_result->series);
     for (isize series_index = 0; series_index < counter->series_size;
          ++series_index) {
-        HashNode *series_result_node = GetNext(&series_result_iter);
-        ASSERT(series_result_node);
-        SeriesResult *series_result = (SeriesResult *)series_result_node->value;
+        SeriesResult *series_result =
+            (SeriesResult *)IterNext(&series_result_iter);
+        ASSERT(series_result);
+
         Series *series = counter->series + series_index;
-        BuildSeries(perm, series_result, series);
+        BuildSeries(arena, series_result, series);
+    }
+}
+
+static void
+BuildCounters(
+    Arena *arena,
+    Arena scratch,
+    ProcessResult *process_result,
+    Process *process
+) {
+    HashMapIter counter_result_iter =
+        InitHashMapIter(&scratch, &process_result->counters);
+    for (isize counter_index = 0; counter_index < process->counter_size;
+         ++counter_index) {
+        CounterResult *counter_result =
+            (CounterResult *)IterNext(&counter_result_iter);
+        ASSERT(counter_result);
+        Counter *counter = process->counters + counter_index;
+        BuildCounter(arena, scratch, counter_result, counter);
     }
 }
 
 static Profile *
-BuildProfile(Arena *perm, Arena *scratch, ProfileResult *profile_result) {
-    Profile *profile = PushStruct(perm, Profile);
+BuildProfile(Arena *arena, Arena scratch, ProfileResult *profile_result) {
+    Profile *profile = PushStruct(arena, Profile);
     profile->process_size = profile_result->process_size;
-    profile->processes = PushArray(perm, Process, profile->process_size);
+    profile->processes = PushArray(arena, Process, profile->process_size);
 
     HashMapIter process_result_iter =
-        IterateHashMap(scratch, &profile_result->processes);
-
+        InitHashMapIter(&scratch, &profile_result->processes);
     for (isize process_index = 0; process_index < profile->process_size;
          ++process_index) {
-        HashNode *process_result_node = GetNext(&process_result_iter);
-        ASSERT(process_result_node);
         ProcessResult *process_result =
-            (ProcessResult *)process_result_node->value;
+            (ProcessResult *)IterNext(&process_result_iter);
+        ASSERT(profile_result);
 
         Process *process = profile->processes + process_index;
         process->pid = process->pid;
         process->counter_size = process_result->counter_size;
-        process->counters = PushArray(perm, Counter, process->counter_size);
-
-        HashMapIter counter_result_iter =
-            IterateHashMap(scratch, &process_result->counters);
-        for (isize counter_index = 0; counter_index < process->counter_size;
-             ++counter_index) {
-            HashNode *counter_result_node = GetNext(&counter_result_iter);
-            ASSERT(counter_result_node);
-            CounterResult *counter_result =
-                (CounterResult *)counter_result_node->value;
-            Counter *counter = process->counters + counter_index;
-            BuildCounter(perm, scratch, counter_result, counter);
-        }
+        process->counters = PushArray(arena, Counter, process->counter_size);
+        BuildCounters(arena, scratch, process_result, process);
     }
 
     return profile;

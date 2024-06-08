@@ -228,22 +228,25 @@ struct HashMapIter {
     HashMapIterNode *first_free;
 };
 
-static inline HashMapIter
-IterateHashMap(Arena *arena, HashMap *m) {
+static HashMapIter
+InitHashMapIter(Arena *arena, HashMap *m) {
     HashMapIter iter = {};
     iter.arena = arena;
     if (m->root) {
-        iter.next = PushStruct(arena, HashMapIterNode);
-        iter.next->node = m->root;
+        HashMapIterNode *next = PushStruct(arena, HashMapIterNode);
+        next->node = m->root;
+        iter.next = next;
     }
     return iter;
 }
 
-static HashNode *
-GetNext(HashMapIter *iter) {
-    HashNode *result = 0;
+static void *
+IterNext(HashMapIter *iter) {
+    void *result = 0;
+
+    HashNode *node = 0;
     if (iter->next) {
-        result = iter->next->node;
+        node = iter->next->node;
         HashMapIterNode *free = iter->next;
         iter->next = iter->next->next;
 
@@ -251,10 +254,12 @@ GetNext(HashMapIter *iter) {
         iter->first_free = free;
     }
 
-    if (result) {
+    if (node) {
+        result = node->value;
+        ASSERT(result);
         for (isize i = 0; i < 4; ++i) {
-            HashNode *node = result->child[i];
-            if (node) {
+            HashNode *child_node = node->child[i];
+            if (child_node) {
                 HashMapIterNode *next = 0;
                 if (iter->first_free) {
                     next = iter->first_free;
@@ -262,13 +267,12 @@ GetNext(HashMapIter *iter) {
                 } else {
                     next = PushStruct(iter->arena, HashMapIterNode);
                 }
-                next->node = result->child[i];
+                next->node = child_node;
                 next->next = iter->next;
-
                 iter->next = next;
             }
         }
     }
-    ASSERT(!result || result->value);
+
     return result;
 }

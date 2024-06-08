@@ -212,7 +212,7 @@ DoLoadDocument(Task *task) {
                 PushBuffer(state->document_arena, profile_result->error);
             ERROR("%.*s", (int)state->error.size, state->error.data);
         }
-        BuildProfile(state->document_arena, &task->arena, profile_result);
+        BuildProfile(state->document_arena, task->arena, profile_result);
     }
 
     ClearArena(&parse_arena);
