@@ -52,8 +52,7 @@ struct Load {
     LoadProgress progress;
 
     z_stream zstream;
-    isize zstream_buf_size;
-    u8 *zstream_buf;
+    Buffer zstream_buf;
 };
 
 static Load
@@ -79,15 +78,11 @@ LoadIntoBuffer(Load *load, Buffer buf) {
                 int zret = inflateInit2(&load->zstream, MAX_WBITS | 32);
                 // TODO: Error handling.
                 ASSERT(zret == Z_OK);
-                load->zstream_buf_size = MAX(4096, buf.size);
-                load->zstream_buf = PushArray(
-                    load->arena,
-                    u8,
-                    load->zstream_buf_size
-                );
-                CopyMemory(load->zstream_buf, buf.data, nread);
+                load->zstream_buf =
+                    PushBufferNoZero(load->arena, MAX(4096, buf.size));
+                CopyMemory(load->zstream_buf.data, buf.data, nread);
                 load->zstream.avail_in = nread;
-                load->zstream.next_in = load->zstream_buf;
+                load->zstream.next_in = load->zstream_buf.data;
                 load->progress = LoadProgress_Gz;
             } else {
                 load->progress = LoadProgress_Regular;
@@ -107,10 +102,10 @@ LoadIntoBuffer(Load *load, Buffer buf) {
             if (load->zstream.avail_in == 0) {
                 load->zstream.avail_in = OsReadFile(
                     load->file,
-                    load->zstream_buf,
-                    load->zstream_buf_size
+                    load->zstream_buf.data,
+                    load->zstream_buf.size
                 );
-                load->zstream.next_in = load->zstream_buf;
+                load->zstream.next_in = load->zstream_buf.data;
             }
 
             if (load->zstream.avail_in != 0) {
@@ -153,7 +148,7 @@ LoadIntoBuffer(Load *load, Buffer buf) {
 
 struct GetJsonInputData {
     Task *task;
-    Load *load;
+    Load load;
     Buffer buf;
 };
 
@@ -162,7 +157,7 @@ GetJsonInput(void *data_) {
     Buffer result = {};
     GetJsonInputData *data = (GetJsonInputData *)data_;
     if (!IsTaskCancelled(data->task)) {
-        result.size = LoadIntoBuffer(data->load, data->buf);
+        result.size = LoadIntoBuffer(&data->load, data->buf);
         result.data = data->buf.data;
 
         LoadState *state = (LoadState *)data->task->data;
@@ -179,27 +174,28 @@ DoLoadDocument(Task *task) {
     Buffer path = OsGetFilePath(state->file);
     INFO("Loading file %.*s ...", (int)path.size, path.data);
 
-    u64 start_counter = OsGetPerformanceCounter();
-
-    Arena scratch = task->arena;
-    Buffer buf = PushBufferNoZero(&scratch, 4096);
-    Load load = InitLoad(&scratch, state->file);
-
-    GetJsonInputData get_json_input_data = {};
-    get_json_input_data.task = task;
-    get_json_input_data.load = &load;
-    get_json_input_data.buf = buf;
-
-    Arena json_arena = InitArena();
     Arena parse_arena = InitArena();
-    JsonParser *parser =
-        BeginJsonParse(&json_arena, GetJsonInput, &get_json_input_data);
-    ProfileResult *profile_result = ParseJsonTrace(&parse_arena, parser);
-    EndJsonParse(parser);
+    ProfileResult *profile_result = 0;
 
-    OsCloseFile(state->file);
-    ClearArena(&json_arena);
+    u64 start_counter = OsGetPerformanceCounter();
+    {
+        Arena load_arena = task->arena;
+        Arena token_arena = InitArena();
+        Arena value_arena = InitArena();
 
+        GetJsonInputData get_json_input_data = {};
+        get_json_input_data.task = task;
+        get_json_input_data.buf = PushBufferNoZero(&load_arena, 4096);
+        get_json_input_data.load = InitLoad(&load_arena, state->file);
+
+        JsonParser parser = InitJsonParser(GetJsonInput, &get_json_input_data);
+        profile_result =
+            ParseJsonTrace(&parse_arena, value_arena, token_arena, &parser);
+
+        OsCloseFile(state->file);
+        ClearArena(&token_arena);
+        ClearArena(&value_arena);
+    }
     u64 end_counter = OsGetPerformanceCounter();
     f32 seconds =
         (f64)(end_counter - start_counter) / (f64)OsGetPerformanceFrequency();

@@ -93,12 +93,17 @@ UpsertProcessResult(Arena *arena, ProfileResult *profile, i64 pid) {
 // Skip tokens until next key-value pair in this object. Returns true if EOF
 // reached.
 static bool
-SkipObjectValue(Arena *arena, JsonParser *parser, ProfileResult *result) {
+SkipObjectValue(
+    Arena *arena,
+    Arena scratch,
+    JsonParser *parser,
+    ProfileResult *result
+) {
     bool eof = false;
     u32 open = 0;
     bool done = false;
     while (!done) {
-        JsonToken token = GetJsonToken(&parser->tokenizer);
+        JsonToken token = GetJsonToken(&scratch, parser);
         switch (token.type) {
         case JsonToken_Comma: {
             if (open == 0) {
@@ -198,22 +203,25 @@ ProcessTraceEvent(Arena *arena, JsonValue *value, ProfileResult *profile) {
 static bool
 ParseJsonTraceEventArray(
     Arena *arena,
+    Arena value_scratch,
+    Arena token_scratch,
     JsonParser *parser,
     ProfileResult *result
 ) {
     bool eof = false;
-    JsonToken token = GetJsonToken(&parser->tokenizer);
+    JsonToken token = GetJsonToken(&token_scratch, parser);
     switch (token.type) {
     case JsonToken_OpenBracket: {
         bool done = false;
         while (!done) {
-            JsonValue *value = GetJsonValue(parser);
+            JsonValue *value =
+                GetJsonValue(&value_scratch, token_scratch, parser);
             if (value->type != JsonValue_Error) {
                 if (value->type == JsonValue_Object) {
                     ProcessTraceEvent(arena, value, result);
                 }
 
-                token = GetJsonToken(&parser->tokenizer);
+                token = GetJsonToken(&token_scratch, parser);
                 switch (token.type) {
                 case JsonToken_Comma: {
                 } break;
@@ -267,20 +275,31 @@ ParseJsonTraceEventArray(
 }
 
 static ProfileResult *
-ParseJsonTrace(Arena *arena, JsonParser *parser) {
+ParseJsonTrace(
+    Arena *arena,
+    Arena value_scratch,
+    Arena token_scratch,
+    JsonParser *parser
+) {
     ProfileResult *result = PushStruct(arena, ProfileResult);
-    JsonToken token = GetJsonToken(&parser->tokenizer);
+    JsonToken token = GetJsonToken(&token_scratch, parser);
     switch (token.type) {
     case JsonToken_OpenBrace: {
         bool done = false;
         while (!done) {
-            token = GetJsonToken(&parser->tokenizer);
+            token = GetJsonToken(&token_scratch, parser);
             switch (token.type) {
             case JsonToken_StringLiteral: {
                 if (Equal(token.value, STRING_LITERAL("traceEvents"))) {
-                    token = GetJsonToken(&parser->tokenizer);
+                    token = GetJsonToken(&token_scratch, parser);
                     if (token.type == JsonToken_Colon) {
-                        done = ParseJsonTraceEventArray(arena, parser, result);
+                        done = ParseJsonTraceEventArray(
+                            arena,
+                            value_scratch,
+                            token_scratch,
+                            parser,
+                            result
+                        );
                     } else if (token.type == JsonToken_Error) {
                         result->error = PushBuffer(arena, token.value);
                     } else {
@@ -293,7 +312,8 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
                         done = true;
                     }
                 } else {
-                    done = SkipObjectValue(arena, parser, result);
+                    done =
+                        SkipObjectValue(arena, token_scratch, parser, result);
                 }
             } break;
 
@@ -377,7 +397,7 @@ BuildSeries(Arena *perm, SeriesResult *series_result, Series *series) {
     series->sample_size = series_result->sample_size;
     series->samples = PushArray(perm, SeriesSample, series->sample_size);
     SampleResult *sample_result = series_result->first;
-    for (isize sample_index; sample_index < series->sample_size;
+    for (isize sample_index = 0; sample_index < series->sample_size;
          ++sample_index) {
         SeriesSample *sample = series->samples + sample_index;
         ASSERT(sample_result);

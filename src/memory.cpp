@@ -126,11 +126,11 @@ static Buffer
 PushFormat(Arena *arena, const char *fmt, ...) {
     Buffer result = {};
 
-    va_list args;
-
     Arena scratch = *arena;
     isize size = GetRemaining(&scratch);
     char *buf = (char *)PushSize(&scratch, size, /* zero= */ false);
+
+    va_list args;
     va_start(args, fmt);
     isize num_chars = vsnprintf(buf, size, fmt, args);
     va_end(args);
@@ -155,7 +155,9 @@ PushFormat(Arena *arena, const char *fmt, ...) {
 
 static void
 ClearArena(Arena *arena) {
+    ASSERT(arena && arena->end);
     MemoryBlock *block = (MemoryBlock *)arena->end;
+    *arena = {};
     while (block) {
         MemoryBlock *prev = block->prev;
         MemoryBlock *next = block->next;
