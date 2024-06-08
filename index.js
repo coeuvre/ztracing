@@ -61,7 +61,7 @@ async function setup(module, canvas) {
 
   return {
     module,
-    setCanvasSize: AppSetWindowSize,
+    setWindowSize: AppSetWindowSize,
     loadProfile: loadProfile,
   };
 }

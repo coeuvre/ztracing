@@ -10,7 +10,7 @@ struct MainLoop {
     SDL_Thread *worker_thread;
     MainLoopState state;
     SDL_Window *window;
-    SDL_Renderer *renderer;
+    SDL_GLContext gl_context;
     App *app;
     OsLoadingFile *loading_file;
 };
@@ -303,27 +303,21 @@ MainLoopInit(MainLoop *main_loop) {
         SDL_WINDOWPOS_CENTERED,
         window_size.x,
         window_size.y,
-        SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED | SDL_WINDOW_OPENGL |
+            SDL_WINDOW_ALLOW_HIGHDPI
     );
     if (!window) {
         ABORT("Failed to create SDL_Window: %s", SDL_GetError());
     }
     main_loop->window = window;
 
-    SDL_Renderer *renderer = SDL_CreateRenderer(
-        window,
-        -1,
-        SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC
-    );
-    if (!renderer) {
-        ABORT("Failed to create SDL_Renderer: %s", SDL_GetError());
-    }
-    main_loop->renderer = renderer;
+    SDL_GLContext gl_context = SDL_GL_CreateContext(window);
+    SDL_GL_MakeCurrent(window, gl_context);
+    SDL_GL_SetSwapInterval(1);
+    main_loop->gl_context = gl_context;
 
-    ImGuiContext *imgui_context = ImGui::CreateContext();
-    if (!imgui_context) {
-        ABORT("Failed to create ImGui context");
-    }
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
 
     {
         ImGuiIO *io = &ImGui::GetIO();
@@ -344,12 +338,12 @@ MainLoopInit(MainLoop *main_loop) {
         ImGui::StyleColorsLight(style);
     }
 
-    if (!ImGui_ImplSDL2_InitForSDLRenderer(window, renderer)) {
-        ABORT("Failed to init ImGui with SDL");
+    if (!ImGui_ImplSDL2_InitForOpenGL(window, gl_context)) {
+        ABORT("Failed to init ImGui with SDL2");
     }
 
-    if (!ImGui_ImplSDLRenderer2_Init(renderer)) {
-        ABORT("Failed to init ImGui with SDL_Renderer");
+    if (!ImGui_ImplOpenGL3_Init()) {
+        ABORT("Failed to init ImGui with OpenGL3");
     }
 
     main_loop->app = AppCreate();
@@ -393,14 +387,14 @@ MainLoopUpdate(MainLoop *main_loop) {
     }
 
     ImGui_ImplSDL2_NewFrame();
-    ImGui_ImplSDLRenderer2_NewFrame();
+    ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 
     AppUpdate(main_loop->app);
 
     ImGui::Render();
-    ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData());
-    SDL_RenderPresent(main_loop->renderer);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    SDL_GL_SwapWindow(main_loop->window);
 }
 
 static void
@@ -410,11 +404,11 @@ MainLoopShutdown(MainLoop *main_loop) {
     CloseChannelTx(OS_TASK_CHANNEL);
     SDL_WaitThread(main_loop->worker_thread, 0);
 
-    ImGui_ImplSDLRenderer2_Shutdown();
+    ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
 
-    SDL_DestroyRenderer(main_loop->renderer);
+    SDL_GL_DeleteContext(main_loop->gl_context);
     SDL_DestroyWindow(main_loop->window);
     SDL_Quit();
 

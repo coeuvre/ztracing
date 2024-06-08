@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en-us">
   <head>
     <meta charset="utf-8" />
@@ -35,7 +35,7 @@
         .then((app) => {
           window.app = app;
           window.onresize = () => {
-            app.setCanvasSize(window.innerWidth, window.innerHeight);
+            app.setWindowSize(window.innerWidth, window.innerHeight);
           };
 
           const query = queryString.parse(location.search);
