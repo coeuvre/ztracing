@@ -62,6 +62,7 @@ static JsonParser *
 BeginJsonParse(Arena *arena, GetJsonInputFunc get_json_input, void *data) {
     JsonParser *parser = PushStruct(arena, JsonParser);
     parser->arena = arena;
+    parser->tokenizer.arena = InitArena();
     parser->tokenizer.get_json_input = get_json_input;
     parser->tokenizer.get_json_input_data = data;
     return parser;
@@ -159,8 +160,8 @@ static JsonToken
 GetJsonToken(JsonTokenizer *tokenizer) {
     JsonToken token = {};
 
-    TempArena temp_arena = BeginTempArena(&tokenizer->arena);
-    Arena *arena = temp_arena.arena;
+    Arena scratch = tokenizer->arena;
+    Arena *arena = &scratch;
 
     SkipWhitespace(tokenizer);
 
@@ -394,8 +395,6 @@ GetJsonToken(JsonTokenizer *tokenizer) {
     } break;
     }
 
-    EndTempArena(temp_arena);
-
     return token;
 }
 
@@ -575,10 +574,9 @@ ParseJsonValue(JsonParser *parser, Arena *arena, JsonValue *result) {
 
 static JsonValue *
 GetJsonValue(JsonParser *parser) {
-    TempArena temp_arena = BeginTempArena(parser->arena);
+    Arena scratch = *parser->arena;
     JsonValue *result = PushStruct(parser->arena, JsonValue);
-    ParseJsonValue(parser, temp_arena.arena, result);
-    EndTempArena(temp_arena);
+    ParseJsonValue(parser, &scratch, result);
     return result;
 }
 

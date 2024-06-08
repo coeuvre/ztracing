@@ -9,100 +9,69 @@ CopyMemory(void *dst, const void *src, isize size) {
 }
 
 struct MemoryBlock {
+    u8 *begin;
+    u8 *end;
     MemoryBlock *prev;
     MemoryBlock *next;
+};
+
+static MemoryBlock *
+AllocateMemoryBlock(isize size) {
+    u8 *begin = (u8 *)AllocateMemory(size + sizeof(MemoryBlock));
+    u8 *end = begin + size;
+    MemoryBlock *block = (MemoryBlock *)end;
+    block->begin = begin;
+    block->end = end;
+    block->prev = 0;
+    block->next = 0;
+    return block;
+}
+
+struct Arena {
     u8 *begin;
-    u8 *at;
     u8 *end;
 };
 
-struct Arena {
-    MemoryBlock *block;
-    MemoryBlock *first;
-    u32 temp_arena_count;
-};
+static isize INIT_BLOCK_SIZE = 1024;
 
-struct TempArena {
-    Arena *arena;
-    MemoryBlock *block;
-    u8 *at;
-};
-
-static TempArena
-BeginTempArena(Arena *arena) {
-    TempArena temp_arena = {};
-    temp_arena.arena = arena;
-    temp_arena.block = arena->block;
-    if (temp_arena.block) {
-        temp_arena.at = temp_arena.block->at;
-    }
-    ++arena->temp_arena_count;
-    return temp_arena;
+static Arena
+InitArena() {
+    Arena arena = {};
+    MemoryBlock *block = AllocateMemoryBlock(INIT_BLOCK_SIZE);
+    arena.begin = block->begin;
+    arena.end = block->end;
+    return arena;
 }
-
-static void
-EndTempArena(TempArena temp_arena) {
-    Arena *arena = temp_arena.arena;
-    if (temp_arena.block) {
-        DEBUG_ASSERT(temp_arena.block->at >= temp_arena.at);
-        arena->block = temp_arena.block;
-        arena->block->at = temp_arena.at;
-    } else if (arena->first) {
-        arena->block = arena->first;
-        arena->block->at = arena->block->begin;
-    }
-
-    DEBUG_ASSERT(arena->temp_arena_count > 0);
-    --arena->temp_arena_count;
-}
-
-static isize INIT_BLOCK_SIZE = 4 * 1024;
 
 static void *
 PushSize(Arena *arena, isize size, bool zero) {
     DEBUG_ASSERT(size >= 0);
+    DEBUG_ASSERT(arena->begin);
 
-    if (!arena->block || arena->block->at + size > arena->block->end) {
-        while (true) {
-            if (arena->block && arena->block->next) {
-                MemoryBlock *next = arena->block->next;
-                arena->block = next;
-                next->at = next->begin;
-                if (next->at + size <= next->end) {
-                    break;
-                }
-            } else {
-                isize new_size = INIT_BLOCK_SIZE;
-                if (arena->block) {
-                    new_size = (arena->block->end - arena->block->begin) << 1;
-                }
-                while (new_size < size) {
-                    new_size <<= 1;
-                }
-                MemoryBlock *block = (MemoryBlock *)AllocateMemory(
-                    sizeof(MemoryBlock) + new_size
-                );
-                block->prev = arena->block;
-                block->next = 0;
-                block->begin = (u8 *)(block + 1);
-                block->at = block->begin;
-                block->end = block->begin + new_size;
-                if (arena->block) {
-                    ASSERT(!arena->block->next);
-                    arena->block->next = block;
-                }
-                arena->block = block;
-                if (!arena->first) {
-                    arena->first = block;
-                }
-                break;
+    while (arena->begin + size > arena->end) {
+        MemoryBlock *block = (MemoryBlock *)arena->end;
+        if (block->next) {
+            MemoryBlock *next = block->next;
+            arena->begin = next->begin;
+            arena->end = next->end;
+        } else {
+            isize new_size = (block->end - block->begin) << 1;
+            while (new_size < size) {
+                new_size <<= 1;
             }
+            MemoryBlock *new_block = AllocateMemoryBlock(new_size);
+            block->next = new_block;
+            new_block->prev = block;
+
+            arena->begin = new_block->begin;
+            arena->end = new_block->end;
+            break;
         }
     }
 
-    DEBUG_ASSERT(arena->block && arena->block->at + size <= arena->block->end);
-    void *result = arena->block->at;
-    arena->block->at += size;
+    DEBUG_ASSERT(arena->begin + size <= arena->end);
+    void *result = arena->begin;
+    arena->begin += size;
 
     if (zero) {
         memset(result, 0, size);
@@ -118,7 +87,7 @@ PushSize(Arena *arena, isize size) {
 
 static void *
 BootstrapPushSize(isize struct_size, isize offset) {
-    Arena arena = {};
+    Arena arena = InitArena();
     void *result = PushSize(&arena, struct_size);
     *(Arena *)((u8 *)result + offset) = arena;
     return result;
@@ -147,12 +116,9 @@ PushBuffer(Arena *arena, Buffer src) {
     return dst;
 }
 
-static isize
+static inline isize
 GetRemaining(Arena *arena) {
-    isize result = 0;
-    if (arena->block) {
-        result = arena->block->end - arena->block->at;
-    }
+    isize result = arena->end - arena->begin;
     return result;
 }
 
@@ -162,22 +128,22 @@ PushFormat(Arena *arena, const char *fmt, ...) {
 
     va_list args;
 
-    TempArena temp_arena = BeginTempArena(arena);
-    isize size = GetRemaining(arena);
-    char *buf = (char *)PushSize(arena, size, /* zero= */ false);
+    Arena scratch = *arena;
+    isize size = GetRemaining(&scratch);
+    char *buf = (char *)PushSize(&scratch, size, /* zero= */ false);
     va_start(args, fmt);
-    result.size = vsnprintf(buf, size, fmt, args) + 1;
+    isize num_chars = vsnprintf(buf, size, fmt, args);
     va_end(args);
-    EndTempArena(temp_arena);
 
     result.data = (u8 *)buf;
-    if (result.size < size) {
-        result.data = (u8 *)PushSize(arena, size, /* zero= */ false);
+    result.size = num_chars;
+    if (num_chars <= size) {
+        result.data = (u8 *)PushSize(arena, num_chars, /* zero= */ false);
         ASSERT(result.data == (u8 *)buf);
-    } else if (result.size > size) {
-        result.data = (u8 *)PushSize(arena, result.size, /* zero= */ false);
+    } else {
+        result.data = (u8 *)PushSize(arena, num_chars + 1, /* zero= */ false);
         va_start(args, fmt);
-        vsnprintf((char *)result.data, result.size, fmt, args);
+        vsnprintf((char *)result.data, num_chars + 1, fmt, args);
         va_end(args);
     }
 
@@ -188,29 +154,24 @@ PushFormat(Arena *arena, const char *fmt, ...) {
     ((char *)PushFormat(arena, fmt, ##__VA_ARGS__).data)
 
 static void
-FreeLastBlock(Arena *arena) {
-    MemoryBlock *block = arena->block;
-    arena->block = block->prev;
-    if (arena->block) {
-        arena->block->next = 0;
-    }
-    DeallocateMemory(block, sizeof(MemoryBlock) + block->end - block->begin);
-}
-
-static void
 ClearArena(Arena *arena) {
-    ASSERT(arena->temp_arena_count == 0);
+    MemoryBlock *block = (MemoryBlock *)arena->end;
+    while (block) {
+        MemoryBlock *prev = block->prev;
+        MemoryBlock *next = block->next;
+        if (prev) {
+            prev->next = next;
+        }
+        if (next) {
+            next->prev = prev;
+        }
 
-    while (arena->block && arena->block->next) {
-        arena->block = arena->block->next;
-    }
+        DeallocateMemory(
+            block->begin,
+            block->end - block->begin + sizeof(MemoryBlock)
+        );
 
-    bool has_block = arena->block != 0;
-    while (has_block) {
-        // The arena itself might be stored in the last block, we must ensure
-        // not looking at it after freeing
-        has_block = arena->block->prev != 0;
-        FreeLastBlock(arena);
+        block = prev ? prev : next;
     }
 }
 

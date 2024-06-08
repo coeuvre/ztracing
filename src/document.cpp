@@ -46,7 +46,7 @@ enum LoadProgress {
 };
 
 struct Load {
-    TempArena temp_arena;
+    Arena *arena;
     OsLoadingFile *file;
 
     LoadProgress progress;
@@ -56,15 +56,14 @@ struct Load {
     u8 *zstream_buf;
 };
 
-static Load *
-BeginLoadFile(Arena *arena, OsLoadingFile *file) {
-    TempArena temp_arena = BeginTempArena(arena);
-    Load *load = PushStruct(arena, Load);
-    load->file = file;
-    load->temp_arena = temp_arena;
-    load->zstream.zalloc = ZLibAlloc;
-    load->zstream.zfree = ZLibFree;
-    load->zstream.opaque = arena;
+static Load
+InitLoad(Arena *arena, OsLoadingFile *file) {
+    Load load = {};
+    load.arena = arena;
+    load.file = file;
+    load.zstream.zalloc = ZLibAlloc;
+    load.zstream.zfree = ZLibFree;
+    load.zstream.opaque = arena;
     return load;
 }
 
@@ -82,7 +81,7 @@ LoadIntoBuffer(Load *load, Buffer buf) {
                 ASSERT(zret == Z_OK);
                 load->zstream_buf_size = MAX(4096, buf.size);
                 load->zstream_buf = PushArray(
-                    load->temp_arena.arena,
+                    load->arena,
                     u8,
                     load->zstream_buf_size
                 );
@@ -152,11 +151,6 @@ LoadIntoBuffer(Load *load, Buffer buf) {
     return nread;
 }
 
-static void
-EndLoadFile(Load *load) {
-    EndTempArena(load->temp_arena);
-}
-
 struct GetJsonInputData {
     Task *task;
     Load *load;
@@ -187,22 +181,22 @@ DoLoadDocument(Task *task) {
 
     u64 start_counter = OsGetPerformanceCounter();
 
-    Buffer buf = PushBufferNoZero(&task->arena, 4096);
-    Load *load = BeginLoadFile(&task->arena, state->file);
+    Arena scratch = task->arena;
+    Buffer buf = PushBufferNoZero(&scratch, 4096);
+    Load load = InitLoad(&scratch, state->file);
 
     GetJsonInputData get_json_input_data = {};
     get_json_input_data.task = task;
-    get_json_input_data.load = load;
+    get_json_input_data.load = &load;
     get_json_input_data.buf = buf;
 
-    Arena json_arena = {};
-    Arena parse_arena = {};
+    Arena json_arena = InitArena();
+    Arena parse_arena = InitArena();
     JsonParser *parser =
         BeginJsonParse(&json_arena, GetJsonInput, &get_json_input_data);
     ProfileResult *profile_result = ParseJsonTrace(&parse_arena, parser);
     EndJsonParse(parser);
 
-    EndLoadFile(load);
     OsCloseFile(state->file);
     ClearArena(&json_arena);
 

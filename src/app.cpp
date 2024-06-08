@@ -99,10 +99,9 @@ DrawMenuBar(Arena *frame_arena, App *app) {
 
 static void
 AppUpdate(App *app) {
-    TempArena temp_frame_arena = BeginTempArena(&app->arena);
-    Arena *frame_arena = temp_frame_arena.arena;
+    Arena frame_arena = app->arena;
 
-    DrawMenuBar(frame_arena, app);
+    DrawMenuBar(&frame_arena, app);
 
     ImGuiID dockspace_id = ImGui::GetID("DockSpace");
 
@@ -140,8 +139,8 @@ AppUpdate(App *app) {
             ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove
     );
     if (app->document) {
-        char *title = PushFormatZ(frame_arena, "%s", app->document->path);
-        UpdateDocument(app->document, frame_arena);
+        char *title = PushFormatZ(&frame_arena, "%s", app->document->path);
+        UpdateDocument(app->document, &frame_arena);
     } else {
         RenderWelcome(app);
     }
@@ -150,8 +149,6 @@ AppUpdate(App *app) {
     if (app->show_demo_window) {
         ImGui::ShowDemoWindow(&app->show_demo_window);
     }
-
-    EndTempArena(temp_frame_arena);
 }
 
 static bool
