@@ -331,6 +331,15 @@ MainLoopInit(MainLoop *main_loop) {
         io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         io->ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
+        ImFontConfig font_cfg;
+        font_cfg.FontDataOwnedByAtlas = false;
+        io->Fonts->AddFontFromMemoryTTF(
+            JetBrainsMono_Regular_ttf,
+            JetBrainsMono_Regular_ttf_len,
+            15.0,
+            &font_cfg
+        );
+
         ImGuiStyle *style = &ImGui::GetStyle();
         ImGui::StyleColorsLight(style);
     }
