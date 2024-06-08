@@ -1,7 +1,6 @@
 enum DocumentState {
-    DocumentState_Loading,
-    DocumentState_Error,
-    DocumentState_View,
+    Document_Loading,
+    Document_View,
 };
 
 struct LoadState {
@@ -9,6 +8,7 @@ struct LoadState {
     OsLoadingFile *file;
     volatile isize loaded;
     Buffer error;
+    Profile *profile;
 };
 
 struct Document {
@@ -23,8 +23,9 @@ struct Document {
         } loading;
 
         struct {
-            Buffer message;
-        } error;
+            Buffer error;
+            Profile *profile;
+        } view;
     };
 };
 
@@ -198,67 +199,54 @@ DoLoadDocument(Task *task) {
     Arena parse_arena = {};
     JsonParser *parser =
         BeginJsonParse(&json_arena, GetJsonInput, &get_json_input_data);
-    ParseResult parse_result = ParseJsonTrace(&parse_arena, parser);
+    ProfileResult *profile_result = ParseJsonTrace(&parse_arena, parser);
     EndJsonParse(parser);
 
     EndLoadFile(load);
+    OsCloseFile(state->file);
     ClearArena(&json_arena);
-
-    if (!IsTaskCancelled(task)) {
-        if (parse_result.error.data) {
-            state->error =
-                PushBuffer(state->document_arena, parse_result.error);
-        } else
-            BuildProfile(
-                state->document_arena,
-                &task->arena,
-                &parse_result.profile
-            );
-    }
-
-    ClearArena(&parse_arena);
 
     u64 end_counter = OsGetPerformanceCounter();
     f32 seconds =
         (f64)(end_counter - start_counter) / (f64)OsGetPerformanceFrequency();
 
-    OsCloseFile(state->file);
-
     if (!IsTaskCancelled(task)) {
-        if (state->error.data) {
-            ERROR("%s", state->error.data);
-        } else {
-            INFO(
-                "Loaded %.1f MB in %.2f s (%.1f MB/s).",
-                state->loaded / 1024.0f / 1024.0f,
-                seconds,
-                state->loaded / seconds / 1024.0f / 1024.0f
-            );
+        INFO(
+            "Loaded %.1f MB in %.2f s (%.1f MB/s).",
+            state->loaded / 1024.0f / 1024.0f,
+            seconds,
+            state->loaded / seconds / 1024.0f / 1024.0f
+        );
+        if (profile_result->error.size) {
+            state->error =
+                PushBuffer(state->document_arena, profile_result->error);
+            ERROR("%.*s", (int)state->error.size, state->error.data);
         }
+        BuildProfile(state->document_arena, &task->arena, profile_result);
     }
+
+    ClearArena(&parse_arena);
 }
 
 static void
 WaitLoading(Document *document) {
-    ASSERT(document->state == DocumentState_Loading);
+    ASSERT(document->state == Document_Loading);
     WaitTask(document->loading.task);
 
     LoadState *state = &document->loading.state;
-
-    if (state->error.data) {
-        Buffer message = state->error;
-        document->state = DocumentState_Error;
-        document->error.message = message;
-    } else {
-        document->state = DocumentState_View;
+    document->state = Document_View;
+    document->view.error = state->error;
+    if (document->view.error.data) {
+        ImGui::OpenPopup("Error");
     }
+    document->view.profile = state->profile;
 }
 
 static Document *
 LoadDocument(OsLoadingFile *file) {
     Document *document = BootstrapPushStruct(Document, arena);
     document->path = PushBuffer(&document->arena, OsGetFilePath(file));
-    document->state = DocumentState_Loading;
+    document->state = Document_Loading;
     document->loading.task =
         CreateTask(DoLoadDocument, &document->loading.state);
     document->loading.state.document_arena = &document->arena;
@@ -268,7 +256,7 @@ LoadDocument(OsLoadingFile *file) {
 
 static void
 UnloadDocument(Document *document) {
-    if (document->state == DocumentState_Loading) {
+    if (document->state == Document_Loading) {
         CancelTask(document->loading.task);
         WaitLoading(document);
     }
@@ -276,9 +264,9 @@ UnloadDocument(Document *document) {
 }
 
 static void
-RenderDocument(Document *document, Arena *frame_arena) {
+UpdateDocument(Document *document, Arena *frame_arena) {
     switch (document->state) {
-    case DocumentState_Loading: {
+    case Document_Loading: {
         {
             char *text = PushFormatZ(
                 frame_arena,
@@ -296,17 +284,22 @@ RenderDocument(Document *document, Arena *frame_arena) {
         }
     } break;
 
-    case DocumentState_Error: {
-        ImGui::Text(
-            "Failed to load \"%.*s\": %s",
-            (int)document->path.size,
-            document->path.data,
-            document->error.message.data
-        );
-    } break;
-
-    case DocumentState_View: {
-
+    case Document_View: {
+        if (document->view.error.data) {
+            Buffer error = document->view.error;
+            if (ImGui::BeginPopupModal(
+                    "Error",
+                    0,
+                    ImGuiWindowFlags_AlwaysAutoResize
+                )) {
+                ImGui::Text("%.*s", (int)error.size, error.data);
+                ImGui::Separator();
+                if (ImGui::Button("OK")) {
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+        }
     } break;
 
     default: {

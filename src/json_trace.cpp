@@ -74,6 +74,7 @@ UpsertCounterResult(Arena *arena, ProcessResult *process, Buffer name) {
 struct ProfileResult {
     HashMap processes;
     isize process_size;
+    Buffer error;
 };
 
 static ProcessResult *
@@ -89,15 +90,10 @@ UpsertProcessResult(Arena *arena, ProfileResult *profile, i64 pid) {
     return *process;
 }
 
-struct ParseResult {
-    Buffer error;
-    ProfileResult profile;
-};
-
 // Skip tokens until next key-value pair in this object. Returns true if EOF
 // reached.
 static bool
-SkipObjectValue(Arena *arena, JsonParser *parser, ParseResult *result) {
+SkipObjectValue(Arena *arena, JsonParser *parser, ProfileResult *result) {
     bool eof = false;
     u32 open = 0;
     bool done = false;
@@ -136,31 +132,6 @@ SkipObjectValue(Arena *arena, JsonParser *parser, ParseResult *result) {
         }
     }
     return eof;
-}
-
-static bool
-SkipToken(
-    JsonParser *parser,
-    JsonTokenType type,
-    Arena *arena,
-    ParseResult *result
-) {
-    bool skipped = true;
-    JsonToken token = GetJsonToken(&parser->tokenizer);
-    if (token.type != type) {
-        skipped = false;
-        if (token.type == JsonToken_Error) {
-            result->error = PushBuffer(arena, token.value);
-        } else {
-            result->error = PushFormat(
-                arena,
-                "Unexpected token: '%.*s'",
-                token.value.size,
-                token.value.data
-            );
-        }
-    }
-    return skipped;
 }
 
 struct TraceEvent {
@@ -228,7 +199,7 @@ static bool
 ParseJsonTraceEventArray(
     Arena *arena,
     JsonParser *parser,
-    ParseResult *result
+    ProfileResult *result
 ) {
     bool eof = false;
     JsonToken token = GetJsonToken(&parser->tokenizer);
@@ -237,9 +208,9 @@ ParseJsonTraceEventArray(
         bool done = false;
         while (!done) {
             JsonValue *value = GetJsonValue(parser);
-            if (value) {
+            if (value->type != JsonValue_Error) {
                 if (value->type == JsonValue_Object) {
-                    ProcessTraceEvent(arena, value, &result->profile);
+                    ProcessTraceEvent(arena, value, result);
                 }
 
                 token = GetJsonToken(&parser->tokenizer);
@@ -269,7 +240,7 @@ ParseJsonTraceEventArray(
                 } break;
                 }
             } else {
-                result->error = PushBuffer(arena, GetJsonError(parser));
+                result->error = PushBuffer(arena, value->value);
                 done = true;
                 eof = true;
             }
@@ -295,9 +266,9 @@ ParseJsonTraceEventArray(
     return eof;
 }
 
-static ParseResult
+static ProfileResult *
 ParseJsonTrace(Arena *arena, JsonParser *parser) {
-    ParseResult result = {};
+    ProfileResult *result = PushStruct(arena, ProfileResult);
     JsonToken token = GetJsonToken(&parser->tokenizer);
     switch (token.type) {
     case JsonToken_OpenBrace: {
@@ -307,13 +278,22 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
             switch (token.type) {
             case JsonToken_StringLiteral: {
                 if (Equal(token.value, STRING_LITERAL("traceEvents"))) {
-                    if (SkipToken(parser, JsonToken_Colon, arena, &result)) {
-                        done = ParseJsonTraceEventArray(arena, parser, &result);
+                    token = GetJsonToken(&parser->tokenizer);
+                    if (token.type == JsonToken_Colon) {
+                        done = ParseJsonTraceEventArray(arena, parser, result);
+                    } else if (token.type == JsonToken_Error) {
+                        result->error = PushBuffer(arena, token.value);
                     } else {
+                        result->error = PushFormat(
+                            arena,
+                            "expecting ':', but got %.*s",
+                            token.value.size,
+                            token.value.data
+                        );
                         done = true;
                     }
                 } else {
-                    done = SkipObjectValue(arena, parser, &result);
+                    done = SkipObjectValue(arena, parser, result);
                 }
             } break;
 
@@ -322,12 +302,12 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
             } break;
 
             case JsonToken_Error: {
-                result.error = PushBuffer(arena, token.value);
+                result->error = PushBuffer(arena, token.value);
                 done = true;
             } break;
 
             default: {
-                result.error = PushFormat(
+                result->error = PushFormat(
                     arena,
                     "Unexpected token: '%.*s'",
                     token.value.size,
@@ -340,12 +320,12 @@ ParseJsonTrace(Arena *arena, JsonParser *parser) {
     } break;
 
     case JsonToken_Error: {
-        result.error =
+        result->error =
             PushFormat(arena, "%.*s", token.value.size, token.value.data);
     } break;
 
     default: {
-        result.error = PushFormat(
+        result->error = PushFormat(
             arena,
             "Unexpected token: '%.*s'",
             token.value.size,

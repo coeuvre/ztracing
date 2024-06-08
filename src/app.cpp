@@ -45,6 +45,7 @@ DrawMenuBar(Arena *frame_arena, App *app) {
     ImGuiIO *io = &ImGui::GetIO();
     ImGuiStyle *style = &ImGui::GetStyle();
     if (ImGui::BeginMainMenuBar()) {
+        Vec2 menu_bar_size = ImGui::GetWindowSize();
         if (ImGui::BeginMenu("About")) {
             ImGui::MenuItem("Dear ImGui", "", &app->show_demo_window);
             ImGui::EndMenu();
@@ -55,7 +56,7 @@ DrawMenuBar(Arena *frame_arena, App *app) {
         {
             char *text = PushFormatZ(
                 frame_arena,
-                "%.1f MB  %.0f",
+                "%.1f MB %.0f",
                 GetAllocatedBytes() / 1024.0f / 1024.0f,
                 io->Framerate
             );
@@ -64,6 +65,32 @@ DrawMenuBar(Arena *frame_arena, App *app) {
                     style->ItemSpacing.x;
             ImGui::SetCursorPosX(right);
             ImGui::Text("%s", text);
+        }
+
+        if (app->document) {
+            ImDrawList *draw_list = ImGui::GetWindowDrawList();
+            Buffer path = app->document->path;
+            Vec2 size = ImGui::CalcTextSize(
+                (char *)path.data,
+                (char *)(path.data + path.size)
+            );
+            f32 from = left + (right - left - size.x) / 2.0f;
+            from = MAX(from, left);
+            f32 to = right - style->ItemSpacing.x;
+            to = MAX(from, to);
+
+            f32 top = ImGui::GetCursorPosY();
+            ImVec4 clip_rect = {from, top, to, top + menu_bar_size.y};
+            draw_list->AddText(
+                ImGui::GetFont(),
+                ImGui::GetFontSize(),
+                {from, ImGui::GetItemRectMin().y},
+                IM_COL32_BLACK,
+                (char *)path.data,
+                (char *)(path.data + path.size),
+                0.0f,
+                &clip_rect
+            );
         }
 
         ImGui::EndMainMenuBar();
@@ -114,7 +141,7 @@ AppUpdate(App *app) {
     );
     if (app->document) {
         char *title = PushFormatZ(frame_arena, "%s", app->document->path);
-        RenderDocument(app->document, frame_arena);
+        UpdateDocument(app->document, frame_arena);
     } else {
         RenderWelcome(app);
     }
