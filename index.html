@@ -24,13 +24,12 @@
       import initModule from "./build_web/ztracing.js";
       import ztracing from "./index.js";
 
-      const canvas = document.getElementById("canvas");
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
       ztracing
         .mount({
           initModule,
-          canvas,
+          canvas: document.getElementById("canvas"),
+          width: window.innerWidth,
+          height: window.innerHeight,
         })
         .then((app) => {
           window.app = app;

@@ -1,4 +1,4 @@
-async function setup(module, canvas) {
+async function setup(module, canvas, width, height) {
   const AppSetWindowSize = module.cwrap("AppSetWindowSize", null, [
     "number",
     "number",
@@ -59,10 +59,21 @@ async function setup(module, canvas) {
     });
   }
 
+  function setWindowSize(width, height) {
+    AppSetWindowSize(
+      width * window.devicePixelRatio,
+      height * window.devicePixelRatio,
+    );
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+  }
+
+  setWindowSize(width, height);
+
   return {
     module,
-    setWindowSize: AppSetWindowSize,
-    loadProfile: loadProfile,
+    setWindowSize,
+    loadProfile,
   };
 }
 
@@ -87,6 +98,6 @@ export default {
       print: print,
       printErr: print,
     });
-    return setup(module, canvas);
+    return setup(module, canvas, options.width, options.height);
   },
 };

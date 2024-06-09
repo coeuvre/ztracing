@@ -82,6 +82,11 @@ NotifyAppInitDone() {
     AppSetupResolve();
 }
 
+static f32
+GetDpiScale(SDL_Window *window) {
+    return emscripten_get_device_pixel_ratio();
+}
+
 EMSCRIPTEN_KEEPALIVE
 extern "C" void *
 AppAllocateMemory(isize size) {

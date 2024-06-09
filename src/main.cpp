@@ -29,6 +29,7 @@ typedef ImVec2 Vec2;
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_opengl3.h>
 #include "../assets/JetBrainsMono-Regular.h"
+
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif

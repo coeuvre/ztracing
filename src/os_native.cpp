@@ -7,6 +7,24 @@ GetInitialWindowSize() {
 static void
 NotifyAppInitDone() {}
 
+static f32
+GetDpiScale(SDL_Window *window) {
+    f32 scale = 1.0;
+
+    f32 dpi = 0.0;
+    int display_index = SDL_GetWindowDisplayIndex(window);
+    if (SDL_GetDisplayDPI(display_index, &dpi, 0, 0) == 0) {
+#ifdef __APPLE__
+        f32 default_dpi = 72.0f;
+#else
+        f32 default_dpi = 96.0f;
+#endif
+        scale = dpi / default_dpi;
+    }
+
+    return scale;
+}
+
 struct OsLoadingFile {
     Arena arena;
     Buffer path;

@@ -278,6 +278,8 @@ GetAllocatedBytes() {
     return DEFAULT_ALLOCATOR.allocated_bytes;
 }
 
+static f32 GetDpiScale(SDL_Window *window);
+
 static MainLoop MAIN_LOOP = {};
 
 static void
@@ -303,8 +305,7 @@ MainLoopInit(MainLoop *main_loop) {
         SDL_WINDOWPOS_CENTERED,
         window_size.x,
         window_size.y,
-        SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED | SDL_WINDOW_OPENGL |
-            SDL_WINDOW_ALLOW_HIGHDPI
+        SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED | SDL_WINDOW_OPENGL
     );
     if (!window) {
         ABORT("Failed to create SDL_Window: %s", SDL_GetError());
@@ -315,6 +316,8 @@ MainLoopInit(MainLoop *main_loop) {
     SDL_GL_MakeCurrent(window, gl_context);
     SDL_GL_SetSwapInterval(1);
     main_loop->gl_context = gl_context;
+
+    f32 dpi_scale = GetDpiScale(window);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -330,12 +333,13 @@ MainLoopInit(MainLoop *main_loop) {
         io->Fonts->AddFontFromMemoryTTF(
             JetBrainsMono_Regular_ttf,
             JetBrainsMono_Regular_ttf_len,
-            15.0,
+            15.0f * dpi_scale,
             &font_cfg
         );
 
         ImGuiStyle *style = &ImGui::GetStyle();
         ImGui::StyleColorsLight(style);
+        style->ScaleAllSizes(dpi_scale);
     }
 
     if (!ImGui_ImplSDL2_InitForOpenGL(window, gl_context)) {
