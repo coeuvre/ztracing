@@ -41,7 +41,7 @@ RenderWelcome(App *app) {
 }
 
 static void
-DrawMenuBar(Arena *frame_arena, App *app) {
+DrawMenuBar(App *app, Arena scratch) {
     ImGuiIO *io = &ImGui::GetIO();
     ImGuiStyle *style = &ImGui::GetStyle();
     if (ImGui::BeginMainMenuBar()) {
@@ -55,7 +55,7 @@ DrawMenuBar(Arena *frame_arena, App *app) {
         f32 right = left;
         {
             char *text = PushFormatZ(
-                frame_arena,
+                &scratch,
                 "%.1f MB %.0f",
                 GetAllocatedBytes() / 1024.0f / 1024.0f,
                 io->Framerate
@@ -99,9 +99,9 @@ DrawMenuBar(Arena *frame_arena, App *app) {
 
 static void
 AppUpdate(App *app) {
-    Arena frame_arena = app->arena;
+    Arena scratch = app->arena;
 
-    DrawMenuBar(&frame_arena, app);
+    DrawMenuBar(app, scratch);
 
     ImGuiID dockspace_id = ImGui::GetID("DockSpace");
 
@@ -119,7 +119,6 @@ AppUpdate(App *app) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::Begin("MainWindow", 0, window_flags);
-    ImGui::PopStyleVar(3);
     ImGui::DockSpace(
         dockspace_id,
         ImVec2(0.0f, 0.0f),
@@ -138,9 +137,9 @@ AppUpdate(App *app) {
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
             ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove
     );
+    ImGui::PopStyleVar(3);
     if (app->document) {
-        char *title = PushFormatZ(&frame_arena, "%s", app->document->path);
-        UpdateDocument(app->document, &frame_arena);
+        UpdateDocument(app->document, scratch);
     } else {
         RenderWelcome(app);
     }

@@ -1,3 +1,5 @@
+#include <zlib.h>
+
 enum DocumentState {
     Document_Loading,
     Document_View,
@@ -253,13 +255,114 @@ UnloadDocument(Document *document) {
     ClearArena(&document->arena);
 }
 
+static i64
+CalcBlockDuration(i64 duration, f32 width, f32 target_block_width) {
+    isize num_blocks = floorf(width / target_block_width);
+    i64 block_duration = (f32)duration / (f32)num_blocks;
+    i64 base = 1;
+    while (base * 10 < block_duration) {
+        base *= 10;
+    }
+    if (block_duration >= base * 4) {
+        base *= 4;
+    } else if (block_duration >= base * 2) {
+        base *= 2;
+    }
+    block_duration = base;
+    return block_duration;
+}
+
+static const char *TIME_UNIT[] = {"ns", "us", "ms", "s"};
+
+static char *
+FormatTimeZ(Arena *arena, i64 time_) {
+    if (time_ == 0) {
+        return PushFormatZ(arena, "%s", "0");
+    }
+
+    isize time_unit_index = 0;
+    f64 time = time_;
+    while (time > 1000.0 && time_unit_index < ARRAY_SIZE(TIME_UNIT)) {
+        time /= 1000.0;
+        time_unit_index++;
+    }
+    return PushFormatZ(arena, "%.lf%s", time, TIME_UNIT[time_unit_index]);
+}
+
 static void
-UpdateDocument(Document *document, Arena *frame_arena) {
+DrawTimeline(Arena scratch, i64 begin_time, i64 end_time) {
+    ImGuiWindow *window = ImGui::GetCurrentWindow();
+    ImGuiStyle *style = &ImGui::GetStyle();
+    ImDrawList *draw_list = ImGui::GetWindowDrawList();
+
+    Vec2 size = {
+        ImGui::GetWindowWidth(),
+        window->CalcFontSize() + style->FramePadding.y * 4.0f
+    };
+    Vec2 min = ImGui::GetCursorScreenPos();
+    Vec2 max = min + size;
+
+    f32 text_baseline_y = style->FramePadding.y * 2.0f;
+    f32 text_top = min.y + text_baseline_y;
+
+    ImGuiID id = ImGui::GetID("timeline");
+    ImGui::ItemSize(size, text_baseline_y);
+    ImRect bb = {min, max};
+    if (ImGui::ItemAdd(bb, id)) {
+        draw_list->AddLine({min.x, max.y}, max, IM_COL32_BLACK);
+
+        i64 duration = end_time - begin_time;
+        f32 point_per_time = size.x / duration;
+        i64 block_duration = CalcBlockDuration(duration, size.x, size.y * 1.5f);
+        i64 large_block_duration = block_duration * 5;
+
+        i64 time = begin_time / block_duration * block_duration;
+        while (time <= end_time) {
+            f32 x = min.x + (time - begin_time) * point_per_time;
+            bool is_large_block = time % large_block_duration == 0;
+            f32 height = is_large_block ? style->FramePadding.y * 4.0f
+                                        : style->FramePadding.y * 2.0f;
+
+            draw_list->AddLine({x, max.y}, {x, max.y - height}, IM_COL32_BLACK);
+
+            if (is_large_block) {
+                draw_list->AddText(
+                    {x + style->FramePadding.x * 2.0f, text_top},
+                    IM_COL32_BLACK,
+                    FormatTimeZ(&scratch, time)
+                );
+            }
+
+            time += block_duration;
+        }
+
+        bool hovered, held;
+        bool pressed = ImGui::ButtonBehavior(bb, id, &hovered, &held, 0);
+        if (hovered) {
+            f32 mouse_x = ImGui::GetMousePos().x;
+            i64 time = begin_time + (mouse_x - min.x) / point_per_time;
+            if (ImGui::BeginTooltip()) {
+                ImGui::Text("%s", FormatTimeZ(&scratch, time));
+                ImGui::EndTooltip();
+            }
+        }
+    }
+}
+
+static void
+UpdateProfile(Document *document, Arena scratch) {
+    i64 begin_time = 123'000;
+    i64 end_time = 789'000;
+    DrawTimeline(scratch, begin_time, end_time);
+}
+
+static void
+UpdateDocument(Document *document, Arena scratch) {
     switch (document->state) {
     case Document_Loading: {
         {
             char *text = PushFormatZ(
-                frame_arena,
+                &scratch,
                 "Loading %.1f MB ...",
                 document->loading.state.loaded / 1024.0f / 1024.0f
             );
@@ -290,6 +393,7 @@ UpdateDocument(Document *document, Arena *frame_arena) {
                 ImGui::EndPopup();
             }
         }
+        UpdateProfile(document, scratch);
     } break;
 
     default: {

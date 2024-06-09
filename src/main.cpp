@@ -15,12 +15,7 @@
 #include "channel.cpp"
 #include "task.cpp"
 
-#define IMGUI_DEFINE_MATH_OPERATORS
-#include <imgui.h>
-#include <imgui_internal.h>
-typedef ImVec2 Vec2;
-#include <zlib.h>
-
+#include "ui.h"
 #include "document.cpp"
 #include "app.cpp"
 
