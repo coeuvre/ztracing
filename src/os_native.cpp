@@ -14,12 +14,7 @@ GetDpiScale(SDL_Window *window) {
     f32 dpi = 0.0;
     int display_index = SDL_GetWindowDisplayIndex(window);
     if (SDL_GetDisplayDPI(display_index, &dpi, 0, 0) == 0) {
-#ifdef __APPLE__
-        f32 default_dpi = 72.0f;
-#else
-        f32 default_dpi = 96.0f;
-#endif
-        scale = dpi / default_dpi;
+        scale = dpi / 96.0f;
     }
 
     return scale;

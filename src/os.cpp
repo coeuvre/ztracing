@@ -297,6 +297,20 @@ MainLoopInit(MainLoop *main_loop) {
 
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
 
+#if defined(__APPLE__)
+    // Always required on Mac
+    SDL_GL_SetAttribute(
+        SDL_GL_CONTEXT_FLAGS,
+        SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG
+    );
+    SDL_GL_SetAttribute(
+        SDL_GL_CONTEXT_PROFILE_MASK,
+        SDL_GL_CONTEXT_PROFILE_CORE
+    );
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+#endif
+
     Vec2 window_size = GetInitialWindowSize();
 
     SDL_Window *window = SDL_CreateWindow(
