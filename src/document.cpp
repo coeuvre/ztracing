@@ -13,6 +13,13 @@ struct LoadState {
   Profile *profile;
 };
 
+struct ViewState {
+  Buffer error;
+  Profile *profile;
+  i64 begin_time;
+  i64 end_time;
+};
+
 struct Document {
   Arena arena;
   Buffer path;
@@ -24,10 +31,7 @@ struct Document {
       LoadState state;
     } loading;
 
-    struct {
-      Buffer error;
-      Profile *profile;
-    } view;
+    ViewState view;
   };
 };
 
@@ -201,7 +205,8 @@ static void DoLoadDocument(Task *task) {
       state->error = PushBuffer(state->document_arena, profile_result->error);
       ERROR("%.*s", (int)state->error.size, state->error.data);
     }
-    BuildProfile(state->document_arena, task->arena, profile_result);
+    state->profile =
+        BuildProfile(state->document_arena, task->arena, profile_result);
   }
 
   ClearArena(&parse_arena);
@@ -218,6 +223,15 @@ static void WaitLoading(Document *document) {
     ImGui::OpenPopup("Error");
   }
   document->view.profile = state->profile;
+  document->view.begin_time = document->view.profile->min_time;
+  document->view.end_time = document->view.profile->max_time;
+  if (document->view.end_time <= document->view.begin_time) {
+    document->view.begin_time = 0;
+    document->view.end_time = 1'000'000'000;
+  }
+  i64 duration = document->view.end_time - document->view.begin_time;
+  document->view.begin_time -= duration * 0.1f;
+  document->view.end_time += duration * 0.1f;
 }
 
 static Document *LoadDocument(OsLoadingFile *file) {
@@ -256,18 +270,28 @@ static i64 CalcBlockDuration(i64 duration, f32 width, f32 target_block_width) {
 
 static const char *TIME_UNIT[] = {"ns", "us", "ms", "s"};
 
-static char *FormatTimeZ(Arena *arena, i64 time_) {
+static char *PushFormatTimeZ(Arena *arena, i64 time_) {
   if (time_ == 0) {
     return PushFormatZ(arena, "%s", "0");
   }
 
   isize time_unit_index = 0;
   f64 time = time_;
-  while (time > 1000.0 && time_unit_index < ARRAY_SIZE(TIME_UNIT)) {
+  while (fabs(time) >= 1000.0 && time_unit_index < ARRAY_SIZE(TIME_UNIT)) {
     time /= 1000.0;
     time_unit_index++;
   }
-  return PushFormatZ(arena, "%.lf%s", time, TIME_UNIT[time_unit_index]);
+
+  Buffer buf = PushFormat(arena, "%.1lf%s", time, TIME_UNIT[time_unit_index]);
+  char *period = (char *)(buf.data + buf.size - 1);
+  while (*period != '.') {
+    period--;
+  }
+  if (*(period + 1) == '0') {
+    // buf has extra 0 in the end, guaranteed by PushFormat.
+    MoveMemory(period, period + 2, buf.data + buf.size - (u8 *)period - 1);
+  }
+  return (char *)buf.data;
 }
 
 static void DrawTimeline(Arena scratch, i64 begin_time, i64 end_time) {
@@ -305,7 +329,7 @@ static void DrawTimeline(Arena scratch, i64 begin_time, i64 end_time) {
 
       if (is_large_block) {
         draw_list->AddText({x + style->FramePadding.x * 2.0f, text_top},
-                           IM_COL32_BLACK, FormatTimeZ(&scratch, time));
+                           IM_COL32_BLACK, PushFormatTimeZ(&scratch, time));
       }
 
       time += block_duration;
@@ -317,30 +341,32 @@ static void DrawTimeline(Arena scratch, i64 begin_time, i64 end_time) {
       f32 mouse_x = ImGui::GetMousePos().x;
       i64 time = begin_time + (mouse_x - min.x) / point_per_time;
       if (ImGui::BeginTooltip()) {
-        ImGui::Text("%s", FormatTimeZ(&scratch, time));
+        ImGui::Text("%s", PushFormatTimeZ(&scratch, time));
         ImGui::EndTooltip();
       }
     }
   }
 }
 
-static void UpdateProfile(Document *document, Arena scratch) {
-  i64 begin_time = 123'000;
-  i64 end_time = 789'000;
-  DrawTimeline(scratch, begin_time, end_time);
+static void UpdateProfile(ViewState *view, Arena scratch) {
+  DrawTimeline(scratch, view->begin_time, view->end_time);
 }
 
 static void UpdateDocument(Document *document, Arena scratch) {
   switch (document->state) {
     case Document_Loading: {
       {
+        ImGuiStyle *style = &ImGui::GetStyle();
+
         char *text =
             PushFormatZ(&scratch, "Loading %.1f MB ...",
                         document->loading.state.loaded / 1024.0f / 1024.0f);
         Vec2 window_size = ImGui::GetWindowSize();
         Vec2 text_size = ImGui::CalcTextSize(text);
-        ImGui::SetCursorPos((window_size - text_size) / 2.0f);
-        ImGui::Text("%s", text);
+        Vec2 total_size = text_size + Vec2{style->FramePadding.x * 4.0f,
+                                           style->FramePadding.y * 4.0f};
+        ImGui::SetCursorPos((window_size - total_size) / 2.0f);
+        ImGui::ProgressBar(-1.0f * (float)ImGui::GetTime(), total_size, text);
       }
 
       if (IsTaskDone(document->loading.task)) {
@@ -349,8 +375,9 @@ static void UpdateDocument(Document *document, Arena scratch) {
     } break;
 
     case Document_View: {
-      if (document->view.error.data) {
-        Buffer error = document->view.error;
+      ViewState *view = &document->view;
+      if (view->error.data) {
+        Buffer error = view->error;
         if (ImGui::BeginPopupModal("Error", 0,
                                    ImGuiWindowFlags_AlwaysAutoResize)) {
           ImGui::Text("%.*s", (int)error.size, error.data);
@@ -361,7 +388,7 @@ static void UpdateDocument(Document *document, Arena scratch) {
           ImGui::EndPopup();
         }
       }
-      UpdateProfile(document, scratch);
+      UpdateProfile(view, scratch);
     } break;
 
     default: {

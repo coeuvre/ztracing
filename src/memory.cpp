@@ -3,8 +3,14 @@ static void *ReallocateMemory(void *ptr, isize old_size, isize new_size);
 static void DeallocateMemory(void *ptr, isize size);
 static isize GetAllocatedBytes();
 
+// Memory must not overlap.
 static inline void CopyMemory(void *dst, const void *src, isize size) {
   memcpy(dst, src, size);
+}
+
+// Memory can overlap.
+static inline void MoveMemory(void *dst, const void *src, isize size) {
+  memmove(dst, src, size);
 }
 
 struct MemoryBlock {

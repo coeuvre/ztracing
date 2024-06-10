@@ -66,6 +66,8 @@ static CounterResult *UpsertCounterResult(Arena *arena, ProcessResult *process,
 }
 
 struct ProfileResult {
+  i64 min_time;
+  i64 max_time;
   HashMap processes;
   isize process_size;
   Buffer error;
@@ -180,6 +182,9 @@ static void ProcessTraceEvent(Arena *arena, JsonValue *value,
           f64 value = ConvertJsonValueToF64(arg);
           AppendSample(arena, counter, arg->label, trace_event.ts, value);
         }
+
+        profile->min_time = MIN(profile->min_time, trace_event.ts);
+        profile->max_time = MAX(profile->max_time, trace_event.ts);
       }
     } break;
 
@@ -251,6 +256,8 @@ static bool ParseJsonTraceEventArray(Arena *arena, Arena value_scratch,
 static ProfileResult *ParseJsonTrace(Arena *arena, Arena value_scratch,
                                      Arena token_scratch, JsonParser *parser) {
   ProfileResult *result = PushStruct(arena, ProfileResult);
+  result->min_time = INT64_MAX;
+  result->max_time = INT64_MIN;
   JsonToken token = GetJsonToken(&token_scratch, parser);
   switch (token.type) {
     case JsonToken_OpenBrace: {
@@ -331,6 +338,8 @@ struct Process {
 };
 
 struct Profile {
+  i64 min_time;
+  i64 max_time;
   Process *processes;
   isize process_size;
 };
@@ -394,6 +403,8 @@ static void BuildCounters(Arena *arena, Arena scratch,
 static Profile *BuildProfile(Arena *arena, Arena scratch,
                              ProfileResult *profile_result) {
   Profile *profile = PushStruct(arena, Profile);
+  profile->min_time = profile_result->min_time;
+  profile->max_time = profile_result->max_time;
   profile->process_size = profile_result->process_size;
   profile->processes = PushArray(arena, Process, profile->process_size);
 
