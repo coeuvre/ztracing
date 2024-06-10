@@ -298,6 +298,7 @@ MainLoopInit(MainLoop *main_loop) {
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
 
 #if defined(__APPLE__)
+    const char* glsl_version = "#version 150";
     // Always required on Mac
     SDL_GL_SetAttribute(
         SDL_GL_CONTEXT_FLAGS,
@@ -309,6 +310,12 @@ MainLoopInit(MainLoop *main_loop) {
     );
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+#else
+    const char* glsl_version = "#version 300 es";
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, 0);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 #endif
 
     Vec2 window_size = GetInitialWindowSize();
@@ -360,7 +367,7 @@ MainLoopInit(MainLoop *main_loop) {
         ABORT("Failed to init ImGui with SDL2");
     }
 
-    if (!ImGui_ImplOpenGL3_Init()) {
+    if (!ImGui_ImplOpenGL3_Init(glsl_version)) {
         ABORT("Failed to init ImGui with OpenGL3");
     }
 

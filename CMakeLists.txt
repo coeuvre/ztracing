@@ -15,6 +15,7 @@ if (EMSCRIPTEN)
         -sPTHREAD_POOL_SIZE=1
         -sUSE_ZLIB=1
         -sUSE_SDL=2
+        -sMAX_WEBGL_VERSION=2
         -sMODULARIZE=1
         -sEXPORT_ES6
         -sENVIRONMENT=web,worker
