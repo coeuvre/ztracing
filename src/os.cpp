@@ -411,7 +411,7 @@ MainLoopUpdate(MainLoop *main_loop) {
     AppUpdate(main_loop->app);
 
     ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    ImGui_ImplOpenGL3_RenderDrawDataNoStateSaving(ImGui::GetDrawData());
     SDL_GL_SwapWindow(main_loop->window);
 }
 

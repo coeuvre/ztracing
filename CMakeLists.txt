@@ -39,26 +39,16 @@ add_library(
     third_party/imgui/imgui_widgets.cpp
     third_party/imgui/imgui_widgets.cpp)
 
-add_library(
-    imgui_impl_sdl2
-    STATIC
-    third_party/imgui/backends/imgui_impl_sdl2.cpp
-    third_party/imgui/backends/imgui_impl_opengl3.cpp)
+add_executable(ztracing src/main.cpp)
 
 target_include_directories(
-    imgui_impl_sdl2
-    PUBLIC
+    ztracing
+    PRIVATE
     third_party/imgui
     third_party/imgui/backends)
 
-add_executable(ztracing src/main.cpp)
-
-target_link_libraries(
-    ztracing
-    imgui
-    imgui_impl_sdl2)
+target_link_libraries(ztracing imgui)
 
 if (NOT EMSCRIPTEN)
-    target_link_libraries(imgui_impl_sdl2 SDL2-static)
     target_link_libraries(ztracing zlibstatic SDL2-static)
 endif()

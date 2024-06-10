@@ -21,8 +21,9 @@
 
 #define SDL_MAIN_HANDLED
 #include <SDL.h>
-#include <imgui_impl_sdl2.h>
-#include <imgui_impl_opengl3.h>
+#include "imgui_impl_sdl2.cpp"
+#include "imgui_impl_opengl3.cpp"
+#include "imgui_impl_opengl3_extra.cpp"
 #include "../assets/JetBrainsMono-Regular.h"
 
 #ifdef __EMSCRIPTEN__
