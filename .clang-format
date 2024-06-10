@@ -1,13 +1,3 @@
 ---
-BasedOnStyle: LLVM
-IndentWidth: 4
-PenaltyReturnTypeOnItsOwnLine: 99999
-AllowShortBlocksOnASingleLine: Empty
-AllowShortFunctionsOnASingleLine: Empty
-BinPackArguments: false
-BinPackParameters: false
-AllowAllArgumentsOnNextLine: false
-AllowAllParametersOfDeclarationOnNextLine: false
-AlignAfterOpenBracket: BlockIndent
-AlwaysBreakAfterReturnType: AllDefinitions
+BasedOnStyle: Google
 SortIncludes: Never

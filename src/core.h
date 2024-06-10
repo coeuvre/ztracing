@@ -17,21 +17,21 @@ typedef double f64;
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 enum LogLevel {
-    LogLevel_Debug,
-    LogLevel_Info,
-    LogLevel_Warn,
-    LogLevel_Error,
-    LogLevel_Critical,
+  LogLevel_Debug,
+  LogLevel_Info,
+  LogLevel_Warn,
+  LogLevel_Error,
+  LogLevel_Critical,
 
-    LogLevel_COUNT,
+  LogLevel_COUNT,
 };
 
 static void LogMessage(LogLevel level, const char *fmt, ...);
 
 #define INFO(fmt, ...) LogMessage(LogLevel_Info, fmt, ##__VA_ARGS__)
 #define WARN(fmt, ...) LogMessage(LogLevel_Warn, fmt, ##__VA_ARGS__)
-#define ERROR(fmt, ...)                                                        \
-    LogMessage(LogLevel_Error, "%s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
+#define ERROR(fmt, ...) \
+  LogMessage(LogLevel_Error, "%s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
 
 #ifdef _MSC_VER
 #define DEBUGTRAP __debugbreak
@@ -41,22 +41,17 @@ static void LogMessage(LogLevel level, const char *fmt, ...);
 #define DEBUGTRAP __builtin_trap
 #endif
 
-#define ABORT(fmt, ...)                                                        \
-    do {                                                                       \
-        LogMessage(                                                            \
-            LogLevel_Critical,                                                 \
-            "%s:%d: " fmt,                                                     \
-            __FILE__,                                                          \
-            __LINE__,                                                          \
-            ##__VA_ARGS__                                                      \
-        );                                                                     \
-        DEBUGTRAP();                                                           \
-    } while (0)
+#define ABORT(fmt, ...)                                              \
+  do {                                                               \
+    LogMessage(LogLevel_Critical, "%s:%d: " fmt, __FILE__, __LINE__, \
+               ##__VA_ARGS__);                                       \
+    DEBUGTRAP();                                                     \
+  } while (0)
 
-#define ASSERT(x)                                                              \
-    if (!(x)) {                                                                \
-        ABORT("%s", #x);                                                       \
-    }
+#define ASSERT(x)    \
+  if (!(x)) {        \
+    ABORT("%s", #x); \
+  }
 
 #ifdef NDEBUG
 #define DEBUG_ASSERT(x)
@@ -67,24 +62,23 @@ static void LogMessage(LogLevel level, const char *fmt, ...);
 #define UNREACHABLE ABORT("UNREACHABLE")
 
 struct Buffer {
-    u8 *data;
-    isize size;
+  u8 *data;
+  isize size;
 };
 
-static inline bool
-Equal(Buffer a, Buffer b) {
-    if (a.size != b.size) {
-        return false;
-    }
+static inline bool Equal(Buffer a, Buffer b) {
+  if (a.size != b.size) {
+    return false;
+  }
 
-    for (isize index = 0; index < a.size; ++index) {
-        if (a.data[index] != b.data[index]) {
-            return false;
-        }
+  for (isize index = 0; index < a.size; ++index) {
+    if (a.data[index] != b.data[index]) {
+      return false;
     }
+  }
 
-    return true;
+  return true;
 }
 
-#define STRING_LITERAL(string)                                                 \
-    { (u8 *)(string), sizeof(string) - 1 }
+#define STRING_LITERAL(string) \
+  { (u8 *)(string), sizeof(string) - 1 }
