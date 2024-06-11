@@ -1,5 +1,7 @@
 #include <zlib.h>
 
+struct Profile;
+
 enum DocumentState {
   Document_Loading,
   Document_View,
@@ -18,6 +20,7 @@ struct ViewState {
   Profile *profile;
   i64 begin_time;
   i64 end_time;
+  bool show_lane_border;
 };
 
 struct Document {
@@ -166,6 +169,150 @@ static Buffer GetJsonInput(void *data_) {
   return result;
 }
 
+struct SeriesSample {
+  i64 time;
+  f64 value;
+};
+
+struct Series {
+  Buffer name;
+  SeriesSample *samples;
+  isize sample_size;
+};
+
+struct CounterHeader {
+  Buffer name;
+};
+
+struct Counter {
+  Series *series;
+  isize series_size;
+};
+
+enum LaneType {
+  LaneType_CounterHeader,
+  LaneType_Counter,
+};
+
+struct Lane {
+  LaneType type;
+  union {
+    CounterHeader counter_header;
+    Counter counter;
+  };
+};
+
+struct Process {
+  i64 pid;
+  Lane *lanes;
+  isize lane_size;
+};
+
+struct Profile {
+  i64 min_time;
+  i64 max_time;
+  Process *processes;
+  isize process_size;
+};
+
+static int CompareSeriesSample(const void *a_, const void *b_) {
+  SeriesSample *a = (SeriesSample *)a_;
+  SeriesSample *b = (SeriesSample *)b_;
+  return a->time - b->time;
+}
+
+static void BuildSeries(Arena *arena, SeriesResult *series_result,
+                        Series *series) {
+  series->name = PushBuffer(arena, series_result->name);
+  series->sample_size = series_result->sample_size;
+  series->samples = PushArray(arena, SeriesSample, series->sample_size);
+  SampleResult *sample_result = series_result->first;
+  for (isize sample_index = 0; sample_index < series->sample_size;
+       ++sample_index) {
+    SeriesSample *sample = series->samples + sample_index;
+    ASSERT(sample_result);
+    sample->time = sample_result->time;
+    sample->value = sample_result->value;
+    sample_result = sample_result->next;
+  }
+  qsort(series->samples, series->sample_size, sizeof(series->samples[0]),
+        CompareSeriesSample);
+}
+
+static void BuildCounter(Arena *arena, Arena scratch,
+                         CounterResult *counter_result, Counter *counter) {
+  counter->series_size = counter_result->series_size;
+  counter->series = PushArray(arena, Series, counter->series_size);
+
+  HashMapIter series_result_iter =
+      InitHashMapIter(&scratch, &counter_result->series);
+  for (isize series_index = 0; series_index < counter->series_size;
+       ++series_index) {
+    SeriesResult *series_result = (SeriesResult *)IterNext(&series_result_iter);
+    ASSERT(series_result);
+
+    Series *series = counter->series + series_index;
+    BuildSeries(arena, series_result, series);
+  }
+}
+
+static Lane *GetLane(Process *process, isize lane_index) {
+  ASSERT(lane_index < process->lane_size);
+  return process->lanes + lane_index;
+}
+
+static void BuildCounters(Arena *arena, Arena scratch,
+                          ProcessResult *process_result, Process *process,
+                          isize *lane_index) {
+  HashMapIter counter_result_iter =
+      InitHashMapIter(&scratch, &process_result->counters);
+  for (isize counter_index = 0; counter_index < process_result->counter_size;
+       ++counter_index) {
+    CounterResult *counter_result =
+        (CounterResult *)IterNext(&counter_result_iter);
+    ASSERT(counter_result);
+
+    Lane *counter_header_lane = GetLane(process, (*lane_index)++);
+    counter_header_lane->type = LaneType_CounterHeader;
+    counter_header_lane->counter_header.name =
+        PushBuffer(arena, counter_result->name);
+
+    Lane *counter_lane = GetLane(process, (*lane_index)++);
+    counter_lane->type = LaneType_Counter;
+    Counter *counter = &counter_lane->counter;
+    BuildCounter(arena, scratch, counter_result, counter);
+  }
+}
+
+static Profile *BuildProfile(Arena *arena, Arena scratch,
+                             ProfileResult *profile_result) {
+  Profile *profile = PushStruct(arena, Profile);
+  profile->min_time = profile_result->min_time;
+  profile->max_time = profile_result->max_time;
+  profile->process_size = profile_result->process_size;
+  profile->processes = PushArray(arena, Process, profile->process_size);
+
+  HashMapIter process_result_iter =
+      InitHashMapIter(&scratch, &profile_result->processes);
+  for (isize process_index = 0; process_index < profile->process_size;
+       ++process_index) {
+    ProcessResult *process_result =
+        (ProcessResult *)IterNext(&process_result_iter);
+    ASSERT(profile_result);
+
+    Process *process = profile->processes + process_index;
+    process->pid = process_result->pid;
+
+    // 1 counter header, 1 counter
+    process->lane_size = process_result->counter_size * 2;
+    process->lanes = PushArray(arena, Lane, process->lane_size);
+    isize lane_size = 0;
+    BuildCounters(arena, scratch, process_result, process, &lane_size);
+  }
+
+  return profile;
+}
+
 static void DoLoadDocument(Task *task) {
   LoadState *state = (LoadState *)task->data;
   Buffer path = OsGetFilePath(state->file);
@@ -294,7 +441,7 @@ static char *PushFormatTimeZ(Arena *arena, i64 time_) {
   return (char *)buf.data;
 }
 
-static void DrawTimeline(Arena scratch, i64 begin_time, i64 end_time) {
+static void UpdateTimeline(Arena scratch, i64 begin_time, i64 end_time) {
   ImGuiWindow *window = ImGui::GetCurrentWindow();
   ImGuiStyle *style = &ImGui::GetStyle();
   ImDrawList *draw_list = ImGui::GetWindowDrawList();
@@ -348,8 +495,66 @@ static void DrawTimeline(Arena scratch, i64 begin_time, i64 end_time) {
   }
 }
 
+static void UpdateProcess(Process *process, bool show_lane_border,
+                          Arena scratch) {
+  ImGuiWindow *window = ImGui::GetCurrentWindow();
+  ImGuiStyle *style = &ImGui::GetStyle();
+  ImDrawList *draw_list = ImGui::GetWindowDrawList();
+
+  Vec2 lane_min = ImGui::GetCursorScreenPos();
+  Vec2 lane_size = {ImGui::GetWindowWidth(),
+                    window->CalcFontSize() + style->FramePadding.y * 4.0f};
+
+  for (isize lane_index = 0; lane_index < process->lane_size; ++lane_index) {
+    Vec2 lane_max = lane_min + lane_size;
+
+    if (show_lane_border) {
+      draw_list->AddRect(lane_min, lane_max, IM_COL32(255, 0, 0, 255));
+    }
+
+    Lane *lane = GetLane(process, lane_index);
+    switch (lane->type) {
+      case LaneType_CounterHeader: {
+        char *text =
+            PushFormatZ(&scratch, "%.*s", (int)lane->counter_header.name.size,
+                        lane->counter_header.name.data);
+        ImGui::SetCursorScreenPos(lane_min);
+        ImGui::SeparatorText(text);
+      } break;
+
+      case LaneType_Counter: {
+      } break;
+
+      default: {
+        UNREACHABLE;
+      } break;
+    }
+
+    lane_min.y += lane_size.y;
+  }
+}
+
 static void UpdateProfile(ViewState *view, Arena scratch) {
-  DrawTimeline(scratch, view->begin_time, view->end_time);
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                      Vec2{ImGui::GetStyle().ItemSpacing.x, 0});
+
+  UpdateTimeline(scratch, view->begin_time, view->end_time);
+
+  ImGui::BeginChild("Main");
+  Profile *profile = view->profile;
+  for (isize process_index = 0; process_index < profile->process_size;
+       ++process_index) {
+    Process *process = profile->processes + process_index;
+
+    ImGui::SetNextItemOpen(true, ImGuiCond_FirstUseEver);
+    char *title = PushFormatZ(&scratch, "Process %d", (int)process->pid);
+    if (ImGui::CollapsingHeader(title, 0)) {
+      UpdateProcess(process, view->show_lane_border, scratch);
+    }
+  }
+  ImGui::EndChild();
+
+  ImGui::PopStyleVar(1);
 }
 
 static void UpdateDocument(Document *document, Arena scratch) {

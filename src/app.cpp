@@ -43,7 +43,15 @@ static void DrawMenuBar(App *app, Arena scratch) {
   if (ImGui::BeginMainMenuBar()) {
     Vec2 menu_bar_size = ImGui::GetWindowSize();
     if (ImGui::BeginMenu("About")) {
-      ImGui::MenuItem("Dear ImGui", "", &app->show_demo_window);
+      ImGui::MenuItem("Dear ImGui", 0, &app->show_demo_window);
+
+      if (app->document) {
+        if (app->document->state == Document_View) {
+          ViewState *view = &app->document->view;
+          ImGui::MenuItem("Show lane border", 0, &view->show_lane_border);
+        }
+      }
+
       ImGui::EndMenu();
     }
 
