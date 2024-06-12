@@ -45,16 +45,22 @@ static bool IsTaskCancelled(Task *task) {
   return cancelled;
 }
 
-// Wait for task to be done and release all its resources.
-static void WaitTask(Task *task) {
+// Wait for task to be done and release all its resources. Return true if task
+// is not cancelled.
+static bool WaitTask(Task *task) {
+  bool result = false;
+
   OsLockMutex(task->mutex);
   while (!task->done) {
     OsWaitCond(task->cond, task->mutex);
   }
+  result = !task->cancelled;
   OsUnlockMutex(task->mutex);
 
   OsDestroyCond(task->cond);
   OsDestroyMutex(task->mutex);
 
   ClearArena(&task->arena);
+
+  return result;
 }

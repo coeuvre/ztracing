@@ -361,24 +361,24 @@ static void DoLoadDocument(Task *task) {
 
 static void WaitLoading(Document *document) {
   ASSERT(document->state == Document_Loading);
-  WaitTask(document->loading.task);
-
-  LoadState *state = &document->loading.state;
-  document->state = Document_View;
-  document->view.error = state->error;
-  if (document->view.error.data) {
-    ImGui::OpenPopup("Error");
+  if (WaitTask(document->loading.task)) {
+    LoadState *state = &document->loading.state;
+    document->state = Document_View;
+    document->view.error = state->error;
+    if (document->view.error.data) {
+      ImGui::OpenPopup("Error");
+    }
+    document->view.profile = state->profile;
+    document->view.begin_time = document->view.profile->min_time;
+    document->view.end_time = document->view.profile->max_time;
+    if (document->view.end_time <= document->view.begin_time) {
+      document->view.begin_time = 0;
+      document->view.end_time = 1'000'000'000;
+    }
+    i64 duration = document->view.end_time - document->view.begin_time;
+    document->view.begin_time -= duration * 0.1f;
+    document->view.end_time += duration * 0.1f;
   }
-  document->view.profile = state->profile;
-  document->view.begin_time = document->view.profile->min_time;
-  document->view.end_time = document->view.profile->max_time;
-  if (document->view.end_time <= document->view.begin_time) {
-    document->view.begin_time = 0;
-    document->view.end_time = 1'000'000'000;
-  }
-  i64 duration = document->view.end_time - document->view.begin_time;
-  document->view.begin_time -= duration * 0.1f;
-  document->view.end_time += duration * 0.1f;
 }
 
 static Document *LoadDocument(OsLoadingFile *file) {
