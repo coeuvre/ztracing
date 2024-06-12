@@ -40,6 +40,11 @@ add_library(
     third_party/imgui/imgui_widgets.cpp
     third_party/imgui/imgui_widgets.cpp)
 
+target_compile_definitions(
+    imgui
+    PRIVATE
+    "ImDrawIdx=unsigned int")
+
 add_executable(ztracing src/main.cpp)
 
 target_include_directories(

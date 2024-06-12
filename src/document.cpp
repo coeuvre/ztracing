@@ -187,6 +187,8 @@ struct CounterHeader {
 struct Counter {
   Series *series;
   isize series_size;
+  f64 min;
+  f64 max;
 };
 
 enum LaneType {
@@ -222,7 +224,7 @@ static int CompareSeriesSample(const void *a_, const void *b_) {
 }
 
 static void BuildSeries(Arena *arena, SeriesResult *series_result,
-                        Series *series) {
+                        Series *series, Counter *counter) {
   series->name = PushBuffer(arena, series_result->name);
   series->sample_size = series_result->sample_size;
   series->samples = PushArray(arena, SeriesSample, series->sample_size);
@@ -234,6 +236,8 @@ static void BuildSeries(Arena *arena, SeriesResult *series_result,
     sample->time = sample_result->time;
     sample->value = sample_result->value;
     sample_result = sample_result->next;
+    counter->min = MIN(counter->min, sample->value);
+    counter->max = MAX(counter->max, sample->value);
   }
   qsort(series->samples, series->sample_size, sizeof(series->samples[0]),
         CompareSeriesSample);
@@ -243,6 +247,8 @@ static void BuildCounter(Arena *arena, Arena scratch,
                          CounterResult *counter_result, Counter *counter) {
   counter->series_size = counter_result->series_size;
   counter->series = PushArray(arena, Series, counter->series_size);
+  counter->max = -DBL_MAX;
+  counter->min = DBL_MAX;
 
   HashMapIter series_result_iter =
       InitHashMapIter(&scratch, &counter_result->series);
@@ -252,7 +258,7 @@ static void BuildCounter(Arena *arena, Arena scratch,
     ASSERT(series_result);
 
     Series *series = counter->series + series_index;
-    BuildSeries(arena, series_result, series);
+    BuildSeries(arena, series_result, series, counter);
   }
 }
 
@@ -264,6 +270,7 @@ static Lane *GetLane(Process *process, isize lane_index) {
 static void BuildCounters(Arena *arena, Arena scratch,
                           ProcessResult *process_result, Process *process,
                           isize *lane_index) {
+  // TODO: Sort counters
   HashMapIter counter_result_iter =
       InitHashMapIter(&scratch, &process_result->counters);
   for (isize counter_index = 0; counter_index < process_result->counter_size;
@@ -441,13 +448,13 @@ static char *PushFormatTimeZ(Arena *arena, i64 time_) {
   return (char *)buf.data;
 }
 
-static void UpdateTimeline(Arena scratch, i64 begin_time, i64 end_time) {
+static void UpdateTimeline(Arena scratch, f32 width, f32 point_per_time,
+                           i64 begin_time, i64 end_time) {
   ImGuiWindow *window = ImGui::GetCurrentWindow();
   ImGuiStyle *style = &ImGui::GetStyle();
   ImDrawList *draw_list = ImGui::GetWindowDrawList();
 
-  Vec2 size = {ImGui::GetWindowWidth(),
-               window->CalcFontSize() + style->FramePadding.y * 4.0f};
+  Vec2 size = {width, window->CalcFontSize() + style->FramePadding.y * 4.0f};
   Vec2 min = ImGui::GetCursorScreenPos();
   Vec2 max = min + size;
 
@@ -461,7 +468,6 @@ static void UpdateTimeline(Arena scratch, i64 begin_time, i64 end_time) {
     draw_list->AddLine({min.x, max.y}, max, IM_COL32_BLACK);
 
     i64 duration = end_time - begin_time;
-    f32 point_per_time = size.x / duration;
     i64 block_duration = CalcBlockDuration(duration, size.x, size.y * 1.5f);
     i64 large_block_duration = block_duration * 5;
 
@@ -495,14 +501,54 @@ static void UpdateTimeline(Arena scratch, i64 begin_time, i64 end_time) {
   }
 }
 
-static void UpdateProcess(Process *process, bool show_lane_border,
+static void UpdateCounterHeader(CounterHeader *counter_header, Vec2 lane_min,
+                                Arena scratch) {
+  char *text = PushFormatZ(&scratch, "%.*s", (int)counter_header->name.size,
+                           counter_header->name.data);
+  ImGui::SetCursorScreenPos(lane_min);
+  ImGui::SeparatorText(text);
+  if (ImGui::BeginItemTooltip()) {
+    ImGui::Text("%s", text);
+    ImGui::EndTooltip();
+  }
+}
+
+static void UpdateCounter(Counter *counter, Vec2 lane_min, Vec2 lane_size,
+                          f32 point_per_time, i64 begin_time, i64 end_time,
+                          Arena scratch) {
+  ImDrawList *draw_list = ImGui::GetWindowDrawList();
+
+  f64 total = counter->max - counter->min;
+  for (isize series_index = 0; series_index < counter->series_size;
+       ++series_index) {
+    Series *series = counter->series + series_index;
+    f32 x = lane_min.x;
+    // TODO: Get first point that is <= begin_time, if none, get first point
+    for (isize sample_index = 0; sample_index < series->sample_size;
+         ++sample_index) {
+      SeriesSample *sample = series->samples + sample_index;
+
+      f32 left = lane_min.x + point_per_time * (sample->time - begin_time);
+      f32 bottom = lane_min.y + lane_size.y;
+      f32 height = sample->value / total * lane_size.y;
+      f32 top = bottom - height;
+
+      // TODO: Properly draw bar chart
+      draw_list->AddRect({left, top}, {left + 2, top + 2},
+                         IM_COL32(255, 0, 0, 255));
+    }
+  }
+}
+
+static void UpdateProcess(Process *process, bool show_lane_border, f32 width,
+                          f32 point_per_time, i64 begin_time, i64 end_time,
                           Arena scratch) {
   ImGuiWindow *window = ImGui::GetCurrentWindow();
   ImGuiStyle *style = &ImGui::GetStyle();
   ImDrawList *draw_list = ImGui::GetWindowDrawList();
 
   Vec2 lane_min = ImGui::GetCursorScreenPos();
-  Vec2 lane_size = {ImGui::GetWindowWidth(),
+  Vec2 lane_size = {width,
                     window->CalcFontSize() + style->FramePadding.y * 4.0f};
 
   for (isize lane_index = 0; lane_index < process->lane_size; ++lane_index) {
@@ -515,14 +561,12 @@ static void UpdateProcess(Process *process, bool show_lane_border,
     Lane *lane = GetLane(process, lane_index);
     switch (lane->type) {
       case LaneType_CounterHeader: {
-        char *text =
-            PushFormatZ(&scratch, "%.*s", (int)lane->counter_header.name.size,
-                        lane->counter_header.name.data);
-        ImGui::SetCursorScreenPos(lane_min);
-        ImGui::SeparatorText(text);
+        UpdateCounterHeader(&lane->counter_header, lane_min, scratch);
       } break;
 
       case LaneType_Counter: {
+        UpdateCounter(&lane->counter, lane_min, lane_size, point_per_time,
+                      begin_time, end_time, scratch);
       } break;
 
       default: {
@@ -538,7 +582,11 @@ static void UpdateProfile(ViewState *view, Arena scratch) {
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                       Vec2{ImGui::GetStyle().ItemSpacing.x, 0});
 
-  UpdateTimeline(scratch, view->begin_time, view->end_time);
+  f32 width = ImGui::GetWindowWidth();
+  f32 point_per_time = width / (view->end_time - view->begin_time);
+
+  UpdateTimeline(scratch, width, point_per_time, view->begin_time,
+                 view->end_time);
 
   ImGui::BeginChild("Main");
   Profile *profile = view->profile;
@@ -549,7 +597,8 @@ static void UpdateProfile(ViewState *view, Arena scratch) {
     ImGui::SetNextItemOpen(true, ImGuiCond_FirstUseEver);
     char *title = PushFormatZ(&scratch, "Process %d", (int)process->pid);
     if (ImGui::CollapsingHeader(title, 0)) {
-      UpdateProcess(process, view->show_lane_border, scratch);
+      UpdateProcess(process, view->show_lane_border, width, point_per_time,
+                    view->begin_time, view->end_time, scratch);
     }
   }
   ImGui::EndChild();
