@@ -2,6 +2,18 @@
 
 struct Profile;
 
+static ImU32 kGeneralPurposeColors[] = {
+    IM_COL32(169, 188, 255, 255), IM_COL32(154, 255, 255, 255),
+    IM_COL32(24, 255, 177, 255),  IM_COL32(255, 255, 173, 255),
+    IM_COL32(255, 212, 147, 255), IM_COL32(255, 159, 140, 255),
+    IM_COL32(255, 189, 218, 255),
+};
+
+static ImU32 GetColor(Buffer buffer) {
+  isize index = Hash(buffer) % ARRAY_SIZE(kGeneralPurposeColors);
+  return kGeneralPurposeColors[index];
+}
+
 enum DocumentState {
   Document_Loading,
   Document_View,
@@ -189,6 +201,7 @@ struct Counter {
   isize series_size;
   f64 min;
   f64 max;
+  ImU32 color;
 };
 
 enum LaneType {
@@ -249,6 +262,7 @@ static void BuildCounter(Arena *arena, Arena scratch,
   counter->series = PushArray(arena, Series, counter->series_size);
   counter->max = -DBL_MAX;
   counter->min = DBL_MAX;
+  counter->color = GetColor(counter_result->name);
 
   HashMapIter series_result_iter =
       InitHashMapIter(&scratch, &counter_result->series);
@@ -513,29 +527,115 @@ static void UpdateCounterHeader(CounterHeader *counter_header, Vec2 lane_min,
   }
 }
 
+static inline Vec2 GetSamplePoint(SeriesSample *sample, Vec2 lane_min,
+                                  Vec2 lane_size, f32 point_per_time,
+                                  i64 begin_time, f32 total) {
+  f32 left = lane_min.x + point_per_time * (sample->time - begin_time);
+  f32 bottom = lane_min.y + lane_size.y;
+  f32 height = sample->value / total * lane_size.y;
+  f32 top = bottom - height;
+  Vec2 result = {left, top};
+  return result;
+}
+
+struct HoveredSample {
+  Series *series;
+  SeriesSample *sample;
+  Vec2 p1;
+  Vec2 p2;
+};
+
 static void UpdateCounter(Counter *counter, Vec2 lane_min, Vec2 lane_size,
                           f32 point_per_time, i64 begin_time, i64 end_time,
                           Arena scratch) {
+  ImGuiStyle *style = &ImGui::GetStyle();
   ImDrawList *draw_list = ImGui::GetWindowDrawList();
+  Vec2 lane_max = lane_min + lane_size;
+  Vec2 half_box_size = Vec2{style->FramePadding.y, style->FramePadding.y};
+  ImU32 border_col = IM_COL32(0, 0, 0, 128);
+
+  HoveredSample *hovered_samples =
+      PushArray(&scratch, HoveredSample, counter->series_size);
+  isize hovered_samples_size = 0;
 
   f64 total = counter->max - counter->min;
   for (isize series_index = 0; series_index < counter->series_size;
        ++series_index) {
     Series *series = counter->series + series_index;
-    f32 x = lane_min.x;
+
     // TODO: Get first point that is <= begin_time, if none, get first point
-    for (isize sample_index = 0; sample_index < series->sample_size;
-         ++sample_index) {
-      SeriesSample *sample = series->samples + sample_index;
+    SeriesSample *samples = series->samples;
+    isize sample_size = series->sample_size;
 
-      f32 left = lane_min.x + point_per_time * (sample->time - begin_time);
-      f32 bottom = lane_min.y + lane_size.y;
-      f32 height = sample->value / total * lane_size.y;
-      f32 top = bottom - height;
+    Vec2 p1 = {};
+    if (sample_size > 0) {
+      SeriesSample *sample = samples;
+      p1 = GetSamplePoint(sample, lane_min, lane_size, point_per_time,
+                          begin_time, total);
+      draw_list->PathLineToMergeDuplicate({p1.x, lane_max.y});
+      draw_list->PathLineToMergeDuplicate(p1);
+    }
 
-      // TODO: Properly draw bar chart
-      draw_list->AddRect({left, top}, {left + 2, top + 2},
-                         IM_COL32(255, 0, 0, 255));
+    for (isize sample_index = 1; sample_index < sample_size; ++sample_index) {
+      SeriesSample *sample = samples + sample_index;
+
+      Vec2 p2 = GetSamplePoint(sample, lane_min, lane_size, point_per_time,
+                               begin_time, total);
+
+      draw_list->AddRectFilled(p1, {p2.x, lane_max.y}, counter->color);
+
+      Vec2 bb_min = {p1.x, lane_min.y};
+      Vec2 bb_max = {p2.x, lane_max.y};
+      ImGui::ItemAdd({bb_min, bb_max}, 0);
+      if (ImGui::IsItemHovered() &&
+          hovered_samples_size < counter->series_size) {
+        HoveredSample *hovered_sample =
+            hovered_samples + hovered_samples_size++;
+        hovered_sample->series = series;
+        hovered_sample->sample = sample;
+        hovered_sample->p1 = p1;
+        hovered_sample->p2 = p2;
+      }
+
+      draw_list->PathLineToMergeDuplicate({p2.x, p1.y});
+      draw_list->PathLineToMergeDuplicate(p2);
+
+      p1 = p2;
+    }
+
+    if (sample_size > 0) {
+      draw_list->PathLineToMergeDuplicate({p1.x, lane_max.y});
+      draw_list->PathStroke(border_col);
+      draw_list->PathClear();
+    }
+  }
+
+  if (hovered_samples_size > 0) {
+    for (isize hovered_sample_index = 0;
+         hovered_sample_index < hovered_samples_size; ++hovered_sample_index) {
+      HoveredSample *hovered_sample = hovered_samples + hovered_sample_index;
+      Vec2 p1 = hovered_sample->p1;
+      Vec2 p2 = hovered_sample->p2;
+      draw_list->AddRectFilled(p1 - half_box_size, p1 + half_box_size,
+                               IM_COL32_BLACK);
+      draw_list->AddLine(p1, {p2.x, p1.y}, IM_COL32_BLACK, 1.0);
+    }
+
+    if (ImGui::BeginTooltip()) {
+      for (isize hovered_sample_index = 0;
+           hovered_sample_index < hovered_samples_size;
+           ++hovered_sample_index) {
+        HoveredSample *hovered_sample = hovered_samples + hovered_sample_index;
+        Series *series = hovered_sample->series;
+        SeriesSample *sample = hovered_sample->sample;
+        char *time = PushFormatTimeZ(&scratch, sample->time);
+        if (hovered_sample_index == 0) {
+          ImGui::Text("Time: %s", time);
+        }
+        ImGui::Text("%.*s: %.2f", (int)series->name.size, series->name.data,
+                    sample->value);
+      }
+      ImGui::EndTooltip();
     }
   }
 }
