@@ -205,6 +205,7 @@ struct Counter {
 };
 
 enum LaneType {
+  LaneType_Empty,
   LaneType_CounterHeader,
   LaneType_Counter,
 };
@@ -324,8 +325,8 @@ static Profile *BuildProfile(Arena *arena, Arena scratch,
     Process *process = profile->processes + process_index;
     process->pid = process_result->pid;
 
-    // 1 counter header, 1 counter
-    process->lane_size = process_result->counter_size * 2;
+    // n counter header, n counter, 1 empty
+    process->lane_size = 2 * process_result->counter_size + 1;
     process->lanes = PushArray(arena, Lane, process->lane_size);
     isize lane_size = 0;
     BuildCounters(arena, scratch, process_result, process, &lane_size);
@@ -548,6 +549,7 @@ struct HoveredSample {
 static void UpdateCounter(Counter *counter, Vec2 lane_min, Vec2 lane_size,
                           f32 point_per_time, i64 begin_time, i64 end_time,
                           Arena scratch) {
+  ImGuiIO *io = &ImGui::GetIO();
   ImGuiStyle *style = &ImGui::GetStyle();
   ImDrawList *draw_list = ImGui::GetWindowDrawList();
   Vec2 lane_max = lane_min + lane_size;
@@ -586,8 +588,8 @@ static void UpdateCounter(Counter *counter, Vec2 lane_min, Vec2 lane_size,
 
       Vec2 bb_min = {p1.x, lane_min.y};
       Vec2 bb_max = {p2.x, lane_max.y};
-      ImGui::ItemAdd({bb_min, bb_max}, 0);
-      if (ImGui::IsItemHovered() &&
+      if (ImGui::IsMouseHoveringRect(bb_min, bb_max) &&
+          !ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
           hovered_samples_size < counter->series_size) {
         HoveredSample *hovered_sample =
             hovered_samples + hovered_samples_size++;
@@ -654,24 +656,30 @@ static void UpdateProcess(Process *process, bool show_lane_border, f32 width,
   for (isize lane_index = 0; lane_index < process->lane_size; ++lane_index) {
     Vec2 lane_max = lane_min + lane_size;
 
-    if (show_lane_border) {
-      draw_list->AddRect(lane_min, lane_max, IM_COL32(255, 0, 0, 255));
-    }
+    ImGui::ItemSize(lane_size);
+    if (ImGui::ItemAdd({lane_min, lane_max}, 0)) {
+      if (show_lane_border) {
+        draw_list->AddRect(lane_min, lane_max, IM_COL32(255, 0, 0, 255));
+      }
 
-    Lane *lane = GetLane(process, lane_index);
-    switch (lane->type) {
-      case LaneType_CounterHeader: {
-        UpdateCounterHeader(&lane->counter_header, lane_min, scratch);
-      } break;
+      Lane *lane = GetLane(process, lane_index);
+      switch (lane->type) {
+        case LaneType_Empty: {
+        } break;
 
-      case LaneType_Counter: {
-        UpdateCounter(&lane->counter, lane_min, lane_size, point_per_time,
-                      begin_time, end_time, scratch);
-      } break;
+        case LaneType_CounterHeader: {
+          UpdateCounterHeader(&lane->counter_header, lane_min, scratch);
+        } break;
 
-      default: {
-        UNREACHABLE;
-      } break;
+        case LaneType_Counter: {
+          UpdateCounter(&lane->counter, lane_min, lane_size, point_per_time,
+                        begin_time, end_time, scratch);
+        } break;
+
+        default: {
+          UNREACHABLE;
+        } break;
+      }
     }
 
     lane_min.y += lane_size.y;
@@ -679,6 +687,7 @@ static void UpdateProcess(Process *process, bool show_lane_border, f32 width,
 }
 
 static void UpdateProfile(ViewState *view, Arena scratch) {
+  ImGuiIO *io = &ImGui::GetIO();
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
                       Vec2{ImGui::GetStyle().ItemSpacing.x, 0});
 
@@ -689,6 +698,7 @@ static void UpdateProfile(ViewState *view, Arena scratch) {
                  view->end_time);
 
   ImGui::BeginChild("Main");
+
   Profile *profile = view->profile;
   for (isize process_index = 0; process_index < profile->process_size;
        ++process_index) {
@@ -701,6 +711,16 @@ static void UpdateProfile(ViewState *view, Arena scratch) {
                     view->begin_time, view->end_time, scratch);
     }
   }
+
+  if (ImGui::IsWindowFocused() &&
+      ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    isize duration = view->end_time - view->begin_time;
+    view->begin_time -= io->MouseDelta.x / point_per_time;
+    view->end_time = view->begin_time + duration;
+
+    ImGui::SetScrollY(ImGui::GetScrollY() - io->MouseDelta.y);
+  }
+
   ImGui::EndChild();
 
   ImGui::PopStyleVar(1);
