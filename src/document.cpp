@@ -686,6 +686,8 @@ static void UpdateProcess(Process *process, bool show_lane_border, f32 width,
   }
 }
 
+static isize kMinDuration = 1000;
+
 static void UpdateProfile(ViewState *view, Arena scratch) {
   ImGuiIO *io = &ImGui::GetIO();
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
@@ -712,13 +714,30 @@ static void UpdateProfile(ViewState *view, Arena scratch) {
     }
   }
 
-  if (ImGui::IsWindowFocused() &&
-      ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-    isize duration = view->end_time - view->begin_time;
-    view->begin_time -= io->MouseDelta.x / point_per_time;
-    view->end_time = view->begin_time + duration;
+  if (ImGui::IsWindowHovered()) {
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+      isize duration = view->end_time - view->begin_time;
+      view->begin_time -= io->MouseDelta.x / point_per_time;
+      view->end_time = view->begin_time + duration;
 
-    ImGui::SetScrollY(ImGui::GetScrollY() - io->MouseDelta.y);
+      ImGui::SetScrollY(ImGui::GetScrollY() - io->MouseDelta.y);
+    } else if (ImGui::IsKeyDown(ImGuiMod_Ctrl) &&
+               ImGui::IsKeyDown(ImGuiKey_MouseWheelY)) {
+      f32 wheel_y = io->MouseWheel;
+      Vec2 window_pos = ImGui::GetWindowPos();
+      f32 pivot = (io->MousePos.x - window_pos.x) / ImGui::GetWindowWidth();
+      isize duration = view->end_time - view->begin_time;
+      isize pivot_time = view->begin_time + pivot * duration;
+      if (wheel_y > 0) {
+        duration = MAX(duration * 0.8f, kMinDuration);
+      } else {
+        isize max_duration = (profile->max_time - profile->min_time) * 2.0;
+        duration = MIN(duration * 1.25f, max_duration);
+      }
+
+      view->begin_time = pivot_time - pivot * duration;
+      view->end_time = view->begin_time + duration;
+    }
   }
 
   ImGui::EndChild();

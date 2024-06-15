@@ -43,7 +43,8 @@ add_library(
 target_compile_definitions(
     imgui
     PRIVATE
-    "ImDrawIdx=unsigned int")
+    "ImDrawIdx=unsigned int"
+    IMGUI_DISABLE_OBSOLETE_FUNCTIONS)
 
 add_executable(ztracing src/main.cpp)
 
