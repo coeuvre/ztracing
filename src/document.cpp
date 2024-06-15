@@ -261,8 +261,8 @@ static void BuildCounter(Arena *arena, Arena scratch,
                          CounterResult *counter_result, Counter *counter) {
   counter->series_size = counter_result->series_size;
   counter->series = PushArray(arena, Series, counter->series_size);
-  counter->max = -DBL_MAX;
-  counter->min = DBL_MAX;
+  counter->max = 0;
+  counter->min = 0;
   counter->color = GetColor(counter_result->name);
 
   HashMapIter series_result_iter =
@@ -517,23 +517,66 @@ static void UpdateTimeline(Arena scratch, f32 width, f32 point_per_time,
 }
 
 static void UpdateCounterHeader(CounterHeader *counter_header, Vec2 lane_min,
-                                Arena scratch) {
-  char *text = PushFormatZ(&scratch, "%.*s", (int)counter_header->name.size,
-                           counter_header->name.data);
-  ImGui::SetCursorScreenPos(lane_min);
-  ImGui::SeparatorText(text);
-  if (ImGui::BeginItemTooltip()) {
-    ImGui::Text("%s", text);
-    ImGui::EndTooltip();
+                                Vec2 lane_size, Vec2 lane_max, Arena scratch) {
+  ImGuiStyle *style = &ImGui::GetStyle();
+  ImDrawList *draw_list = ImGui::GetWindowDrawList();
+
+  Buffer label_buf =
+      PushFormat(&scratch, "%.*s", (int)counter_header->name.size,
+                 counter_header->name.data);
+  char *label = (char *)label_buf.data;
+  char *label_end = label + label_buf.size;
+
+  Vec2 label_size = ImGui::CalcTextSize(label, label_end, false);
+  Vec2 pos = lane_min;
+  Vec2 padding = style->SeparatorTextPadding;
+
+  f32 separator_thickness = style->SeparatorTextBorderSize;
+  Vec2 min_size = {label_size.x + padding.x * 2.0f,
+                   ImMax(label_size.y + padding.y * 2.0f, separator_thickness)};
+  f32 text_baseline_y = ImTrunc(
+      (lane_size.y - label_size.y) * style->SeparatorTextAlign.y + 0.99999f);
+  f32 sep1_x1 = pos.x;
+  f32 sep2_x2 = lane_max.x;
+  f32 seps_y = ImTrunc((lane_min.y + lane_max.y) * 0.5f + 0.99999f);
+  f32 label_avail_w = ImMax(0.0f, sep2_x2 - sep1_x1 - padding.x * 2.0f);
+  Vec2 label_pos = {pos.x + padding.x +
+                        ImMax(0.0f, (label_avail_w - label_size.x) *
+                                        style->SeparatorTextAlign.x),
+                    pos.y + text_baseline_y};
+
+  ImU32 separator_col = ImGui::GetColorU32(ImGuiCol_Separator);
+
+  f32 sep1_x2 = label_pos.x - style->ItemSpacing.x;
+  f32 sep2_x1 = label_pos.x + label_size.x + style->ItemSpacing.x;
+  if (sep1_x2 > sep1_x1 && separator_thickness > 0.0f) {
+    draw_list->AddLine(ImVec2(sep1_x1, seps_y), ImVec2(sep1_x2, seps_y),
+                       separator_col, separator_thickness);
+  }
+  if (sep2_x2 > sep2_x1 && separator_thickness > 0.0f) {
+    draw_list->AddLine(ImVec2(sep2_x1, seps_y), ImVec2(sep2_x2, seps_y),
+                       separator_col, separator_thickness);
+  }
+  ImGui::RenderTextEllipsis(
+      draw_list, label_pos, {lane_max.x, lane_max.y + style->ItemSpacing.y},
+      lane_max.x, lane_max.x, label, label_end, &label_size);
+
+  if (ImGui::IsMouseHoveringRect({sep1_x2, lane_min.y},
+                                 {sep2_x1, lane_max.y}) &&
+      !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+    if (ImGui::BeginTooltip()) {
+      ImGui::Text("%s", label);
+      ImGui::EndTooltip();
+    }
   }
 }
 
 static inline Vec2 GetSamplePoint(SeriesSample *sample, Vec2 lane_min,
                                   Vec2 lane_size, f32 point_per_time,
-                                  i64 begin_time, f32 total) {
+                                  i64 begin_time, f32 min, f32 max) {
   f32 left = lane_min.x + point_per_time * (sample->time - begin_time);
   f32 bottom = lane_min.y + lane_size.y;
-  f32 height = sample->value / total * lane_size.y;
+  f32 height = (sample->value - min) / (max - min) * lane_size.y;
   f32 top = bottom - height;
   Vec2 result = {left, top};
   return result;
@@ -560,7 +603,6 @@ static void UpdateCounter(Counter *counter, Vec2 lane_min, Vec2 lane_size,
       PushArray(&scratch, HoveredSample, counter->series_size);
   isize hovered_samples_size = 0;
 
-  f64 total = counter->max - counter->min;
   for (isize series_index = 0; series_index < counter->series_size;
        ++series_index) {
     Series *series = counter->series + series_index;
@@ -573,7 +615,7 @@ static void UpdateCounter(Counter *counter, Vec2 lane_min, Vec2 lane_size,
     if (sample_size > 0) {
       SeriesSample *sample = samples;
       p1 = GetSamplePoint(sample, lane_min, lane_size, point_per_time,
-                          begin_time, total);
+                          begin_time, counter->min, counter->max);
       draw_list->PathLineToMergeDuplicate({p1.x, lane_max.y});
       draw_list->PathLineToMergeDuplicate(p1);
     }
@@ -582,7 +624,7 @@ static void UpdateCounter(Counter *counter, Vec2 lane_min, Vec2 lane_size,
       SeriesSample *sample = samples + sample_index;
 
       Vec2 p2 = GetSamplePoint(sample, lane_min, lane_size, point_per_time,
-                               begin_time, total);
+                               begin_time, counter->min, counter->max);
 
       draw_list->AddRectFilled(p1, {p2.x, lane_max.y}, counter->color);
 
@@ -649,40 +691,46 @@ static void UpdateProcess(Process *process, bool show_lane_border, f32 width,
   ImGuiStyle *style = &ImGui::GetStyle();
   ImDrawList *draw_list = ImGui::GetWindowDrawList();
 
-  Vec2 lane_min = ImGui::GetCursorScreenPos();
   Vec2 lane_size = {width,
                     window->CalcFontSize() + style->FramePadding.y * 4.0f};
 
-  for (isize lane_index = 0; lane_index < process->lane_size; ++lane_index) {
-    Vec2 lane_max = lane_min + lane_size;
+  ImGuiListClipper clipper;
+  clipper.Begin(process->lane_size, lane_size.y);
 
-    ImGui::ItemSize(lane_size);
-    if (ImGui::ItemAdd({lane_min, lane_max}, 0)) {
-      if (show_lane_border) {
-        draw_list->AddRect(lane_min, lane_max, IM_COL32(255, 0, 0, 255));
-      }
+  while (clipper.Step()) {
+    for (int lane_index = clipper.DisplayStart; lane_index < clipper.DisplayEnd;
+         lane_index++) {
+      Vec2 lane_min = ImGui::GetCursorScreenPos();
+      Vec2 lane_max = lane_min + lane_size;
 
-      Lane *lane = GetLane(process, lane_index);
-      switch (lane->type) {
-        case LaneType_Empty: {
-        } break;
+      ImGui::ItemSize(lane_size);
+      if (ImGui::ItemAdd({lane_min, lane_max}, 0)) {
+        Lane *lane = GetLane(process, lane_index);
 
-        case LaneType_CounterHeader: {
-          UpdateCounterHeader(&lane->counter_header, lane_min, scratch);
-        } break;
+        if (show_lane_border) {
+          draw_list->AddRect(lane_min, lane_max, IM_COL32(255, 0, 0, 255));
+        }
 
-        case LaneType_Counter: {
-          UpdateCounter(&lane->counter, lane_min, lane_size, point_per_time,
-                        begin_time, end_time, scratch);
-        } break;
+        switch (lane->type) {
+          case LaneType_Empty: {
+          } break;
 
-        default: {
-          UNREACHABLE;
-        } break;
+          case LaneType_CounterHeader: {
+            UpdateCounterHeader(&lane->counter_header, lane_min, lane_size,
+                                lane_max, scratch);
+          } break;
+
+          case LaneType_Counter: {
+            UpdateCounter(&lane->counter, lane_min, lane_size, point_per_time,
+                          begin_time, end_time, scratch);
+          } break;
+
+          default: {
+            UNREACHABLE;
+          } break;
+        }
       }
     }
-
-    lane_min.y += lane_size.y;
   }
 }
 
@@ -716,7 +764,7 @@ static void UpdateProfile(ViewState *view, Arena scratch) {
 
   if (ImGui::IsWindowHovered()) {
     if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-      isize duration = view->end_time - view->begin_time;
+      i64 duration = view->end_time - view->begin_time;
       view->begin_time -= io->MouseDelta.x / point_per_time;
       view->end_time = view->begin_time + duration;
 
@@ -726,12 +774,12 @@ static void UpdateProfile(ViewState *view, Arena scratch) {
       f32 wheel_y = io->MouseWheel;
       Vec2 window_pos = ImGui::GetWindowPos();
       f32 pivot = (io->MousePos.x - window_pos.x) / ImGui::GetWindowWidth();
-      isize duration = view->end_time - view->begin_time;
-      isize pivot_time = view->begin_time + pivot * duration;
+      i64 duration = view->end_time - view->begin_time;
+      i64 pivot_time = view->begin_time + pivot * duration;
       if (wheel_y > 0) {
         duration = MAX(duration * 0.8f, kMinDuration);
       } else {
-        isize max_duration = (profile->max_time - profile->min_time) * 2.0;
+        i64 max_duration = (profile->max_time - profile->min_time) * 2.0;
         duration = MIN(duration * 1.25f, max_duration);
       }
 
