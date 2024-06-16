@@ -282,10 +282,39 @@ static Lane *GetLane(Process *process, isize lane_index) {
   return process->lanes + lane_index;
 }
 
+static int CompareCounterResult(const void *a_, const void *b_) {
+  CounterResult *a = *(CounterResult **)a_;
+  CounterResult *b = *(CounterResult **)b_;
+  Buffer ba = a->name;
+  Buffer bb = b->name;
+  int result = 0;
+  if (ba.size == bb.size) {
+    for (isize index = 0; index < ba.size; ++index) {
+      u8 ca = ba.data[index];
+      u8 cb = bb.data[index];
+      if (ca >= 'a' && ca < 'z') {
+        ca = 'A' + ca - 'a';
+      }
+      if (cb >= 'a' && cb < 'z') {
+        cb = 'A' + cb - 'a';
+      }
+      if (ca != cb) {
+        result = ca - cb;
+        break;
+      }
+    }
+  } else {
+    result = ba.size - bb.size;
+  }
+  return result;
+}
+
 static void BuildCounters(Arena *arena, Arena scratch,
                           ProcessResult *process_result, Process *process,
                           isize *lane_index) {
-  // TODO: Sort counters
+  CounterResult **counter_results =
+      PushArray(&scratch, CounterResult *, process_result->counter_size);
+  isize counter_results_size = 0;
   HashMapIter counter_result_iter =
       InitHashMapIter(&scratch, &process_result->counters);
   for (isize counter_index = 0; counter_index < process_result->counter_size;
@@ -293,7 +322,14 @@ static void BuildCounters(Arena *arena, Arena scratch,
     CounterResult *counter_result =
         (CounterResult *)IterNext(&counter_result_iter);
     ASSERT(counter_result);
+    counter_results[counter_results_size++] = counter_result;
+  }
+  qsort(counter_results, counter_results_size, sizeof(counter_results[0]),
+        CompareCounterResult);
 
+  for (isize counter_index = 0; counter_index < counter_results_size;
+       ++counter_index) {
+    CounterResult *counter_result = counter_results[counter_index];
     Lane *counter_header_lane = GetLane(process, (*lane_index)++);
     counter_header_lane->type = LaneType_CounterHeader;
     counter_header_lane->counter_header.name =
