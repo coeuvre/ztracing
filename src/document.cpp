@@ -234,7 +234,11 @@ struct Profile {
 static int CompareSeriesSample(const void *a_, const void *b_) {
   SeriesSample *a = (SeriesSample *)a_;
   SeriesSample *b = (SeriesSample *)b_;
-  return a->time - b->time;
+  int result = 0;
+  if (a->time != b->time) {
+    result = a->time < b->time ? -1 : 1;
+  }
+  return result;
 }
 
 static void BuildSeries(Arena *arena, SeriesResult *series_result,
@@ -609,7 +613,7 @@ static void UpdateCounterHeader(CounterHeader *counter_header, Vec2 lane_min,
 
 static inline Vec2 GetSamplePoint(SeriesSample *sample, Vec2 lane_min,
                                   Vec2 lane_size, f32 point_per_time,
-                                  i64 begin_time, f32 min, f32 max) {
+                                  i64 begin_time, f64 min, f64 max) {
   f32 left = lane_min.x + point_per_time * (sample->time - begin_time);
   f32 bottom = lane_min.y + lane_size.y;
   f32 height = (sample->value - min) / (max - min) * lane_size.y;
@@ -708,8 +712,8 @@ static void UpdateCounter(Counter *counter, Vec2 lane_min, Vec2 lane_size,
         HoveredSample *hovered_sample = hovered_samples + hovered_sample_index;
         Series *series = hovered_sample->series;
         SeriesSample *sample = hovered_sample->sample;
-        char *time = PushFormatTimeZ(&scratch, sample->time);
         if (hovered_sample_index == 0) {
+          char *time = PushFormatTimeZ(&scratch, sample->time);
           ImGui::Text("Time: %s", time);
         }
         ImGui::Text("%.*s: %.2f", (int)series->name.size, series->name.data,

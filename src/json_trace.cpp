@@ -178,13 +178,15 @@ static void ProcessTraceEvent(Arena *arena, JsonValue *value,
         CounterResult *counter =
             UpsertCounterResult(arena, process, trace_event.name);
 
+        i64 time = trace_event.ts * 1000;
+
         for (JsonValue *arg = trace_event.args->child; arg; arg = arg->next) {
           f64 value = ConvertJsonValueToF64(arg);
-          AppendSample(arena, counter, arg->label, trace_event.ts, value);
+          AppendSample(arena, counter, arg->label, time, value);
         }
 
-        profile->min_time = MIN(profile->min_time, trace_event.ts);
-        profile->max_time = MAX(profile->max_time, trace_event.ts);
+        profile->min_time = MIN(profile->min_time, time);
+        profile->max_time = MAX(profile->max_time, time);
       }
     } break;
 
