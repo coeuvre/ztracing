@@ -676,7 +676,7 @@ static void UpdateCounter(Counter *counter, Vec2 lane_min, Vec2 lane_size,
         HoveredSample *hovered_sample =
             hovered_samples + hovered_samples_size++;
         hovered_sample->series = series;
-        hovered_sample->sample = sample;
+        hovered_sample->sample = sample - 1;
         hovered_sample->p1 = p1;
         hovered_sample->p2 = p2;
       }
