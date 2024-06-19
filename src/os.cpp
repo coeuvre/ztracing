@@ -272,10 +272,15 @@ static void MainLoopInit(MainLoop *main_loop) {
 
   Vec2 window_size = GetInitialWindowSize();
 
-  SDL_Window *window = SDL_CreateWindow(
-      "ztracing", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, window_size.x,
-      window_size.y,
-      SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED | SDL_WINDOW_OPENGL);
+  u32 window_flags =
+      SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED | SDL_WINDOW_OPENGL;
+#ifdef __APPLE__
+  window_flags |= SDL_WINDOW_ALLOW_HIGHDPI;
+#endif
+
+  SDL_Window *window = SDL_CreateWindow("ztracing", SDL_WINDOWPOS_CENTERED,
+                                        SDL_WINDOWPOS_CENTERED, window_size.x,
+                                        window_size.y, window_flags);
   if (!window) {
     ABORT("Failed to create SDL_Window: %s", SDL_GetError());
   }
@@ -305,7 +310,11 @@ static void MainLoopInit(MainLoop *main_loop) {
 
     ImGuiStyle *style = &ImGui::GetStyle();
     ImGui::StyleColorsLight(style);
+#ifdef __APPLE__
+    io->FontGlobalScale = 1.0f / dpi_scale;
+#else
     style->ScaleAllSizes(dpi_scale);
+#endif
   }
 
   if (!ImGui_ImplSDL2_InitForOpenGL(window, gl_context)) {
