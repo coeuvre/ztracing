@@ -556,6 +556,11 @@ static void UpdateTimeline(Arena scratch, f32 width, f32 point_per_time,
   }
 }
 
+static bool AllowHover() {
+  return ImGui::IsWindowHovered() &&
+         !ImGui::IsMouseDragging(ImGuiMouseButton_Left);
+}
+
 static void UpdateCounterHeader(CounterHeader *counter_header, Vec2 lane_min,
                                 Vec2 lane_size, Vec2 lane_max, Arena scratch) {
   ImGuiStyle *style = &ImGui::GetStyle();
@@ -601,9 +606,8 @@ static void UpdateCounterHeader(CounterHeader *counter_header, Vec2 lane_min,
       draw_list, label_pos, {lane_max.x, lane_max.y + style->ItemSpacing.y},
       lane_max.x, lane_max.x, label, label_end, &label_size);
 
-  if (ImGui::IsMouseHoveringRect({sep1_x2, lane_min.y},
-                                 {sep2_x1, lane_max.y}) &&
-      !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+  if (AllowHover() && ImGui::IsMouseHoveringRect({sep1_x2, lane_min.y},
+                                                 {sep2_x1, lane_max.y})) {
     if (ImGui::BeginTooltip()) {
       ImGui::Text("%s", label);
       ImGui::EndTooltip();
@@ -670,8 +674,7 @@ static void UpdateCounter(Counter *counter, Vec2 lane_min, Vec2 lane_size,
 
       Vec2 bb_min = {p1.x, lane_min.y};
       Vec2 bb_max = {p2.x, lane_max.y};
-      if (ImGui::IsMouseHoveringRect(bb_min, bb_max) &&
-          !ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
+      if (AllowHover() && ImGui::IsMouseHoveringRect(bb_min, bb_max) &&
           hovered_samples_size < counter->series_size) {
         HoveredSample *hovered_sample =
             hovered_samples + hovered_samples_size++;
