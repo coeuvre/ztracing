@@ -292,22 +292,22 @@ static int CompareCounterResult(const void *a_, const void *b_) {
   Buffer ba = a->name;
   Buffer bb = b->name;
   int result = 0;
-  if (ba.size == bb.size) {
-    for (isize index = 0; index < ba.size; ++index) {
-      u8 ca = ba.data[index];
-      u8 cb = bb.data[index];
-      if (ca >= 'a' && ca < 'z') {
-        ca = 'A' + ca - 'a';
-      }
-      if (cb >= 'a' && cb < 'z') {
-        cb = 'A' + cb - 'a';
-      }
-      if (ca != cb) {
-        result = ca - cb;
-        break;
-      }
+  isize size = MIN(ba.size, bb.size);
+  for (isize index = 0; index < size; ++index) {
+    u8 ca = ba.data[index];
+    u8 cb = bb.data[index];
+    if (ca >= 'a' && ca < 'z') {
+      ca = 'A' + ca - 'a';
     }
-  } else {
+    if (cb >= 'a' && cb < 'z') {
+      cb = 'A' + cb - 'a';
+    }
+    if (ca != cb) {
+      result = ca - cb;
+      break;
+    }
+  }
+  if (result == 0) {
     result = ba.size - bb.size;
   }
   return result;
