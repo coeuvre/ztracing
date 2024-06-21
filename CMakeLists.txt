@@ -21,7 +21,7 @@ if (EMSCRIPTEN)
         -sENVIRONMENT=web,worker
         -sEXPORTED_RUNTIME_METHODS=cwrap
         -sALLOW_BLOCKING_ON_MAIN_THREAD=1
-        -sINITIAL_MEMORY=2147483648
+        -sINITIAL_MEMORY=4259840000
         -lworkerfs.js)
 else()
     set(SDL_SHARED OFF CACHE BOOL "Build a shared version of the SDL2")

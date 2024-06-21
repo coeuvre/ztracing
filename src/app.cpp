@@ -60,7 +60,8 @@ static void DrawMenuBar(App *app, Arena scratch) {
     {
       char *text =
           PushFormatZ(&scratch, "%.1f MB %.0f",
-                      GetAllocatedBytes() / 1024.0f / 1024.0f, io->Framerate);
+                      (float)((double)GetAllocatedBytes() / 1024.0 / 1024.0),
+                      io->Framerate);
       Vec2 size = ImGui::CalcTextSize(text);
       right =
           ImGui::GetWindowContentRegionMax().x - size.x - style->ItemSpacing.x;

@@ -133,7 +133,7 @@ static void MaybeLoadFile(App *app, OsLoadingFile *file) {
 
 struct {
   OsMutex *mutex;
-  volatile isize allocated_bytes;
+  volatile i64 allocated_bytes;
 } kDefaultAllocator;
 
 static void *SDLMalloc(usize size) {
@@ -197,7 +197,7 @@ static void DefaultAllocatorInit() {
 }
 
 static void DefaultAllocatorDeinit() {
-  isize n = GetAllocatedBytes();
+  i64 n = GetAllocatedBytes();
   if (n != 0) {
     ERROR("%zu bytes leaked!", n);
   }
@@ -234,7 +234,7 @@ static void DeallocateMemory(void *ptr, isize size) {
   UpdateAllocatedBytes(-size);
 }
 
-static isize GetAllocatedBytes() { return kDefaultAllocator.allocated_bytes; }
+static i64 GetAllocatedBytes() { return kDefaultAllocator.allocated_bytes; }
 
 static f32 GetDpiScale(SDL_Window *window);
 

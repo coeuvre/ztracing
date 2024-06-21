@@ -1,7 +1,7 @@
 static void *AllocateMemory(isize size);
 static void *ReallocateMemory(void *ptr, isize old_size, isize new_size);
 static void DeallocateMemory(void *ptr, isize size);
-static isize GetAllocatedBytes();
+static i64 GetAllocatedBytes();
 
 // Memory must not overlap.
 static inline void CopyMemory(void *dst, const void *src, isize size) {
@@ -37,6 +37,7 @@ struct Arena {
 };
 
 static isize kInitBlockSze = 1024;
+static isize kMaxBlockSze = 1024 * 1024;
 
 static Arena InitArena() {
   Arena arena = {};
@@ -58,9 +59,11 @@ static void *PushSize(Arena *arena, isize size, bool zero) {
       arena->end = next->end;
     } else {
       isize new_size = (block->end - block->begin) << 1;
-      while (new_size < size) {
+      while (new_size < size && new_size < kMaxBlockSze) {
         new_size <<= 1;
       }
+      new_size = MIN(new_size, kMaxBlockSze);
+      new_size = MAX(new_size, size);
       MemoryBlock *new_block = AllocateMemoryBlock(new_size);
       block->next = new_block;
       new_block->prev = block;
