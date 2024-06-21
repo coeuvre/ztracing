@@ -204,7 +204,8 @@ static bool ParseJsonTraceEventArray(Arena *arena, Arena value_scratch,
     case JsonToken_OpenBracket: {
       bool done = false;
       while (!done) {
-        JsonValue *value = GetJsonValue(&value_scratch, token_scratch, parser);
+        Arena value_scratch_copy = value_scratch;
+        JsonValue *value = GetJsonValue(&value_scratch_copy, token_scratch, parser);
         if (value->type != JsonValue_Error) {
           if (value->type == JsonValue_Object) {
             ProcessTraceEvent(arena, value, result);
