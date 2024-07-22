@@ -479,19 +479,29 @@ static i64 CalcBlockDuration(i64 duration, f32 width, f32 target_block_width) {
 
 static const char *TIME_UNIT[] = {"ns", "us", "ms", "s"};
 
-static char *PushFormatTimeZ(Arena *arena, i64 time_) {
-  if (time_ == 0) {
+static char *PushFormatTimeZ(Arena *arena, i64 time, i64 duration = 0) {
+  if (time == 0) {
     return PushFormatZ(arena, "%s", "0");
   }
 
+  f64 time_ = time;
   isize time_unit_index = 0;
-  f64 time = time_;
-  while (fabs(time) >= 1000.0 && time_unit_index < ARRAY_SIZE(TIME_UNIT)) {
-    time /= 1000.0;
-    time_unit_index++;
+
+  if (duration > 0) {
+    i64 tmp = duration / 1000;
+    while (tmp > 0 && time_unit_index < ARRAY_SIZE(TIME_UNIT)) {
+      tmp /= 1000;
+      time_ /= 1000.0;
+      time_unit_index++;
+    }
+  } else {
+    while (fabs(time_) >= 1000.0 && time_unit_index < ARRAY_SIZE(TIME_UNIT)) {
+      time_ /= 1000.0;
+      time_unit_index++;
+    }
   }
 
-  Buffer buf = PushFormat(arena, "%.1lf%s", time, TIME_UNIT[time_unit_index]);
+  Buffer buf = PushFormat(arena, "%.1lf%s", time_, TIME_UNIT[time_unit_index]);
   char *period = (char *)(buf.data + buf.size - 1);
   while (*period != '.') {
     period--;
@@ -537,7 +547,7 @@ static void UpdateTimeline(Arena scratch, f32 width, f32 point_per_time,
 
       if (is_large_block) {
         draw_list->AddText({x + style->FramePadding.x * 2.0f, text_top},
-                           IM_COL32_BLACK, PushFormatTimeZ(&scratch, time));
+                           IM_COL32_BLACK, PushFormatTimeZ(&scratch, time, duration));
       }
 
       time += block_duration;
@@ -549,7 +559,7 @@ static void UpdateTimeline(Arena scratch, f32 width, f32 point_per_time,
       f32 mouse_x = ImGui::GetMousePos().x;
       i64 time = begin_time + (mouse_x - min.x) / point_per_time;
       if (ImGui::BeginTooltip()) {
-        ImGui::Text("%s", PushFormatTimeZ(&scratch, time));
+        ImGui::Text("%s", PushFormatTimeZ(&scratch, time, block_duration));
         ImGui::EndTooltip();
       }
     }
