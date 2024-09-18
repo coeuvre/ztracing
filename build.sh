@@ -1,34 +1,44 @@
 #!/bin/bash
+set -eu
+cd "$(dirname "$0")"
 
-BUILD_DIR=build
-BUILD_WEB=false
-CONFIGURE_PREFIX=
-RELEASE=false
-CMAKE_CONFIG=Debug
-CMAKE_GENERATOR="Ninja"
+# --- Unpack Arguments --------------------------------------------------------
+flag_release=
+has_target=
+target_ztracing=
 
 for arg in "$@"
 do
-    case "$arg" in
-        --release)
-            RELEASE=true
-            ;;
-        --web)
-            BUILD_WEB=true
-            ;;
-    esac
+    if [[ $arg = "--"* ]]; then
+        declare "flag_${arg:2}"="1"
+    else
+        declare "target_$arg"="1"
+    fi
 done
 
-if [ "$RELEASE" = true ] ; then
-    CMAKE_CONFIG=Release
-fi
+if [ $target_ztracing ]; then has_target='1'; fi
 
-if [ "$BUILD_WEB" = true ] ; then
-    BUILD_DIR=build_web
-    CONFIGURE_PREFIX=emcmake
-fi
+# --- Compile/Link Line Definitions -------------------------------------------
+clang_common='-I../src/ -fdiagnostics-absolute-paths -Wall'
+clang_debug="clang -g -O0 -DBUILD_DEBUG=1 ${clang_common}"
+clang_release="clang -g -O2 -DBUILD_DEBUG=0 ${clang_common}"
+clang_link=""
 
-set -o xtrace
+# --- Per-Build Settings ------------------------------------------------------
 
-$CONFIGURE_PREFIX cmake -S . -B $BUILD_DIR -G "$CMAKE_GENERATOR" -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DCMAKE_BUILD_TYPE=$CMAKE_CONFIG && \
-    cmake --build $BUILD_DIR --config "$CMAKE_CONFIG" --verbose --parallel
+# --- Choose Compile/Link Lines -----------------------------------------------
+compile_debug=$clang_debug
+compile_release=$clang_release
+compile_link=$clang_link
+
+if [ $flag_release ]; then compile=$compile_release && echo "[release mode]"; else compile=$compile_debug && echo "[debug mdoe]"; fi
+
+# --- Prep Directories --------------------------------------------------------
+mkdir -p build
+
+# --- Build Everything (@build_targets) ---------------------------------------
+cd build
+
+if [ ! $has_target ] || [ $target_ztracing ]; then (set -x; $compile ../src/ztracing/ztracing_main.c $compile_link -o ztracing); fi
+
+cd ..
