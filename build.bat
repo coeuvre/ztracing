@@ -15,7 +15,7 @@ set auto_compile_flags=
 set cl_common=/I..\src\ /nologo /FC /Z7
 set cl_debug=call cl /Od /DBUILD_DEBUG=1 %cl_common% %auto_compile_flags%
 set cl_release=call cl /O2 /DBUILD_DEBUG=0 %cl_common% %auto_compile_flags%
-set cl_link=/link /MANIFEST:EMBED /INCREMENTAL:NO
+set cl_link=/link /MANIFEST:EMBED /INCREMENTAL:NO /SUBSYSTEM:WINDOWS
 set cl_out=/out:
 
 :: --- Per-Build Settings -----------------------------------------------------

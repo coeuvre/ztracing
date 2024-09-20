@@ -45,6 +45,9 @@
 #define Gigabytes(n) (((u64)(n)) << 30)
 #define Terabytes(n) (((u64)(n)) << 40)
 
+#define Min(x, y) ((x) < (y) ? (x) : (y))
+#define Max(x, y) ((x) > (y) ? (x) : (y))
+
 // ----------------------------------------------------------------------------
 // Base types
 
@@ -73,3 +76,76 @@ struct String {
   u8 *ptr;
   usize len;
 };
+
+// ----------------------------------------------------------------------------
+// Vectors
+
+typedef union Vec2 Vec2;
+union Vec2 {
+  struct {
+    f32 x;
+    f32 y;
+  };
+  f32 v[2];
+};
+
+static inline Vec2 V2(f32 x, f32 y) {
+  Vec2 result = {x, y};
+  return result;
+}
+
+typedef union Vec2I Vec2I;
+union Vec2I {
+  struct {
+    i32 x;
+    i32 y;
+  };
+  i32 v[2];
+};
+
+static inline b32 EqualVec2I(Vec2I a, Vec2I b) {
+  b32 result = a.x == b.x && a.y == b.y;
+  return result;
+}
+
+static inline Vec2 Vec2FromVec2I(Vec2I value) {
+  Vec2 result = {value.x, value.y};
+  return result;
+}
+
+typedef union Rect2 Rect2;
+union Rect2 {
+  struct {
+    Vec2 min;
+    Vec2 max;
+  };
+  struct {
+    Vec2 p0;
+    Vec2 p1;
+  };
+};
+
+static inline Rect2 R2(Vec2 min, Vec2 max) {
+  Rect2 result = {min, max};
+  return result;
+}
+
+// ----------------------------------------------------------------------------
+// Math
+
+static inline f32 ClampF32(f32 value, f32 min, f32 max) {
+  f32 result = Max(value, min);
+  result = Min(value, max);
+  return result;
+}
+
+static inline Vec2 ClampVec2(Vec2 value, Vec2 min, Vec2 max) {
+  Vec2 result = {ClampF32(value.x, min.x, max.x),
+                 ClampF32(value.y, min.y, max.y)};
+  return result;
+}
+
+static inline i32 RoundF32(f32 value) {
+  i32 result = roundf(value);
+  return result;
+}
