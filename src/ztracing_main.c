@@ -1,5 +1,11 @@
 #include "base/base.h"
 
+#define STB_TRUETYPE_IMPLEMENTATION
+#define STBTT_STATIC
+#include "third_party/stb/stb_truetype.h"
+
+#include "assets/JetBrainsMono-Regular.h"
+
 #define UNICODE
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -72,9 +78,9 @@ os_show_window(OS_Window *window) {
     }
 }
 
-static Vec2I
+static Vec2i
 os_get_window_size(OS_Window *window) {
-    Vec2I result = {0};
+    Vec2i result = {0};
 
     RECT rect;
     GetClientRect(window->handle, &rect);
@@ -86,16 +92,15 @@ os_get_window_size(OS_Window *window) {
 
 typedef struct Bitmap Bitmap;
 struct Bitmap {
-    Vec2I size;
     u32 *pixels;
+    Vec2i size;
 };
 
 static Bitmap
-create_bitmap(Vec2I size) {
+create_bitmap(Vec2i size) {
     Bitmap bitmap = {0};
     if (size.x > 0 && size.y > 0) {
-        bitmap.pixels = VirtualAlloc(
-            0, size.x * size.y * 4, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        bitmap.pixels = malloc(size.x * size.y * 4);
     }
     if (bitmap.pixels) {
         bitmap.size = size;
@@ -106,13 +111,13 @@ create_bitmap(Vec2I size) {
 static void
 destroy_bitmap(Bitmap *bitmap) {
     if (bitmap->pixels) {
-        VirtualFree(bitmap->pixels, 0, MEM_RELEASE);
+        free(bitmap->pixels);
         ZeroMemory(bitmap, sizeof(*bitmap));
     }
 }
 
 static void
-resize_bitmap(Bitmap *bitmap, Vec2I size) {
+resize_bitmap(Bitmap *bitmap, Vec2i size) {
     destroy_bitmap(bitmap);
     *bitmap = create_bitmap(size);
 }
@@ -128,7 +133,7 @@ os_copy_bitmap_to_window(OS_Window *window, Bitmap *bitmap) {
         bi.bmiHeader.biBitCount = 32;
         bi.bmiHeader.biCompression = BI_RGB;
 
-        Vec2I size = os_get_window_size(window);
+        Vec2i size = os_get_window_size(window);
         i32 width = MIN(size.x, bitmap->size.x);
         i32 height = MIN(size.y, bitmap->size.y);
 
@@ -136,6 +141,60 @@ os_copy_bitmap_to_window(OS_Window *window, Bitmap *bitmap) {
         StretchDIBits(hdc, 0, 0, width, height, 0, 0, width, height,
             bitmap->pixels, &bi, DIB_RGB_COLORS, SRCCOPY);
         ReleaseDC(window->handle, hdc);
+    }
+}
+
+// static inline Vec4
+// linear_color_from_srgb(u32 color) {
+
+// }
+
+// static inline u32
+// srgb_color_from_linear(Vec4 color) {
+
+// }
+
+// static u32
+// blend_color(u32 dst, u32 src) {
+//     Vec4 dst_linear = linear_color_from_srgb(dst);
+//     Vec4 src_linear = linear_color_from_srgb(src);
+
+//     dst_linear.x =
+//         (1.0 - src_linear.w) * dst_linear.x + src_linear.w * src_linear.x;
+//     dst_linear.y =
+//         (1.0 - src_linear.w) * dst_linear.y + src_linear.w * src_linear.y;
+//     dst_linear.z =
+//         (1.0 - src_linear.w) * dst_linear.z + src_linear.w * src_linear.z;
+//     dst_linear.w = ;
+// }
+
+static void
+copy_bitmap(Bitmap *dst, Vec2 pos, Bitmap *src) {
+    Vec2i offset = vec2i_from_vec2(round_vec2(pos));
+    Vec2i src_min = max_vec2i(neg_vec2i(offset), vec2i(0, 0));
+    Vec2i src_max = sub_vec2i(
+        min_vec2i(add_vec2i(offset, src->size), dst->size),
+        offset
+    );
+
+    Vec2i dst_min = max_vec2i(offset, vec2i(0, 0));
+    Vec2i dst_max = add_vec2i(dst_min, sub_vec2i(src_max, src_min));
+
+    u32 *dst_row = dst->pixels + dst->size.x * dst_min.y + dst_min.x;
+    u32 *src_row = src->pixels + src->size.x * src_min.y + src_min.x;
+    for (i32 y = dst_min.y; y < dst_max.y; ++y) {
+        u32 *dst_col = dst_row;
+        u32 *src_col = src_row;
+        for (i32 x = dst_min.x; x < dst_max.x; ++x) {
+            // u32 dst_pixel = *dst_col;
+            // u32 src_pixel = *src_col;
+            // *dst_col = blend_color(dst, src_col);
+            *dst_col = *src_col;
+            dst_col++;
+            src_col++;
+        }
+        dst_row += dst->size.x;
+        src_row += src->size.x;
     }
 }
 
@@ -165,6 +224,19 @@ wWinMain(
     OS_Window window = os_create_window();
     os_show_window(&window);
 
+    String text = string_literal("Heljo World!");
+    stbtt_fontinfo font;
+    {
+        i32 ret = stbtt_InitFont(
+            &font, JetBrainsMono_Regular_ttf,
+            stbtt_GetFontOffsetForIndex(JetBrainsMono_Regular_ttf, 0)
+        );
+        assert(ret != 0);
+    }
+    f32 scale = stbtt_ScaleForPixelHeight(&font, 32);
+    i32 ascent, descent, line_gap;
+    stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
+
     Bitmap bitmap = create_bitmap(os_get_window_size(&window));
 
     b32 quit = 0;
@@ -181,13 +253,78 @@ wWinMain(
             } break;
             }
         }
-        Vec2I window_size = os_get_window_size(&window);
+        Vec2i window_size = os_get_window_size(&window);
         if (!equal_vec2i(bitmap.size, window_size)) {
             resize_bitmap(&bitmap, window_size);
         }
+
         draw_rect(
-            &bitmap, vec2(0.0f, 0.0f), vec2_from_vec2i(bitmap.size), 0x00FF00FF
+            &bitmap, vec2(0.0f, 0.0f), vec2_from_vec2i(bitmap.size), 0x00000000
         );
+
+        {
+            i32 baseline = (i32)(ascent * scale);
+            f32 pos_x = 2.0f;
+            for (u32 i = 0; i < text.len; ++i) {
+                Vec2i min, max;
+                i32 advance, lsb;
+                i8 ch = (i8)text.ptr[i];
+                f32 x_shift = pos_x - floor_f32(pos_x);
+                i32 glyph = stbtt_FindGlyphIndex(&font, ch);
+                stbtt_GetGlyphHMetrics(&font, glyph, &advance, &lsb);
+                stbtt_GetGlyphBitmapBox(
+                    &font, glyph,
+                    scale, scale,
+                    &min.x, &min.y, &max.x, &max.y
+                );
+                Vec2i glyph_size = sub_vec2i(max, min);
+                u8 *out = malloc(glyph_size.x * glyph_size.y);
+                assert(out);
+                stbtt_MakeGlyphBitmap(
+                    &font,
+                    out,
+                    glyph_size.x,
+                    glyph_size.y,
+                    glyph_size.x,
+                    scale, scale,
+                    glyph
+                );
+                Bitmap glyph_bitmap = create_bitmap(glyph_size);
+                u32 *dst_row = glyph_bitmap.pixels;
+                u8 *src_row = out;
+                for (i32 y = 0; y < glyph_size.y; ++y) {
+                    u32 *dst = dst_row;
+                    u8 *src = src_row;
+                    for (i32 x = 0; x < glyph_size.x; ++x) {
+                        u8 alpha = *src++;
+                        (*dst++) = (
+                            ((u32)alpha << 24) |
+                            ((u32)alpha << 16) |
+                            ((u32)alpha << 8) |
+                            ((u32)alpha << 0)
+                        );
+                    }
+                    dst_row += glyph_size.x;
+                    src_row += glyph_size.x;
+                }
+                copy_bitmap(
+                    &bitmap,
+                    vec2(pos_x + min.x, baseline + min.y),
+                    &glyph_bitmap
+                );
+                destroy_bitmap(&glyph_bitmap);
+                free(out);
+
+                pos_x += advance * scale;
+                if (i + 1 < text.len) {
+                    i32 kern = stbtt_GetCodepointKernAdvance(
+                        &font, ch, (i8)text.ptr[i + 1]
+                    );
+                    pos_x += scale * kern;
+                }
+            }
+        }
+
         os_copy_bitmap_to_window(&window, &bitmap);
     }
 

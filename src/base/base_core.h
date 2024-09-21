@@ -73,6 +73,8 @@ struct String {
     usize len;
 };
 
+#define string_literal(s) (String){(u8 *)s, sizeof(s) - 1}
+
 // ----------------------------------------------------------------------------
 // Vectors
 
@@ -85,14 +87,14 @@ union Vec2 {
     f32 v[2];
 };
 
-static inline Vec2 
+static inline Vec2
 vec2(f32 x, f32 y) {
     Vec2 result = {x, y};
     return result;
 }
 
-typedef union Vec2I Vec2I;
-union Vec2I {
+typedef union Vec2i Vec2i;
+union Vec2i {
     struct {
         i32 x;
         i32 y;
@@ -100,17 +102,70 @@ union Vec2I {
     i32 v[2];
 };
 
+static inline Vec2i
+vec2i(i32 x, i32 y) {
+    Vec2i result = {x, y};
+    return result;
+}
+
+static inline Vec2i
+vec2i_from_vec2(Vec2 value) {
+    Vec2i result = {(i32)value.x, (i32)value.y};
+    return result;
+}
+
 static inline b32
-equal_vec2i(Vec2I a, Vec2I b) {
+equal_vec2i(Vec2i a, Vec2i b) {
     b32 result = a.x == b.x && a.y == b.y;
     return result;
 }
 
-static inline Vec2 
-vec2_from_vec2i(Vec2I value) {
+static inline Vec2i
+neg_vec2i(Vec2i a) {
+    Vec2i result = {-a.x, -a.y};
+    return result;
+}
+
+static inline Vec2i
+add_vec2i(Vec2i a, Vec2i b) {
+    Vec2i result = {a.x + b.x, a.y + b.y};
+    return result;
+}
+
+static inline Vec2i
+sub_vec2i(Vec2i a, Vec2i b) {
+    Vec2i result = {a.x - b.x, a.y - b.y};
+    return result;
+}
+
+static inline Vec2i
+max_vec2i(Vec2i a, Vec2i b) {
+    Vec2i result = {MAX(a.x, b.x), MAX(a.y, b.y)};
+    return result;
+}
+
+static inline Vec2i
+min_vec2i(Vec2i a, Vec2i b) {
+    Vec2i result = {MIN(a.x, b.x), MIN(a.y, b.y)};
+    return result;
+}
+
+static inline Vec2
+vec2_from_vec2i(Vec2i value) {
     Vec2 result = {value.x, value.y};
     return result;
 }
+
+typedef union Vec4 Vec4;
+union Vec4 {
+    struct {
+        f32 x;
+        f32 y;
+        f32 z;
+        f32 w;
+    };
+    f32 v[4];
+};
 
 typedef union Rect2 Rect2;
 union Rect2 {
@@ -124,7 +179,7 @@ union Rect2 {
     };
 };
 
-static inline Rect2 
+static inline Rect2
 rect2(Vec2 min, Vec2 max) {
     Rect2 result = {min, max};
     return result;
@@ -133,14 +188,21 @@ rect2(Vec2 min, Vec2 max) {
 // ----------------------------------------------------------------------------
 // Math
 
-static inline f32 
+static inline f32
 clamp_f32(f32 value, f32 min, f32 max) {
     f32 result = MAX(value, min);
     result = MIN(value, max);
     return result;
 }
 
-static inline Vec2 
+static inline i32
+clamp_i32(i32 value, i32 min, i32 max) {
+    i32 result = MAX(value, min);
+    result = MIN(value, max);
+    return result;
+}
+
+static inline Vec2
 clamp_vec2(Vec2 value, Vec2 min, Vec2 max) {
     Vec2 result = {
         clamp_f32(value.x, min.x, max.x),
@@ -149,8 +211,29 @@ clamp_vec2(Vec2 value, Vec2 min, Vec2 max) {
     return result;
 }
 
-static inline i32 
+static inline Vec2i
+clamp_vec2i(Vec2i value, Vec2i min, Vec2i max) {
+    Vec2i result = {
+        clamp_i32(value.x, min.x, max.x),
+        clamp_i32(value.y, min.y, max.y)
+    };
+    return result;
+}
+
+static inline f32
 round_f32(f32 value) {
-    i32 result = roundf(value);
+    f32 result = roundf(value);
+    return result;
+}
+
+static inline Vec2
+round_vec2(Vec2 value) {
+    Vec2 result = {round_f32(value.x), round_f32(value.y)};
+    return result;
+}
+
+static inline f32
+floor_f32(f32 value) {
+    f32 result = floorf(value);
     return result;
 }
