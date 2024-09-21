@@ -135,12 +135,13 @@ rect2(Vec2 min, Vec2 max) {
 
 static inline f32 
 clamp_f32(f32 value, f32 min, f32 max) {
-    f32 result = fmaxf(value, min);
-    result = fminf(value, max);
+    f32 result = MAX(value, min);
+    result = MIN(value, max);
     return result;
 }
 
-static inline Vec2 clamp_vec2(Vec2 value, Vec2 min, Vec2 max) {
+static inline Vec2 
+clamp_vec2(Vec2 value, Vec2 min, Vec2 max) {
     Vec2 result = {
         clamp_f32(value.x, min.x, max.x),
         clamp_f32(value.y, min.y, max.y)
@@ -148,7 +149,8 @@ static inline Vec2 clamp_vec2(Vec2 value, Vec2 min, Vec2 max) {
     return result;
 }
 
-static inline i32 round_f32(f32 value) {
+static inline i32 
+round_f32(f32 value) {
     i32 result = roundf(value);
     return result;
 }

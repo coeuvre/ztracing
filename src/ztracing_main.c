@@ -1,6 +1,7 @@
 #include "base/base.h"
 
 #define UNICODE
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #pragma comment(lib, "kernel32")
@@ -128,9 +129,10 @@ os_copy_bitmap_to_window(OS_Window *window, Bitmap *bitmap) {
         bi.bmiHeader.biCompression = BI_RGB;
 
         Vec2I size = os_get_window_size(window);
-        HDC hdc = GetDC(window->handle);
         i32 width = MIN(size.x, bitmap->size.x);
         i32 height = MIN(size.y, bitmap->size.y);
+
+        HDC hdc = GetDC(window->handle);
         StretchDIBits(hdc, 0, 0, width, height, 0, 0, width, height,
             bitmap->pixels, &bi, DIB_RGB_COLORS, SRCCOPY);
         ReleaseDC(window->handle, hdc);
@@ -183,8 +185,9 @@ wWinMain(
         if (!equal_vec2i(bitmap.size, window_size)) {
             resize_bitmap(&bitmap, window_size);
         }
-        draw_rect(&bitmap, vec2(0.0f, 0.0f), vec2_from_vec2i(bitmap.size),
-            0x00FF00FF);
+        draw_rect(
+            &bitmap, vec2(0.0f, 0.0f), vec2_from_vec2i(bitmap.size), 0x00FF00FF
+        );
         os_copy_bitmap_to_window(&window, &bitmap);
     }
 
