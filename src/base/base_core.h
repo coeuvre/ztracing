@@ -186,6 +186,15 @@ union Vec4 {
     f32 v[4];
 };
 
+// -----------------------------------------------------------------------------
+// Geometry
+
+enum Axis2 {
+    Axis2_X,
+    Axis2_Y,
+    Axis2_COUNT,
+};
+
 typedef union Rect2 Rect2;
 union Rect2 {
     struct {

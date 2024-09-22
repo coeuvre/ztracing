@@ -1,5 +1,8 @@
 #include "base/base.h"
+#include "ui/ui.h"
+
 #include "base/base.c"
+#include "ui/ui.c"
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_STATIC
@@ -199,8 +202,12 @@ copy_bitmap(Bitmap *dst, Vec2 pos, Bitmap *src) {
     }
 }
 
+Bitmap *framebuffer;
+stbtt_fontinfo font;
+
 static void
-draw_rect(Bitmap *bitmap, Vec2 min, Vec2 max, u32 color) {
+draw_rect(Vec2 min, Vec2 max, u32 color) {
+    Bitmap *bitmap = framebuffer;
     Vec2 fb_min = vec2(0.0f, 0.0f);
     Vec2 fb_max = vec2_from_vec2i(bitmap->size);
     min = clamp_vec2(min, fb_min, fb_max);
@@ -217,6 +224,87 @@ draw_rect(Bitmap *bitmap, Vec2 min, Vec2 max, u32 color) {
     }
 }
 
+static void
+draw_text(Str8 text, f32 height) {
+    TempMemory scratch = begin_scratch(0, 0);
+
+    f32 scale = stbtt_ScaleForPixelHeight(&font, 32);
+    i32 ascent, descent, line_gap;
+    stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
+
+    Str32 text32 = str32_from_str8(scratch.arena, text);
+    i32 baseline = (i32)(ascent * scale);
+    f32 pos_x = 2.0f;
+    for (u32 i = 0; i < text32.len; ++i) {
+        Vec2i min, max;
+        i32 advance, lsb;
+        u32 ch = text32.ptr[i];
+        f32 x_shift = pos_x - floor_f32(pos_x);
+        i32 glyph = stbtt_FindGlyphIndex(&font, ch);
+        stbtt_GetGlyphHMetrics(&font, glyph, &advance, &lsb);
+        stbtt_GetGlyphBitmapBox(
+            &font, glyph, scale, scale, &min.x, &min.y, &max.x, &max.y
+        );
+        Vec2i glyph_size = sub_vec2i(max, min);
+        u8 *out = push_array(scratch.arena, u8, glyph_size.x * glyph_size.y);
+        assert(out);
+        stbtt_MakeGlyphBitmap(
+            &font,
+            out,
+            glyph_size.x,
+            glyph_size.y,
+            glyph_size.x,
+            scale,
+            scale,
+            glyph
+        );
+
+        Bitmap *glyph_bitmap = push_bitmap(scratch.arena, glyph_size);
+        u32 *dst_row = glyph_bitmap->pixels;
+        u8 *src_row = out;
+        for (i32 y = 0; y < glyph_size.y; ++y) {
+            u32 *dst = dst_row;
+            u8 *src = src_row;
+            for (i32 x = 0; x < glyph_size.x; ++x) {
+                u8 alpha = *src++;
+                (*dst++) =
+                    (((u32)alpha << 24) | ((u32)alpha << 16) |
+                     ((u32)alpha << 8) | ((u32)alpha << 0));
+            }
+            dst_row += glyph_size.x;
+            src_row += glyph_size.x;
+        }
+        copy_bitmap(
+            framebuffer, vec2(pos_x + min.x, baseline + min.y), glyph_bitmap
+        );
+
+        pos_x += advance * scale;
+        if (i + 1 < text32.len) {
+            i32 kern =
+                stbtt_GetCodepointKernAdvance(&font, ch, text32.ptr[i + 1]);
+            pos_x += scale * kern;
+        }
+    }
+
+    end_scratch(scratch);
+}
+
+static void
+do_frame(void) {
+    Str8 text = str8_literal("Heljo World! 你好，世界！");
+    draw_text(text, 32);
+
+    draw_rect(vec2(100.0f, 100.0f), vec2(200.0f, 200.0f), 0x00FF00FF);
+
+    // begin_widget();
+    //     begin_widget();
+    //     end_widget();
+    //
+    //     begin_widget();
+    //     end_widget();
+    // end_widget();
+}
+
 int WINAPI
 wWinMain(
     HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_show
@@ -224,8 +312,6 @@ wWinMain(
     OS_Window window = os_create_window();
     os_show_window(&window);
 
-    Str8 text = str8_literal("Heljo World! 你好，世界！");
-    stbtt_fontinfo font;
     {
         i32 ret = stbtt_InitFont(
             &font,
@@ -234,13 +320,9 @@ wWinMain(
         );
         assert(ret != 0);
     }
-    f32 scale = stbtt_ScaleForPixelHeight(&font, 32);
-    i32 ascent, descent, line_gap;
-    stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
 
     Arena *framebuffer_arena = alloc_arena();
-    Bitmap *framebuffer =
-        push_bitmap(framebuffer_arena, os_get_window_size(&window));
+    framebuffer = push_bitmap(framebuffer_arena, os_get_window_size(&window));
 
     b32 quit = 0;
     while (!quit) {
@@ -264,76 +346,13 @@ wWinMain(
                 push_bitmap(framebuffer_arena, os_get_window_size(&window));
         }
 
-        draw_rect(
-            framebuffer,
-            vec2(0.0f, 0.0f),
-            vec2_from_vec2i(framebuffer->size),
-            0x00000000
+        zero_memory(
+            framebuffer->pixels, framebuffer->size.x * framebuffer->size.y * 4
         );
 
-        {
-            TempMemory scratch = begin_scratch(0, 0);
-
-            Str32 text32 = str32_from_str8(scratch.arena, text);
-            i32 baseline = (i32)(ascent * scale);
-            f32 pos_x = 2.0f;
-            for (u32 i = 0; i < text32.len; ++i) {
-                Vec2i min, max;
-                i32 advance, lsb;
-                u32 ch = text32.ptr[i];
-                f32 x_shift = pos_x - floor_f32(pos_x);
-                i32 glyph = stbtt_FindGlyphIndex(&font, ch);
-                stbtt_GetGlyphHMetrics(&font, glyph, &advance, &lsb);
-                stbtt_GetGlyphBitmapBox(
-                    &font, glyph, scale, scale, &min.x, &min.y, &max.x, &max.y
-                );
-                Vec2i glyph_size = sub_vec2i(max, min);
-                u8 *out =
-                    push_array(scratch.arena, u8, glyph_size.x * glyph_size.y);
-                assert(out);
-                stbtt_MakeGlyphBitmap(
-                    &font,
-                    out,
-                    glyph_size.x,
-                    glyph_size.y,
-                    glyph_size.x,
-                    scale,
-                    scale,
-                    glyph
-                );
-
-                Bitmap *glyph_bitmap = push_bitmap(scratch.arena, glyph_size);
-                u32 *dst_row = glyph_bitmap->pixels;
-                u8 *src_row = out;
-                for (i32 y = 0; y < glyph_size.y; ++y) {
-                    u32 *dst = dst_row;
-                    u8 *src = src_row;
-                    for (i32 x = 0; x < glyph_size.x; ++x) {
-                        u8 alpha = *src++;
-                        (*dst++) =
-                            (((u32)alpha << 24) | ((u32)alpha << 16) |
-                             ((u32)alpha << 8) | ((u32)alpha << 0));
-                    }
-                    dst_row += glyph_size.x;
-                    src_row += glyph_size.x;
-                }
-                copy_bitmap(
-                    framebuffer,
-                    vec2(pos_x + min.x, baseline + min.y),
-                    glyph_bitmap
-                );
-
-                pos_x += advance * scale;
-                if (i + 1 < text32.len) {
-                    i32 kern = stbtt_GetCodepointKernAdvance(
-                        &font, ch, text32.ptr[i + 1]
-                    );
-                    pos_x += scale * kern;
-                }
-            }
-
-            end_scratch(scratch);
-        }
+        begin_ui_frame();
+        do_frame();
+        end_ui_frame();
 
         os_copy_bitmap_to_window(&window, framebuffer);
     }
