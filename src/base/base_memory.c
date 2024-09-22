@@ -44,26 +44,37 @@ free_arena(Arena *arena) {
 }
 
 static void *
-push_size_(Arena *arena, usize size, u32 flags) {
+push_arena_(Arena *arena, usize size, u32 flags) {
+    usize align = 8;
     MemoryBlock *block = arena->current_block;
     debug_assert(block);
-    if (block->pos + size > block->end) {
+
+    u8 *result = (u8 *)align_pow2((usize)block->pos, align);
+    if (result + size > block->end) {
         usize block_size = max_u32(next_pow2_u32(size), INIT_MEMORY_BLOCK_SIZE);
         MemoryBlock *new_block = alloc_memory_block(block_size);
         new_block->prev = block;
         block = new_block;
         arena->current_block = block;
+
+        result = (u8 *)align_pow2((usize)block->pos, align);
     }
 
-    debug_assert(block->pos + size <= block->end);
-    void *result = block->pos;
-    block->pos += size;
+    debug_assert(result + size <= block->end);
+    block->pos = result + size;
 
-    if (!(flags & PushArenaFlag_NoZero)) {
+    if (!(flags & PushArena_NoZero)) {
         zero_memory(result, size);
     }
 
     return result;
+}
+
+static void
+pop_arena(Arena *arena, usize size) {
+    MemoryBlock *block = arena->current_block;
+    debug_assert(block && block->pos - size >= block->begin);
+    block->pos -= size;
 }
 
 static TempMemory

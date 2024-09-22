@@ -224,7 +224,7 @@ wWinMain(
     OS_Window window = os_create_window();
     os_show_window(&window);
 
-    String text = string_literal("Heljo World!");
+    Str8 text = str8_literal("Heljo World! 你好，世界！");
     stbtt_fontinfo font;
     {
         i32 ret = stbtt_InitFont(
@@ -272,14 +272,15 @@ wWinMain(
         );
 
         {
+            TempMemory scratch = begin_scratch(0, 0);
+
+            Str32 text32 = str32_from_str8(scratch.arena, text);
             i32 baseline = (i32)(ascent * scale);
             f32 pos_x = 2.0f;
-            for (u32 i = 0; i < text.len; ++i) {
-                TempMemory scratch = begin_scratch(0, 0);
-
+            for (u32 i = 0; i < text32.len; ++i) {
                 Vec2i min, max;
                 i32 advance, lsb;
-                i8 ch = (i8)text.ptr[i];
+                u32 ch = text32.ptr[i];
                 f32 x_shift = pos_x - floor_f32(pos_x);
                 i32 glyph = stbtt_FindGlyphIndex(&font, ch);
                 stbtt_GetGlyphHMetrics(&font, glyph, &advance, &lsb);
@@ -323,15 +324,15 @@ wWinMain(
                 );
 
                 pos_x += advance * scale;
-                if (i + 1 < text.len) {
+                if (i + 1 < text32.len) {
                     i32 kern = stbtt_GetCodepointKernAdvance(
-                        &font, ch, (i8)text.ptr[i + 1]
+                        &font, ch, text32.ptr[i + 1]
                     );
                     pos_x += scale * kern;
                 }
-
-                end_scratch(scratch);
             }
+
+            end_scratch(scratch);
         }
 
         os_copy_bitmap_to_window(&window, framebuffer);

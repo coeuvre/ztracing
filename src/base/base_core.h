@@ -95,18 +95,6 @@ max_u32(u32 a, u32 b) {
 }
 
 // -----------------------------------------------------------------------------
-// Strings
-
-typedef struct String String;
-struct String {
-    u8 *ptr;
-    usize len;
-};
-
-#define string_literal(s)                                                      \
-    (String) { (u8 *)s, sizeof(s) - 1 }
-
-// -----------------------------------------------------------------------------
 // Vectors
 
 typedef union Vec2 Vec2;

@@ -3,6 +3,8 @@
 // -----------------------------------------------------------------------------
 // Memory Ops
 
+#define align_pow2(x, b) (((x) + (b) - 1) & (~((b) - 1)))
+
 static inline void
 zero_memory(void *ptr, usize size) {
     memset(ptr, 0, size);
@@ -34,16 +36,19 @@ struct TempMemory {
 };
 
 enum PushArenaFlag {
-    PushArenaFlag_NoZero = 0x1,
+    PushArena_NoZero = 0x1,
 };
 
 static Arena *alloc_arena(void);
 static void free_arena(Arena *arena);
-static void *push_size_(Arena *arena, usize size, u32 flags);
+static void *push_arena_(Arena *arena, usize size, u32 flags);
+static void pop_arena(Arena *arena, usize size);
 
-#define push_size(arena, size) push_size_(arena, size, 0)
+#define push_arena(arena, size) push_arena_(arena, size, 0)
 #define push_array(arena, Type, len)                                           \
-    (Type *)push_size(arena, sizeof(Type) * len)
+    (Type *)push_arena_(arena, sizeof(Type) * len, 0)
+#define push_array_no_zero(arena, Type, len)                                   \
+    (Type *)push_arena_(arena, sizeof(Type) * len, PushArena_NoZero)
 
 static TempMemory begin_temp_memory(Arena *arena);
 static void end_temp_memory(TempMemory temp);
