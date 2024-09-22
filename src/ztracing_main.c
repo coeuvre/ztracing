@@ -238,10 +238,9 @@ wWinMain(
     i32 ascent, descent, line_gap;
     stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
 
-    Arena framebuffer_arena = {0};
-    TempMemory framebuffer_scratch = begin_temp_memory(&framebuffer_arena);
+    Arena *framebuffer_arena = alloc_arena();
     Bitmap *framebuffer =
-        push_bitmap(framebuffer_scratch.arena, os_get_window_size(&window));
+        push_bitmap(framebuffer_arena, os_get_window_size(&window));
 
     b32 quit = 0;
     while (!quit) {
@@ -259,10 +258,10 @@ wWinMain(
         }
         Vec2i window_size = os_get_window_size(&window);
         if (!equal_vec2i(framebuffer->size, window_size)) {
-            end_temp_memory(framebuffer_scratch);
-            framebuffer_scratch = begin_temp_memory(&framebuffer_arena);
+            free_arena(framebuffer_arena);
+            framebuffer_arena = alloc_arena();
             framebuffer =
-                push_bitmap(framebuffer_scratch.arena, os_get_window_size(&window));
+                push_bitmap(framebuffer_arena, os_get_window_size(&window));
         }
 
         draw_rect(
@@ -276,7 +275,7 @@ wWinMain(
             i32 baseline = (i32)(ascent * scale);
             f32 pos_x = 2.0f;
             for (u32 i = 0; i < text.len; ++i) {
-                TempMemory scratch = begin_temp_memory(framebuffer_scratch.arena);
+                TempMemory scratch = begin_scratch(0, 0);
 
                 Vec2i min, max;
                 i32 advance, lsb;
@@ -331,15 +330,14 @@ wWinMain(
                     pos_x += scale * kern;
                 }
 
-                end_temp_memory(scratch);
+                end_scratch(scratch);
             }
         }
 
         os_copy_bitmap_to_window(&window, framebuffer);
     }
 
-    end_temp_memory(framebuffer_scratch);
-    clear_arena(&framebuffer_arena);
+    free_arena(framebuffer_arena);
 
     return 0;
 }

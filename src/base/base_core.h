@@ -12,6 +12,15 @@
 #include <stdlib.h>
 
 // -----------------------------------------------------------------------------
+// Keywords
+
+#if COMPILER_MSVC
+#define thread_local __declspec(thread)
+#elif COMPILER_CLANG || COMPILER_GCC
+#define thread_local __thread
+#endif
+
+// -----------------------------------------------------------------------------
 // Asserts
 
 #if COMPILER_MSVC

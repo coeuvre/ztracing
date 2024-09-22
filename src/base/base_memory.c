@@ -9,7 +9,22 @@ alloc_memory_block(usize size) {
     return block;
 }
 
-static inline void
+static Arena *
+alloc_arena() {
+#define INIT_MEMORY_BLOCK_SIZE KB(4)
+    MemoryBlock *block = alloc_memory_block(INIT_MEMORY_BLOCK_SIZE);
+
+    Arena *result = (Arena *)block->pos;
+    result->current_block = block;
+    result->temp_count = 0;
+
+    block->pos = (u8 *)(result + 1);
+    assert(block->pos <= block->end);
+
+    return result;
+}
+
+static void
 free_last_block(Arena *arena) {
     MemoryBlock *free_block = arena->current_block;
     arena->current_block = free_block->prev;
@@ -17,7 +32,7 @@ free_last_block(Arena *arena) {
 }
 
 static void
-clear_arena(Arena *arena) {
+free_arena(Arena *arena) {
     assert(arena->temp_count == 0);
     while (arena->current_block) {
         b32 is_last_block = arena->current_block->prev == 0;
@@ -31,8 +46,8 @@ clear_arena(Arena *arena) {
 static void *
 push_size_(Arena *arena, usize size, u32 flags) {
     MemoryBlock *block = arena->current_block;
-    if (!block || block->pos + size > block->end) {
-#define INIT_MEMORY_BLOCK_SIZE KB(4)
+    debug_assert(block);
+    if (block->pos + size > block->end) {
         usize block_size = max_u32(next_pow2_u32(size), INIT_MEMORY_BLOCK_SIZE);
         MemoryBlock *new_block = alloc_memory_block(block_size);
         new_block->prev = block;
@@ -40,7 +55,7 @@ push_size_(Arena *arena, usize size, u32 flags) {
         arena->current_block = block;
     }
 
-    debug_assert(block && block->pos + size <= block->end);
+    debug_assert(block->pos + size <= block->end);
     void *result = block->pos;
     block->pos += size;
 
@@ -69,10 +84,40 @@ end_temp_memory(TempMemory temp) {
     }
 
     if (arena->current_block) {
-        assert(arena->current_block->pos >= temp.pos);
+        debug_assert(arena->current_block->pos >= temp.pos);
         arena->current_block->pos = temp.pos;
     }
 
-    assert(arena->temp_count > 0);
+    debug_assert(arena->temp_count > 0);
     --arena->temp_count;
+}
+
+thread_local Arena *t_scratches[2];
+
+static Arena *
+get_scratch(Arena **conflicts, usize len) {
+    Arena *result = 0;
+    for (u32 i = 0; i < array_count(t_scratches); ++i) {
+        Arena *candidate = t_scratches[i];
+        if (!candidate) {
+            result = alloc_arena();
+            t_scratches[i] = result;
+            break;
+        }
+
+        b32 conflict = 0;
+        for (u32 j = 0; j < len; ++j) {
+            if (conflicts[j] == candidate) {
+                conflict = 1;
+                break;
+            }
+        }
+
+        if (!conflict) {
+            result = candidate;
+            break;
+        }
+    }
+    assert(result);
+    return result;
 }
