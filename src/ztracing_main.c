@@ -1,4 +1,5 @@
 #include "base/base.h"
+#include "base/base.c"
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_STATIC
@@ -64,9 +65,14 @@ os_create_window() {
         window_class.lpszClassName,
         L"ztracing",
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT,
-        CW_USEDEFAULT, CW_USEDEFAULT,
-        0, 0, window_class.hInstance, 0
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        0,
+        0,
+        window_class.hInstance,
+        0
     );
     return result;
 }
@@ -96,30 +102,14 @@ struct Bitmap {
     Vec2i size;
 };
 
-static Bitmap
-create_bitmap(Vec2i size) {
-    Bitmap bitmap = {0};
+static Bitmap *
+push_bitmap(Arena *arena, Vec2i size) {
+    Bitmap *bitmap = push_array(arena, Bitmap, 1);
     if (size.x > 0 && size.y > 0) {
-        bitmap.pixels = malloc(size.x * size.y * 4);
-    }
-    if (bitmap.pixels) {
-        bitmap.size = size;
+        bitmap->pixels = push_array(arena, u32, size.x * size.y);
+        bitmap->size = size;
     }
     return bitmap;
-}
-
-static void
-destroy_bitmap(Bitmap *bitmap) {
-    if (bitmap->pixels) {
-        free(bitmap->pixels);
-        ZeroMemory(bitmap, sizeof(*bitmap));
-    }
-}
-
-static void
-resize_bitmap(Bitmap *bitmap, Vec2i size) {
-    destroy_bitmap(bitmap);
-    *bitmap = create_bitmap(size);
 }
 
 static void
@@ -138,8 +128,21 @@ os_copy_bitmap_to_window(OS_Window *window, Bitmap *bitmap) {
         i32 height = MIN(size.y, bitmap->size.y);
 
         HDC hdc = GetDC(window->handle);
-        StretchDIBits(hdc, 0, 0, width, height, 0, 0, width, height,
-            bitmap->pixels, &bi, DIB_RGB_COLORS, SRCCOPY);
+        StretchDIBits(
+            hdc,
+            0,
+            0,
+            width,
+            height,
+            0,
+            0,
+            width,
+            height,
+            bitmap->pixels,
+            &bi,
+            DIB_RGB_COLORS,
+            SRCCOPY
+        );
         ReleaseDC(window->handle, hdc);
     }
 }
@@ -172,10 +175,8 @@ static void
 copy_bitmap(Bitmap *dst, Vec2 pos, Bitmap *src) {
     Vec2i offset = vec2i_from_vec2(round_vec2(pos));
     Vec2i src_min = max_vec2i(neg_vec2i(offset), vec2i(0, 0));
-    Vec2i src_max = sub_vec2i(
-        min_vec2i(add_vec2i(offset, src->size), dst->size),
-        offset
-    );
+    Vec2i src_max =
+        sub_vec2i(min_vec2i(add_vec2i(offset, src->size), dst->size), offset);
 
     Vec2i dst_min = max_vec2i(offset, vec2i(0, 0));
     Vec2i dst_max = add_vec2i(dst_min, sub_vec2i(src_max, src_min));
@@ -218,8 +219,7 @@ draw_rect(Bitmap *bitmap, Vec2 min, Vec2 max, u32 color) {
 
 int WINAPI
 wWinMain(
-    HINSTANCE instance, HINSTANCE prev_instance,
-    PWSTR cmd_line, int cmd_show
+    HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line, int cmd_show
 ) {
     OS_Window window = os_create_window();
     os_show_window(&window);
@@ -228,7 +228,8 @@ wWinMain(
     stbtt_fontinfo font;
     {
         i32 ret = stbtt_InitFont(
-            &font, JetBrainsMono_Regular_ttf,
+            &font,
+            JetBrainsMono_Regular_ttf,
             stbtt_GetFontOffsetForIndex(JetBrainsMono_Regular_ttf, 0)
         );
         assert(ret != 0);
@@ -237,7 +238,10 @@ wWinMain(
     i32 ascent, descent, line_gap;
     stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
 
-    Bitmap bitmap = create_bitmap(os_get_window_size(&window));
+    Arena framebuffer_arena = {0};
+    TempMemory framebuffer_scratch = begin_temp_memory(&framebuffer_arena);
+    Bitmap *framebuffer =
+        push_bitmap(framebuffer_scratch.arena, os_get_window_size(&window));
 
     b32 quit = 0;
     while (!quit) {
@@ -254,18 +258,26 @@ wWinMain(
             }
         }
         Vec2i window_size = os_get_window_size(&window);
-        if (!equal_vec2i(bitmap.size, window_size)) {
-            resize_bitmap(&bitmap, window_size);
+        if (!equal_vec2i(framebuffer->size, window_size)) {
+            end_temp_memory(framebuffer_scratch);
+            framebuffer_scratch = begin_temp_memory(&framebuffer_arena);
+            framebuffer =
+                push_bitmap(framebuffer_scratch.arena, os_get_window_size(&window));
         }
 
         draw_rect(
-            &bitmap, vec2(0.0f, 0.0f), vec2_from_vec2i(bitmap.size), 0x00000000
+            framebuffer,
+            vec2(0.0f, 0.0f),
+            vec2_from_vec2i(framebuffer->size),
+            0x00000000
         );
 
         {
             i32 baseline = (i32)(ascent * scale);
             f32 pos_x = 2.0f;
             for (u32 i = 0; i < text.len; ++i) {
+                TempMemory scratch = begin_temp_memory(framebuffer_scratch.arena);
+
                 Vec2i min, max;
                 i32 advance, lsb;
                 i8 ch = (i8)text.ptr[i];
@@ -273,12 +285,11 @@ wWinMain(
                 i32 glyph = stbtt_FindGlyphIndex(&font, ch);
                 stbtt_GetGlyphHMetrics(&font, glyph, &advance, &lsb);
                 stbtt_GetGlyphBitmapBox(
-                    &font, glyph,
-                    scale, scale,
-                    &min.x, &min.y, &max.x, &max.y
+                    &font, glyph, scale, scale, &min.x, &min.y, &max.x, &max.y
                 );
                 Vec2i glyph_size = sub_vec2i(max, min);
-                u8 *out = malloc(glyph_size.x * glyph_size.y);
+                u8 *out =
+                    push_array(scratch.arena, u8, glyph_size.x * glyph_size.y);
                 assert(out);
                 stbtt_MakeGlyphBitmap(
                     &font,
@@ -286,34 +297,31 @@ wWinMain(
                     glyph_size.x,
                     glyph_size.y,
                     glyph_size.x,
-                    scale, scale,
+                    scale,
+                    scale,
                     glyph
                 );
-                Bitmap glyph_bitmap = create_bitmap(glyph_size);
-                u32 *dst_row = glyph_bitmap.pixels;
+
+                Bitmap *glyph_bitmap = push_bitmap(scratch.arena, glyph_size);
+                u32 *dst_row = glyph_bitmap->pixels;
                 u8 *src_row = out;
                 for (i32 y = 0; y < glyph_size.y; ++y) {
                     u32 *dst = dst_row;
                     u8 *src = src_row;
                     for (i32 x = 0; x < glyph_size.x; ++x) {
                         u8 alpha = *src++;
-                        (*dst++) = (
-                            ((u32)alpha << 24) |
-                            ((u32)alpha << 16) |
-                            ((u32)alpha << 8) |
-                            ((u32)alpha << 0)
-                        );
+                        (*dst++) =
+                            (((u32)alpha << 24) | ((u32)alpha << 16) |
+                             ((u32)alpha << 8) | ((u32)alpha << 0));
                     }
                     dst_row += glyph_size.x;
                     src_row += glyph_size.x;
                 }
                 copy_bitmap(
-                    &bitmap,
+                    framebuffer,
                     vec2(pos_x + min.x, baseline + min.y),
-                    &glyph_bitmap
+                    glyph_bitmap
                 );
-                destroy_bitmap(&glyph_bitmap);
-                free(out);
 
                 pos_x += advance * scale;
                 if (i + 1 < text.len) {
@@ -322,11 +330,16 @@ wWinMain(
                     );
                     pos_x += scale * kern;
                 }
+
+                end_temp_memory(scratch);
             }
         }
 
-        os_copy_bitmap_to_window(&window, &bitmap);
+        os_copy_bitmap_to_window(&window, framebuffer);
     }
+
+    end_temp_memory(framebuffer_scratch);
+    clear_arena(&framebuffer_arena);
 
     return 0;
 }

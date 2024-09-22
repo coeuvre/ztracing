@@ -17,7 +17,7 @@
 #error This Compiler/OS combo is not supported.
 #endif
 
-#if defined(__amd64__) || defined(__amd64) || defined(__x86_64__) || \
+#if defined(__amd64__) || defined(__amd64) || defined(__x86_64__) ||           \
     defined(__x86_64)
 #define ARCH_X64 1
 #elif defined(i386) || defined(__i386) || defined(__i386__)

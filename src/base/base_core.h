@@ -1,6 +1,6 @@
 #pragma once
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Foreign Includes
 
 #include <math.h>
@@ -9,8 +9,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Asserts
 
 #if COMPILER_MSVC
@@ -21,7 +22,12 @@
 #error Unknown trap intrinsic for this compiler.
 #endif
 
-#define assert(x) do { if (!(x)) { break_debugger(); } } while (0)
+#define assert(x)                                                              \
+    do {                                                                       \
+        if (!(x)) {                                                            \
+            break_debugger();                                                  \
+        }                                                                      \
+    } while (0)
 
 #if BUILD_DEBUG
 #define debug_assert(x) assert(x)
@@ -31,7 +37,7 @@
 #define UNREACHABLE assert(!"Unreachable")
 #define NOT_IMPLEMENTED assert(!"Not Implemented")
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Misc. Helper Macros
 
 #define array_count(a) (sizeof(a) / sizeof((a)[0]))
@@ -44,7 +50,7 @@
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Base types
 
 typedef uint8_t u8;
@@ -64,7 +70,22 @@ typedef double f64;
 typedef size_t usize;
 typedef ptrdiff_t isize;
 
-// ----------------------------------------------------------------------------
+static inline u32
+next_pow2_u32(u32 value) {
+    u32 result = 1;
+    while (result < value) {
+        result <<= 1;
+    }
+    return result;
+}
+
+static inline u32
+max_u32(u32 a, u32 b) {
+    u32 result = MAX(a, b);
+    return result;
+}
+
+// -----------------------------------------------------------------------------
 // Strings
 
 typedef struct String String;
@@ -73,9 +94,10 @@ struct String {
     usize len;
 };
 
-#define string_literal(s) (String){(u8 *)s, sizeof(s) - 1}
+#define string_literal(s)                                                      \
+    (String) { (u8 *)s, sizeof(s) - 1 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Vectors
 
 typedef union Vec2 Vec2;
@@ -185,7 +207,7 @@ rect2(Vec2 min, Vec2 max) {
     return result;
 }
 
-// ----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Math
 
 static inline f32
@@ -205,8 +227,7 @@ clamp_i32(i32 value, i32 min, i32 max) {
 static inline Vec2
 clamp_vec2(Vec2 value, Vec2 min, Vec2 max) {
     Vec2 result = {
-        clamp_f32(value.x, min.x, max.x),
-        clamp_f32(value.y, min.y, max.y)
+        clamp_f32(value.x, min.x, max.x), clamp_f32(value.y, min.y, max.y)
     };
     return result;
 }
@@ -214,8 +235,7 @@ clamp_vec2(Vec2 value, Vec2 min, Vec2 max) {
 static inline Vec2i
 clamp_vec2i(Vec2i value, Vec2i min, Vec2i max) {
     Vec2i result = {
-        clamp_i32(value.x, min.x, max.x),
-        clamp_i32(value.y, min.y, max.y)
+        clamp_i32(value.x, min.x, max.x), clamp_i32(value.y, min.y, max.y)
     };
     return result;
 }
