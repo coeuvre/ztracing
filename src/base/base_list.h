@@ -6,6 +6,7 @@
             last->next = node;                                                 \
             node->prev = last;                                                 \
             node->next = 0;                                                    \
+            last = node;                                                       \
         } else {                                                               \
             first = last = node;                                               \
             node->prev = node->next = 0;                                       \

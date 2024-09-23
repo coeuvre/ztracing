@@ -114,10 +114,11 @@ get_widget_by_key(UIState *state, WidgetKey key) {
 }
 
 static void
-begin_widget(WidgetKey key) {
+begin_widget_str8(Str8 str) {
     UIState *state = get_ui_state();
 
     Widget *parent = state->current;
+    WidgetKey key = widget_key_from_str8(parent->key, str);
     Widget *widget = get_widget_by_key(state, key);
     if (!widget) {
         widget = get_or_push_widget(state);

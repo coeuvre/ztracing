@@ -296,12 +296,14 @@ do_frame(void) {
 
     draw_rect(vec2(100.0f, 100.0f), vec2(200.0f, 200.0f), 0x00FF00FF);
 
-    begin_widget(widget_key_from_str8(widget_key_zero(), str8_literal("w1")));
-    //     begin_widget();
-    //     end_widget();
-    //
-    //     begin_widget();
-    //     end_widget();
+    begin_widget_str8(str8_literal("p1"));
+    {
+        begin_widget_str8(str8_literal("c1"));
+        end_widget();
+
+        begin_widget_str8(str8_literal("c2"));
+        end_widget();
+    }
     end_widget();
 }
 

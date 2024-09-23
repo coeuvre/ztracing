@@ -63,5 +63,5 @@ static WidgetKey widget_key_zero(void);
 static WidgetKey widget_key_from_str8(WidgetKey seed, Str8 str);
 static b32 equal_widget_key(WidgetKey a, WidgetKey b);
 
-static void begin_widget();
-static void end_widget();
+static void begin_widget_str8(Str8 id);
+static void end_widget(void);
