@@ -56,8 +56,8 @@ struct Widget {
     f32 active_t;
 };
 
-static void begin_ui_frame();
-static void end_ui_frame();
+static void begin_ui();
+static void end_ui();
 
 static WidgetKey widget_key_zero(void);
 static WidgetKey widget_key_from_str8(WidgetKey seed, Str8 str);

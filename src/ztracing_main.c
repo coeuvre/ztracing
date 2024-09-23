@@ -232,7 +232,7 @@ draw_text(Str8 text, f32 height) {
     i32 ascent, descent, line_gap;
     stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
 
-    Str32 text32 = str32_from_str8(scratch.arena, text);
+    Str32 text32 = push_str32_from_str8(scratch.arena, text);
     i32 baseline = (i32)(ascent * scale);
     f32 pos_x = 2.0f;
     for (u32 i = 0; i < text32.len; ++i) {
@@ -296,13 +296,13 @@ do_frame(void) {
 
     draw_rect(vec2(100.0f, 100.0f), vec2(200.0f, 200.0f), 0x00FF00FF);
 
-    // begin_widget();
+    begin_widget(widget_key_from_str8(widget_key_zero(), str8_literal("w1")));
     //     begin_widget();
     //     end_widget();
     //
     //     begin_widget();
     //     end_widget();
-    // end_widget();
+    end_widget();
 }
 
 int WINAPI
@@ -350,9 +350,9 @@ wWinMain(
             framebuffer->pixels, framebuffer->size.x * framebuffer->size.y * 4
         );
 
-        begin_ui_frame();
+        begin_ui();
         do_frame();
-        end_ui_frame();
+        end_ui();
 
         os_copy_bitmap_to_window(&window, framebuffer);
     }

@@ -32,4 +32,4 @@ str32(u32 *ptr, usize len) {
     return result;
 }
 
-static Str32 str32_from_str8(Arena *arena, Str8 str);
+static Str32 push_str32_from_str8(Arena *arena, Str8 str);

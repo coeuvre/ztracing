@@ -1,6 +1,6 @@
 static MemoryBlock *
 alloc_memory_block(usize size) {
-    MemoryBlock *block = malloc(sizeof(MemoryBlock *) + size);
+    MemoryBlock *block = malloc(sizeof(MemoryBlock) + size);
     assert(block);
     block->prev = 0;
     block->begin = (u8 *)(block + 1);

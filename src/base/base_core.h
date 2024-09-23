@@ -82,7 +82,7 @@ typedef ptrdiff_t isize;
 static inline u32
 next_pow2_u32(u32 value) {
     u32 result = 1;
-    while (result < value) {
+    while (result <= value) {
         result <<= 1;
     }
     return result;

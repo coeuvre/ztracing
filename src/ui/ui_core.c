@@ -14,14 +14,13 @@ struct UIState {
     WidgetHashSlot *widget_hash_slots;
 
     Widget *root;
-    u64 frame_index;
+    u64 build_index;
 
     // per-frame info
     Widget *current;
 };
 
-UIState g_ui_context;
-Widget g_nil_widget;
+UIState g_ui_state;
 
 static WidgetKey
 widget_key_zero(void) {
@@ -31,8 +30,10 @@ widget_key_zero(void) {
 
 static WidgetKey
 widget_key_from_str8(WidgetKey seed, Str8 str) {
-    u64 hash = seed.hash;
+    // djb2 hash function
+    u64 hash = seed.hash ? seed.hash : 5381;
     for (usize i = 0; i < str.len; i += 1) {
+        // hash * 33 + c
         hash = ((hash << 5) + hash) + str.ptr[i];
     }
     WidgetKey result = {hash};
@@ -45,12 +46,6 @@ equal_widget_key(WidgetKey a, WidgetKey b) {
     return result;
 }
 
-static inline b32
-is_nil_widget(Widget *widget) {
-    b32 result = widget == 0 || widget == &g_nil_widget;
-    return result;
-}
-
 static Widget *
 push_widget(Arena *arena) {
     Widget *result = push_array(arena, Widget, 1);
@@ -59,7 +54,7 @@ push_widget(Arena *arena) {
 
 static UIState *
 get_ui_state() {
-    UIState *state = &g_ui_context;
+    UIState *state = &g_ui_state;
     if (!state->arena) {
         state->arena = alloc_arena();
         state->widget_hash_slot_size = 4096;
@@ -87,25 +82,28 @@ get_or_push_widget(UIState *state) {
 }
 
 static void
-begin_ui_frame() {
+begin_ui() {
     UIState *state = get_ui_state();
+
+    Widget *root = state->root;
+    root->first = root->last = 0;
+
     state->current = state->root;
 }
 
 static void
-end_ui_frame() {
+end_ui() {
     UIState *state = get_ui_state();
-    state->frame_index++;
+    state->build_index++;
 }
 
 static Widget *
 get_widget_by_key(UIState *state, WidgetKey key) {
-    Widget *result = &g_nil_widget;
+    Widget *result = 0;
     if (!equal_widget_key(key, widget_key_zero())) {
-        u64 slot = key.hash % state->widget_hash_slot_size;
-        for (Widget *widget = state->widget_hash_slots[slot].first;
-             !is_nil_widget(widget);
-             widget = widget->hash_next) {
+        WidgetHashSlot *slot =
+            &state->widget_hash_slots[key.hash % state->widget_hash_slot_size];
+        for (Widget *widget = slot->first; widget; widget = widget->hash_next) {
             if (equal_widget_key(widget->key, key)) {
                 result = widget;
                 break;
@@ -121,15 +119,33 @@ begin_widget(WidgetKey key) {
 
     Widget *parent = state->current;
     Widget *widget = get_widget_by_key(state, key);
-    if (is_nil_widget(widget)) {
+    if (!widget) {
         widget = get_or_push_widget(state);
         widget->key = key;
-
         WidgetHashSlot *slot =
             &state->widget_hash_slots[key.hash % state->widget_hash_slot_size];
-        // TODO: insert into hash slot.
+        append_doubly_linked_list(
+            slot->first, slot->last, widget, hash_prev, hash_next
+        );
     }
+
+    append_doubly_linked_list(parent->first, parent->last, widget, prev, next);
+    widget->parent = parent;
+
+    // Clear per frame state
+    widget->first = widget->last = 0;
+
+    state->current = widget;
 }
 
 static void
-end_widget() {}
+end_widget() {
+    UIState *state = get_ui_state();
+
+    assert(
+        state->current && state->current != state->root &&
+        "Unmatched begin_widget and end_widget calls"
+    );
+
+    state->current = state->current->parent;
+}

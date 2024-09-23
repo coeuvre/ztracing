@@ -43,7 +43,7 @@ utf8_decode(u8 *ptr, usize len) {
 }
 
 static Str32
-str32_from_str8(Arena *arena, Str8 str) {
+push_str32_from_str8(Arena *arena, Str8 str) {
     usize cap = str.len + 1;
     u32 *ptr = push_array_no_zero(arena, u32, cap);
     u32 len = 0;
