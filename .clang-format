@@ -1,7 +1,1 @@
-IndentWidth: 4
-ColumnLimit: 80
-SortIncludes: Never
-AlignAfterOpenBracket: BlockIndent
-AlwaysBreakAfterDefinitionReturnType: All
-BinPackParameters: false
-BinPackArguments: false
+BasedOnStyle: Google

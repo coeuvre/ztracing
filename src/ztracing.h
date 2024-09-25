@@ -1,1 +1,4 @@
-#pragma once
+#ifndef ZTRACING_SRC_ZTRACING_H_
+#define ZTRACING_SRC_ZTRACING_H_
+
+#endif  // ZTRACING_SRC_ZTRACING_H_

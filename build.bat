@@ -12,7 +12,7 @@ if "%--release%"=="1" set --debug=0 && echo [release mode]
 set auto_compile_flags=
 
 :: --- Compile/Link Line Definitions ------------------------------------------
-set cl_common=/I..\src\ /I..\ /nologo /FC /Z7
+set cl_common=/I..\ /nologo /FC /Z7
 set cl_debug=call cl /Od /DBUILD_DEBUG=1 %cl_common% %auto_compile_flags%
 set cl_release=call cl /O2 /DBUILD_DEBUG=0 %cl_common% %auto_compile_flags%
 set cl_link=/link /MANIFEST:EMBED /INCREMENTAL:NO /SUBSYSTEM:WINDOWS
@@ -33,5 +33,5 @@ if not exist build mkdir build
 
 :: --- Build Everything -------------------------------------------------------
 pushd build
-%compile% ..\src\ztracing_main.c %compile_link% %out%ztracing.exe || exit /b 1
+%compile% ..\src\ztracing.unity.cc %compile_link% %out%ztracing.exe || exit /b 2
 popd

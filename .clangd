@@ -1,0 +1,2 @@
+CompileFlags:
+  Add: [-I.., -Wall, -Wno-missing-braces, -DBUILD_DEBUG=1]
