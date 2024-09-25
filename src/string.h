@@ -4,6 +4,7 @@
 #include "src/memory.h"
 #include "src/types.h"
 
+typedef struct Str8 Str8;
 // Null terminated utf-8 string.
 struct Str8 {
   u8 *ptr;
@@ -14,8 +15,9 @@ struct Str8 {
 };
 
 #define Str8Literal(s) \
-  Str8 { (u8 *)(s), sizeof(s) - 1 }
+  (Str8) { (u8 *)(s), sizeof(s) - 1 }
 
+typedef struct Str32 Str32;
 struct Str32 {
   u32 *ptr;
   usize len;

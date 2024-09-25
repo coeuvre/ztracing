@@ -12,6 +12,7 @@
 
 static inline void ZeroMemory(void *ptr, usize size) { memset(ptr, 0, size); }
 
+typedef struct MemoryBlock MemoryBlock;
 struct MemoryBlock {
   MemoryBlock *prev;
 
@@ -20,11 +21,13 @@ struct MemoryBlock {
   u8 *pos;
 };
 
+typedef struct Arena Arena;
 struct Arena {
   MemoryBlock *current_block;
   u32 temp_count;
 };
 
+typedef struct TempMemory TempMemory;
 struct TempMemory {
   Arena *arena;
   MemoryBlock *block;

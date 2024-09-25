@@ -2,6 +2,7 @@
 
 #include "src/assert.h"
 
+typedef struct UnicodeDecode UnicodeDecode;
 struct UnicodeDecode {
   u32 codepoint;
   u32 increment;
@@ -59,5 +60,5 @@ static Str32 PushStr32FromStr8(Arena *arena, Str8 str) {
   ptr[len++] = 0;
   DEBUG_ASSERT(len <= cap);
   PopArena(arena, (cap - len) * 4);
-  return Str32{ptr, len - 1};
+  return (Str32){ptr, len - 1};
 }

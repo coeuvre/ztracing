@@ -5,12 +5,12 @@
 #include "src/string.h"
 #include "src/types.h"
 
+typedef struct WidgetKey WidgetKey;
 struct WidgetKey {
   u64 hash;
 };
 
-enum WidgetFlags {};
-
+typedef enum WidgetConstraintType WidgetConstraintType;
 enum WidgetConstraintType {
   kWidgetConstraintNull,
   kWidgetConstraintPixels,
@@ -19,12 +19,14 @@ enum WidgetConstraintType {
   kWidgetConstraintChildrenSum,
 };
 
+typedef struct WidgetConstraint WidgetConstraint;
 struct WidgetConstraint {
   WidgetConstraintType type;
   f32 value;
   f32 strickness;
 };
 
+typedef struct Widget Widget;
 struct Widget {
   // tree links
   Widget *first;
@@ -42,7 +44,7 @@ struct Widget {
   u64 last_touched_frame_index;
 
   // per-frame info provided by builders
-  WidgetFlags flags;
+  u32 flags;
   Str8 string;
   WidgetConstraint constraints[kAxis2Count];
 
@@ -61,7 +63,7 @@ void EndUI();
 
 WidgetKey WidgetKeyZero(void);
 WidgetKey WidgetKeyFromStr8(WidgetKey seed, Str8 str);
-bool EqualWidgetKey(WidgetKey a, WidgetKey b);
+b32 EqualWidgetKey(WidgetKey a, WidgetKey b);
 
 void BeginWidget(Str8 id);
 void EndWidget(void);

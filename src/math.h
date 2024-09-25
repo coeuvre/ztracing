@@ -5,6 +5,7 @@
 
 #include "src/types.h"
 
+typedef union Vec2 Vec2;
 union Vec2 {
   struct {
     f32 x;
@@ -13,6 +14,7 @@ union Vec2 {
   f32 v[2];
 };
 
+typedef union Vec2I Vec2I;
 union Vec2I {
   struct {
     i32 x;
@@ -26,8 +28,8 @@ static inline Vec2I Vec2IFromVec2(Vec2 value) {
   return result;
 }
 
-static inline bool EqualVec2I(Vec2I a, Vec2I b) {
-  bool result = a.x == b.x && a.y == b.y;
+static inline b32 EqualVec2I(Vec2I a, Vec2I b) {
+  b32 result = a.x == b.x && a.y == b.y;
   return result;
 }
 
@@ -71,12 +73,14 @@ union Vec4 {
   f32 v[4];
 };
 
+typedef enum Axis2 Axis2;
 enum Axis2 {
   kAxis2X,
   kAxis2Y,
   kAxis2Count,
 };
 
+typedef union Rect2 Rect2;
 union Rect2 {
   struct {
     Vec2 min;

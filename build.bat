@@ -33,5 +33,5 @@ if not exist build mkdir build
 
 :: --- Build Everything -------------------------------------------------------
 pushd build
-%compile% ..\src\ztracing.unity.cc %compile_link% %out%ztracing.exe || exit /b 2
+%compile% ..\src\ztracing.unity.c %compile_link% %out%ztracing.exe || exit /b 2
 popd

@@ -3,11 +3,13 @@
 #include "src/assert.h"
 #include "src/list.h"
 
+typedef struct WidgetHashSlot WidgetHashSlot;
 struct WidgetHashSlot {
   Widget *first;
   Widget *last;
 };
 
+typedef struct UIState UIState;
 struct UIState {
   Arena *arena;
 
@@ -41,7 +43,7 @@ WidgetKey WidgetKeyFromStr8(WidgetKey seed, Str8 str) {
   return result;
 }
 
-bool EqualWidgetKey(WidgetKey a, WidgetKey b) {
+b32 EqualWidgetKey(WidgetKey a, WidgetKey b) {
   b32 result = a.hash == b.hash;
   return result;
 }

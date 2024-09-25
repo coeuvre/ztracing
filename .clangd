@@ -1,2 +1,6 @@
 CompileFlags:
-  Add: [-I.., -Wall, -Wno-missing-braces, -DBUILD_DEBUG=1]
+  Add: [
+    -I.., -Wall, -Wextra, -pedantic,
+    -Wno-missing-braces, -Wno-microsoft-enum-forward-reference,
+    -DBUILD_DEBUG=1
+  ]

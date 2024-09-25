@@ -27,4 +27,10 @@ typedef ptrdiff_t isize;
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
 
+#if COMPILER_MSVC
+#define thread_local __declspec(thread)
+#elif COMPILER_CLANG || COMPILER_GCC
+#define thread_local __thread
+#endif
+
 #endif  // ZTRACING_SRC_TYPES_H_

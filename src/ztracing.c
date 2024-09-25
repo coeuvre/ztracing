@@ -37,12 +37,13 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam,
   return result;
 }
 
+typedef struct Window Window;
 struct Window {
   HWND handle;
 };
 
 static Window OpenWindow() {
-  static WNDCLASSEXW window_class = {};
+  static WNDCLASSEXW window_class = {0};
 
   if (window_class.cbSize == 0) {
     window_class.cbSize = sizeof(window_class);
@@ -58,23 +59,20 @@ static Window OpenWindow() {
     UNREACHABLE;
   }
 
-  Window result = {};
+  Window result = {0};
   DWORD ex_style = WS_EX_APPWINDOW;
   result.handle = CreateWindowExW(
       ex_style, window_class.lpszClassName, L"ztracing", WS_OVERLAPPEDWINDOW,
       CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0,
       window_class.hInstance, 0);
+
+  ShowWindow(result.handle, SW_SHOW);
+
   return result;
 }
 
-static void ShowWindow(Window *window) {
-  if (IsWindow(window->handle)) {
-    ShowWindow(window->handle, SW_SHOW);
-  }
-}
-
 static Vec2I GetWindowSize(Window *window) {
-  Vec2I result = {};
+  Vec2I result;
 
   RECT rect;
   GetClientRect(window->handle, &rect);
@@ -146,11 +144,11 @@ static void CopyBitmapToWindow(Window *window, Bitmap *bitmap) {
 
 static void CopyBitmap(Bitmap *dst, Vec2 pos, Bitmap *src) {
   Vec2I offset = Vec2IFromVec2(RoundVec2(pos));
-  Vec2I src_min = MaxVec2I(NegVec2I(offset), Vec2I{0, 0});
+  Vec2I src_min = MaxVec2I(NegVec2I(offset), (Vec2I){0, 0});
   Vec2I src_max =
       SubVec2I(MinVec2I(AddVec2I(offset, src->size), dst->size), offset);
 
-  Vec2I dst_min = MaxVec2I(offset, Vec2I{0, 0});
+  Vec2I dst_min = MaxVec2I(offset, (Vec2I){0, 0});
   Vec2I dst_max = AddVec2I(dst_min, SubVec2I(src_max, src_min));
 
   u32 *dst_row = dst->pixels + dst->size.x * dst_min.y + dst_min.x;
@@ -176,7 +174,7 @@ stbtt_fontinfo font;
 
 static void DrawRect(Vec2 min, Vec2 max, u32 color) {
   Bitmap *bitmap = framebuffer;
-  Vec2 fb_min = Vec2{0.0f, 0.0f};
+  Vec2 fb_min = {0.0f, 0.0f};
   Vec2 fb_max = Vec2FromVec2I(bitmap->size);
   min = ClampVec2(min, fb_min, fb_max);
   max = ClampVec2(max, fb_min, fb_max);
@@ -192,7 +190,7 @@ static void DrawRect(Vec2 min, Vec2 max, u32 color) {
   }
 }
 
-static void DrawText(Str8 text, f32 height) {
+static void DrawTextStr8(Str8 text, f32 height) {
   TempMemory scratch = BeginScratch(0, 0);
 
   f32 scale = stbtt_ScaleForPixelHeight(&font, 32);
@@ -231,7 +229,7 @@ static void DrawText(Str8 text, f32 height) {
       dst_row += glyph_size.x;
       src_row += glyph_size.x;
     }
-    CopyBitmap(framebuffer, Vec2{pos_x + min.x, (f32)baseline + min.y},
+    CopyBitmap(framebuffer, (Vec2){pos_x + min.x, (f32)baseline + min.y},
                glyph_bitmap);
 
     pos_x += advance * scale;
@@ -246,9 +244,9 @@ static void DrawText(Str8 text, f32 height) {
 
 static void DoFrame(void) {
   Str8 text = Str8Literal("Heljo World! 你好，世界！");
-  DrawText(text, 32);
+  DrawTextStr8(text, 32);
 
-  DrawRect(Vec2{100.0f, 100.0f}, Vec2{200.0f, 200.0f}, 0x00FF00FF);
+  DrawRect((Vec2){100.0f, 100.0f}, (Vec2){200.0f, 200.0f}, 0x00FF00FF);
 
   BeginWidget(Str8Literal("p1"));
   {
@@ -264,7 +262,6 @@ static void DoFrame(void) {
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line,
                     int cmd_show) {
   Window window = OpenWindow();
-  ShowWindow(&window);
 
   {
     i32 ret = stbtt_InitFont(
