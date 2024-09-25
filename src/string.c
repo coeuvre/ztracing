@@ -47,7 +47,7 @@ static UnicodeDecode DecodeUtf8(u8 *ptr, usize len) {
   return result;
 }
 
-static Str32 PushStr32FromStr8(Arena *arena, Str8 str) {
+Str32 PushStr32FromStr8(Arena *arena, Str8 str) {
   usize cap = str.len + 1;
   u32 *ptr = PushArrayNoZero(arena, u32, cap);
   u32 len = 0;

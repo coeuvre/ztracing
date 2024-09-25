@@ -53,7 +53,7 @@ static Widget *PushWidget(Arena *arena) {
   return result;
 }
 
-static UIState *GetUIState() {
+static UIState *GetUIState(void) {
   UIState *state = &g_ui_state;
   if (!state->arena) {
     state->arena = AllocArena();
@@ -79,7 +79,7 @@ static Widget *GetOrPushWidget(UIState *state) {
   return result;
 }
 
-void BeginUI() {
+void BeginUI(void) {
   UIState *state = GetUIState();
 
   Widget *root = state->root;
@@ -88,7 +88,7 @@ void BeginUI() {
   state->current = state->root;
 }
 
-void EndUI() {
+void EndUI(void) {
   UIState *state = GetUIState();
   state->build_index++;
 }
@@ -132,7 +132,7 @@ void BeginWidget(Str8 str) {
   state->current = widget;
 }
 
-void EndWidget() {
+void EndWidget(void) {
   UIState *state = GetUIState();
 
   ASSERT(state->current && state->current != state->root &&

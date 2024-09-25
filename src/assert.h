@@ -27,3 +27,4 @@
 #define NOT_IMPLEMENTED ASSERT(!"Not Implemented")
 
 #endif  // ZTRACING_SRC_ASSERT_H_
+

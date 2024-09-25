@@ -42,7 +42,7 @@ struct Window {
   HWND handle;
 };
 
-static Window OpenWindow() {
+static Window OpenWindow(void) {
   static WNDCLASSEXW window_class = {0};
 
   if (window_class.cbSize == 0) {
@@ -193,7 +193,7 @@ static void DrawRect(Vec2 min, Vec2 max, u32 color) {
 static void DrawTextStr8(Str8 text, f32 height) {
   TempMemory scratch = BeginScratch(0, 0);
 
-  f32 scale = stbtt_ScaleForPixelHeight(&font, 32);
+  f32 scale = stbtt_ScaleForPixelHeight(&font, height);
   i32 ascent, descent, line_gap;
   stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
 
@@ -204,7 +204,6 @@ static void DrawTextStr8(Str8 text, f32 height) {
     Vec2I min, max;
     i32 advance, lsb;
     u32 ch = text32.ptr[i];
-    f32 x_shift = pos_x - FloorF32(pos_x);
     i32 glyph = stbtt_FindGlyphIndex(&font, ch);
     stbtt_GetGlyphHMetrics(&font, glyph, &advance, &lsb);
     stbtt_GetGlyphBitmapBox(&font, glyph, scale, scale, &min.x, &min.y, &max.x,

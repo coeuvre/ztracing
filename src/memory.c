@@ -29,7 +29,7 @@ static MemoryBlock *AllocMemoryBlock(usize size) {
 
 const usize kInitMemoryBlockSize = KB(4);
 
-Arena *AllocArena() {
+Arena *AllocArena(void) {
   MemoryBlock *block = AllocMemoryBlock(kInitMemoryBlockSize);
 
   Arena *result = (Arena *)block->pos;

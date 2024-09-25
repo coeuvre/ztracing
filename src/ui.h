@@ -58,8 +58,8 @@ struct Widget {
   f32 active_t;
 };
 
-void BeginUI();
-void EndUI();
+void BeginUI(void);
+void EndUI(void);
 
 WidgetKey WidgetKeyZero(void);
 WidgetKey WidgetKeyFromStr8(WidgetKey seed, Str8 str);
