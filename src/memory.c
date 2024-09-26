@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "src/assert.h"
+#include "src/types.h"
 
 static inline void *AlignPow2(void *ptr, usize align) {
   void *result = (void *)(((usize)ptr + align - 1) & (~(align - 1)));

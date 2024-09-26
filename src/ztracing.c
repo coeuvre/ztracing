@@ -4,6 +4,7 @@
 #include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
+#include "src/types.h"
 #include "src/ui.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION

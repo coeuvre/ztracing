@@ -2,6 +2,9 @@
 
 #include "src/assert.h"
 #include "src/list.h"
+#include "src/memory.h"
+#include "src/string.h"
+#include "src/types.h"
 
 typedef struct WidgetHashSlot WidgetHashSlot;
 struct WidgetHashSlot {
