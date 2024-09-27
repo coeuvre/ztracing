@@ -17,6 +17,13 @@ struct Str8 {
 #define Str8Literal(s) \
   (Str8) { (u8 *)(s), sizeof(s) - 1 }
 
+static inline b32 IsEmptyStr8(Str8 str) {
+  b32 result = str.len == 0;
+  return result;
+}
+
+Str8 PushStr8(Arena *arena, Str8 str);
+
 typedef struct Str32 Str32;
 struct Str32 {
   u32 *ptr;

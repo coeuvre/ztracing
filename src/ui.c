@@ -2,6 +2,7 @@
 
 #include "src/assert.h"
 #include "src/list.h"
+#include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
 #include "src/types.h"
@@ -10,6 +11,12 @@ typedef struct WidgetHashSlot WidgetHashSlot;
 struct WidgetHashSlot {
   Widget *first;
   Widget *last;
+};
+
+typedef struct NextWidgetOptions NextWidgetOptions;
+struct NextWidgetOptions {
+  WidgetConstraint constraints[kAxis2Count];
+  Str8 text;
 };
 
 typedef struct UIState UIState;
@@ -25,7 +32,9 @@ struct UIState {
   u64 build_index;
 
   // per-frame info
+  Arena *build_arena[2];
   Widget *current;
+  NextWidgetOptions next_widget_options;
 };
 
 UIState g_ui_state;
@@ -65,6 +74,9 @@ static UIState *GetUIState(void) {
         PushArray(state->arena, WidgetHashSlot, state->widget_hash_slot_size);
 
     state->root = PushWidget(state->arena);
+
+    state->build_arena[0] = AllocArena();
+    state->build_arena[1] = AllocArena();
     state->current = state->root;
   }
   return state;
@@ -82,6 +94,12 @@ static Widget *GetOrPushWidget(UIState *state) {
   return result;
 }
 
+static Arena *GetBuildArena(UIState *state) {
+  Arena *arena =
+      state->build_arena[state->build_index % ARRAY_COUNT(state->build_arena)];
+  return arena;
+}
+
 void BeginUI(void) {
   UIState *state = GetUIState();
 
@@ -89,10 +107,72 @@ void BeginUI(void) {
   root->first = root->last = 0;
 
   state->current = state->root;
+
+  ResetArena(GetBuildArena(state));
+}
+
+const f32 kDefaultTextHeight = 16;
+
+static void CalcStandaloneSizeR(UIState *state, Widget *widget) {
+  for (u32 axis = 0; axis < kAxis2Count; ++axis) {
+    WidgetConstraint constraint = widget->constraints[axis];
+    switch (constraint.type) {
+      case kWidgetConstraintPixels: {
+        widget->computed_size[axis] = constraint.value;
+      } break;
+
+      case kWidgetConstraintTextContent: {
+        widget->computed_size[axis] =
+            GetTextMetricsStr8(widget->text, kDefaultTextHeight).size.v[axis];
+      } break;
+
+      default: {
+      } break;
+    }
+  }
+
+  for (Widget *child = widget->first; child; child = child->next) {
+    CalcStandaloneSizeR(state, child);
+  }
+}
+
+static void CalcStandaloneSize(UIState *state) {
+  CalcStandaloneSizeR(state, state->root);
+}
+
+static void CalcScreenRectR(UIState *state, Widget *widget, Vec2 min) {
+  widget->screen_rect.min = min;
+  widget->screen_rect.max = AddVec2(min, Vec2FromArray(widget->computed_size));
+
+  DrawRect(widget->screen_rect.min, widget->screen_rect.max, 0x00FF00FF);
+  if (!IsEmptyStr8(widget->text)) {
+    DrawTextStr8(widget->screen_rect.min, widget->text, kDefaultTextHeight);
+  }
+
+  for (Widget *child = widget->first; child; child = child->next) {
+    CalcScreenRectR(state, child, min);
+    min.x += child->computed_size[0];
+  }
+}
+
+static void CalcScreenRect(UIState *state) {
+  Vec2 min = V2(0, 0);
+  CalcScreenRectR(state, state->root, min);
 }
 
 void EndUI(void) {
   UIState *state = GetUIState();
+
+  CalcStandaloneSize(state);
+
+  // Second pass: calculate upwards-dependent sizes.
+
+  // Third pass: calculate downwards-dependent sizes.
+
+  // Fourth pass: solve violations.
+
+  CalcScreenRect(state);
+
   state->build_index++;
 }
 
@@ -128,9 +208,22 @@ void BeginWidget(Str8 str) {
 
   APPEND_DOUBLY_LINKED_LIST(parent->first, parent->last, widget, prev, next);
   widget->parent = parent;
+  widget->last_touched_build_index = state->build_index;
 
   // Clear per frame state
   widget->first = widget->last = 0;
+
+  for (u32 axis = 0; axis < kAxis2Count; ++axis) {
+    if (state->next_widget_options.constraints[axis].type) {
+      widget->constraints[axis] = state->next_widget_options.constraints[axis];
+      state->next_widget_options.constraints[axis] = (WidgetConstraint){0};
+    }
+  }
+
+  if (!IsEmptyStr8(state->next_widget_options.text)) {
+    widget->text = state->next_widget_options.text;
+    state->next_widget_options.text = (Str8){0};
+  }
 
   state->current = widget;
 }
@@ -139,7 +232,30 @@ void EndWidget(void) {
   UIState *state = GetUIState();
 
   ASSERT(state->current && state->current != state->root &&
-         "Unmatched begin_widget and end_widget calls");
+         "Unmatched BeginWidget and EndWidget calls");
 
   state->current = state->current->parent;
+}
+
+void SetNextWidgetConstraint(Axis2 axis, WidgetConstraint constraint) {
+  UIState *state = GetUIState();
+
+  state->next_widget_options.constraints[axis] = constraint;
+}
+
+void SetNextWidgetTextContent(Str8 text) {
+  UIState *state = GetUIState();
+
+  Arena *arena = GetBuildArena(state);
+  state->next_widget_options.text = PushStr8(arena, text);
+}
+
+void TextLine(Str8 text) {
+  SetNextWidgetConstraint(
+      kAxis2X, (WidgetConstraint){.type = kWidgetConstraintTextContent});
+  SetNextWidgetConstraint(
+      kAxis2Y, (WidgetConstraint){.type = kWidgetConstraintTextContent});
+  SetNextWidgetTextContent(text);
+  BeginWidget(text);
+  EndWidget();
 }

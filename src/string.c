@@ -1,6 +1,17 @@
 #include "src/string.h"
 
+#include <string.h>
+
 #include "src/assert.h"
+#include "src/memory.h"
+#include "src/types.h"
+
+Str8 PushStr8(Arena *arena, Str8 str) {
+  u8 *ptr = PushArrayNoZero(arena, u8, str.len + 1);
+  memcpy(ptr, str.ptr, str.len + 1);
+  Str8 result = {ptr, str.len};
+  return result;
+}
 
 typedef struct UnicodeDecode UnicodeDecode;
 struct UnicodeDecode {

@@ -14,6 +14,27 @@ union Vec2 {
   f32 v[2];
 };
 
+static inline Vec2 V2(f32 x, f32 y) {
+  Vec2 result;
+  result.x = x;
+  result.y = y;
+  return result;
+}
+
+static inline Vec2 Vec2FromArray(f32 v[2]) {
+  Vec2 result;
+  result.x = v[0];
+  result.y = v[1];
+  return result;
+}
+
+static inline Vec2 AddVec2(Vec2 a, Vec2 b) {
+  Vec2 result;
+  result.x = a.x + b.x;
+  result.y = a.y + b.y;
+  return result;
+}
+
 typedef union Vec2I Vec2I;
 union Vec2I {
   struct {

@@ -60,6 +60,13 @@ void FreeArena(Arena *arena) {
   }
 }
 
+void ResetArena(Arena *arena) {
+  while (arena->current_block->begin != (u8 *)arena) {
+    FreeLastBlock(arena);
+  }
+  arena->current_block->pos = arena->current_block->begin + sizeof(Arena);
+}
+
 void *PushArena(Arena *arena, usize size, u32 flags) {
   usize align = 8;
   MemoryBlock *block = arena->current_block;
@@ -89,8 +96,17 @@ void *PushArena(Arena *arena, usize size, u32 flags) {
 
 void PopArena(Arena *arena, usize size) {
   MemoryBlock *block = arena->current_block;
-  DEBUG_ASSERT(block && block->pos - size >= block->begin);
-  block->pos -= size;
+  for (;;) {
+    DEBUG_ASSERT(block);
+    if (block->pos - size >= block->begin) {
+      block->pos -= size;
+      break;
+    } else {
+      size -= block->pos - block->begin;
+      FreeLastBlock(arena);
+      block = arena->current_block;
+    }
+  }
 }
 
 TempMemory BeginTempMemory(Arena *arena) {

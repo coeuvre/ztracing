@@ -40,6 +40,7 @@ enum PushArenaFlag {
 
 Arena *AllocArena(void);
 void FreeArena(Arena *arena);
+void ResetArena(Arena *arena);
 void *PushArena(Arena *arena, usize size, u32 flags);
 void PopArena(Arena *arena, usize size);
 

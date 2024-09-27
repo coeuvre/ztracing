@@ -20,8 +20,8 @@
 #pragma comment(lib, "user32")
 #pragma comment(lib, "gdi32")
 
-static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam,
-                                    LPARAM lparam) {
+static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wparam,
+                                   LPARAM lparam) {
   LRESULT result = 0;
 
   switch (message) {
@@ -48,7 +48,7 @@ static Window OpenWindow(void) {
 
   if (window_class.cbSize == 0) {
     window_class.cbSize = sizeof(window_class);
-    window_class.lpfnWndProc = &window_proc;
+    window_class.lpfnWndProc = &WindowProc;
     window_class.hInstance = GetModuleHandleW(0);
     window_class.hIcon = LoadIconW(0, IDI_APPLICATION);
     window_class.hCursor = LoadCursorW(0, IDC_ARROW);
@@ -173,7 +173,7 @@ static void CopyBitmap(Bitmap *dst, Vec2 pos, Bitmap *src) {
 Bitmap *framebuffer;
 stbtt_fontinfo font;
 
-static void DrawRect(Vec2 min, Vec2 max, u32 color) {
+void DrawRect(Vec2 min, Vec2 max, u32 color) {
   Bitmap *bitmap = framebuffer;
   Vec2 fb_min = {0.0f, 0.0f};
   Vec2 fb_max = Vec2FromVec2I(bitmap->size);
@@ -191,7 +191,38 @@ static void DrawRect(Vec2 min, Vec2 max, u32 color) {
   }
 }
 
-static void DrawTextStr8(Str8 text, f32 height) {
+TextMetrics GetTextMetricsStr8(Str8 text, f32 height) {
+  TempMemory scratch = BeginScratch(0, 0);
+  TextMetrics result = {0};
+
+  f32 scale = stbtt_ScaleForPixelHeight(&font, height);
+  i32 ascent, descent, line_gap;
+  stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
+  result.size.y = (ascent - descent) * scale;
+
+  Str32 text32 = PushStr32FromStr8(scratch.arena, text);
+  f32 pos_x = 0.0f;
+  for (u32 i = 0; i < text32.len; ++i) {
+    Vec2I min, max;
+    i32 advance, lsb;
+    u32 ch = text32.ptr[i];
+    i32 glyph = stbtt_FindGlyphIndex(&font, ch);
+    stbtt_GetGlyphHMetrics(&font, glyph, &advance, &lsb);
+    stbtt_GetGlyphBitmapBox(&font, glyph, scale, scale, &min.x, &min.y, &max.x,
+                            &max.y);
+    pos_x += advance * scale;
+    if (i + 1 < text32.len) {
+      i32 kern = stbtt_GetCodepointKernAdvance(&font, ch, text32.ptr[i + 1]);
+      pos_x += scale * kern;
+    }
+  }
+  result.size.x = pos_x;
+
+  EndScratch(scratch);
+  return result;
+}
+
+void DrawTextStr8(Vec2 pos, Str8 text, f32 height) {
   TempMemory scratch = BeginScratch(0, 0);
 
   f32 scale = stbtt_ScaleForPixelHeight(&font, height);
@@ -199,8 +230,8 @@ static void DrawTextStr8(Str8 text, f32 height) {
   stbtt_GetFontVMetrics(&font, &ascent, &descent, &line_gap);
 
   Str32 text32 = PushStr32FromStr8(scratch.arena, text);
-  i32 baseline = (i32)(ascent * scale);
-  f32 pos_x = 2.0f;
+  i32 baseline = (i32)(pos.y + ascent * scale);
+  f32 pos_x = pos.x;
   for (u32 i = 0; i < text32.len; ++i) {
     Vec2I min, max;
     i32 advance, lsb;
@@ -243,20 +274,8 @@ static void DrawTextStr8(Str8 text, f32 height) {
 }
 
 static void DoFrame(void) {
-  Str8 text = Str8Literal("Heljo World! 你好，世界！");
-  DrawTextStr8(text, 32);
-
-  DrawRect((Vec2){100.0f, 100.0f}, (Vec2){200.0f, 200.0f}, 0x00FF00FF);
-
-  BeginWidget(Str8Literal("p1"));
-  {
-    BeginWidget(Str8Literal("c1"));
-    EndWidget();
-
-    BeginWidget(Str8Literal("c2"));
-    EndWidget();
-  }
-  EndWidget();
+  TextLine(Str8Literal("Heljo"));
+  TextLine(Str8Literal(" World!"));
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line,
