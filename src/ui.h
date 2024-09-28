@@ -5,15 +5,6 @@
 #include "src/string.h"
 #include "src/types.h"
 
-typedef struct TextMetrics TextMetrics;
-struct TextMetrics {
-  Vec2 size;
-};
-
-TextMetrics GetTextMetricsStr8(Str8 text, f32 height);
-void DrawTextStr8(Vec2 pos, Str8 text, f32 height);
-void DrawRect(Vec2 min, Vec2 max, u32 color);
-
 typedef struct WidgetKey WidgetKey;
 struct WidgetKey {
   u64 hash;
@@ -55,10 +46,10 @@ struct Widget {
   // per-frame info provided by builders
   u32 flags;
   Str8 text;
+  Axis2 layout_axis;
   WidgetConstraint constraints[kAxis2Count];
 
   // computed every frame
-  f32 computed_rel_position[kAxis2Count];
   f32 computed_size[kAxis2Count];
   Rect2 screen_rect;
 
@@ -74,12 +65,17 @@ WidgetKey WidgetKeyZero(void);
 WidgetKey WidgetKeyFromStr8(WidgetKey seed, Str8 str);
 b32 EqualWidgetKey(WidgetKey a, WidgetKey b);
 
-void BeginWidget(Str8 id);
-void EndWidget(void);
+Str8 GetNextWidgetKey(void);
+void SetNextWidgetKey(Str8 key);
 
+WidgetConstraint GetNextWidgetConstraint(Axis2 axis);
 void SetNextWidgetConstraint(Axis2 axis, WidgetConstraint constraint);
+
+void SetNextWidgetLayoutAxis(Axis2 axis);
+
 void SetNextWidgetTextContent(Str8 text);
 
-void TextLine(Str8 text);
+void BeginWidget(void);
+void EndWidget(void);
 
 #endif  // ZTRACING_SRC_UI_H_

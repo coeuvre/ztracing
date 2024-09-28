@@ -1,6 +1,7 @@
 #include "src/ui.h"
 
 #include "src/assert.h"
+#include "src/draw.h"
 #include "src/list.h"
 #include "src/math.h"
 #include "src/memory.h"
@@ -13,9 +14,11 @@ struct WidgetHashSlot {
   Widget *last;
 };
 
-typedef struct NextWidgetOptions NextWidgetOptions;
-struct NextWidgetOptions {
+typedef struct NextWidgetSettings NextWidgetSettings;
+struct NextWidgetSettings {
+  Str8 key;
   WidgetConstraint constraints[kAxis2Count];
+  Axis2 layout_axis;
   Str8 text;
 };
 
@@ -34,7 +37,7 @@ struct UIState {
   // per-frame info
   Arena *build_arena[2];
   Widget *current;
-  NextWidgetOptions next_widget_options;
+  NextWidgetSettings next_widget_settings;
 };
 
 UIState g_ui_state;
@@ -105,6 +108,11 @@ void BeginUI(void) {
 
   Widget *root = state->root;
   root->first = root->last = 0;
+  Vec2I canvas_size = GetCanvasSize();
+  root->constraints[kAxis2X] = (WidgetConstraint){
+      .type = kWidgetConstraintPixels, .value = canvas_size.x};
+  root->constraints[kAxis2Y] = (WidgetConstraint){
+      .type = kWidgetConstraintPixels, .value = canvas_size.y};
 
   state->current = state->root;
 
@@ -144,14 +152,14 @@ static void CalcScreenRectR(UIState *state, Widget *widget, Vec2 min) {
   widget->screen_rect.min = min;
   widget->screen_rect.max = AddVec2(min, Vec2FromArray(widget->computed_size));
 
-  DrawRect(widget->screen_rect.min, widget->screen_rect.max, 0x00FF00FF);
+  // DrawRect(widget->screen_rect.min, widget->screen_rect.max, 0x00FF00FF);
   if (!IsEmptyStr8(widget->text)) {
     DrawTextStr8(widget->screen_rect.min, widget->text, kDefaultTextHeight);
   }
 
   for (Widget *child = widget->first; child; child = child->next) {
     CalcScreenRectR(state, child, min);
-    min.x += child->computed_size[0];
+    min.v[widget->layout_axis] += child->computed_size[widget->layout_axis];
   }
 }
 
@@ -191,11 +199,16 @@ static Widget *GetWidgetByKey(UIState *state, WidgetKey key) {
   return result;
 }
 
-void BeginWidget(Str8 str) {
+void BeginWidget(void) {
   UIState *state = GetUIState();
 
+  Str8 key_str = state->next_widget_settings.key;
+  ASSERT(!IsEmptyStr8(key_str) &&
+         "Use SetNextWidgetKey to set a key for this widget");
+  state->next_widget_settings.key = (Str8){0};
+
   Widget *parent = state->current;
-  WidgetKey key = WidgetKeyFromStr8(parent->key, str);
+  WidgetKey key = WidgetKeyFromStr8(parent->key, key_str);
   Widget *widget = GetWidgetByKey(state, key);
   if (!widget) {
     widget = GetOrPushWidget(state);
@@ -213,16 +226,19 @@ void BeginWidget(Str8 str) {
   // Clear per frame state
   widget->first = widget->last = 0;
 
+  widget->layout_axis = state->next_widget_settings.layout_axis;
+  state->next_widget_settings.layout_axis = 0;
+
   for (u32 axis = 0; axis < kAxis2Count; ++axis) {
-    if (state->next_widget_options.constraints[axis].type) {
-      widget->constraints[axis] = state->next_widget_options.constraints[axis];
-      state->next_widget_options.constraints[axis] = (WidgetConstraint){0};
+    if (state->next_widget_settings.constraints[axis].type) {
+      widget->constraints[axis] = state->next_widget_settings.constraints[axis];
+      state->next_widget_settings.constraints[axis] = (WidgetConstraint){0};
     }
   }
 
-  if (!IsEmptyStr8(state->next_widget_options.text)) {
-    widget->text = state->next_widget_options.text;
-    state->next_widget_options.text = (Str8){0};
+  if (!IsEmptyStr8(state->next_widget_settings.text)) {
+    widget->text = state->next_widget_settings.text;
+    state->next_widget_settings.text = (Str8){0};
   }
 
   state->current = widget;
@@ -237,25 +253,37 @@ void EndWidget(void) {
   state->current = state->current->parent;
 }
 
+Str8 GetNextWidgetKey(void) {
+  UIState *state = GetUIState();
+  Str8 result = state->next_widget_settings.key;
+  return result;
+}
+
+void SetNextWidgetKey(Str8 key) {
+  UIState *state = GetUIState();
+  Arena *arena = GetBuildArena(state);
+  state->next_widget_settings.key = PushStr8(arena, key);
+}
+
+WidgetConstraint GetNextWidgetConstraint(Axis2 axis) {
+  UIState *state = GetUIState();
+  WidgetConstraint result = state->next_widget_settings.constraints[axis];
+  return result;
+}
+
 void SetNextWidgetConstraint(Axis2 axis, WidgetConstraint constraint) {
   UIState *state = GetUIState();
 
-  state->next_widget_options.constraints[axis] = constraint;
+  state->next_widget_settings.constraints[axis] = constraint;
+}
+
+void SetNextWidgetLayoutAxis(Axis2 axis) {
+  UIState *state = GetUIState();
+  state->next_widget_settings.layout_axis = axis;
 }
 
 void SetNextWidgetTextContent(Str8 text) {
   UIState *state = GetUIState();
-
   Arena *arena = GetBuildArena(state);
-  state->next_widget_options.text = PushStr8(arena, text);
-}
-
-void TextLine(Str8 text) {
-  SetNextWidgetConstraint(
-      kAxis2X, (WidgetConstraint){.type = kWidgetConstraintTextContent});
-  SetNextWidgetConstraint(
-      kAxis2Y, (WidgetConstraint){.type = kWidgetConstraintTextContent});
-  SetNextWidgetTextContent(text);
-  BeginWidget(text);
-  EndWidget();
+  state->next_widget_settings.text = PushStr8(arena, text);
 }
