@@ -133,9 +133,12 @@ static void CopyBitmapToWindow(Window *window, Bitmap *bitmap) {
 // }
 
 static void DoFrame(void) {
-  BeginContainer();
+  BeginCenter(Str8Literal("Center"));
+  BeginContainer(Str8Literal("Container"));
   SetWidgetColor(0xFFE6573F);
+  SetWidgetSize(V2(100, 100));
   EndContainer();
+  EndCenter();
 
   // BeginStack();
   // TextLine(Str8Literal("Heljo"));

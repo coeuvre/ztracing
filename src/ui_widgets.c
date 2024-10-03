@@ -69,9 +69,3 @@
 //   BeginWidget();
 //   EndWidget();
 // }
-
-void BeginContainer(void) {
-  BeginWidget(Str8Literal("Container"), kWidgetContainer);
-}
-
-void EndContainer(void) { EndWidget(); }

@@ -29,7 +29,9 @@ struct WidgetConstraint {
 typedef enum WidgetType WidgetType;
 enum WidgetType {
   kWidgetUnknown,
+
   kWidgetContainer,
+  kWidgetCenter,
 };
 
 typedef struct Widget Widget;
@@ -52,6 +54,7 @@ struct Widget {
   // per-frame info provided by builders
   WidgetType type;
   u32 color;
+  Vec2 size;
   Str8 text;
 
   // computed every frame
@@ -77,6 +80,9 @@ void SetNextWidgetKey(Str8 key);
 
 void BeginWidget(Str8 key, WidgetType type);
 void EndWidget(void);
+
+WidgetType GetWidgetType(void);
 void SetWidgetColor(u32 color);
+void SetWidgetSize(Vec2 size);
 
 #endif  // ZTRACING_SRC_UI_H_

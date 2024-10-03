@@ -231,7 +231,42 @@ static void LayoutContainer(UIState *state, Widget *widget, Vec2 min_size,
   } else if (unbounded) {
     widget->computed_size = min_size;
   } else {
-    widget->computed_size = max_size;
+    for (u32 axis = 0; axis < kAxis2Count; ++axis) {
+      if (widget->size.v[axis]) {
+        widget->computed_size.v[axis] =
+            MaxF32(MinF32(max_size.x, widget->size.v[axis]), min_size.v[axis]);
+      } else {
+        widget->computed_size.v[axis] = max_size.v[axis];
+      }
+    }
+  }
+}
+
+static void LayoutCenter(UIState *state, Widget *widget, Vec2 min_size,
+                         Vec2 max_size, b32 unbounded) {
+  AssertAtMostOneChild(widget);
+  Vec2 child_size = V2(0, 0);
+  Widget *child = widget->first;
+  if (child) {
+    // TODO: handle padding and margin.
+    LayoutWidget(state, child, V2(0, 0), max_size, unbounded);
+    child_size = child->computed_size;
+  }
+
+  widget->computed_rel_pos = V2(0, 0);
+  if (unbounded) {
+    widget->computed_size = MaxVec2(child_size, min_size);
+  } else {
+    for (u32 axis = 0; axis < kAxis2Count; ++axis) {
+      widget->computed_size.v[axis] = max_size.v[axis];
+    }
+  }
+
+  if (child) {
+    for (u32 axis = 0; axis < kAxis2Count; ++axis) {
+      child->computed_rel_pos.v[axis] =
+          (widget->computed_size.v[axis] - child_size.v[axis]) / 2.0;
+    }
   }
 }
 
@@ -242,44 +277,37 @@ static void LayoutWidget(UIState *state, Widget *widget, Vec2 min_size,
       LayoutContainer(state, widget, min_size, max_size, unbounded);
     } break;
 
+    case kWidgetCenter: {
+      LayoutCenter(state, widget, min_size, max_size, unbounded);
+    } break;
+
     default: {
       UNREACHABLE;
     } break;
-  }
-}
-
-static void RenderWidget(UIState *state, Widget *widget, Vec2 parent_pos);
-
-static void RenderContainer(UIState *state, Widget *widget, Vec2 parent_pos) {
-  Vec2 pos = AddVec2(parent_pos, widget->computed_rel_pos);
-  widget->computed_screen_rect =
-      (Rect2){.min = pos, .max = AddVec2(pos, widget->computed_size)};
-
-  if (widget->color) {
-    DrawRect(widget->computed_screen_rect.min, widget->computed_screen_rect.max,
-             widget->color);
-  }
-
-  Widget *child = widget->first;
-  if (child) {
-    RenderWidget(state, child, pos);
   }
 }
 
 static void RenderWidget(UIState *state, Widget *widget, Vec2 parent_pos) {
-  switch (widget->type) {
-    case kWidgetContainer: {
-      RenderContainer(state, widget, parent_pos);
-    } break;
+  Vec2 min = AddVec2(parent_pos, widget->computed_rel_pos);
+  Vec2 max = AddVec2(min, widget->computed_size);
+  widget->computed_screen_rect = (Rect2){.min = min, .max = max};
 
-    default: {
-      UNREACHABLE;
-    } break;
+  if (widget->color) {
+    DrawRect(min, max, widget->color);
+  }
+
+  if (!IsEmptyStr8(widget->text)) {
+    DrawTextStr8(min, widget->text, kDefaultTextHeight);
+  }
+
+  for (Widget *child = widget->first; child; child = child->next) {
+    RenderWidget(state, child, parent_pos);
   }
 }
 
 void EndUI(void) {
   UIState *state = GetUIState();
+  ASSERT(!state->current && "Mismatched Begin/End calls");
 
   if (state->root) {
     LayoutWidget(state, state->root, state->canvas_size, state->canvas_size, 0);
@@ -352,8 +380,20 @@ void EndWidget(void) {
   state->current = state->current->parent;
 }
 
+WidgetType GetWidgetType(void) {
+  UIState *state = GetUIState();
+  ASSERT(state->current);
+  return state->current->type;
+}
+
 void SetWidgetColor(u32 color) {
   UIState *state = GetUIState();
   ASSERT(state->current);
   state->current->color = color;
+}
+
+void SetWidgetSize(Vec2 size) {
+  UIState *state = GetUIState();
+  ASSERT(state->current);
+  state->current->size = size;
 }

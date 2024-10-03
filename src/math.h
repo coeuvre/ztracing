@@ -5,6 +5,16 @@
 
 #include "src/types.h"
 
+static inline f32 MaxF32(f32 a, f32 b) {
+  f32 result = MAX(a, b);
+  return result;
+}
+
+static inline f32 MinF32(f32 a, f32 b) {
+  f32 result = MIN(a, b);
+  return result;
+}
+
 typedef union Vec2 Vec2;
 union Vec2 {
   struct {
@@ -32,6 +42,20 @@ static inline Vec2 AddVec2(Vec2 a, Vec2 b) {
   Vec2 result;
   result.x = a.x + b.x;
   result.y = a.y + b.y;
+  return result;
+}
+
+static inline Vec2 MinVec2(Vec2 a, Vec2 b) {
+  Vec2 result;
+  result.x = MinF32(a.x, b.x);
+  result.y = MinF32(a.y, b.y);
+  return result;
+}
+
+static inline Vec2 MaxVec2(Vec2 a, Vec2 b) {
+  Vec2 result;
+  result.x = MaxF32(a.x, b.x);
+  result.y = MaxF32(a.y, b.y);
   return result;
 }
 
