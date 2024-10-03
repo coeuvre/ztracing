@@ -8,6 +8,8 @@
 #include "src/string.h"
 #include "src/types.h"
 
+#define WIDGET_SIZE_MAX F32_MAX
+
 typedef struct WidgetHashSlot WidgetHashSlot;
 struct WidgetHashSlot {
   Widget *first;
@@ -208,7 +210,7 @@ const f32 kDefaultTextHeight = 16;
 // }
 
 static void LayoutWidget(UIState *state, Widget *widget, Vec2 min_size,
-                         Vec2 max_size, b32 unbounded);
+                         Vec2 max_size);
 
 static void AssertNoChild(Widget *widget) {
   ASSERT(!widget->first && "No child widget expected");
@@ -219,66 +221,76 @@ static void AssertAtMostOneChild(Widget *widget) {
          "At most one child widget expected");
 }
 
-static void LayoutContainer(UIState *state, Widget *widget, Vec2 min_size,
-                            Vec2 max_size, b32 unbounded) {
-  AssertAtMostOneChild(widget);
-  Widget *child = widget->first;
-  if (child) {
-    // TODO: handle padding and margin.
-    LayoutWidget(state, child, min_size, max_size, unbounded);
-    widget->computed_size = child->computed_size;
-    widget->computed_rel_pos = V2(0, 0);
-  } else if (unbounded) {
-    widget->computed_size = min_size;
-  } else {
-    for (u32 axis = 0; axis < kAxis2Count; ++axis) {
-      if (widget->size.v[axis]) {
-        widget->computed_size.v[axis] =
-            MaxF32(MinF32(max_size.x, widget->size.v[axis]), min_size.v[axis]);
-      } else {
-        widget->computed_size.v[axis] = max_size.v[axis];
-      }
-    }
-  }
-}
+static void LayoutText(Widget *widget, Vec2 min_size, Vec2 max_size) {
+  AssertNoChild(widget);
 
-static void LayoutCenter(UIState *state, Widget *widget, Vec2 min_size,
-                         Vec2 max_size, b32 unbounded) {
-  AssertAtMostOneChild(widget);
-  Vec2 child_size = V2(0, 0);
-  Widget *child = widget->first;
-  if (child) {
-    // TODO: handle padding and margin.
-    LayoutWidget(state, child, V2(0, 0), max_size, unbounded);
-    child_size = child->computed_size;
-  }
+  // TODO: Wrap text?
 
+  TextMetrics metrics = GetTextMetricsStr8(widget->text, kDefaultTextHeight);
+  widget->computed_size = MinVec2(MaxVec2(metrics.size, min_size), max_size);
   widget->computed_rel_pos = V2(0, 0);
-  if (unbounded) {
-    widget->computed_size = MaxVec2(child_size, min_size);
-  } else {
-    for (u32 axis = 0; axis < kAxis2Count; ++axis) {
-      widget->computed_size.v[axis] = max_size.v[axis];
-    }
-  }
-
-  if (child) {
-    for (u32 axis = 0; axis < kAxis2Count; ++axis) {
-      child->computed_rel_pos.v[axis] =
-          (widget->computed_size.v[axis] - child_size.v[axis]) / 2.0;
-    }
-  }
 }
 
 static void LayoutWidget(UIState *state, Widget *widget, Vec2 min_size,
-                         Vec2 max_size, b32 unbounded) {
+                         Vec2 max_size) {
   switch (widget->type) {
-    case kWidgetContainer: {
-      LayoutContainer(state, widget, min_size, max_size, unbounded);
+    case kWidgetContainer:
+    case kWidgetCenter: {
+      AssertAtMostOneChild(widget);
+
+      Vec2 self_size = V2(0, 0);
+      Vec2 child_max_size = max_size;
+      for (u32 axis = 0; axis < kAxis2Count; ++axis) {
+        if (widget->size.v[axis]) {
+          // If widget has specific size, cap it within constraint and use that
+          // as constraint for child.
+          self_size.v[axis] = MaxF32(MinF32(max_size.x, widget->size.v[axis]),
+                                     min_size.v[axis]);
+          child_max_size.v[axis] = widget->size.v[axis];
+        } else {
+          // Otherwise, pass down the constraint and ...
+          if (max_size.v[axis] >= WIDGET_SIZE_MAX) {
+            // ... if constraint is unbounded, make widget as small as possible.
+            self_size.v[axis] = min_size.v[axis];
+          } else {
+            // Otherwise, make widget as large as possible.
+            self_size.v[axis] = max_size.v[axis];
+          }
+          child_max_size.v[axis] = max_size.v[axis];
+        }
+      }
+
+      Vec2 child_size = V2(0, 0);
+      Widget *child = widget->first;
+      if (child) {
+        // TODO: handle padding and margin.
+        LayoutWidget(state, child, V2(0, 0), child_max_size);
+        child_size = child->computed_size;
+      }
+
+      for (u32 axis = 0; axis < kAxis2Count; ++axis) {
+        // If widget doesn't have specific size but has child, size itself
+        // around the child.
+        if (!widget->size.v[axis] && child_size.v[axis]) {
+          widget->computed_size.v[axis] =
+              MaxF32(child_size.v[axis], min_size.v[axis]);
+        } else {
+          widget->computed_size.v[axis] = self_size.v[axis];
+        }
+      }
+
+      // Align center
+      // TODO: Add other alignment
+      if (child) {
+        for (u32 axis = 0; axis < kAxis2Count; ++axis) {
+          child->computed_rel_pos.v[axis] =
+              (widget->computed_size.v[axis] - child_size.v[axis]) / 2.0;
+        }
+      }
     } break;
 
-    case kWidgetCenter: {
-      LayoutCenter(state, widget, min_size, max_size, unbounded);
+    case kWidgetText: {
+      LayoutText(widget, min_size, max_size);
     } break;
 
     default: {
@@ -297,11 +309,12 @@ static void RenderWidget(UIState *state, Widget *widget, Vec2 parent_pos) {
   }
 
   if (!IsEmptyStr8(widget->text)) {
+    // TODO: clip
     DrawTextStr8(min, widget->text, kDefaultTextHeight);
   }
 
   for (Widget *child = widget->first; child; child = child->next) {
-    RenderWidget(state, child, parent_pos);
+    RenderWidget(state, child, min);
   }
 }
 
@@ -310,7 +323,7 @@ void EndUI(void) {
   ASSERT(!state->current && "Mismatched Begin/End calls");
 
   if (state->root) {
-    LayoutWidget(state, state->root, state->canvas_size, state->canvas_size, 0);
+    LayoutWidget(state, state->root, state->canvas_size, state->canvas_size);
     state->root->computed_rel_pos = V2(0, 0);
     state->root->computed_screen_rect =
         (Rect2){.min = V2(0, 0), .max = state->canvas_size};
@@ -396,4 +409,12 @@ void SetWidgetSize(Vec2 size) {
   UIState *state = GetUIState();
   ASSERT(state->current);
   state->current->size = size;
+}
+
+void SetWidgetText(Str8 text) {
+  UIState *state = GetUIState();
+  ASSERT(state->current);
+
+  Arena *arena = GetBuildArena(state);
+  state->current->text = PushStr8(arena, text);
 }

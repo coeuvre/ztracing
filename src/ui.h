@@ -10,28 +10,13 @@ struct WidgetKey {
   u64 hash;
 };
 
-typedef enum WidgetConstraintType WidgetConstraintType;
-enum WidgetConstraintType {
-  kWidgetConstraintNull,
-  kWidgetConstraintPixels,
-  kWidgetConstraintTextContent,
-  kWidgetConstraintPercentOfParent,
-  kWidgetConstraintChildrenSum,
-};
-
-typedef struct WidgetConstraint WidgetConstraint;
-struct WidgetConstraint {
-  WidgetConstraintType type;
-  f32 value;
-  f32 strickness;
-};
-
 typedef enum WidgetType WidgetType;
 enum WidgetType {
   kWidgetUnknown,
 
   kWidgetContainer,
   kWidgetCenter,
+  kWidgetText,
 };
 
 typedef struct Widget Widget;
@@ -84,5 +69,6 @@ void EndWidget(void);
 WidgetType GetWidgetType(void);
 void SetWidgetColor(u32 color);
 void SetWidgetSize(Vec2 size);
+void SetWidgetText(Str8 text);
 
 #endif  // ZTRACING_SRC_UI_H_

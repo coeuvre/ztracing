@@ -2,8 +2,11 @@
 #define ZTRACING_SRC_MATH_H_
 
 #include <math.h>
+#include <float.h>
 
 #include "src/types.h"
+
+#define F32_MAX FLT_MAX
 
 static inline f32 MaxF32(f32 a, f32 b) {
   f32 result = MAX(a, b);
