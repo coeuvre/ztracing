@@ -13,4 +13,7 @@ void SpaceBar(void);
 
 void TextLine(Str8 text);
 
+void BeginContainer(void);
+void EndContainer(void);
+
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_

@@ -133,11 +133,15 @@ static void CopyBitmapToWindow(Window *window, Bitmap *bitmap) {
 // }
 
 static void DoFrame(void) {
-  BeginStack();
-  TextLine(Str8Literal("Heljo"));
-  SpaceBar();
-  TextLine(Str8Literal(" World!"));
-  EndStack();
+  BeginContainer();
+  SetWidgetColor(0xFFE6573F);
+  EndContainer();
+
+  // BeginStack();
+  // TextLine(Str8Literal("Heljo"));
+  // SpaceBar();
+  // TextLine(Str8Literal(" World!"));
+  // EndStack();
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line,

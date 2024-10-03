@@ -26,6 +26,12 @@ struct WidgetConstraint {
   f32 strickness;
 };
 
+typedef enum WidgetType WidgetType;
+enum WidgetType {
+  kWidgetUnknown,
+  kWidgetContainer,
+};
+
 typedef struct Widget Widget;
 struct Widget {
   // hash links
@@ -44,15 +50,14 @@ struct Widget {
   u64 last_touched_build_index;
 
   // per-frame info provided by builders
-  u32 flags;
+  WidgetType type;
+  u32 color;
   Str8 text;
-  Axis2 layout_axis;
-  WidgetConstraint constraints[kAxis2Count];
 
   // computed every frame
-  f32 computed_rel_pos[kAxis2Count];
-  f32 computed_size[kAxis2Count];
-  Rect2 screen_rect;
+  Vec2 computed_size;
+  Vec2 computed_rel_pos;
+  Rect2 computed_screen_rect;
 
   // persistent data
   f32 hot_t;
@@ -66,17 +71,12 @@ WidgetKey WidgetKeyZero(void);
 WidgetKey WidgetKeyFromStr8(WidgetKey seed, Str8 str);
 b32 EqualWidgetKey(WidgetKey a, WidgetKey b);
 
+b32 MissNextWidgetKey(void);
 Str8 GetNextWidgetKey(void);
 void SetNextWidgetKey(Str8 key);
 
-WidgetConstraint GetNextWidgetConstraint(Axis2 axis);
-void SetNextWidgetConstraint(Axis2 axis, WidgetConstraint constraint);
-
-void SetNextWidgetLayoutAxis(Axis2 axis);
-
-void SetNextWidgetTextContent(Str8 text);
-
-void BeginWidget(void);
+void BeginWidget(Str8 key, WidgetType type);
 void EndWidget(void);
+void SetWidgetColor(u32 color);
 
 #endif  // ZTRACING_SRC_UI_H_
