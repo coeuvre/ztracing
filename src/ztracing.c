@@ -135,8 +135,9 @@ static void CopyBitmapToWindow(Window *window, Bitmap *bitmap) {
 static void DoFrame(void) {
   BeginStack();
   TextLine(Str8Literal("Heljo"));
+  SpaceBar();
   TextLine(Str8Literal(" World!"));
-  BeginStack();
+  EndStack();
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line,

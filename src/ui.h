@@ -50,6 +50,7 @@ struct Widget {
   WidgetConstraint constraints[kAxis2Count];
 
   // computed every frame
+  f32 computed_rel_pos[kAxis2Count];
   f32 computed_size[kAxis2Count];
   Rect2 screen_rect;
 

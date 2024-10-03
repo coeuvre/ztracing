@@ -36,6 +36,7 @@ struct UIState {
 
   // per-frame info
   Arena *build_arena[2];
+  Vec2 canvas_size;
   Widget *current;
   NextWidgetSettings next_widget_settings;
 };
@@ -108,11 +109,11 @@ void BeginUI(void) {
 
   Widget *root = state->root;
   root->first = root->last = 0;
-  Vec2I canvas_size = GetCanvasSize();
+  state->canvas_size = Vec2FromVec2I(GetCanvasSize());
   root->constraints[kAxis2X] = (WidgetConstraint){
-      .type = kWidgetConstraintPixels, .value = canvas_size.x};
+      .type = kWidgetConstraintPixels, .value = state->canvas_size.x};
   root->constraints[kAxis2Y] = (WidgetConstraint){
-      .type = kWidgetConstraintPixels, .value = canvas_size.y};
+      .type = kWidgetConstraintPixels, .value = state->canvas_size.y};
 
   state->current = state->root;
 
@@ -148,14 +149,65 @@ static void CalcStandaloneSize(UIState *state) {
   CalcStandaloneSizeR(state, state->root);
 }
 
+static void CalcParentBasedSizeR(UIState *state, Widget *widget) {
+  for (u32 axis = 0; axis < kAxis2Count; ++axis) {
+    WidgetConstraint constraint = widget->constraints[axis];
+    switch (constraint.type) {
+      case kWidgetConstraintPercentOfParent: {
+        widget->computed_size[axis] =
+            widget->parent->computed_size[axis] * constraint.value;
+      } break;
+
+      default: {
+      } break;
+    }
+  }
+
+  for (Widget *child = widget->first; child; child = child->next) {
+    CalcParentBasedSizeR(state, child);
+  }
+}
+
+static void CalcParentBasedSize(UIState *state) {
+  CalcParentBasedSizeR(state, state->root);
+}
+
 static void CalcScreenRectR(UIState *state, Widget *widget, Vec2 min) {
+  {
+    u32 layout_axis = widget->layout_axis;
+    f32 total = widget->computed_size[layout_axis];
+    f32 childen_total = 0.0f;
+    for (Widget *child = widget->first; child; child = child->next) {
+      childen_total += child->computed_size[layout_axis];
+    }
+    f32 extra = childen_total - total;
+    if (extra < 0.0f) {
+      extra = 0.0f;
+    }
+
+    f32 offset = 0.0f;
+    for (Widget *child = widget->first; child; child = child->next) {
+      child->computed_rel_pos[layout_axis] = offset;
+      {
+        f32 size = child->computed_size[layout_axis];
+        f32 min_size = size * child->constraints[layout_axis].strickness;
+        f32 new_size = size - extra;
+        child->computed_size[layout_axis] = MAX(new_size, min_size);
+        extra -= size - child->computed_size[layout_axis];
+      }
+      offset += child->computed_size[layout_axis];
+    }
+  }
+
   widget->screen_rect.min = min;
   widget->screen_rect.max = AddVec2(min, Vec2FromArray(widget->computed_size));
 
-  // DrawRect(widget->screen_rect.min, widget->screen_rect.max, 0x00FF00FF);
   if (!IsEmptyStr8(widget->text)) {
     DrawTextStr8(widget->screen_rect.min, widget->text, kDefaultTextHeight);
   }
+
+  DrawRectLine(widget->screen_rect.min, widget->screen_rect.max, 0x00FF00FF,
+               1.0);
 
   for (Widget *child = widget->first; child; child = child->next) {
     CalcScreenRectR(state, child, min);
@@ -172,13 +224,8 @@ void EndUI(void) {
   UIState *state = GetUIState();
 
   CalcStandaloneSize(state);
-
-  // Second pass: calculate upwards-dependent sizes.
-
+  CalcParentBasedSize(state);
   // Third pass: calculate downwards-dependent sizes.
-
-  // Fourth pass: solve violations.
-
   CalcScreenRect(state);
 
   state->build_index++;

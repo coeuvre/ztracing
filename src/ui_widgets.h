@@ -9,6 +9,8 @@ void EndGroup(void);
 void BeginStack(void);
 void EndStack(void);
 
+void SpaceBar(void);
+
 void TextLine(Str8 text);
 
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_

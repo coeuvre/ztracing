@@ -12,6 +12,4 @@ struct Bitmap {
 Bitmap *InitSoftwareRenderer(void);
 void ResizeSoftwareRenderer(Vec2I size);
 
-Bitmap *PushBitmap(Arena *arena, Vec2I size);
-
 #endif  // ZTRACING_SRC_DRAW_SOFTWARE_H_

@@ -16,6 +16,15 @@ Arena *framebuffer_arena;
 Bitmap *framebuffer;
 stbtt_fontinfo font;
 
+static Bitmap *PushBitmap(Arena *arena, Vec2I size) {
+  Bitmap *bitmap = PushArray(arena, Bitmap, 1);
+  if (size.x > 0 && size.y > 0) {
+    bitmap->pixels = PushArray(arena, u32, size.x * size.y);
+    bitmap->size = size;
+  }
+  return bitmap;
+}
+
 Bitmap *InitSoftwareRenderer(void) {
   i32 ret =
       stbtt_InitFont(&font, JetBrainsMono_Regular_ttf,
@@ -142,15 +151,6 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height) {
   EndScratch(scratch);
 }
 
-Bitmap *PushBitmap(Arena *arena, Vec2I size) {
-  Bitmap *bitmap = PushArray(arena, Bitmap, 1);
-  if (size.x > 0 && size.y > 0) {
-    bitmap->pixels = PushArray(arena, u32, size.x * size.y);
-    bitmap->size = size;
-  }
-  return bitmap;
-}
-
 void DrawRect(Vec2 min, Vec2 max, u32 color) {
   Bitmap *bitmap = framebuffer;
   Vec2 fb_min = {0.0f, 0.0f};
@@ -167,4 +167,12 @@ void DrawRect(Vec2 min, Vec2 max, u32 color) {
       row[x] = color;
     }
   }
+}
+
+void DrawRectLine(Vec2 min, Vec2 max, u32 color, f32 thickness) {
+  DrawRect(min, V2(max.x, min.y + thickness), color);
+  DrawRect(V2(min.x, min.y + thickness), V2(min.x + thickness, max.y), color);
+  DrawRect(V2(max.x - thickness, min.y + thickness), V2(max.x, max.y), color);
+  DrawRect(V2(min.x + thickness, max.y - thickness),
+           V2(max.x - thickness, max.y), color);
 }

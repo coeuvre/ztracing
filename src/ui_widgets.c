@@ -39,6 +39,21 @@ void BeginStack(void) {
 
 void EndStack(void) { EndWidget(); }
 
+void SpaceBar(void) {
+  if (IsEmptyStr8(GetNextWidgetKey())) {
+    SetNextWidgetKey(Str8Literal("SpaceBar"));
+  }
+  for (u32 axis = 0; axis < kAxis2Count; ++axis) {
+    if (!GetNextWidgetConstraint(axis).type) {
+      SetNextWidgetConstraint(
+          axis, (WidgetConstraint){.type = kWidgetConstraintPercentOfParent,
+                                   .value = 1.0f});
+    }
+  }
+  BeginWidget();
+  EndWidget();
+}
+
 void TextLine(Str8 text) {
   if (IsEmptyStr8(GetNextWidgetKey())) {
     SetNextWidgetKey(text);
@@ -46,7 +61,8 @@ void TextLine(Str8 text) {
   for (u32 axis = 0; axis < kAxis2Count; ++axis) {
     if (!GetNextWidgetConstraint(axis).type) {
       SetNextWidgetConstraint(
-          axis, (WidgetConstraint){.type = kWidgetConstraintTextContent});
+          axis, (WidgetConstraint){.type = kWidgetConstraintTextContent,
+                                   .strickness = 1.0f});
     }
   }
   SetNextWidgetTextContent(text);
