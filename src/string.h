@@ -14,7 +14,7 @@ struct Str8 {
   usize len;
 };
 
-#define Str8Literal(s) \
+#define STR8_LIT(s) \
   (Str8) { (u8 *)(s), sizeof(s) - 1 }
 
 static inline b32 IsEmptyStr8(Str8 str) {

@@ -134,32 +134,47 @@ static void CopyBitmapToWindow(Window *window, Bitmap *bitmap) {
 // }
 
 static void DoFrame(void) {
-  UIBeginRow(Str8Literal("Row"));
+  UIBeginColumn(STR8_LIT("Root"));
   {
-    UIBeginContainer(Str8Literal("Container1"));
-    UISetColor(0xFFE6573F);
-    UISetFlex(1.0f);
+    UIBeginRow(STR8_LIT("Menu"));
     {
-      UIText(Str8Literal("This is a very long text that won't fit the line."));
-    }
-    UIEndContainer();
+      UISetSize(V2(kUISizeUndefined, 21.0f));
+      UISetCrossAxisAlignment(kUICrossAxisAlignCenter);
+      UISetColor(0xFF5EAC57);
 
-    UIBeginContainer(Str8Literal("Container2"));
-    UISetColor(0xFF5EAC57);
-    {
-      UIBeginContainer(Str8Literal("C"));
-      UIText(Str8Literal("World")); 
-      UIEndContainer();
+      UIBeginRow(STR8_LIT("Left"));
+      {
+        UIBeginBox(STR8_LIT("B1"));
+        {
+          UISetColor(0xFFE6573F);
+          UIText(STR8_LIT("Load"));
+        }
+        UIEndBox();
+
+        UIBeginBox(STR8_LIT("B2"));
+        {
+          UISetColor(0xFFE6573F);
+          UIText(STR8_LIT("About"));
+        }
+        UIEndBox();
+      }
+      UIEndRow();
+
+      UIBeginBox(STR8_LIT("Space"));
+      { UISetFlex(1.0f); }
+      UIEndBox();
+
+      UIBeginRow(STR8_LIT("Right"));
+      {
+        UIBeginBox(STR8_LIT("Right"));
+        { UIText(STR8_LIT("FPS")); }
+        UIEndBox();
+      }
+      UIEndRow();
     }
-    UIEndContainer();
+    UIEndRow();
   }
-  UIEndRow();
-
-  // BeginStack();
-  // TextLine(Str8Literal("Heljo"));
-  // SpaceBar();
-  // TextLine(Str8Literal(" World!"));
-  // EndStack();
+  UIEndColumn();
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line,

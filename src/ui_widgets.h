@@ -11,10 +11,6 @@ static inline void UIText(Str8 text) {
   UIEndBox();
 }
 
-static inline void UIBeginContainer(Str8 key) { UIBeginBox(key); }
-
-static inline void UIEndContainer(void) { UIEndBox(); }
-
 static inline void UIBeginCenter(Str8 key) {
   UIBeginBox(key);
   UISetMainAxisAlignment(kUIMainAxisAlignCenter);

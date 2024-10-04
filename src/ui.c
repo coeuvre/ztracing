@@ -165,7 +165,7 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
   Vec2 self_size = V2(0, 0);
   Vec2 child_max_size = max_size;
   for (u32 axis = 0; axis < kAxis2Count; ++axis) {
-    if (box->build.size.v[axis] != UI_SIZE_UNDEFINDED) {
+    if (box->build.size.v[axis] != kUISizeUndefined) {
       // If widget has specific size, use that as constraint for children and
       // size itself within the constraint.
       child_max_size.v[axis] = box->build.size.v[axis];
@@ -174,7 +174,7 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
     } else {
       // Otherwise, pass down the constraint to children and ...
       child_max_size.v[axis] = max_size.v[axis];
-      if (max_size.v[axis] >= UI_SIZE_MAX) {
+      if (max_size.v[axis] >= kUISizeMax) {
         // ... if constraint is unbounded, make widget as small as possible.
         self_size.v[axis] = min_size.v[axis];
       } else {
@@ -199,7 +199,7 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
       total_flex += child->build.flex;
       if (!child->build.flex) {
         Vec2 max_size;
-        max_size.v[main_axis] = UI_SIZE_MAX;
+        max_size.v[main_axis] = kUISizeMax;
         max_size.v[cross_axis] = child_max_size.v[cross_axis];
         LayoutBox(state, child, V2(0, 0), max_size);
         child_main_axis_size += child->computed_size.v[main_axis];
@@ -242,7 +242,7 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
   for (u32 axis = 0; axis < kAxis2Count; ++axis) {
     // If widget doesn't have specific size but has child, size itself
     // around the child.
-    if (!box->build.size.v[axis] && child_size.v[axis] != UI_SIZE_UNDEFINDED) {
+    if (!box->build.size.v[axis] && child_size.v[axis] != kUISizeUndefined) {
       box->computed_size.v[axis] = MinF32(
           MaxF32(child_size.v[axis], min_size.v[axis]), max_size.v[axis]);
     } else {

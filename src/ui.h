@@ -5,8 +5,8 @@
 #include "src/string.h"
 #include "src/types.h"
 
-#define UI_SIZE_MAX F32_MAX
-#define UI_SIZE_UNDEFINDED 0
+#define kUISizeMax F32_MAX
+#define kUISizeUndefined 0
 
 typedef struct UIKey {
   u64 hash;
