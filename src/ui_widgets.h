@@ -5,36 +5,36 @@
 #include "src/string.h"
 #include "src/ui.h"
 
-static inline void Text(Str8 text) {
-  BeginWidget(text);
-  SetWidgetText(text);
-  EndWidget();
+static inline void UIText(Str8 text) {
+  UIBeginBox(text);
+  UISetText(text);
+  UIEndBox();
 }
 
-static inline void BeginContainer(Str8 key) { BeginWidget(key); }
+static inline void UIBeginContainer(Str8 key) { UIBeginBox(key); }
 
-static inline void EndContainer(void) { EndWidget(); }
+static inline void UIEndContainer(void) { UIEndBox(); }
 
-static inline void BeginCenter(Str8 key) {
-  BeginWidget(key);
+static inline void UIBeginCenter(Str8 key) {
+  UIBeginBox(key);
   UISetMainAxisAlignment(kUIAlignCenter);
   UISetCrossAxisAlignment(kUIAlignCenter);
 }
 
-static inline void EndCenter(void) { EndWidget(); }
+static inline void UIEndCenter(void) { UIEndBox(); }
 
-static inline void BeginRow(Str8 key) {
-  BeginWidget(key);
+static inline void UIBeginRow(Str8 key) {
+  UIBeginBox(key);
   UISetMainAxis(kAxis2X);
 }
 
-static inline void EndRow() { EndWidget(); }
+static inline void UIEndRow() { UIEndBox(); }
 
-static inline void BeginColumn(Str8 key) {
-  BeginWidget(key);
+static inline void UIBeginColumn(Str8 key) {
+  UIBeginBox(key);
   UISetMainAxis(kAxis2Y);
 }
 
-static inline void EndColumn() { EndWidget(); }
+static inline void UIEndColumn() { UIEndBox(); }
 
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_

@@ -134,19 +134,21 @@ static void CopyBitmapToWindow(Window *window, Bitmap *bitmap) {
 // }
 
 static void DoFrame(void) {
-  BeginRow(Str8Literal("Row"));
+  UIBeginRow(Str8Literal("Row"));
   {
-    BeginContainer(Str8Literal("Container1"));
-    SetWidgetColor(0xFFE6573F);
-    { Text(Str8Literal("This is a very long text that won't fit the line.")); }
-    EndContainer();
+    UIBeginContainer(Str8Literal("Container1"));
+    UISetColor(0xFFE6573F);
+    {
+      UIText(Str8Literal("This is a very long text that won't fit the line."));
+    }
+    UIEndContainer();
 
-    BeginContainer(Str8Literal("Container2"));
-    SetWidgetColor(0xFF5EAC57);
-    { Text(Str8Literal("World")); }
-    EndContainer();
+    UIBeginContainer(Str8Literal("Container2"));
+    UISetColor(0xFF5EAC57);
+    { UIText(Str8Literal("World")); }
+    UIEndContainer();
   }
-  EndRow();
+  UIEndRow();
 
   // BeginStack();
   // TextLine(Str8Literal("Heljo"));
@@ -181,9 +183,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line,
 
     ClearCanvas();
 
-    BeginUI();
+    UIBeginFrame();
     DoFrame();
-    EndUI();
+    UIEndFrame();
 
     CopyBitmapToWindow(&window, framebuffer);
   }

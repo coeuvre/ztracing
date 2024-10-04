@@ -5,9 +5,11 @@
 #include "src/string.h"
 #include "src/types.h"
 
-typedef struct WidgetKey {
+#define UI_SIZE_MAX F32_MAX
+
+typedef struct UIKey {
   u64 hash;
-} WidgetKey;
+} UIKey;
 
 typedef enum UIAlign {
   kUIAlignStart,
@@ -15,33 +17,33 @@ typedef enum UIAlign {
   kUIAlignCenter,
 } UIAlign;
 
-typedef struct UIWidgetBuildData {
+typedef struct UIBuildData {
   u32 color;
   Vec2 size;
   Str8 text;
   Axis2 main_axis;
   UIAlign aligns[kAxis2Count];
-} UIWidgetBuildData;
+} UIBuildData;
 
-typedef struct Widget Widget;
-struct Widget {
+typedef struct UIBox UIBox;
+struct UIBox {
   // hash links
-  Widget *hash_prev;
-  Widget *hash_next;
+  UIBox *hash_prev;
+  UIBox *hash_next;
 
   // tree links
-  Widget *first;
-  Widget *last;
-  Widget *prev;
-  Widget *next;
-  Widget *parent;
+  UIBox *first;
+  UIBox *last;
+  UIBox *prev;
+  UIBox *next;
+  UIBox *parent;
 
   // key + generation
-  WidgetKey key;
+  UIKey key;
   u64 last_touched_build_index;
 
   // per-frame info provided by builders
-  UIWidgetBuildData build;
+  UIBuildData build;
 
   // computed every frame
   Vec2 computed_size;
@@ -53,19 +55,19 @@ struct Widget {
   f32 active_t;
 };
 
-void BeginUI(void);
-void EndUI(void);
+void UIBeginFrame(void);
+void UIEndFrame(void);
 
-WidgetKey WidgetKeyZero(void);
-WidgetKey WidgetKeyFromStr8(WidgetKey seed, Str8 str);
-b32 EqualWidgetKey(WidgetKey a, WidgetKey b);
+UIKey UIKeyZero(void);
+UIKey UIKeyFromStr8(UIKey seed, Str8 str);
+b32 UIKeyEqual(UIKey a, UIKey b);
 
-void BeginWidget(Str8 key);
-void EndWidget(void);
+void UIBeginBox(Str8 key);
+void UIEndBox(void);
 
-void SetWidgetColor(u32 color);
-void SetWidgetSize(Vec2 size);
-void SetWidgetText(Str8 text);
+void UISetColor(u32 color);
+void UISetSize(Vec2 size);
+void UISetText(Str8 text);
 
 void UISetMainAxis(Axis2 axis);
 void UISetMainAxisAlignment(UIAlign align);
