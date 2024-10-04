@@ -5,19 +5,23 @@
 #include "src/string.h"
 #include "src/types.h"
 
-typedef struct WidgetKey WidgetKey;
-struct WidgetKey {
+typedef struct WidgetKey {
   u64 hash;
-};
+} WidgetKey;
 
-typedef enum WidgetType WidgetType;
-enum WidgetType {
-  kWidgetUnknown,
+typedef enum UIAlign {
+  kUIAlignStart,
+  kUIAlignEnd,
+  kUIAlignCenter,
+} UIAlign;
 
-  kWidgetContainer,
-  kWidgetCenter,
-  kWidgetText,
-};
+typedef struct UIWidgetBuildData {
+  u32 color;
+  Vec2 size;
+  Str8 text;
+  Axis2 main_axis;
+  UIAlign aligns[kAxis2Count];
+} UIWidgetBuildData;
 
 typedef struct Widget Widget;
 struct Widget {
@@ -37,10 +41,7 @@ struct Widget {
   u64 last_touched_build_index;
 
   // per-frame info provided by builders
-  WidgetType type;
-  u32 color;
-  Vec2 size;
-  Str8 text;
+  UIWidgetBuildData build;
 
   // computed every frame
   Vec2 computed_size;
@@ -59,16 +60,15 @@ WidgetKey WidgetKeyZero(void);
 WidgetKey WidgetKeyFromStr8(WidgetKey seed, Str8 str);
 b32 EqualWidgetKey(WidgetKey a, WidgetKey b);
 
-b32 MissNextWidgetKey(void);
-Str8 GetNextWidgetKey(void);
-void SetNextWidgetKey(Str8 key);
-
-void BeginWidget(Str8 key, WidgetType type);
+void BeginWidget(Str8 key);
 void EndWidget(void);
 
-WidgetType GetWidgetType(void);
 void SetWidgetColor(u32 color);
 void SetWidgetSize(Vec2 size);
 void SetWidgetText(Str8 text);
+
+void UISetMainAxis(Axis2 axis);
+void UISetMainAxisAlignment(UIAlign align);
+void UISetCrossAxisAlignment(UIAlign align);
 
 #endif  // ZTRACING_SRC_UI_H_

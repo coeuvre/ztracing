@@ -134,16 +134,19 @@ static void CopyBitmapToWindow(Window *window, Bitmap *bitmap) {
 // }
 
 static void DoFrame(void) {
-  BeginCenter(Str8Literal("Center"));
+  BeginRow(Str8Literal("Row"));
   {
-    BeginContainer(Str8Literal("Container"));
+    BeginContainer(Str8Literal("Container1"));
     SetWidgetColor(0xFFE6573F);
-    SetWidgetSize(V2(100, 100));
-    { Text(Str8Literal("Heljo")); }
+    { Text(Str8Literal("This is a very long text that won't fit the line.")); }
+    EndContainer();
+
+    BeginContainer(Str8Literal("Container2"));
+    SetWidgetColor(0xFF5EAC57);
+    { Text(Str8Literal("World")); }
     EndContainer();
   }
-
-  EndCenter();
+  EndRow();
 
   // BeginStack();
   // TextLine(Str8Literal("Heljo"));
