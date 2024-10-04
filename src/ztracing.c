@@ -137,37 +137,31 @@ static void DoFrame(void) {
   UIBeginColumn(STR8_LIT("Root"));
   {
     UIBeginRow(STR8_LIT("Menu"));
+    UISetSize(V2(kUISizeUndefined, 21.0f));
+    UISetColor(0xFF5EAC57);
     {
-      UISetSize(V2(kUISizeUndefined, 21.0f));
-      UISetCrossAxisAlignment(kUICrossAxisAlignCenter);
-      UISetColor(0xFF5EAC57);
-
       UIBeginRow(STR8_LIT("Left"));
       {
-        UIBeginBox(STR8_LIT("B1"));
-        {
-          UISetColor(0xFFE6573F);
-          UIText(STR8_LIT("Load"));
-        }
+        UIBeginBox(STR8_LIT("Load"));
+        UISetColor(0xFFE6573F);
+        UISetText(STR8_LIT("Load"));
         UIEndBox();
 
-        UIBeginBox(STR8_LIT("B2"));
-        {
-          UISetColor(0xFFE6573F);
-          UIText(STR8_LIT("About"));
-        }
+        UIBeginBox(STR8_LIT("About"));
+        UISetColor(0xFFE6573F);
+        UISetText(STR8_LIT("About"));
         UIEndBox();
       }
       UIEndRow();
 
       UIBeginBox(STR8_LIT("Space"));
-      { UISetFlex(1.0f); }
+      UISetFlex(1.0f);
       UIEndBox();
 
       UIBeginRow(STR8_LIT("Right"));
       {
         UIBeginBox(STR8_LIT("Right"));
-        { UIText(STR8_LIT("FPS")); }
+        UISetText(STR8_LIT("FPS"));
         UIEndBox();
       }
       UIEndRow();

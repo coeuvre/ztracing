@@ -1,8 +1,8 @@
 #ifndef ZTRACING_SRC_MATH_H_
 #define ZTRACING_SRC_MATH_H_
 
-#include <math.h>
 #include <float.h>
+#include <math.h>
 
 #include "src/types.h"
 
@@ -45,6 +45,20 @@ static inline Vec2 AddVec2(Vec2 a, Vec2 b) {
   Vec2 result;
   result.x = a.x + b.x;
   result.y = a.y + b.y;
+  return result;
+}
+
+static inline Vec2 SubVec2(Vec2 a, Vec2 b) {
+  Vec2 result;
+  result.x = a.x - b.x;
+  result.y = a.y - b.y;
+  return result;
+}
+
+static inline Vec2 MulVec2(Vec2 a, f32 b) {
+  Vec2 result;
+  result.x = a.x * b;
+  result.y = a.y * b;
   return result;
 }
 

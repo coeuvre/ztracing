@@ -57,6 +57,7 @@ struct UIBox {
   // computed every frame
   Vec2 computed_size;
   Vec2 computed_rel_pos;
+  Vec2 computed_text_size;
   Rect2 computed_screen_rect;
 
   // persistent data

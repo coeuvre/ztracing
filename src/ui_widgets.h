@@ -5,12 +5,6 @@
 #include "src/string.h"
 #include "src/ui.h"
 
-static inline void UIText(Str8 text) {
-  UIBeginBox(text);
-  UISetText(text);
-  UIEndBox();
-}
-
 static inline void UIBeginCenter(Str8 key) {
   UIBeginBox(key);
   UISetMainAxisAlignment(kUIMainAxisAlignCenter);
