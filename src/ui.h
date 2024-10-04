@@ -22,9 +22,11 @@ typedef enum UICrossAxisAlign {
   kUICrossAxisAlignStart,
   kUICrossAxisAlignEnd,
   kUICrossAxisAlignCenter,
+  kUICrossAxisAlignStretch,
 } UICrossAxisAlign;
 
 typedef struct UIBuildData {
+  Str8 key_str;
   u32 color;
   Vec2 size;
   Str8 text;
@@ -33,6 +35,18 @@ typedef struct UIBuildData {
   UIMainAxisAlign main_axis_align;
   UICrossAxisAlign cross_axis_align;
 } UIBuildData;
+
+typedef struct UIComputedData {
+  Vec2 min_size;
+  Vec2 max_size;
+  b32 unbounded;
+
+  Vec2 size;
+  Vec2 rel_pos;
+  Vec2 text_size;
+
+  Rect2 screen_rect;
+} UIComputedData;
 
 typedef struct UIBox UIBox;
 struct UIBox {
@@ -55,10 +69,7 @@ struct UIBox {
   UIBuildData build;
 
   // computed every frame
-  Vec2 computed_size;
-  Vec2 computed_rel_pos;
-  Vec2 computed_text_size;
-  Rect2 computed_screen_rect;
+  UIComputedData computed;
 
   // persistent data
   f32 hot_t;
@@ -67,6 +78,7 @@ struct UIBox {
 
 void UIBeginFrame(void);
 void UIEndFrame(void);
+void UIRender(void);
 
 UIKey UIKeyZero(void);
 UIKey UIKeyFromStr8(UIKey seed, Str8 str);

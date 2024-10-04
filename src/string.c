@@ -1,5 +1,7 @@
 #include "src/string.h"
 
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "src/assert.h"
@@ -10,6 +12,33 @@ Str8 PushStr8(Arena *arena, Str8 str) {
   u8 *ptr = PushArrayNoZero(arena, u8, str.len + 1);
   memcpy(ptr, str.ptr, str.len + 1);
   Str8 result = {ptr, str.len};
+  return result;
+}
+
+Str8 PushStr8F(Arena *arena, const char *format, ...) {
+  usize kInitBufferSize = 256;
+  usize buf_len = kInitBufferSize;
+  char *buf_ptr = PushArray(arena, char, buf_len);
+
+  va_list args;
+  va_start(args, format);
+  usize str_len = vsnprintf(buf_ptr, buf_len, format, args);
+  va_end(args);
+
+  if (str_len + 1 <= buf_len) {
+    // Free the unused part of the buffer.
+    PopArena(arena, buf_len - str_len - 1);
+  } else {
+    // The buffer was too small. We need to resize it and try again.
+    PopArena(arena, buf_len);
+    buf_len = str_len + 1;
+    buf_ptr = PushArray(arena, char, buf_len);
+    va_start(args, format);
+    vsnprintf(buf_ptr, buf_len, format, args);
+    va_end(args);
+  }
+
+  Str8 result = {(u8 *)buf_ptr, str_len};
   return result;
 }
 

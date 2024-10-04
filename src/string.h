@@ -23,6 +23,7 @@ static inline b32 IsEmptyStr8(Str8 str) {
 }
 
 Str8 PushStr8(Arena *arena, Str8 str);
+Str8 PushStr8F(Arena *arena, const char *format, ...);
 
 typedef struct Str32 Str32;
 struct Str32 {

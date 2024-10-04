@@ -141,6 +141,7 @@ static void DoFrame(void) {
     UISetColor(0xFF5EAC57);
     {
       UIBeginRow(STR8_LIT("Left"));
+      UISetCrossAxisAlignment(kUICrossAxisAlignStretch);
       {
         UIBeginBox(STR8_LIT("Load"));
         UISetColor(0xFFE6573F);
@@ -159,6 +160,7 @@ static void DoFrame(void) {
       UIEndBox();
 
       UIBeginRow(STR8_LIT("Right"));
+      UISetCrossAxisAlignment(kUICrossAxisAlignStretch);
       {
         UIBeginBox(STR8_LIT("Right"));
         UISetText(STR8_LIT("FPS"));
@@ -167,6 +169,10 @@ static void DoFrame(void) {
       UIEndRow();
     }
     UIEndRow();
+
+    UIBeginBox(STR8_LIT("Main"));
+    UISetText(STR8_LIT("Main"));
+    UIEndBox();
   }
   UIEndColumn();
 }
@@ -200,6 +206,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line,
     UIBeginFrame();
     DoFrame();
     UIEndFrame();
+    UIRender();
 
     CopyBitmapToWindow(&window, framebuffer);
   }

@@ -155,8 +155,7 @@ union Rect2 {
 };
 
 static inline f32 ClampF32(f32 value, f32 min, f32 max) {
-  f32 result = MAX(value, min);
-  result = MIN(value, max);
+  f32 result = MinF32(MaxF32(value, min), max);
   return result;
 }
 
