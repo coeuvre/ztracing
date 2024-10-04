@@ -107,20 +107,20 @@ void UIBeginFrame(void) {
 
 const f32 kDefaultTextHeight = 16;
 
-static void AlignMainAxis(UIBox *box, Axis2 axis, UIAlign align,
+static void AlignMainAxis(UIBox *box, Axis2 axis, UIMainAxisAlign align,
                           f32 children_size) {
   // TODO: Handle padding.
   f32 free = box->computed_size.v[axis] - children_size;
   f32 pos = 0.0f;
   switch (align) {
-    case kUIAlignStart: {
+    case kUIMainAxisAlignStart: {
     } break;
 
-    case kUIAlignCenter: {
+    case kUIMainAxisAlignCenter: {
       pos = free / 2.0;
     } break;
 
-    case kUIAlignEnd: {
+    case kUIMainAxisAlignEnd: {
       pos = free;
     } break;
 
@@ -135,30 +135,28 @@ static void AlignMainAxis(UIBox *box, Axis2 axis, UIAlign align,
   }
 }
 
-static void AlignCrossAxis(UIBox *box, Axis2 axis, UIAlign align,
-                           f32 children_size) {
+static void AlignCrossAxis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
   // TODO: Handle padding.
-  f32 free = box->computed_size.v[axis] - children_size;
-  f32 pos = 0.0f;
-  switch (align) {
-    case kUIAlignStart: {
-    } break;
-
-    case kUIAlignCenter: {
-      pos = free / 2.0;
-    } break;
-
-    case kUIAlignEnd: {
-      pos = free;
-    } break;
-
-    default: {
-      UNREACHABLE;
-    } break;
-  }
-
   for (UIBox *child = box->first; child; child = child->next) {
-    child->computed_rel_pos.v[axis] = pos;
+    switch (align) {
+      case kUICrossAxisAlignStart: {
+        child->computed_rel_pos.v[axis] = 0.0f;
+      } break;
+
+      case kUICrossAxisAlignCenter: {
+        child->computed_rel_pos.v[axis] =
+            (box->computed_size.v[axis] - child->computed_size.v[axis]) / 2.0f;
+      } break;
+
+      case kUICrossAxisAlignEnd: {
+        child->computed_rel_pos.v[axis] =
+            box->computed_size.v[axis] - child->computed_size.v[axis];
+      } break;
+
+      default: {
+        UNREACHABLE;
+      } break;
+    }
   }
 }
 
@@ -167,14 +165,15 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
   Vec2 self_size = V2(0, 0);
   Vec2 child_max_size = max_size;
   for (u32 axis = 0; axis < kAxis2Count; ++axis) {
-    if (box->build.size.v[axis]) {
-      // If widget has specific size, cap it within constraint and use that
-      // as constraint for child.
+    if (box->build.size.v[axis] != UI_SIZE_UNDEFINDED) {
+      // If widget has specific size, use that as constraint for children and
+      // size itself within the constraint.
+      child_max_size.v[axis] = box->build.size.v[axis];
       self_size.v[axis] =
           MaxF32(MinF32(max_size.x, box->build.size.v[axis]), min_size.v[axis]);
-      child_max_size.v[axis] = box->build.size.v[axis];
     } else {
-      // Otherwise, pass down the constraint and ...
+      // Otherwise, pass down the constraint to children and ...
+      child_max_size.v[axis] = max_size.v[axis];
       if (max_size.v[axis] >= UI_SIZE_MAX) {
         // ... if constraint is unbounded, make widget as small as possible.
         self_size.v[axis] = min_size.v[axis];
@@ -182,43 +181,78 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
         // Otherwise, make widget as large as possible.
         self_size.v[axis] = max_size.v[axis];
       }
-      child_max_size.v[axis] = max_size.v[axis];
     }
   }
 
-  // TODO: handle padding and margin.
-  Vec2 child_size = V2(0, 0);
-  if (box->first) {
-    for (UIBox *child = box->first; child; child = child->next) {
-      LayoutBox(state, child, V2(0, 0), child_max_size);
+  Axis2 main_axis = box->build.main_axis;
+  Axis2 cross_axis = (main_axis + 1) % kAxis2Count;
 
-      // Row direction
-      // TODO: Column direction
-      child->computed_rel_pos.x = child_size.x;
-      child_size.x += child->computed_size.x;
-      child_size.y = MaxF32(child_size.y, child->computed_size.y);
+  // TODO: handle padding and margin.
+  f32 child_main_axis_size = 0.0f;
+  f32 child_cross_axis_max = 0.0f;
+  if (box->first) {
+    f32 total_flex = 0;
+
+    // First pass: layout non-flex children
+    for (UIBox *child = box->first; child; child = child->next) {
+      // If child doesn't have flex, doesn't apply any constraint on the child.
+      total_flex += child->build.flex;
+      if (!child->build.flex) {
+        Vec2 max_size;
+        max_size.v[main_axis] = UI_SIZE_MAX;
+        max_size.v[cross_axis] = child_max_size.v[cross_axis];
+        LayoutBox(state, child, V2(0, 0), max_size);
+        child_main_axis_size += child->computed_size.v[main_axis];
+        child_cross_axis_max =
+            MaxF32(child_cross_axis_max, child->computed_size.v[cross_axis]);
+      }
+    }
+
+    f32 child_main_axis_free =
+        child_max_size.v[main_axis] - child_main_axis_size;
+    // Second pass: layout flex children
+    for (UIBox *child = box->first; child; child = child->next) {
+      if (child->build.flex) {
+        Vec2 max_size;
+        max_size.v[main_axis] =
+            child->build.flex / total_flex * child_main_axis_free;
+        max_size.v[cross_axis] = child_max_size.v[cross_axis];
+        Vec2 min_size;
+        min_size.v[main_axis] = max_size.v[main_axis];
+        min_size.v[cross_axis] = 0.0f;
+        LayoutBox(state, child, min_size, max_size);
+        child_main_axis_size += child->computed_size.v[main_axis];
+        child_cross_axis_max =
+            MaxF32(child_cross_axis_max, child->computed_size.v[cross_axis]);
+      }
     }
   } else if (!IsEmptyStr8(box->build.text)) {
     // TODO: constraint text size within [(0, 0), child_max_size]
     TextMetrics metrics =
         GetTextMetricsStr8(box->build.text, kDefaultTextHeight);
-    child_size = MinVec2(metrics.size, child_max_size);
+    Vec2 text_size = MinVec2(metrics.size, child_max_size);
+    child_main_axis_size = text_size.v[main_axis];
+    child_cross_axis_max = text_size.v[cross_axis];
   }
+
+  Vec2 child_size;
+  child_size.v[main_axis] = child_main_axis_size;
+  child_size.v[cross_axis] = child_cross_axis_max;
 
   for (u32 axis = 0; axis < kAxis2Count; ++axis) {
     // If widget doesn't have specific size but has child, size itself
     // around the child.
-    if (!box->build.size.v[axis] && child_size.v[axis]) {
-      box->computed_size.v[axis] = MaxF32(child_size.v[axis], min_size.v[axis]);
+    if (!box->build.size.v[axis] && child_size.v[axis] != UI_SIZE_UNDEFINDED) {
+      box->computed_size.v[axis] = MinF32(
+          MaxF32(child_size.v[axis], min_size.v[axis]), max_size.v[axis]);
     } else {
       box->computed_size.v[axis] = self_size.v[axis];
     }
   }
 
-  Axis2 main = box->build.main_axis;
-  Axis2 cross = (main + 1) % kAxis2Count;
-  AlignMainAxis(box, main, box->build.aligns[main], child_size.v[main]);
-  AlignCrossAxis(box, cross, box->build.aligns[cross], child_size.v[cross]);
+  AlignMainAxis(box, main_axis, box->build.main_axis_align,
+                child_main_axis_size);
+  AlignCrossAxis(box, cross_axis, box->build.cross_axis_align);
 }
 
 static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos) {
@@ -338,17 +372,23 @@ void UISetMainAxis(Axis2 axis) {
   state->current->build.main_axis = axis;
 }
 
-void UISetMainAxisAlignment(UIAlign align) {
+void UISetMainAxisAlignment(UIMainAxisAlign main_axis_align) {
   UIState *state = GetUIState();
   ASSERT(state->current);
 
-  state->current->build.aligns[state->current->build.main_axis] = align;
+  state->current->build.main_axis_align = main_axis_align;
 }
 
-void UISetCrossAxisAlignment(UIAlign align) {
+void UISetCrossAxisAlignment(UICrossAxisAlign cross_axis_align) {
   UIState *state = GetUIState();
   ASSERT(state->current);
 
-  state->current->build
-      .aligns[(state->current->build.main_axis + 1) % kAxis2Count] = align;
+  state->current->build.cross_axis_align = cross_axis_align;
+}
+
+void UISetFlex(f32 flex) {
+  UIState *state = GetUIState();
+  ASSERT(state->current);
+
+  state->current->build.flex = flex;
 }

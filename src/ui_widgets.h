@@ -17,8 +17,8 @@ static inline void UIEndContainer(void) { UIEndBox(); }
 
 static inline void UIBeginCenter(Str8 key) {
   UIBeginBox(key);
-  UISetMainAxisAlignment(kUIAlignCenter);
-  UISetCrossAxisAlignment(kUIAlignCenter);
+  UISetMainAxisAlignment(kUIMainAxisAlignCenter);
+  UISetCrossAxisAlignment(kUICrossAxisAlignCenter);
 }
 
 static inline void UIEndCenter(void) { UIEndBox(); }

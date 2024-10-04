@@ -6,23 +6,32 @@
 #include "src/types.h"
 
 #define UI_SIZE_MAX F32_MAX
+#define UI_SIZE_UNDEFINDED 0
 
 typedef struct UIKey {
   u64 hash;
 } UIKey;
 
-typedef enum UIAlign {
-  kUIAlignStart,
-  kUIAlignEnd,
-  kUIAlignCenter,
-} UIAlign;
+typedef enum UIMainAxisAlign {
+  kUIMainAxisAlignStart,
+  kUIMainAxisAlignEnd,
+  kUIMainAxisAlignCenter,
+} UIMainAxisAlign;
+
+typedef enum UICrossAxisAlign {
+  kUICrossAxisAlignStart,
+  kUICrossAxisAlignEnd,
+  kUICrossAxisAlignCenter,
+} UICrossAxisAlign;
 
 typedef struct UIBuildData {
   u32 color;
   Vec2 size;
   Str8 text;
   Axis2 main_axis;
-  UIAlign aligns[kAxis2Count];
+  f32 flex;
+  UIMainAxisAlign main_axis_align;
+  UICrossAxisAlign cross_axis_align;
 } UIBuildData;
 
 typedef struct UIBox UIBox;
@@ -70,7 +79,8 @@ void UISetSize(Vec2 size);
 void UISetText(Str8 text);
 
 void UISetMainAxis(Axis2 axis);
-void UISetMainAxisAlignment(UIAlign align);
-void UISetCrossAxisAlignment(UIAlign align);
+void UISetMainAxisAlignment(UIMainAxisAlign main_axis_align);
+void UISetCrossAxisAlignment(UICrossAxisAlign cross_axis_align);
+void UISetFlex(f32 flex);
 
 #endif  // ZTRACING_SRC_UI_H_

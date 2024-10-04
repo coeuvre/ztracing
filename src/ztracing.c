@@ -138,6 +138,7 @@ static void DoFrame(void) {
   {
     UIBeginContainer(Str8Literal("Container1"));
     UISetColor(0xFFE6573F);
+    UISetFlex(1.0f);
     {
       UIText(Str8Literal("This is a very long text that won't fit the line."));
     }
@@ -145,7 +146,11 @@ static void DoFrame(void) {
 
     UIBeginContainer(Str8Literal("Container2"));
     UISetColor(0xFF5EAC57);
-    { UIText(Str8Literal("World")); }
+    {
+      UIBeginContainer(Str8Literal("C"));
+      UIText(Str8Literal("World")); 
+      UIEndContainer();
+    }
     UIEndContainer();
   }
   UIEndRow();
