@@ -31,7 +31,7 @@ struct UIState {
   UIBox *current;
 };
 
-UIState g_ui_state;
+thread_local UIState t_ui_state;
 
 UIKey UIKeyZero(void) {
   UIKey result = {0};
@@ -60,7 +60,7 @@ static UIBox *PushBox(Arena *arena) {
 }
 
 static UIState *GetUIState(void) {
-  UIState *state = &g_ui_state;
+  UIState *state = &t_ui_state;
   if (!state->arena) {
     state->arena = AllocArena();
     state->box_hash_slots_count = 4096;
