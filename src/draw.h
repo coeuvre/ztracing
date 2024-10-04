@@ -15,6 +15,7 @@ struct TextMetrics {
 TextMetrics GetTextMetricsStr8(Str8 text, f32 height);
 void DrawTextStr8(Vec2 pos, Str8 text, f32 height);
 
+void ClearCanvas(void);
 void DrawRect(Vec2 min, Vec2 max, u32 color);
 void DrawRectLine(Vec2 min, Vec2 max, u32 color, f32 thickness);
 

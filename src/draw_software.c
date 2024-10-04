@@ -36,10 +36,16 @@ Bitmap *InitSoftwareRenderer(void) {
   return framebuffer;
 }
 
-void ResizeSoftwareRenderer(Vec2I size) {
+Bitmap *ResizeSoftwareRenderer(Vec2I size) {
   FreeArena(framebuffer_arena);
   framebuffer_arena = AllocArena();
   framebuffer = PushBitmap(framebuffer_arena, size);
+  return framebuffer;
+}
+
+void ClearCanvas(void) {
+  ZeroMemory(framebuffer->pixels,
+             framebuffer->size.x * framebuffer->size.y * 4);
 }
 
 static void CopyBitmap(Bitmap *dst, Vec2 pos, Bitmap *src) {

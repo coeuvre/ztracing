@@ -100,6 +100,7 @@ static Arena *GetBuildArena(UIState *state) {
 void BeginUI(void) {
   UIState *state = GetUIState();
 
+  state->build_index += 1;
   state->canvas_size = Vec2FromVec2I(GetCanvasSize());
   state->root = 0;
   state->current = 0;
@@ -330,8 +331,6 @@ void EndUI(void) {
 
     RenderWidget(state, state->root, V2(0, 0));
   }
-
-  state->build_index++;
 }
 
 static Widget *GetWidgetByKey(UIState *state, WidgetKey key) {

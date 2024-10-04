@@ -1,6 +1,7 @@
 #include "src/ztracing.h"
 
 #include "src/assert.h"
+#include "src/draw.h"
 #include "src/draw_software.h"
 #include "src/math.h"
 #include "src/memory.h"
@@ -172,11 +173,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR cmd_line,
     }
     Vec2I window_size = GetWindowSize(&window);
     if (!EqualVec2I(framebuffer->size, window_size)) {
-      ResizeSoftwareRenderer(window_size);
+      framebuffer = ResizeSoftwareRenderer(window_size);
     }
 
-    ZeroMemory(framebuffer->pixels,
-               framebuffer->size.x * framebuffer->size.y * 4);
+    ClearCanvas();
 
     BeginUI();
     DoFrame();
