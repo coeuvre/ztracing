@@ -26,12 +26,12 @@ void InitDrawSDL3(SDL_Window *window, SDL_Renderer *renderer) {
                  stbtt_GetFontOffsetForIndex(JetBrainsMono_Regular_ttf, 0));
 }
 
-f32 GetDrawContentScale(void) {
+f32 GetScreenContentScale(void) {
   f32 result = SDL_GetWindowDisplayScale(g_window);
   return result;
 }
 
-Vec2I GetDrawSizeInPixel(void) {
+Vec2I GetScreenSizeInPixel(void) {
   Vec2I result = {0};
   SDL_GetCurrentRenderOutputSize(g_renderer, &result.x, &result.y);
   return result;

@@ -27,8 +27,10 @@ static inline DrawColor DrawColorFromHex(u32 hex) {
   return result;
 }
 
-f32 GetDrawContentScale(void);
-Vec2I GetDrawSizeInPixel(void);
+// Get the DPI scale of the screen. It's the ratio for (pixels / point).
+f32 GetScreenContentScale(void);
+// Get the screen size in pixel.
+Vec2I GetScreenSizeInPixel(void);
 
 typedef struct TextMetrics TextMetrics;
 struct TextMetrics {

@@ -101,8 +101,8 @@ void UIBeginFrame(void) {
   UIState *state = GetUIState();
 
   state->build_index += 1;
-  state->content_scale = GetDrawContentScale();
-  state->screen_size_in_pixel = Vec2FromVec2I(GetDrawSizeInPixel());
+  state->content_scale = GetScreenContentScale();
+  state->screen_size_in_pixel = Vec2FromVec2I(GetScreenSizeInPixel());
   state->screen_size =
       MulVec2(state->screen_size_in_pixel, 1.0f / state->content_scale);
   state->root = 0;
