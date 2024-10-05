@@ -2,6 +2,7 @@
 #define ZTRACING_SRC_TYPES_H_
 
 #include <stdint.h>
+#include <stddef.h>
 
 #include "src/config.h"
 

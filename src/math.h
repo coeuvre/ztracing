@@ -135,12 +135,11 @@ union Vec4 {
   f32 v[4];
 };
 
-typedef enum Axis2 Axis2;
-enum Axis2 {
+typedef enum Axis2 {
   kAxis2X,
   kAxis2Y,
   kAxis2Count,
-};
+} Axis2;
 
 typedef union Rect2 Rect2;
 union Rect2 {

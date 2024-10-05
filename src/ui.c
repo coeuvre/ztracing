@@ -3,6 +3,7 @@
 #include "src/assert.h"
 #include "src/draw.h"
 #include "src/list.h"
+#include "src/log.h"
 #include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
@@ -26,7 +27,9 @@ struct UIState {
   u64 build_index;
 
   // per-frame info
-  Vec2 canvas_size;
+  f32 content_scale;
+  Vec2 output_size;
+  Vec2 logical_size;
   UIBox *root;
   UIBox *current;
 };
@@ -98,14 +101,17 @@ void UIBeginFrame(void) {
   UIState *state = GetUIState();
 
   state->build_index += 1;
-  state->canvas_size = Vec2FromVec2I(GetCanvasSize());
+  state->content_scale = GetDrawContentScale();
+  state->output_size = Vec2FromVec2I(GetDrawOutputSize());
+  state->logical_size =
+      MulVec2(state->output_size, 1.0f / state->content_scale);
   state->root = 0;
   state->current = 0;
 
   ResetArena(GetBuildArena(state));
 }
 
-const f32 kDefaultTextHeight = 16;
+const f32 kDefaultTextHeight = 16.0f;
 
 static void AlignMainAxis(UIBox *box, Axis2 axis, UIMainAxisAlign align,
                           f32 children_size) {
@@ -285,7 +291,7 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos) {
   Vec2 max = AddVec2(min, box->computed.size);
   box->computed.screen_rect = (Rect2){.min = min, .max = max};
 
-  if (box->build.color) {
+  if (box->build.color.a) {
     DrawRect(min, max, box->build.color);
   }
 
@@ -340,13 +346,13 @@ static void UIDebugPrint(UIState *state) {
 
 void UIEndFrame(void) {
   UIState *state = GetUIState();
-  ASSERT(!state->current && "Mismatched Begin/End calls");
+  ASSERTF(!state->current, "Mismatched Begin/End calls");
 
   if (state->root) {
-    LayoutBox(state, state->root, state->canvas_size, state->canvas_size, 0);
+    LayoutBox(state, state->root, state->logical_size, state->logical_size, 0);
     state->root->computed.rel_pos = V2(0, 0);
     state->root->computed.screen_rect =
-        (Rect2){.min = V2(0, 0), .max = state->canvas_size};
+        (Rect2){.min = V2(0, 0), .max = state->logical_size};
   }
 
   // UIDebugPrint(state);
@@ -419,7 +425,7 @@ void UIEndBox(void) {
   state->current = state->current->parent;
 }
 
-void UISetColor(u32 color) {
+void UISetColor(DrawColor color) {
   UIState *state = GetUIState();
   ASSERT(state->current);
   state->current->build.color = color;

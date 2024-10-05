@@ -1,6 +1,7 @@
 #ifndef ZTRACING_SRC_UI_H_
 #define ZTRACING_SRC_UI_H_
 
+#include "src/draw.h"
 #include "src/math.h"
 #include "src/string.h"
 #include "src/types.h"
@@ -27,7 +28,7 @@ typedef enum UICrossAxisAlign {
 
 typedef struct UIBuildData {
   Str8 key_str;
-  u32 color;
+  DrawColor color;
   Vec2 size;
   Str8 text;
   Axis2 main_axis;
@@ -87,7 +88,7 @@ b32 UIKeyEqual(UIKey a, UIKey b);
 void UIBeginBox(Str8 key);
 void UIEndBox(void);
 
-void UISetColor(u32 color);
+void UISetColor(DrawColor color);
 void UISetSize(Vec2 size);
 void UISetText(Str8 text);
 

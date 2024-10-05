@@ -5,7 +5,30 @@
 #include "src/string.h"
 #include "src/types.h"
 
-Vec2I GetCanvasSize(void);
+typedef struct DrawColor {
+  u8 a;
+  u8 r;
+  u8 g;
+  u8 b;
+} DrawColor;
+
+static inline DrawColor RGBA8(u8 r, u8 g, u8 b, u8 a) {
+  DrawColor result;
+  result.r = r;
+  result.g = g;
+  result.b = b;
+  result.a = a;
+  return result;
+}
+
+static inline DrawColor DrawColorFromHex(u32 hex) {
+  DrawColor result =
+      RGBA8((hex >> 16) & 0xFF, (hex >> 8) & 0xFF, hex & 0xFF, 0xFF);
+  return result;
+}
+
+f32 GetDrawContentScale(void);
+Vec2I GetDrawOutputSize(void);
 
 typedef struct TextMetrics TextMetrics;
 struct TextMetrics {
@@ -15,8 +38,10 @@ struct TextMetrics {
 TextMetrics GetTextMetricsStr8(Str8 text, f32 height);
 void DrawTextStr8(Vec2 pos, Str8 text, f32 height);
 
-void ClearCanvas(void);
-void DrawRect(Vec2 min, Vec2 max, u32 color);
-void DrawRectLine(Vec2 min, Vec2 max, u32 color, f32 thickness);
+void ClearDraw(void);
+void PresentDraw(void);
+
+void DrawRect(Vec2 min, Vec2 max, DrawColor color);
+void DrawRectLine(Vec2 min, Vec2 max, DrawColor color, f32 thickness);
 
 #endif  // ZTRACING_SRC_DRAW_H_

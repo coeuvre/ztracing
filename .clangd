@@ -2,7 +2,7 @@ Diagnostics:
   UnusedIncludes: Strict
   MissingIncludes: Strict
   Includes:
-    IgnoreHeader: [Windows\ Kits.*]
+    IgnoreHeader: [Windows\ Kits.*, SDL3.*]
 CompileFlags:
   Add: [
     -I..,

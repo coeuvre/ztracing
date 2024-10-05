@@ -2,6 +2,7 @@
 #define ZTRACING_SRC_ASSERT_H_
 
 #include "src/config.h"
+#include "src/log.h"
 
 #if COMPILER_MSVC
 #define BreakDebugger() __debugbreak()
@@ -14,8 +15,17 @@
 #define ASSERT(x)      \
   do {                 \
     if (!(x)) {        \
+      ERROR("%s", #x); \
       BreakDebugger(); \
     }                  \
+  } while (0)
+
+#define ASSERTF(x, fmt, ...)              \
+  do {                                    \
+    if (!(x)) {                           \
+      ERROR("%s" fmt, #x, ##__VA_ARGS__); \
+      BreakDebugger();                    \
+    }                                     \
   } while (0)
 
 #if BUILD_DEBUG
@@ -27,4 +37,3 @@
 #define NOT_IMPLEMENTED ASSERT(!"Not Implemented")
 
 #endif  // ZTRACING_SRC_ASSERT_H_
-
