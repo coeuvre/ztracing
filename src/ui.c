@@ -28,8 +28,8 @@ struct UIState {
 
   // per-frame info
   f32 content_scale;
-  Vec2 output_size;
-  Vec2 logical_size;
+  Vec2 screen_size_in_pixel;
+  Vec2 screen_size;
   UIBox *root;
   UIBox *current;
 };
@@ -102,9 +102,9 @@ void UIBeginFrame(void) {
 
   state->build_index += 1;
   state->content_scale = GetDrawContentScale();
-  state->output_size = Vec2FromVec2I(GetDrawOutputSize());
-  state->logical_size =
-      MulVec2(state->output_size, 1.0f / state->content_scale);
+  state->screen_size_in_pixel = Vec2FromVec2I(GetDrawSizeInPixel());
+  state->screen_size =
+      MulVec2(state->screen_size_in_pixel, 1.0f / state->content_scale);
   state->root = 0;
   state->current = 0;
 
@@ -259,9 +259,14 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
     box->computed.text_size = V2(0, 0);
   } else if (!IsEmptyStr8(box->build.text)) {
     // TODO: constraint text size within [(0, 0), child_max_size]
-    TextMetrics metrics =
-        GetTextMetricsStr8(box->build.text, kDefaultTextHeight);
-    Vec2 text_size = MinVec2(metrics.size, child_max_size);
+
+    // Use pixel unit to measure text
+    TextMetrics metrics = GetTextMetricsStr8(
+        box->build.text, kDefaultTextHeight * state->content_scale);
+    Vec2 text_size_in_pixel = metrics.size;
+    Vec2 text_size = MulVec2(text_size_in_pixel, 1.0f / state->content_scale);
+    text_size = MinVec2(text_size, child_max_size);
+
     box->computed.text_size = text_size;
     child_main_axis_size = text_size.v[main_axis];
     child_cross_axis_max = text_size.v[cross_axis];
@@ -286,13 +291,17 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
   AlignCrossAxis(box, cross_axis, box->build.cross_axis_align);
 }
 
-static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos) {
-  Vec2 min = AddVec2(parent_pos, box->computed.rel_pos);
-  Vec2 max = AddVec2(min, box->computed.size);
-  box->computed.screen_rect = (Rect2){.min = min, .max = max};
+static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos_in_pixel) {
+  Vec2 min_in_pixel =
+      AddVec2(parent_pos_in_pixel,
+              MulVec2(box->computed.rel_pos, state->content_scale));
+  Vec2 max_in_pixel =
+      AddVec2(min_in_pixel, MulVec2(box->computed.size, state->content_scale));
+  box->computed.screen_rect_in_pixel =
+      (Rect2){.min = min_in_pixel, .max = max_in_pixel};
 
   if (box->build.color.a) {
-    DrawRect(min, max, box->build.color);
+    DrawRect(min_in_pixel, max_in_pixel, box->build.color);
   }
 
   // Debug outline
@@ -300,16 +309,18 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos) {
 
   if (box->first) {
     for (UIBox *child = box->first; child; child = child->next) {
-      RenderBox(state, child, min);
+      RenderBox(state, child, min_in_pixel);
     }
   } else if (!IsEmptyStr8(box->build.text)) {
     // TODO: clip
 
     // Always center align text
-    Vec2 pos = AddVec2(
-        min,
-        MulVec2(SubVec2(box->computed.size, box->computed.text_size), 0.5f));
-    DrawTextStr8(pos, box->build.text, kDefaultTextHeight);
+    Vec2 pos_in_pixel =
+        AddVec2(min_in_pixel,
+                MulVec2(SubVec2(box->computed.size, box->computed.text_size),
+                        0.5f * state->content_scale));
+    DrawTextStr8(pos_in_pixel, box->build.text,
+                 kDefaultTextHeight * state->content_scale);
   }
 }
 
@@ -349,10 +360,8 @@ void UIEndFrame(void) {
   ASSERTF(!state->current, "Mismatched Begin/End calls");
 
   if (state->root) {
-    LayoutBox(state, state->root, state->logical_size, state->logical_size, 0);
+    LayoutBox(state, state->root, state->screen_size, state->screen_size, 0);
     state->root->computed.rel_pos = V2(0, 0);
-    state->root->computed.screen_rect =
-        (Rect2){.min = V2(0, 0), .max = state->logical_size};
   }
 
   // UIDebugPrint(state);

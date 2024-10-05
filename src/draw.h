@@ -28,7 +28,7 @@ static inline DrawColor DrawColorFromHex(u32 hex) {
 }
 
 f32 GetDrawContentScale(void);
-Vec2I GetDrawOutputSize(void);
+Vec2I GetDrawSizeInPixel(void);
 
 typedef struct TextMetrics TextMetrics;
 struct TextMetrics {

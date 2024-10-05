@@ -46,7 +46,7 @@ typedef struct UIComputedData {
   Vec2 rel_pos;
   Vec2 text_size;
 
-  Rect2 screen_rect;
+  Rect2 screen_rect_in_pixel;
 } UIComputedData;
 
 typedef struct UIBox UIBox;

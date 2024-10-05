@@ -31,7 +31,7 @@ f32 GetDrawContentScale(void) {
   return result;
 }
 
-Vec2I GetDrawOutputSize(void) {
+Vec2I GetDrawSizeInPixel(void) {
   Vec2I result = {0};
   SDL_GetCurrentRenderOutputSize(g_renderer, &result.x, &result.y);
   return result;
