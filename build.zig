@@ -26,5 +26,15 @@ pub fn build(b: *std.Build) void {
     ztracing.addIncludePath(b.path("."));
     ztracing.linkLibC();
     ztracing.linkSystemLibrary("SDL3");
+    if (target.result.os.tag == .windows) {
+        ztracing.linkSystemLibrary("Winmm");
+        ztracing.linkSystemLibrary("Ole32");
+        ztracing.linkSystemLibrary("Setupapi");
+        ztracing.linkSystemLibrary("Gdi32");
+        ztracing.linkSystemLibrary("OleAut32");
+        ztracing.linkSystemLibrary("Imm32");
+        ztracing.linkSystemLibrary("Version");
+        ztracing.subsystem = .Windows;
+    }
     b.installArtifact(ztracing);
 }

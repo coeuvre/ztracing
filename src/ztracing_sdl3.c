@@ -11,13 +11,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
   ASSERTF(SDL_Init(SDL_INIT_VIDEO), "Failed to init SDL3: %s", SDL_GetError());
 
-  SDL_Window *window;
-  SDL_Renderer *renderer;
-  ASSERTF(SDL_CreateWindowAndRenderer(
-              "ztracing", 1280, 720,
-              SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY, &window,
-              &renderer),
-          "Failed to create window/renderer: %s", SDL_GetError());
+  SDL_Window *window =
+      SDL_CreateWindow("ztracing", 1280, 720,
+                       SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+  ASSERTF(window, "Failed to create window: %s", SDL_GetError());
+  SDL_Renderer *renderer = SDL_CreateRenderer(window, 0);
+  ASSERTF(renderer, "Failed to create renderer: %s", SDL_GetError());
+  SDL_SetRenderVSync(renderer, 1);
+
   InitDrawSDL3(window, renderer);
 
   return SDL_APP_CONTINUE;
