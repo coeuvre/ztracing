@@ -110,8 +110,6 @@ void BeginUIFrame(Vec2 screen_size_in_pixel, f32 content_scale) {
   ResetArena(GetBuildArena(state));
 }
 
-const f32 kDefaultTextHeight = 16.0f;
-
 static void AlignMainAxis(UIBox *box, Axis2 axis, UIMainAxisAlign align,
                           f32 children_size) {
   // TODO: Handle padding.
@@ -150,17 +148,17 @@ static void AlignCrossAxis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
       } break;
 
       case kUICrossAxisAlignCenter: {
-        f32 box_computed_size = GetItemVec2(box->computed.size, axis);
+        f32 self_computed_size = GetItemVec2(box->computed.size, axis);
         f32 child_computed_size = GetItemVec2(child->computed.size, axis);
         SetItemVec2(&child->computed.rel_pos, axis,
-                    (box_computed_size - child_computed_size) / 2.0f);
+                    (self_computed_size - child_computed_size) / 2.0f);
       } break;
 
       case kUICrossAxisAlignEnd: {
-        f32 box_computed_size = GetItemVec2(box->computed.size, axis);
+        f32 self_computed_size = GetItemVec2(box->computed.size, axis);
         f32 child_computed_size = GetItemVec2(child->computed.size, axis);
         SetItemVec2(&child->computed.rel_pos, axis,
-                    box_computed_size - child_computed_size);
+                    self_computed_size - child_computed_size);
       } break;
 
       default: {
@@ -258,19 +256,16 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
                    GetItemVec2(child->computed.size, cross_axis));
       }
     }
-
-    box->computed.text_size = V2(0, 0);
   } else if (!IsEmptyStr8(box->build.text)) {
     // TODO: constraint text size within [(0, 0), child_max_size]
 
     // Use pixel unit to measure text
     TextMetrics metrics = GetTextMetricsStr8(
-        box->build.text, kDefaultTextHeight * state->content_scale);
+        box->build.text, KUITextSizeDefault * state->content_scale);
     Vec2 text_size_in_pixel = metrics.size;
     Vec2 text_size = MulVec2(text_size_in_pixel, 1.0f / state->content_scale);
     text_size = MinVec2(text_size, child_max_size);
 
-    box->computed.text_size = text_size;
     child_main_axis_size = GetItemVec2(text_size, main_axis);
     child_cross_axis_max = GetItemVec2(text_size, cross_axis);
   }
@@ -319,14 +314,8 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos_in_pixel) {
     }
   } else if (!IsEmptyStr8(box->build.text)) {
     // TODO: clip
-
-    // Always center align text
-    Vec2 pos_in_pixel =
-        AddVec2(min_in_pixel,
-                MulVec2(SubVec2(box->computed.size, box->computed.text_size),
-                        0.5f * state->content_scale));
-    DrawTextStr8(pos_in_pixel, box->build.text,
-                 kDefaultTextHeight * state->content_scale);
+    DrawTextStr8(min_in_pixel, box->build.text,
+                 KUITextSizeDefault * state->content_scale);
   }
 }
 

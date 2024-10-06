@@ -16,15 +16,23 @@ static void BuildUI(void) {
       BeginUIRow(STR8_LIT("Left"));
       SetUICrossAxisAlign(kUICrossAxisAlignStretch);
       {
-        BeginUIBox(STR8_LIT("Load"));
+        BeginUICenter(STR8_LIT("Load"));
         SetUIColor(ColorU32FromHex(0xE6573F));
-        SetUIText(STR8_LIT("Load"));
-        EndUIBox();
+        {
+          BeginUIBox(STR8_LIT("Label"));
+          SetUIText(STR8_LIT("Load"));
+          EndUIBox();
+        }
+        EndUICenter();
 
-        BeginUIBox(STR8_LIT("About"));
+        BeginUICenter(STR8_LIT("About"));
         SetUIColor(ColorU32FromHex(0xE6573F));
-        SetUIText(STR8_LIT("About"));
-        EndUIBox();
+        {
+          BeginUIBox(STR8_LIT("Label"));
+          SetUIText(STR8_LIT("About"));
+          EndUIBox();
+        }
+        EndUICenter();
       }
       EndUIRow();
 
@@ -35,9 +43,13 @@ static void BuildUI(void) {
       BeginUIRow(STR8_LIT("Right"));
       SetUICrossAxisAlign(kUICrossAxisAlignStretch);
       {
-        BeginUIBox(STR8_LIT("Right"));
-        SetUIText(STR8_LIT("FPS"));
-        EndUIBox();
+        BeginUICenter(STR8_LIT("Right"));
+        {
+          BeginUIBox(STR8_LIT("Label"));
+          SetUIText(STR8_LIT("FPS"));
+          EndUIBox();
+        }
+        EndUICenter();
       }
       EndUIRow();
     }

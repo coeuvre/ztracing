@@ -1,5 +1,6 @@
 const std = @import("std");
 const c = @cImport({
+    @cInclude("src/draw.h");
     @cInclude("src/math.h");
     @cInclude("src/ui.h");
 });
@@ -19,9 +20,12 @@ fn expectEqualVec2(expected: c.Vec2, actual: c.Vec2) !void {
     }
 }
 
+fn sliceFromStr8(str: c.Str8) []u8 {
+    return str.ptr[0..str.len];
+}
+
 fn expectBoxKey(box: [*c]c.UIBox, expected_key: []const u8) !void {
-    const actual_key = box.*.build.key_str.ptr[0..box.*.build.key_str.len];
-    try testing.expectEqualStrings(expected_key, actual_key);
+    try testing.expectEqualStrings(expected_key, sliceFromStr8(box.*.build.key_str));
 }
 
 fn expectBoxSize(box: [*c]c.UIBox, expected_size: c.Vec2) !void {
@@ -30,6 +34,10 @@ fn expectBoxSize(box: [*c]c.UIBox, expected_size: c.Vec2) !void {
 
 fn expectBoxRelPos(box: [*c]c.UIBox, expected_rel_pos: c.Vec2) !void {
     try expectEqualVec2(expected_rel_pos, box.*.computed.rel_pos);
+}
+
+fn expectBoxText(box: [*c]c.UIBox, expected_text: []const u8) !void {
+    try testing.expectEqualStrings(expected_text, sliceFromStr8(box.*.build.text));
 }
 
 test "Root has the same size as the screen" {
@@ -43,7 +51,7 @@ test "Root has the same size as the screen" {
     try expectBoxSize(root, c.V2(100, 100));
 }
 
-test "With fixed size, root has the same size as the screen" {
+test "Root has the same size as the screen, with fixed size" {
     const sizes: []const c.Vec2 = &.{
         c.V2(50, 50),
         c.V2(50, 200),
@@ -156,3 +164,38 @@ test "With one child, size around it" {
     try expectBoxSize(container, c.V2(50, 50));
 }
 
+// TODO: test padding
+
+// TODO: test min/max size
+
+test "No fixed size, size around text" {
+    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIBox(c.STR8_LIT("Root"));
+    {
+        c.BeginUIBox(c.STR8_LIT("Text"));
+        c.SetUIText(c.STR8_LIT("Text"));
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUIFrame();
+
+    const root = c.GetUIRoot();
+    const text = c.GetUIChild(root, c.STR8_LIT("Text"));
+    const text_metrics = c.GetTextMetricsStr8(c.STR8_LIT("Text"), c.KUITextSizeDefault);
+    try expectBoxSize(text, text_metrics.size);
+}
+
+test "Fixed size, truncate text" {
+    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIBox(c.STR8_LIT("Root"));
+    c.BeginUIBox(c.STR8_LIT("Text"));
+    c.SetUISize(c.V2(2, 2));
+    c.SetUIText(c.STR8_LIT("Text"));
+    c.EndUIBox();
+    c.EndUIBox();
+    c.EndUIFrame();
+
+    const root = c.GetUIRoot();
+    const text = c.GetUIChild(root, c.STR8_LIT("Text"));
+    try expectBoxSize(text, c.V2(2, 2));
+}

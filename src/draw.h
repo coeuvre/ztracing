@@ -10,10 +10,9 @@ f32 GetScreenContentScale(void);
 // Get the screen size in pixel.
 Vec2I GetScreenSizeInPixel(void);
 
-typedef struct TextMetrics TextMetrics;
-struct TextMetrics {
+typedef struct TextMetrics {
   Vec2 size;
-};
+} TextMetrics;
 
 TextMetrics GetTextMetricsStr8(Str8 text, f32 height);
 void DrawTextStr8(Vec2 pos, Str8 text, f32 height);

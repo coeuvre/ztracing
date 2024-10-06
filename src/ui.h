@@ -7,6 +7,7 @@
 
 #define kUISizeMax F32_MAX
 #define kUISizeUndefined 0
+#define KUITextSizeDefault 16.0f
 
 typedef struct UIKey {
   u64 hash;
@@ -43,7 +44,6 @@ typedef struct UIComputedData {
 
   Vec2 size;
   Vec2 rel_pos;
-  Vec2 text_size;
 
   Rect2 screen_rect_in_pixel;
 } UIComputedData;
