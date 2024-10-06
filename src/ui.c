@@ -323,6 +323,10 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos_in_pixel) {
     for (UIBox *child = box->first; child; child = child->next) {
       RenderBox(state, child, min_in_pixel);
     }
+    if (!IsEmptyStr8(box->build.text)) {
+      WARN("%s: text content is ignored because it has children",
+           box->build.key_str.ptr);
+    }
   } else if (!IsEmptyStr8(box->build.text)) {
     // TODO: clip
     DrawTextStr8(min_in_pixel, box->build.text,
@@ -333,9 +337,9 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos_in_pixel) {
 #if 1
 static void DebugPrintUIR(UIBox *box, u32 level) {
   INFO(
-      "%*s %s min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), unbounded_axis=%d, "
-      "size=(%.2f, %.2f) rel_pos=(%.2f, %.2f)",
-      level * 2, "", box->build.key_str.ptr, box->computed.min_size.x,
+      "%*s %s[min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), unbounded_axis=%d, "
+      "size=(%.2f, %.2f) rel_pos=(%.2f, %.2f)]",
+      level * 4, "", box->build.key_str.ptr, box->computed.min_size.x,
       box->computed.min_size.y, box->computed.max_size.x,
       box->computed.max_size.y, box->computed.unbounded_axis,
       box->computed.size.x, box->computed.size.y, box->computed.rel_pos.x,

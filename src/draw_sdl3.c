@@ -134,28 +134,30 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height) {
     }
 
     // TODO: font cache/atlas
-    SDL_Surface *surface = SDL_CreateSurfaceFrom(
-        glyph_size.x, glyph_size.y, SDL_PIXELFORMAT_ARGB8888, pixels_argb8888,
-        glyph_size.x * 4);
-    SDL_Texture *texture = SDL_CreateTextureFromSurface(g_renderer, surface);
-    ASSERT(texture);
-    SDL_DestroySurface(surface);
+    if (glyph_size.x > 0 && glyph_size.y > 0) {
+      SDL_Surface *surface = SDL_CreateSurfaceFrom(
+          glyph_size.x, glyph_size.y, SDL_PIXELFORMAT_ARGB8888, pixels_argb8888,
+          glyph_size.x * 4);
+      SDL_Texture *texture = SDL_CreateTextureFromSurface(g_renderer, surface);
+      ASSERT(texture);
+      SDL_DestroySurface(surface);
 
-    SDL_FRect src_rect;
-    src_rect.x = 0;
-    src_rect.y = 0;
-    src_rect.w = glyph_size.x;
-    src_rect.h = glyph_size.y;
+      SDL_FRect src_rect;
+      src_rect.x = 0;
+      src_rect.y = 0;
+      src_rect.w = glyph_size.x;
+      src_rect.h = glyph_size.y;
 
-    SDL_FRect dst_rect;
-    dst_rect.x = pos_x + min.x;
-    dst_rect.y = (f32)baseline + min.y;
-    dst_rect.w = glyph_size.x;
-    dst_rect.h = glyph_size.y;
+      SDL_FRect dst_rect;
+      dst_rect.x = pos_x + min.x;
+      dst_rect.y = (f32)baseline + min.y;
+      dst_rect.w = glyph_size.x;
+      dst_rect.h = glyph_size.y;
 
-    SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
-    SDL_RenderTexture(g_renderer, texture, &src_rect, &dst_rect);
-    SDL_DestroyTexture(texture);
+      SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
+      SDL_RenderTexture(g_renderer, texture, &src_rect, &dst_rect);
+      SDL_DestroyTexture(texture);
+    }
 
     pos_x += advance * scale;
     if (i + 1 < text32.len) {

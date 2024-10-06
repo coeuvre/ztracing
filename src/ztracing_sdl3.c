@@ -48,7 +48,18 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
-  DoFrame();
+  static u64 last_counter;
+
+  f32 dt = 0.0f;
+  u64 current_counter = SDL_GetPerformanceCounter();
+  if (last_counter) {
+    dt = (f32)((f64)(current_counter - last_counter) /
+               (f64)SDL_GetPerformanceFrequency());
+  }
+  last_counter = current_counter;
+
+  DoFrame(dt);
+
   if (!window_shown) {
     SDL_ShowWindow(window);
     window_shown = 1;
