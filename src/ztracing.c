@@ -53,7 +53,7 @@ static void BuildUI(void) {
 void DoFrame(void) {
   ClearDraw();
 
-  UIBeginFrame();
+  UIBeginFrame(Vec2FromVec2I(GetScreenSizeInPixel()), GetScreenContentScale());
   BuildUI();
   UIEndFrame();
   UIRender();

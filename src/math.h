@@ -4,6 +4,7 @@
 #include <float.h>
 #include <math.h>
 
+#include "src/assert.h"
 #include "src/types.h"
 
 #define F32_MAX FLT_MAX
@@ -18,26 +19,34 @@ static inline f32 MinF32(f32 a, f32 b) {
   return result;
 }
 
-typedef union Vec2 Vec2;
-union Vec2 {
-  struct {
-    f32 x;
-    f32 y;
-  };
-  f32 v[2];
-};
+typedef struct Vec2 {
+  f32 x;
+  f32 y;
+} Vec2;
+
+static inline f32 GetItemVec2(Vec2 v, usize index) {
+  DEBUG_ASSERT(index < 2);
+  f32 result = ((f32 *)&v)[index];
+  return result;
+}
+
+static inline void SetItemVec2(Vec2 *v, usize index, f32 value) {
+  DEBUG_ASSERT(index < 2);
+  ((f32 *)v)[index] = value;
+}
 
 static inline Vec2 V2(f32 x, f32 y) {
-  Vec2 result;
-  result.x = x;
-  result.y = y;
+  Vec2 result = {x, y};
+  return result;
+}
+
+static inline b32 IsEqualVec2(Vec2 a, Vec2 b) {
+  b32 result = a.x == b.x && a.y == b.y;
   return result;
 }
 
 static inline Vec2 Vec2FromArray(f32 v[2]) {
-  Vec2 result;
-  result.x = v[0];
-  result.y = v[1];
+  Vec2 result = {v[0], v[1]};
   return result;
 }
 
@@ -76,14 +85,10 @@ static inline Vec2 MaxVec2(Vec2 a, Vec2 b) {
   return result;
 }
 
-typedef union Vec2I Vec2I;
-union Vec2I {
-  struct {
-    i32 x;
-    i32 y;
-  };
-  i32 v[2];
-};
+typedef struct Vec2I {
+  i32 x;
+  i32 y;
+} Vec2I;
 
 static inline Vec2I Vec2IFromVec2(Vec2 value) {
   Vec2I result = {(i32)value.x, (i32)value.y};
@@ -125,15 +130,12 @@ static inline Vec2 Vec2FromVec2I(Vec2I value) {
   return result;
 }
 
-union Vec4 {
-  struct {
-    f32 x;
-    f32 y;
-    f32 z;
-    f32 w;
-  };
-  f32 v[4];
-};
+typedef struct Vec4 {
+  f32 x;
+  f32 y;
+  f32 z;
+  f32 w;
+} Vec4;
 
 typedef enum Axis2 {
   kAxis2X,
@@ -141,17 +143,10 @@ typedef enum Axis2 {
   kAxis2Count,
 } Axis2;
 
-typedef union Rect2 Rect2;
-union Rect2 {
-  struct {
-    Vec2 min;
-    Vec2 max;
-  };
-  struct {
-    Vec2 p0;
-    Vec2 p1;
-  };
-};
+typedef struct Rect2 {
+  Vec2 min;
+  Vec2 max;
+} Rect2;
 
 static inline f32 ClampF32(f32 value, f32 min, f32 max) {
   f32 result = MinF32(MaxF32(value, min), max);

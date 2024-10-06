@@ -77,7 +77,7 @@ struct UIBox {
   f32 active_t;
 };
 
-void UIBeginFrame(void);
+void UIBeginFrame(Vec2 screen_size_in_pixel, f32 content_scale);
 void UIEndFrame(void);
 void UIRender(void);
 
@@ -87,6 +87,8 @@ b32 UIKeyEqual(UIKey a, UIKey b);
 
 void UIBeginBox(Str8 key);
 void UIEndBox(void);
+
+UIBox *GetUIRoot(void);
 
 void UISetColor(DrawColor color);
 void UISetSize(Vec2 size);
