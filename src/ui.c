@@ -1,5 +1,7 @@
 #include "src/ui.h"
 
+#include <stdlib.h>
+
 #include "src/assert.h"
 #include "src/draw.h"
 #include "src/list.h"
@@ -168,11 +170,19 @@ static void AlignCrossAxis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
   }
 }
 
+static inline b32 ShouldMaxAxis(UIBox *box, int axis, Axis2 main_axis,
+                                Axis2 unbounded_axis) {
+  // cross axis is always as small as possible
+  b32 result = axis == (int)main_axis && main_axis != unbounded_axis &&
+               box->build.main_axis_size == kUIMainAxisSizeMax;
+  return result;
+}
+
 static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
-                      b32 unbounded) {
+                      Axis2 unbounded_axis) {
   box->computed.min_size = min_size;
   box->computed.max_size = max_size;
-  box->computed.unbounded = unbounded;
+  box->computed.unbounded_axis = unbounded_axis;
 
   Axis2 main_axis = box->build.main_axis;
   Axis2 cross_axis = (main_axis + 1) % kAxis2Count;
@@ -193,12 +203,11 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
       // Otherwise, pass down the constraint to children and ...
       SetItemVec2(&child_max_size, axis, max_size_axis);
 
-      if (unbounded) {
+      if (ShouldMaxAxis(box, axis, main_axis, unbounded_axis)) {
+        SetItemVec2(&self_size, axis, max_size_axis);
+      } else {
         // if constraint is unbounded, make it as small as possible.
         SetItemVec2(&self_size, axis, min_size_axis);
-      } else {
-        // otherwise, make it as large as possible.
-        SetItemVec2(&self_size, axis, max_size_axis);
       }
     }
   }
@@ -223,7 +232,7 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
         if (box->build.cross_axis_align == kUICrossAxisAlignStretch) {
           SetItemVec2(&min_size, cross_axis, GetItemVec2(max_size, cross_axis));
         }
-        LayoutBox(state, child, min_size, max_size, 1);
+        LayoutBox(state, child, min_size, max_size, main_axis);
 
         child_main_axis_free -= GetItemVec2(child->computed.size, main_axis);
         child_main_axis_size += GetItemVec2(child->computed.size, main_axis);
@@ -248,7 +257,7 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
         } else {
           SetItemVec2(&min_size, cross_axis, 0.0f);
         }
-        LayoutBox(state, child, min_size, max_size, 0);
+        LayoutBox(state, child, min_size, max_size, kAxis2Count);
 
         child_main_axis_size += GetItemVec2(child->computed.size, main_axis);
         child_cross_axis_max =
@@ -275,9 +284,11 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
   SetItemVec2(&child_size, cross_axis, child_cross_axis_max);
 
   for (int axis = 0; axis < kAxis2Count; ++axis) {
-    // Size itself around children if it doesn't have specific size
-    if (GetItemVec2(box->build.size, axis) == kUISizeUndefined &&
-        GetItemVec2(child_size, axis) != kUISizeUndefined) {
+    if (ShouldMaxAxis(box, axis, main_axis, unbounded_axis)) {
+      SetItemVec2(&box->computed.size, axis, GetItemVec2(self_size, axis));
+    } else if (GetItemVec2(box->build.size, axis) == kUISizeUndefined &&
+               GetItemVec2(child_size, axis) != kUISizeUndefined) {
+      // Size itself around children if it doesn't have specific size
       SetItemVec2(&box->computed.size, axis,
                   MinF32(MaxF32(GetItemVec2(child_size, axis),
                                 GetItemVec2(min_size, axis)),
@@ -319,32 +330,24 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos_in_pixel) {
   }
 }
 
-#if 0
-static void UIDebugPrintR(UIBox *box, u32 level) {
-  TempMemory scratch = BeginScratch(0, 0);
-  for (u32 i = 0; i < level; ++i) {
-    OutputDebugStringA("  ");
-  }
-  OutputDebugStringA(box->build.key_str.ptr);
-  OutputDebugStringA(
-      PushStr8F(scratch.arena,
-                " min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), unbounded=%d, "
-                "size=(%.2f, %.2f) rel_pos=(%.2f, %.2f)\n",
-                box->computed.min_size.x, box->computed.min_size.y,
-                box->computed.max_size.x, box->computed.max_size.y,
-                box->computed.unbounded, box->computed.size.x,
-                box->computed.size.y, box->computed.rel_pos.x,
-                box->computed.rel_pos.y)
-          .ptr);
+#if 1
+static void DebugPrintUIR(UIBox *box, u32 level) {
+  INFO(
+      "%*s %s min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), unbounded_axis=%d, "
+      "size=(%.2f, %.2f) rel_pos=(%.2f, %.2f)",
+      level * 2, "", box->build.key_str.ptr, box->computed.min_size.x,
+      box->computed.min_size.y, box->computed.max_size.x,
+      box->computed.max_size.y, box->computed.unbounded_axis,
+      box->computed.size.x, box->computed.size.y, box->computed.rel_pos.x,
+      box->computed.rel_pos.y);
   for (UIBox *child = box->first; child; child = child->next) {
-    UIDebugPrintR(child, level + 1);
+    DebugPrintUIR(child, level + 1);
   }
-  EndScratch(scratch);
 }
 
-static void UIDebugPrint(UIState *state) {
+static void DebugPrintUI(UIState *state) {
   if (state->root) {
-    UIDebugPrintR(state->root, 0);
+    DebugPrintUIR(state->root, 0);
   }
   exit(0);
 }
@@ -359,7 +362,7 @@ void EndUIFrame(void) {
     state->root->computed.rel_pos = V2(0, 0);
   }
 
-  // UIDebugPrint(state);
+  // DebugPrintUI(state);
 }
 
 void RenderUI(void) {
@@ -471,6 +474,13 @@ void SetUIMainAxis(Axis2 axis) {
   ASSERT(state->current);
 
   state->current->build.main_axis = axis;
+}
+
+void SetUIMainAxisSize(UIMainAxisSize main_axis_size) {
+  UIState *state = GetUIState();
+  ASSERT(state->current);
+
+  state->current->build.main_axis_size = main_axis_size;
 }
 
 void SetUIMainAxisAlign(UIMainAxisAlign main_axis_align) {

@@ -95,9 +95,10 @@ test "Layout, aligns" {
         for (cross_axis_options) |cross_axis_option| {
             c.BeginUIFrame(c.V2(100, 100), 1);
             c.BeginUIBox(c.STR8_LIT("Root"));
-            c.SetUIMainAxisAlign(main_axis_option.@"align");
-            c.SetUICrossAxisAlign(cross_axis_option.@"align");
             {
+                c.SetUIMainAxisAlign(main_axis_option.@"align");
+                c.SetUICrossAxisAlign(cross_axis_option.@"align");
+
                 c.BeginUIBox(c.STR8_LIT("Container"));
                 c.SetUISize(c.V2(50, 50));
                 c.EndUIBox();
@@ -128,7 +129,7 @@ test "Layout, no children, no fixed size, as small as possible" {
     try expectBoxSize(container, c.V2(0, 0));
 }
 
-test "Layout, no children, no fixed size, flex, as big as possible" {
+test "Layout, no children, no fixed size, flex, main axis is as big as possible" {
     c.BeginUIFrame(c.V2(100, 100), 1);
     c.BeginUIBox(c.STR8_LIT("Root"));
     {
@@ -141,7 +142,7 @@ test "Layout, no children, no fixed size, flex, as big as possible" {
 
     const root = c.GetUIRoot();
     const container = c.GetUIChild(root, c.STR8_LIT("Container"));
-    try expectBoxSize(container, c.V2(100, 100));
+    try expectBoxSize(container, c.V2(100, 0));
 }
 
 test "Layout, with one child, size around it" {
@@ -162,6 +163,70 @@ test "Layout, with one child, size around it" {
     const root = c.GetUIRoot();
     const container = c.GetUIChild(root, c.STR8_LIT("Container"));
     try expectBoxSize(container, c.V2(50, 50));
+}
+
+test "Layout, child has different main axis than parent" {
+    const main_axis_sizes: []const c.UIMainAxisSize = &.{
+        c.kUIMainAxisSizeMin,
+        c.kUIMainAxisSizeMax,
+    };
+
+    for (main_axis_sizes) |main_axis_size| {
+        c.BeginUIFrame(c.V2(100, 100), 1);
+        c.BeginUIBox(c.STR8_LIT("Column"));
+        {
+            c.SetUIMainAxis(c.kAxis2Y);
+
+            c.BeginUIBox(c.STR8_LIT("Row"));
+            {
+                c.SetUIMainAxisSize(main_axis_size);
+
+                c.BeginUIBox(c.STR8_LIT("Item"));
+                c.SetUISize(c.V2(20, 20));
+                c.EndUIBox();
+            }
+            c.EndUIBox();
+        }
+        c.EndUIBox();
+        c.EndUIFrame();
+
+        const root = c.GetUIRoot();
+        const row = c.GetUIChild(root, c.STR8_LIT("Row"));
+        if (main_axis_size == c.kUIMainAxisSizeMin) {
+            try expectBoxSize(row, c.V2(20, 20));
+        } else {
+            try expectBoxSize(row, c.V2(100, 20));
+        }
+    }
+}
+
+test "Layout, child has same main axis as parent" {
+    const main_axis_sizes: []const c.UIMainAxisSize = &.{
+        c.kUIMainAxisSizeMin,
+        c.kUIMainAxisSizeMax,
+    };
+
+    for (main_axis_sizes) |main_axis_size| {
+        c.BeginUIFrame(c.V2(100, 100), 1);
+        c.BeginUIBox(c.STR8_LIT("Row"));
+        {
+            c.BeginUIBox(c.STR8_LIT("Row"));
+            {
+                c.SetUIMainAxisSize(main_axis_size);
+
+                c.BeginUIBox(c.STR8_LIT("Item"));
+                c.SetUISize(c.V2(20, 20));
+                c.EndUIBox();
+            }
+            c.EndUIBox();
+        }
+        c.EndUIBox();
+        c.EndUIFrame();
+
+        const root = c.GetUIRoot();
+        const row = c.GetUIChild(root, c.STR8_LIT("Row"));
+        try expectBoxSize(row, c.V2(20, 20));
+    }
 }
 
 // TODO: test padding
@@ -225,9 +290,9 @@ test "Layout, row, no constraints on children" {
 
     try testing.expect(c1_text_size.x + c2_text_size.x < 1000);
     try expectBoxSize(c1, c1_text_size);
-    try expectBoxRelPos(c1, c.V2(0, (100 - c1_text_size.y) / 2.0));
+    try expectBoxRelPos(c1, c.V2(0, 0));
     try expectBoxSize(c2, c2_text_size);
-    try expectBoxRelPos(c2, c.V2(c1_text_size.x, (100 - c2_text_size.y) / 2.0));
+    try expectBoxRelPos(c2, c.V2(c1_text_size.x, 0));
 }
 
 test "Layout, row, no constraints on children, but truncate" {
@@ -253,9 +318,9 @@ test "Layout, row, no constraints on children, but truncate" {
 
     try testing.expect(c1_text_size.x + c2_text_size.x > 100);
     try expectBoxSize(c1, c1_text_size);
-    try expectBoxRelPos(c1, c.V2(0, (100 - c1_text_size.y) / 2.0));
+    try expectBoxRelPos(c1, c.V2(0, 0));
     try expectBoxSize(c2, c.V2(100 - c1_text_size.x, c2_text_size.y));
-    try expectBoxRelPos(c2, c.V2(c1_text_size.x, (100 - c2_text_size.y) / 2.0));
+    try expectBoxRelPos(c2, c.V2(c1_text_size.x, 0));
 }
 
 test "Layout, row, constraint flex" {
@@ -282,7 +347,7 @@ test "Layout, row, constraint flex" {
 
     try testing.expect(c1_text_size.x > 100);
     try expectBoxSize(c1, c.V2(100 - c2_text_size.x, c1_text_size.y));
-    try expectBoxRelPos(c1, c.V2(0, (100 - c1_text_size.y) / 2.0));
+    try expectBoxRelPos(c1, c.V2(0, 0));
     try expectBoxSize(c2, c2_text_size);
-    try expectBoxRelPos(c2, c.V2(100 - c2_text_size.x, (100 - c2_text_size.y) / 2.0));
+    try expectBoxRelPos(c2, c.V2(100 - c2_text_size.x, 0));
 }

@@ -13,6 +13,11 @@ typedef struct UIKey {
   u64 hash;
 } UIKey;
 
+typedef enum UIMainAxisSize {
+  kUIMainAxisSizeMin,
+  kUIMainAxisSizeMax,
+} UIMainAxisSize;
+
 typedef enum UIMainAxisAlign {
   kUIMainAxisAlignStart,
   kUIMainAxisAlignCenter,
@@ -20,8 +25,8 @@ typedef enum UIMainAxisAlign {
 } UIMainAxisAlign;
 
 typedef enum UICrossAxisAlign {
-  kUICrossAxisAlignCenter,
   kUICrossAxisAlignStart,
+  kUICrossAxisAlignCenter,
   kUICrossAxisAlignEnd,
   kUICrossAxisAlignStretch,
 } UICrossAxisAlign;
@@ -33,6 +38,7 @@ typedef struct UIBuildData {
   Str8 text;
   Axis2 main_axis;
   f32 flex;
+  UIMainAxisSize main_axis_size;
   UIMainAxisAlign main_axis_align;
   UICrossAxisAlign cross_axis_align;
 } UIBuildData;
@@ -40,7 +46,7 @@ typedef struct UIBuildData {
 typedef struct UIComputedData {
   Vec2 min_size;
   Vec2 max_size;
-  b32 unbounded;
+  Axis2 unbounded_axis;
 
   Vec2 size;
   Vec2 rel_pos;
@@ -95,6 +101,7 @@ void SetUISize(Vec2 size);
 void SetUIText(Str8 text);
 
 void SetUIMainAxis(Axis2 axis);
+void SetUIMainAxisSize(UIMainAxisSize main_axis_size);
 void SetUIMainAxisAlign(UIMainAxisAlign main_axis_align);
 void SetUICrossAxisAlign(UICrossAxisAlign cross_axis_align);
 void SetUIFlex(f32 flex);
