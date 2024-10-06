@@ -4,62 +4,62 @@
 #include "src/math.h"
 #include "src/string.h"
 #include "src/ui.h"
-#include "src/ui_widgets.h"
 
 static void BuildUI(void) {
-  BeginUIColumn(STR8_LIT("Root"));
+  BeginUIBox(STR8_LIT("Root"));
+  SetUIMainAxis(kAxis2Y);
   {
-    BeginUIRow(STR8_LIT("Menu"));
+    BeginUIBox(STR8_LIT("Menu"));
     SetUISize(V2(kUISizeUndefined, 21.0f));
     SetUIColor(ColorU32FromHex(0x5EAC57));
     {
-      BeginUIRow(STR8_LIT("Left"));
+      BeginUIBox(STR8_LIT("Left"));
       SetUICrossAxisAlign(kUICrossAxisAlignStretch);
       {
-        BeginUICenter(STR8_LIT("Load"));
+        BeginUIBox(STR8_LIT("Load"));
         SetUIColor(ColorU32FromHex(0xE6573F));
         {
           BeginUIBox(STR8_LIT("Label"));
           SetUIText(STR8_LIT("Load"));
           EndUIBox();
         }
-        EndUICenter();
+        EndUIBox();
 
-        BeginUICenter(STR8_LIT("About"));
+        BeginUIBox(STR8_LIT("About"));
         SetUIColor(ColorU32FromHex(0xE6573F));
         {
           BeginUIBox(STR8_LIT("Label"));
           SetUIText(STR8_LIT("About"));
           EndUIBox();
         }
-        EndUICenter();
+        EndUIBox();
       }
-      EndUIRow();
+      EndUIBox();
 
       BeginUIBox(STR8_LIT("Space"));
       SetUIFlex(1.0f);
       EndUIBox();
 
-      BeginUIRow(STR8_LIT("Right"));
+      BeginUIBox(STR8_LIT("Right"));
       SetUICrossAxisAlign(kUICrossAxisAlignStretch);
       {
-        BeginUICenter(STR8_LIT("Right"));
+        BeginUIBox(STR8_LIT("Right"));
         {
           BeginUIBox(STR8_LIT("Label"));
           SetUIText(STR8_LIT("FPS"));
           EndUIBox();
         }
-        EndUICenter();
+        EndUIBox();
       }
-      EndUIRow();
+      EndUIBox();
     }
-    EndUIRow();
+    EndUIBox();
 
     BeginUIBox(STR8_LIT("Main"));
     SetUIText(STR8_LIT("Main"));
     EndUIBox();
   }
-  EndUIColumn();
+  EndUIBox();
 }
 
 void DoFrame(void) {

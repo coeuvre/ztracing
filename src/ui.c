@@ -403,10 +403,13 @@ void BeginUIBox(Str8 key_str) {
                               hash_next);
   }
 
+  ASSERTF(box->last_touched_build_index < state->build_index,
+          "%s is built more than once", key_str.ptr);
+
   if (parent) {
     APPEND_DOUBLY_LINKED_LIST(parent->first, parent->last, box, prev, next);
   } else {
-    ASSERT(!state->root && "More than one root widget provided");
+    ASSERTF(!state->root, "More than one root box provided");
     state->root = box;
   }
   box->parent = parent;

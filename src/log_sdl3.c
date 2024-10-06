@@ -11,9 +11,13 @@ static SDL_LogPriority kLogLevelToPriority[kLogLevelCount] = {
 };
 
 void LogMessage(LogLevel level, const char *fmt, ...) {
+  int category = SDL_LOG_CATEGORY_APPLICATION;
   SDL_LogPriority priority = kLogLevelToPriority[level];
-  va_list ap;
-  va_start(ap, fmt);
-  SDL_LogMessageV(SDL_LOG_CATEGORY_APPLICATION, priority, fmt, ap);
-  va_end(ap);
+  if (priority >= SDL_GetLogPriority(category)) {
+    SDL_SetLogPriorityPrefix(priority, "");
+    va_list ap;
+    va_start(ap, fmt);
+    SDL_LogMessageV(category, priority, fmt, ap);
+    va_end(ap);
+  }
 }

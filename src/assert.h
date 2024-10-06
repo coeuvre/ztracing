@@ -20,12 +20,12 @@
     }                  \
   } while (0)
 
-#define ASSERTF(x, fmt, ...)              \
-  do {                                    \
-    if (!(x)) {                           \
-      ERROR("%s" fmt, #x, ##__VA_ARGS__); \
-      BreakDebugger();                    \
-    }                                     \
+#define ASSERTF(x, fmt, ...)     \
+  do {                           \
+    if (!(x)) {                  \
+      ERROR(fmt, ##__VA_ARGS__); \
+      BreakDebugger();           \
+    }                            \
   } while (0)
 
 #if BUILD_DEBUG

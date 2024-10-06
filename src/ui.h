@@ -20,8 +20,8 @@ typedef enum UIMainAxisAlign {
 } UIMainAxisAlign;
 
 typedef enum UICrossAxisAlign {
-  kUICrossAxisAlignStart,
   kUICrossAxisAlignCenter,
+  kUICrossAxisAlignStart,
   kUICrossAxisAlignEnd,
   kUICrossAxisAlignStretch,
 } UICrossAxisAlign;

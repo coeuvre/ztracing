@@ -40,7 +40,7 @@ fn expectBoxText(box: [*c]c.UIBox, expected_text: []const u8) !void {
     try testing.expectEqualStrings(expected_text, sliceFromStr8(box.*.build.text));
 }
 
-test "Root has the same size as the screen" {
+test "Layout, root has the same size as the screen" {
     c.BeginUIFrame(c.V2(100, 100), 1);
     c.BeginUIBox(c.STR8_LIT("Root"));
     c.EndUIBox();
@@ -51,7 +51,7 @@ test "Root has the same size as the screen" {
     try expectBoxSize(root, c.V2(100, 100));
 }
 
-test "Root has the same size as the screen, with fixed size" {
+test "Layout, root has the same size as the screen, with fixed size" {
     const sizes: []const c.Vec2 = &.{
         c.V2(50, 50),
         c.V2(50, 200),
@@ -71,7 +71,7 @@ test "Root has the same size as the screen, with fixed size" {
     }
 }
 
-test "Alignments" {
+test "Layout, aligns" {
     const MainAxisOption = struct {
         @"align": c.UIMainAxisAlign,
         rel_pos: f32,
@@ -113,7 +113,7 @@ test "Alignments" {
     }
 }
 
-test "No children, no fixed size, as small as possible" {
+test "Layout, no children, no fixed size, as small as possible" {
     c.BeginUIFrame(c.V2(100, 100), 1);
     c.BeginUIBox(c.STR8_LIT("Root"));
     {
@@ -128,7 +128,7 @@ test "No children, no fixed size, as small as possible" {
     try expectBoxSize(container, c.V2(0, 0));
 }
 
-test "No children, no fixed size, flex, as big as possible" {
+test "Layout, no children, no fixed size, flex, as big as possible" {
     c.BeginUIFrame(c.V2(100, 100), 1);
     c.BeginUIBox(c.STR8_LIT("Root"));
     {
@@ -144,7 +144,7 @@ test "No children, no fixed size, flex, as big as possible" {
     try expectBoxSize(container, c.V2(100, 100));
 }
 
-test "With one child, size around it" {
+test "Layout, with one child, size around it" {
     c.BeginUIFrame(c.V2(100, 100), 1);
     c.BeginUIBox(c.STR8_LIT("Root"));
     {
@@ -168,7 +168,7 @@ test "With one child, size around it" {
 
 // TODO: test min/max size
 
-test "No fixed size, size around text" {
+test "Layout, no fixed size, size around text" {
     c.BeginUIFrame(c.V2(100, 100), 1);
     c.BeginUIBox(c.STR8_LIT("Root"));
     {
@@ -185,17 +185,104 @@ test "No fixed size, size around text" {
     try expectBoxSize(text, text_metrics.size);
 }
 
-test "Fixed size, truncate text" {
+test "Layout, fixed size, truncate text" {
     c.BeginUIFrame(c.V2(100, 100), 1);
     c.BeginUIBox(c.STR8_LIT("Root"));
-    c.BeginUIBox(c.STR8_LIT("Text"));
-    c.SetUISize(c.V2(2, 2));
-    c.SetUIText(c.STR8_LIT("Text"));
-    c.EndUIBox();
+    {
+        c.BeginUIBox(c.STR8_LIT("Text"));
+        c.SetUISize(c.V2(2, 2));
+        c.SetUIText(c.STR8_LIT("Text"));
+        c.EndUIBox();
+    }
     c.EndUIBox();
     c.EndUIFrame();
 
     const root = c.GetUIRoot();
     const text = c.GetUIChild(root, c.STR8_LIT("Text"));
     try expectBoxSize(text, c.V2(2, 2));
+}
+
+test "Layout, row, no constraints on children" {
+    c.BeginUIFrame(c.V2(1000, 100), 1);
+    c.BeginUIBox(c.STR8_LIT("Root"));
+    {
+        c.BeginUIBox(c.STR8_LIT("C1"));
+        c.SetUIText(c.STR8_LIT("Hello!"));
+        c.EndUIBox();
+
+        c.BeginUIBox(c.STR8_LIT("C2"));
+        c.SetUIText(c.STR8_LIT("Goodbye!"));
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUIFrame();
+
+    const root = c.GetUIRoot();
+    const c1 = c.GetUIChild(root, c.STR8_LIT("C1"));
+    const c2 = c.GetUIChild(root, c.STR8_LIT("C2"));
+    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.KUITextSizeDefault).size;
+    const c2_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
+
+    try testing.expect(c1_text_size.x + c2_text_size.x < 1000);
+    try expectBoxSize(c1, c1_text_size);
+    try expectBoxRelPos(c1, c.V2(0, (100 - c1_text_size.y) / 2.0));
+    try expectBoxSize(c2, c2_text_size);
+    try expectBoxRelPos(c2, c.V2(c1_text_size.x, (100 - c2_text_size.y) / 2.0));
+}
+
+test "Layout, row, no constraints on children, but truncate" {
+    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIBox(c.STR8_LIT("Root"));
+    {
+        c.BeginUIBox(c.STR8_LIT("C1"));
+        c.SetUIText(c.STR8_LIT("Hello!"));
+        c.EndUIBox();
+
+        c.BeginUIBox(c.STR8_LIT("C2"));
+        c.SetUIText(c.STR8_LIT("Goodbye!"));
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUIFrame();
+
+    const root = c.GetUIRoot();
+    const c1 = c.GetUIChild(root, c.STR8_LIT("C1"));
+    const c2 = c.GetUIChild(root, c.STR8_LIT("C2"));
+    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.KUITextSizeDefault).size;
+    const c2_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
+
+    try testing.expect(c1_text_size.x + c2_text_size.x > 100);
+    try expectBoxSize(c1, c1_text_size);
+    try expectBoxRelPos(c1, c.V2(0, (100 - c1_text_size.y) / 2.0));
+    try expectBoxSize(c2, c.V2(100 - c1_text_size.x, c2_text_size.y));
+    try expectBoxRelPos(c2, c.V2(c1_text_size.x, (100 - c2_text_size.y) / 2.0));
+}
+
+test "Layout, row, constraint flex" {
+    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIBox(c.STR8_LIT("Root"));
+    {
+        c.BeginUIBox(c.STR8_LIT("C1"));
+        c.SetUIText(c.STR8_LIT("A very long text that can't be fit in one line!"));
+        c.SetUIFlex(1);
+        c.EndUIBox();
+
+        c.BeginUIBox(c.STR8_LIT("C2"));
+        c.SetUIText(c.STR8_LIT("Goodbye!"));
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUIFrame();
+
+    const root = c.GetUIRoot();
+    const c1 = c.GetUIChild(root, c.STR8_LIT("C1"));
+    const c2 = c.GetUIChild(root, c.STR8_LIT("C2"));
+    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("A very long text that can't be fit in one line!"), c.KUITextSizeDefault).size;
+    const c2_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
+
+    try testing.expect(c1_text_size.x > 100);
+    try expectBoxSize(c1, c.V2(100 - c2_text_size.x, c1_text_size.y));
+    try expectBoxRelPos(c1, c.V2(0, (100 - c1_text_size.y) / 2.0));
+    try expectBoxSize(c2, c2_text_size);
+    try expectBoxRelPos(c2, c.V2(100 - c2_text_size.x, (100 - c2_text_size.y) / 2.0));
 }
