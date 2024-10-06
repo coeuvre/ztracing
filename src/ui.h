@@ -14,14 +14,14 @@ typedef struct UIKey {
 
 typedef enum UIMainAxisAlign {
   kUIMainAxisAlignStart,
-  kUIMainAxisAlignEnd,
   kUIMainAxisAlignCenter,
+  kUIMainAxisAlignEnd,
 } UIMainAxisAlign;
 
 typedef enum UICrossAxisAlign {
   kUICrossAxisAlignStart,
-  kUICrossAxisAlignEnd,
   kUICrossAxisAlignCenter,
+  kUICrossAxisAlignEnd,
   kUICrossAxisAlignStretch,
 } UICrossAxisAlign;
 
@@ -88,6 +88,7 @@ void BeginUIBox(Str8 key);
 void EndUIBox(void);
 
 UIBox *GetUIRoot(void);
+UIBox *GetUIChild(UIBox *box, Str8 key);
 
 void SetUIColor(ColorU32 color);
 void SetUISize(Vec2 size);

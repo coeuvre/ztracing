@@ -3,6 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const test_filters = b.option([]const []const u8, "test-filter", "Skip tests that do not match any filter") orelse &[0][]const u8{};
 
     const srcs = [_][]const u8{
         "src/draw.c",
@@ -42,9 +43,10 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(ztracing);
 
     const test_binary = b.addTest(.{
-        .root_source_file = b.path("test/all.zig"),
+        .root_source_file = b.path("test/root.zig"),
         .target = target,
         .optimize = optimize,
+        .filters = test_filters,
     });
     test_binary.addCSourceFiles(.{ .files = &srcs });
     test_binary.addIncludePath(b.path("."));

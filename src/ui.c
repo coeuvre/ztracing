@@ -184,29 +184,23 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
   for (int axis = 0; axis < kAxis2Count; ++axis) {
     f32 min_size_axis = GetItemVec2(min_size, axis);
     f32 max_size_axis = GetItemVec2(max_size, axis);
-    f32 box_size_axis = GetItemVec2(box->build.size, axis);
-    if (box_size_axis != kUISizeUndefined) {
+    f32 self_size_axis = GetItemVec2(box->build.size, axis);
+    if (self_size_axis != kUISizeUndefined) {
       // If box has specific size, use that as constraint for children and size
       // itself within the constraint.
-      SetItemVec2(&child_max_size, axis, box_size_axis);
+      SetItemVec2(&child_max_size, axis, self_size_axis);
       SetItemVec2(&self_size, axis,
-                  MaxF32(MinF32(max_size.x, box_size_axis), min_size_axis));
+                  MaxF32(MinF32(max_size.x, self_size_axis), min_size_axis));
     } else {
       // Otherwise, pass down the constraint to children and ...
       SetItemVec2(&child_max_size, axis, max_size_axis);
 
-      if (axis == (int)main_axis) {
-        // ... for main axis,
-        if (unbounded) {
-          // if constraint is unbounded, make it as small as possible.
-          SetItemVec2(&self_size, axis, min_size_axis);
-        } else {
-          // otherwise, make it as large as possible.
-          SetItemVec2(&self_size, axis, max_size_axis);
-        }
-      } else {
-        // for cross axis, make it as small as possible
+      if (unbounded) {
+        // if constraint is unbounded, make it as small as possible.
         SetItemVec2(&self_size, axis, min_size_axis);
+      } else {
+        // otherwise, make it as large as possible.
+        SetItemVec2(&self_size, axis, max_size_axis);
       }
     }
   }
@@ -317,7 +311,7 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos_in_pixel) {
   }
 
   // Debug outline
-  // DrawRectLine(min, max, 0xFFFF00FF, 1.0f);
+  // DrawRectLine(min_in_pixel, max_in_pixel, ColorU32FromHex(0xFF00FF), 1.0f);
 
   if (box->first) {
     for (UIBox *child = box->first; child; child = child->next) {
@@ -449,6 +443,15 @@ void EndUIBox(void) {
 UIBox *GetUIRoot(void) {
   UIState *state = GetUIState();
   return state->root;
+}
+
+UIBox *GetUIChild(UIBox *box, Str8 key_str) {
+  UIState *state = GetUIState();
+
+  UIKey seed = box->key;
+  UIKey key = UIKeyFromStr8(seed, key_str);
+  UIBox *result = GetBoxByKey(state, key);
+  return result;
 }
 
 void SetUIColor(ColorU32 color) {
