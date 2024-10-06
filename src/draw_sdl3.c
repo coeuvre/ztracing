@@ -44,7 +44,7 @@ void ClearDraw(void) {
 
 void PresentDraw(void) { SDL_RenderPresent(g_renderer); }
 
-void DrawRect(Vec2 min, Vec2 max, DrawColor color) {
+void DrawRect(Vec2 min, Vec2 max, ColorU32 color) {
   SDL_SetRenderDrawColor(g_renderer, color.r, color.g, color.b, color.a);
   SDL_FRect rect;
   rect.x = min.x;

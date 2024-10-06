@@ -14,8 +14,7 @@ typedef struct BoxHashSlot {
   UIBox *last;
 } BoxHashSlot;
 
-typedef struct UIState UIState;
-struct UIState {
+typedef struct UIState {
   Arena *arena;
 
   // box cache
@@ -32,7 +31,7 @@ struct UIState {
   Vec2 screen_size;
   UIBox *root;
   UIBox *current;
-};
+} UIState;
 
 thread_local UIState t_ui_state;
 
@@ -52,7 +51,7 @@ UIKey UIKeyFromStr8(UIKey seed, Str8 str) {
   return result;
 }
 
-b32 UIKeyEqual(UIKey a, UIKey b) {
+b32 IsEqualUIKey(UIKey a, UIKey b) {
   b32 result = a.hash == b.hash;
   return result;
 }
@@ -97,7 +96,7 @@ static Arena *GetBuildArena(UIState *state) {
   return arena;
 }
 
-void UIBeginFrame(Vec2 screen_size_in_pixel, f32 content_scale) {
+void BeginUIFrame(Vec2 screen_size_in_pixel, f32 content_scale) {
   UIState *state = GetUIState();
 
   state->build_index += 1;
@@ -368,7 +367,7 @@ static void UIDebugPrint(UIState *state) {
 }
 #endif
 
-void UIEndFrame(void) {
+void EndUIFrame(void) {
   UIState *state = GetUIState();
   ASSERTF(!state->current, "Mismatched Begin/End calls");
 
@@ -380,7 +379,7 @@ void UIEndFrame(void) {
   // UIDebugPrint(state);
 }
 
-void UIRender(void) {
+void RenderUI(void) {
   UIState *state = GetUIState();
   if (state->root) {
     RenderBox(state, state->root, V2(0, 0));
@@ -389,11 +388,11 @@ void UIRender(void) {
 
 static UIBox *GetBoxByKey(UIState *state, UIKey key) {
   UIBox *result = 0;
-  if (!UIKeyEqual(key, UIKeyZero())) {
+  if (!IsEqualUIKey(key, UIKeyZero())) {
     BoxHashSlot *slot =
         &state->box_hash_slots[key.hash % state->box_hash_slots_count];
     for (UIBox *box = slot->first; box; box = box->hash_next) {
-      if (UIKeyEqual(box->key, key)) {
+      if (IsEqualUIKey(box->key, key)) {
         result = box;
         break;
       }
@@ -402,7 +401,7 @@ static UIBox *GetBoxByKey(UIState *state, UIKey key) {
   return result;
 }
 
-void UIBeginBox(Str8 key_str) {
+void BeginUIBox(Str8 key_str) {
   UIState *state = GetUIState();
 
   UIBox *parent = state->current;
@@ -440,7 +439,7 @@ void UIBeginBox(Str8 key_str) {
   state->current = box;
 }
 
-void UIEndBox(void) {
+void EndUIBox(void) {
   UIState *state = GetUIState();
 
   ASSERT(state->current);
@@ -452,19 +451,19 @@ UIBox *GetUIRoot(void) {
   return state->root;
 }
 
-void UISetColor(DrawColor color) {
+void SetUIColor(ColorU32 color) {
   UIState *state = GetUIState();
   ASSERT(state->current);
   state->current->build.color = color;
 }
 
-void UISetSize(Vec2 size) {
+void SetUISize(Vec2 size) {
   UIState *state = GetUIState();
   ASSERT(state->current);
   state->current->build.size = size;
 }
 
-void UISetText(Str8 text) {
+void SetUIText(Str8 text) {
   UIState *state = GetUIState();
   ASSERT(state->current);
 
@@ -472,28 +471,28 @@ void UISetText(Str8 text) {
   state->current->build.text = PushStr8(arena, text);
 }
 
-void UISetMainAxis(Axis2 axis) {
+void SetUIMainAxis(Axis2 axis) {
   UIState *state = GetUIState();
   ASSERT(state->current);
 
   state->current->build.main_axis = axis;
 }
 
-void UISetMainAxisAlignment(UIMainAxisAlign main_axis_align) {
+void SetUIMainAxisAlign(UIMainAxisAlign main_axis_align) {
   UIState *state = GetUIState();
   ASSERT(state->current);
 
   state->current->build.main_axis_align = main_axis_align;
 }
 
-void UISetCrossAxisAlignment(UICrossAxisAlign cross_axis_align) {
+void SetUICrossAxisAlign(UICrossAxisAlign cross_axis_align) {
   UIState *state = GetUIState();
   ASSERT(state->current);
 
   state->current->build.cross_axis_align = cross_axis_align;
 }
 
-void UISetFlex(f32 flex) {
+void SetUIFlex(f32 flex) {
   UIState *state = GetUIState();
   ASSERT(state->current);
 

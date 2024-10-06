@@ -7,56 +7,56 @@
 #include "src/ui_widgets.h"
 
 static void BuildUI(void) {
-  UIBeginColumn(STR8_LIT("Root"));
+  BeginUIColumn(STR8_LIT("Root"));
   {
-    UIBeginRow(STR8_LIT("Menu"));
-    UISetSize(V2(kUISizeUndefined, 21.0f));
-    UISetColor(DrawColorFromHex(0x5EAC57));
+    BeginUIRow(STR8_LIT("Menu"));
+    SetUISize(V2(kUISizeUndefined, 21.0f));
+    SetUIColor(ColorU32FromHex(0x5EAC57));
     {
-      UIBeginRow(STR8_LIT("Left"));
-      UISetCrossAxisAlignment(kUICrossAxisAlignStretch);
+      BeginUIRow(STR8_LIT("Left"));
+      SetUICrossAxisAlign(kUICrossAxisAlignStretch);
       {
-        UIBeginBox(STR8_LIT("Load"));
-        UISetColor(DrawColorFromHex(0xE6573F));
-        UISetText(STR8_LIT("Load"));
-        UIEndBox();
+        BeginUIBox(STR8_LIT("Load"));
+        SetUIColor(ColorU32FromHex(0xE6573F));
+        SetUIText(STR8_LIT("Load"));
+        EndUIBox();
 
-        UIBeginBox(STR8_LIT("About"));
-        UISetColor(DrawColorFromHex(0xE6573F));
-        UISetText(STR8_LIT("About"));
-        UIEndBox();
+        BeginUIBox(STR8_LIT("About"));
+        SetUIColor(ColorU32FromHex(0xE6573F));
+        SetUIText(STR8_LIT("About"));
+        EndUIBox();
       }
-      UIEndRow();
+      EndUIRow();
 
-      UIBeginBox(STR8_LIT("Space"));
-      UISetFlex(1.0f);
-      UIEndBox();
+      BeginUIBox(STR8_LIT("Space"));
+      SetUIFlex(1.0f);
+      EndUIBox();
 
-      UIBeginRow(STR8_LIT("Right"));
-      UISetCrossAxisAlignment(kUICrossAxisAlignStretch);
+      BeginUIRow(STR8_LIT("Right"));
+      SetUICrossAxisAlign(kUICrossAxisAlignStretch);
       {
-        UIBeginBox(STR8_LIT("Right"));
-        UISetText(STR8_LIT("FPS"));
-        UIEndBox();
+        BeginUIBox(STR8_LIT("Right"));
+        SetUIText(STR8_LIT("FPS"));
+        EndUIBox();
       }
-      UIEndRow();
+      EndUIRow();
     }
-    UIEndRow();
+    EndUIRow();
 
-    UIBeginBox(STR8_LIT("Main"));
-    UISetText(STR8_LIT("Main"));
-    UIEndBox();
+    BeginUIBox(STR8_LIT("Main"));
+    SetUIText(STR8_LIT("Main"));
+    EndUIBox();
   }
-  UIEndColumn();
+  EndUIColumn();
 }
 
 void DoFrame(void) {
   ClearDraw();
 
-  UIBeginFrame(Vec2FromVec2I(GetScreenSizeInPixel()), GetScreenContentScale());
+  BeginUIFrame(Vec2FromVec2I(GetScreenSizeInPixel()), GetScreenContentScale());
   BuildUI();
-  UIEndFrame();
-  UIRender();
+  EndUIFrame();
+  RenderUI();
 
   PresentDraw();
 }

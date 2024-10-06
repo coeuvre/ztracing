@@ -1,7 +1,6 @@
 #ifndef ZTRACING_SRC_UI_H_
 #define ZTRACING_SRC_UI_H_
 
-#include "src/draw.h"
 #include "src/math.h"
 #include "src/string.h"
 #include "src/types.h"
@@ -28,7 +27,7 @@ typedef enum UICrossAxisAlign {
 
 typedef struct UIBuildData {
   Str8 key_str;
-  DrawColor color;
+  ColorU32 color;
   Vec2 size;
   Str8 text;
   Axis2 main_axis;
@@ -77,26 +76,26 @@ struct UIBox {
   f32 active_t;
 };
 
-void UIBeginFrame(Vec2 screen_size_in_pixel, f32 content_scale);
-void UIEndFrame(void);
-void UIRender(void);
+void BeginUIFrame(Vec2 screen_size_in_pixel, f32 content_scale);
+void EndUIFrame(void);
+void RenderUI(void);
 
 UIKey UIKeyZero(void);
 UIKey UIKeyFromStr8(UIKey seed, Str8 str);
-b32 UIKeyEqual(UIKey a, UIKey b);
+b32 IsEqualUIKey(UIKey a, UIKey b);
 
-void UIBeginBox(Str8 key);
-void UIEndBox(void);
+void BeginUIBox(Str8 key);
+void EndUIBox(void);
 
 UIBox *GetUIRoot(void);
 
-void UISetColor(DrawColor color);
-void UISetSize(Vec2 size);
-void UISetText(Str8 text);
+void SetUIColor(ColorU32 color);
+void SetUISize(Vec2 size);
+void SetUIText(Str8 text);
 
-void UISetMainAxis(Axis2 axis);
-void UISetMainAxisAlignment(UIMainAxisAlign main_axis_align);
-void UISetCrossAxisAlignment(UICrossAxisAlign cross_axis_align);
-void UISetFlex(f32 flex);
+void SetUIMainAxis(Axis2 axis);
+void SetUIMainAxisAlign(UIMainAxisAlign main_axis_align);
+void SetUICrossAxisAlign(UICrossAxisAlign cross_axis_align);
+void SetUIFlex(f32 flex);
 
 #endif  // ZTRACING_SRC_UI_H_

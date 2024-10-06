@@ -31,10 +31,10 @@ fn expectBoxSize(box: [*c]c.UIBox, expected_size: c.Vec2) !void {
 
 test "ui" {
     const screen_size = c.V2(100, 100);
-    c.UIBeginFrame(screen_size, 1);
-    c.UIBeginBox(c.STR8_LIT("Root"));
-    c.UIEndBox();
-    c.UIEndFrame();
+    c.BeginUIFrame(screen_size, 1);
+    c.BeginUIBox(c.STR8_LIT("Root"));
+    c.EndUIBox();
+    c.EndUIFrame();
 
     const root = c.GetUIRoot();
     try expectBoxKey(root, "Root");

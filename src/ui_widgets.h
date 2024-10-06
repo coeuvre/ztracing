@@ -5,26 +5,26 @@
 #include "src/string.h"
 #include "src/ui.h"
 
-static inline void UIBeginCenter(Str8 key) {
-  UIBeginBox(key);
-  UISetMainAxisAlignment(kUIMainAxisAlignCenter);
-  UISetCrossAxisAlignment(kUICrossAxisAlignCenter);
+static inline void BeginUICenter(Str8 key) {
+  BeginUIBox(key);
+  SetUIMainAxisAlign(kUIMainAxisAlignCenter);
+  SetUICrossAxisAlign(kUICrossAxisAlignCenter);
 }
 
-static inline void UIEndCenter(void) { UIEndBox(); }
+static inline void EndUICenter(void) { EndUIBox(); }
 
-static inline void UIBeginRow(Str8 key) {
-  UIBeginBox(key);
-  UISetMainAxis(kAxis2X);
+static inline void BeginUIRow(Str8 key) {
+  BeginUIBox(key);
+  SetUIMainAxis(kAxis2X);
 }
 
-static inline void UIEndRow() { UIEndBox(); }
+static inline void EndUIRow() { EndUIBox(); }
 
-static inline void UIBeginColumn(Str8 key) {
-  UIBeginBox(key);
-  UISetMainAxis(kAxis2Y);
+static inline void BeginUIColumn(Str8 key) {
+  BeginUIBox(key);
+  SetUIMainAxis(kAxis2Y);
 }
 
-static inline void UIEndColumn() { UIEndBox(); }
+static inline void EndUIColumn() { EndUIBox(); }
 
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_

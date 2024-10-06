@@ -95,7 +95,7 @@ static inline Vec2I Vec2IFromVec2(Vec2 value) {
   return result;
 }
 
-static inline b32 EqualVec2I(Vec2I a, Vec2I b) {
+static inline b32 IsEqualVec2I(Vec2I a, Vec2I b) {
   b32 result = a.x == b.x && a.y == b.y;
   return result;
 }
@@ -136,6 +136,28 @@ typedef struct Vec4 {
   f32 z;
   f32 w;
 } Vec4;
+
+typedef struct ColorU32 {
+  u8 a;
+  u8 r;
+  u8 g;
+  u8 b;
+} ColorU32;
+
+static inline ColorU32 ColorU32FromRGBA(u8 r, u8 g, u8 b, u8 a) {
+  ColorU32 result;
+  result.r = r;
+  result.g = g;
+  result.b = b;
+  result.a = a;
+  return result;
+}
+
+static inline ColorU32 ColorU32FromHex(u32 hex) {
+  ColorU32 result =
+      ColorU32FromRGBA((hex >> 16) & 0xFF, (hex >> 8) & 0xFF, hex & 0xFF, 0xFF);
+  return result;
+}
 
 typedef enum Axis2 {
   kAxis2X,
