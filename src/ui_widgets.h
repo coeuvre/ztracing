@@ -5,8 +5,8 @@
 #include "src/string.h"
 #include "src/ui.h"
 
-static inline void BeginUIRow(Str8 key) {
-  BeginUIBox(key);
+static inline void BeginUIRow() {
+  BeginUIBox();
   SetUIMainAxis(kAxis2X);
   SetUIMainAxisSize(kUIMainAxisSizeMax);
   SetUICrossAxisAlign(kUICrossAxisAlignCenter);
@@ -14,8 +14,8 @@ static inline void BeginUIRow(Str8 key) {
 
 static inline void EndUIRow() { EndUIBox(); }
 
-static inline void BeginUIColumn(Str8 key) {
-  BeginUIBox(key);
+static inline void BeginUIColumn() {
+  BeginUIBox();
   SetUIMainAxis(kAxis2Y);
   SetUIMainAxisSize(kUIMainAxisSizeMax);
   SetUICrossAxisAlign(kUICrossAxisAlignCenter);

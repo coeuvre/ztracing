@@ -11,44 +11,44 @@
 static void BuildUI(f32 dt) {
   TempMemory scratch = BeginScratch(0, 0);
 
-  BeginUIColumn(STR8_LIT("Root"));
+  BeginUIColumn();
   {
-    BeginUIRow(STR8_LIT("Menu"));
+    BeginUIRow();
     {
       SetUIColor(ColorU32FromHex(0xE6573F));
 
-      BeginUIBox(STR8_LIT("Load"));
+      BeginUIBox();
       {
         SetUIColor(ColorU32FromHex(0x5EAC57));
         SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
 
-        BeginUIBox(STR8_LIT("Label"));
+        BeginUIBox();
         SetUIText(STR8_LIT("Load"));
         EndUIBox();
       }
       EndUIBox();
 
-      BeginUIBox(STR8_LIT("About"));
+      BeginUIBox();
       {
         SetUIColor(ColorU32FromHex(0x5EAC57));
         SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
 
-        BeginUIBox(STR8_LIT("Label"));
+        BeginUIBox();
         SetUIText(STR8_LIT("About"));
         EndUIBox();
       }
       EndUIBox();
 
-      BeginUIBox(STR8_LIT("Space"));
+      BeginUIBox();
       SetUIFlex(1.0f);
       EndUIBox();
 
-      BeginUIBox(STR8_LIT("FPS"));
+      BeginUIBox();
       {
         SetUIColor(ColorU32FromHex(0x5EAC57));
         SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
 
-        BeginUIBox(STR8_LIT("Label"));
+        BeginUIBox();
         SetUIText(PushStr8F(scratch.arena, "%.0f", 1.0f / dt));
         EndUIBox();
       }
@@ -56,7 +56,7 @@ static void BuildUI(f32 dt) {
     }
     EndUIRow();
 
-    BeginUIBox(STR8_LIT("Main"));
+    BeginUIBox();
     SetUIColor(ColorU32FromHex(0x5EAC57));
     SetUIText(STR8_LIT("Main"));
     EndUIBox();

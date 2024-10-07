@@ -4,18 +4,21 @@
 #include "src/memory.h"
 #include "src/types.h"
 
-typedef struct Str8 Str8;
 // Null terminated utf-8 string.
-struct Str8 {
+typedef struct Str8 {
   u8 *ptr;
   // The number of bytes of the string, excluding NULL-terminator. The buffer
   // pointed by `ptr` MUST be at least (len + 1) large to hold both the content
   // the of string AND the NULL-terminator.
   usize len;
-};
+} Str8;
 
-#define STR8_LIT(s) \
-  (Str8) { (u8 *)(s), sizeof(s) - 1 }
+#define STR8_LIT(s) (Str8){(u8 *)(s), sizeof(s) - 1}
+
+static inline Str8 Str8Zero(void) {
+  Str8 result = {0};
+  return result;
+}
 
 static inline b32 IsEmptyStr8(Str8 str) {
   b32 result = str.len == 0;

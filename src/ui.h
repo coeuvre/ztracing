@@ -121,12 +121,14 @@ UIKey UIKeyZero(void);
 UIKey UIKeyFromStr8(UIKey seed, Str8 str);
 b32 IsEqualUIKey(UIKey a, UIKey b);
 
-void BeginUIBox(Str8 key);
+void BeginUIBox(void);
 void EndUIBox(void);
 
-UIBox *GetUIRoot(void);
-UIBox *GetUIChild(UIBox *box, Str8 key);
+UIBox *GetUIBoxByKey(UIBox *box, Str8 key);
+UIBox *GetUIBox(UIBox *box, u32 index);
 UIBox *GetUICurrent(void);
+
+void SetNextUIKey(Str8 key);
 
 void SetUIColor(ColorU32 color);
 void SetUISize(Vec2 size);

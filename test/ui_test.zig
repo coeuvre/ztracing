@@ -51,12 +51,11 @@ fn expectBoxText(box: [*c]c.UIBox, expected_text: []const u8) !void {
 
 test "Layout, root has the same size as the screen" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox(c.STR8_LIT("Root"));
+    c.BeginUIBox();
     c.EndUIBox();
     c.EndUIFrame();
 
-    const root = c.GetUIRoot();
-    try expectBoxKey(root, "Root");
+    const root = c.GetUIBox(0, 0);
     try expectBoxSize(root, c.V2(100, 100));
 }
 
@@ -70,12 +69,12 @@ test "Layout, root has the same size as the screen, with fixed size" {
 
     for (sizes) |size| {
         c.BeginUIFrame(c.V2(100, 100), 1);
-        c.BeginUIBox(c.STR8_LIT("Root"));
+        c.BeginUIBox();
         c.SetUISize(size);
         c.EndUIBox();
         c.EndUIFrame();
 
-        const root = c.GetUIRoot();
+        const root = c.GetUIBox(0, 0);
         try expectBoxSize(root, c.V2(100, 100));
     }
 }
@@ -95,20 +94,20 @@ test "Layout, aligns" {
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
             c.BeginUIFrame(c.V2(100, 100), 1);
-            c.BeginUIBox(c.STR8_LIT("Root"));
+            c.BeginUIBox();
             {
                 c.SetUIMainAxisAlign(main_axis_option.@"align");
                 c.SetUICrossAxisAlign(cross_axis_option.@"align");
 
-                c.BeginUIBox(c.STR8_LIT("Container"));
+                c.BeginUIBox();
                 c.SetUISize(c.V2(50, 50));
                 c.EndUIBox();
             }
             c.EndUIBox();
             c.EndUIFrame();
 
-            const root = c.GetUIRoot();
-            const container = c.GetUIChild(root, c.STR8_LIT("Container"));
+            const root = c.GetUIBox(0, 0);
+            const container = c.GetUIBox(root, 0);
             try expectBoxRelPos(container, c.V2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
             try expectBoxSize(container, c.V2(50, 50));
         }
@@ -131,15 +130,15 @@ test "Layout, padding" {
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
             c.BeginUIFrame(c.V2(100, 100), 1);
-            c.BeginUIBox(c.STR8_LIT("Root"));
+            c.BeginUIBox();
             {
                 c.SetUIMainAxisAlign(main_axis_option.@"align");
                 c.SetUICrossAxisAlign(cross_axis_option.@"align");
                 c.SetUIPadding(padding);
 
-                c.BeginUIBox(c.STR8_LIT("Container"));
+                c.BeginUIBox();
                 {
-                    c.BeginUIBox(c.STR8_LIT("Child"));
+                    c.BeginUIBox();
                     c.SetUISize(c.V2(50, 50));
                     c.EndUIBox();
                 }
@@ -148,8 +147,8 @@ test "Layout, padding" {
             c.EndUIBox();
             c.EndUIFrame();
 
-            const root = c.GetUIRoot();
-            const container = c.GetUIChild(root, c.STR8_LIT("Container"));
+            const root = c.GetUIBox(0, 0);
+            const container = c.GetUIBox(root, 0);
             try expectBoxRelPos(container, c.V2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
             try expectBoxSize(container, c.V2(50, 50));
         }
@@ -158,42 +157,42 @@ test "Layout, padding" {
 
 test "Layout, no children, no fixed size, as small as possible" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox(c.STR8_LIT("Root"));
+    c.BeginUIBox();
     {
-        c.BeginUIBox(c.STR8_LIT("Container"));
+        c.BeginUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUIFrame();
 
-    const root = c.GetUIRoot();
-    const container = c.GetUIChild(root, c.STR8_LIT("Container"));
+    const root = c.GetUIBox(0, 0);
+    const container = c.GetUIBox(root, 0);
     try expectBoxSize(container, c.V2(0, 0));
 }
 
 test "Layout, no children, no fixed size, flex, main axis is as big as possible" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox(c.STR8_LIT("Root"));
+    c.BeginUIBox();
     {
-        c.BeginUIBox(c.STR8_LIT("Container"));
+        c.BeginUIBox();
         c.SetUIFlex(1);
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUIFrame();
 
-    const root = c.GetUIRoot();
-    const container = c.GetUIChild(root, c.STR8_LIT("Container"));
+    const root = c.GetUIBox(0, 0);
+    const container = c.GetUIBox(root, 0);
     try expectBoxSize(container, c.V2(100, 0));
 }
 
 test "Layout, with one child, size around it" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox(c.STR8_LIT("Root"));
+    c.BeginUIBox();
     {
-        c.BeginUIBox(c.STR8_LIT("Container"));
+        c.BeginUIBox();
         {
-            c.BeginUIBox(c.STR8_LIT("Child"));
+            c.BeginUIBox();
             c.SetUISize(c.V2(50, 50));
             c.EndUIBox();
         }
@@ -202,8 +201,8 @@ test "Layout, with one child, size around it" {
     c.EndUIBox();
     c.EndUIFrame();
 
-    const root = c.GetUIRoot();
-    const container = c.GetUIChild(root, c.STR8_LIT("Container"));
+    const root = c.GetUIBox(0, 0);
+    const container = c.GetUIBox(root, 0);
     try expectBoxSize(container, c.V2(50, 50));
 }
 
@@ -215,15 +214,15 @@ test "Layout, child has different main axis than parent" {
 
     for (main_axis_sizes) |main_axis_size| {
         c.BeginUIFrame(c.V2(100, 100), 1);
-        c.BeginUIBox(c.STR8_LIT("Column"));
+        c.BeginUIBox();
         {
             c.SetUIMainAxis(c.kAxis2Y);
 
-            c.BeginUIBox(c.STR8_LIT("Row"));
+            c.BeginUIBox();
             {
                 c.SetUIMainAxisSize(main_axis_size);
 
-                c.BeginUIBox(c.STR8_LIT("Item"));
+                c.BeginUIBox();
                 c.SetUISize(c.V2(20, 20));
                 c.EndUIBox();
             }
@@ -232,8 +231,8 @@ test "Layout, child has different main axis than parent" {
         c.EndUIBox();
         c.EndUIFrame();
 
-        const root = c.GetUIRoot();
-        const row = c.GetUIChild(root, c.STR8_LIT("Row"));
+        const root = c.GetUIBox(0, 0);
+        const row = c.GetUIBox(root, 0);
         if (main_axis_size == c.kUIMainAxisSizeMin) {
             try expectBoxSize(row, c.V2(20, 20));
         } else {
@@ -250,13 +249,13 @@ test "Layout, child has same main axis as parent" {
 
     for (main_axis_sizes) |main_axis_size| {
         c.BeginUIFrame(c.V2(100, 100), 1);
-        c.BeginUIBox(c.STR8_LIT("Row"));
+        c.BeginUIBox();
         {
-            c.BeginUIBox(c.STR8_LIT("Row"));
+            c.BeginUIBox();
             {
                 c.SetUIMainAxisSize(main_axis_size);
 
-                c.BeginUIBox(c.STR8_LIT("Item"));
+                c.BeginUIBox();
                 c.SetUISize(c.V2(20, 20));
                 c.EndUIBox();
             }
@@ -265,8 +264,8 @@ test "Layout, child has same main axis as parent" {
         c.EndUIBox();
         c.EndUIFrame();
 
-        const root = c.GetUIRoot();
-        const row = c.GetUIChild(root, c.STR8_LIT("Row"));
+        const root = c.GetUIBox(0, 0);
+        const row = c.GetUIBox(root, 0);
         try expectBoxSize(row, c.V2(20, 20));
     }
 }
@@ -275,26 +274,26 @@ test "Layout, child has same main axis as parent" {
 
 test "Layout, no fixed size, size around text" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox(c.STR8_LIT("Root"));
+    c.BeginUIBox();
     {
-        c.BeginUIBox(c.STR8_LIT("Text"));
+        c.BeginUIBox();
         c.SetUIText(c.STR8_LIT("Text"));
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUIFrame();
 
-    const root = c.GetUIRoot();
-    const text = c.GetUIChild(root, c.STR8_LIT("Text"));
+    const root = c.GetUIBox(0, 0);
+    const text = c.GetUIBox(root, 0);
     const text_metrics = c.GetTextMetricsStr8(c.STR8_LIT("Text"), c.KUITextSizeDefault);
     try expectBoxSize(text, text_metrics.size);
 }
 
 test "Layout, fixed size, truncate text" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox(c.STR8_LIT("Root"));
+    c.BeginUIBox();
     {
-        c.BeginUIBox(c.STR8_LIT("Text"));
+        c.BeginUIBox();
         c.SetUISize(c.V2(2, 2));
         c.SetUIText(c.STR8_LIT("Text"));
         c.EndUIBox();
@@ -302,92 +301,92 @@ test "Layout, fixed size, truncate text" {
     c.EndUIBox();
     c.EndUIFrame();
 
-    const root = c.GetUIRoot();
-    const text = c.GetUIChild(root, c.STR8_LIT("Text"));
+    const root = c.GetUIBox(0, 0);
+    const text = c.GetUIBox(root, 0);
     try expectBoxSize(text, c.V2(2, 2));
 }
 
 test "Layout, row, no constraints on children" {
     c.BeginUIFrame(c.V2(1000, 100), 1);
-    c.BeginUIBox(c.STR8_LIT("Root"));
+    c.BeginUIBox();
     {
-        c.BeginUIBox(c.STR8_LIT("C1"));
+        c.BeginUIBox();
         c.SetUIText(c.STR8_LIT("Hello!"));
         c.EndUIBox();
 
-        c.BeginUIBox(c.STR8_LIT("C2"));
+        c.BeginUIBox();
         c.SetUIText(c.STR8_LIT("Goodbye!"));
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUIFrame();
 
-    const root = c.GetUIRoot();
-    const c1 = c.GetUIChild(root, c.STR8_LIT("C1"));
-    const c2 = c.GetUIChild(root, c.STR8_LIT("C2"));
-    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.KUITextSizeDefault).size;
-    const c2_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
+    const root = c.GetUIBox(0, 0);
+    const c0 = c.GetUIBox(root, 0);
+    const c1 = c.GetUIBox(root, 1);
+    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.KUITextSizeDefault).size;
+    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
 
-    try testing.expect(c1_text_size.x + c2_text_size.x < 1000);
+    try testing.expect(c0_text_size.x + c1_text_size.x < 1000);
+    try expectBoxSize(c0, c0_text_size);
+    try expectBoxRelPos(c0, c.V2(0, 0));
     try expectBoxSize(c1, c1_text_size);
-    try expectBoxRelPos(c1, c.V2(0, 0));
-    try expectBoxSize(c2, c2_text_size);
-    try expectBoxRelPos(c2, c.V2(c1_text_size.x, 0));
+    try expectBoxRelPos(c1, c.V2(c0_text_size.x, 0));
 }
 
 test "Layout, row, no constraints on children, but truncate" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox(c.STR8_LIT("Root"));
+    c.BeginUIBox();
     {
-        c.BeginUIBox(c.STR8_LIT("C1"));
+        c.BeginUIBox();
         c.SetUIText(c.STR8_LIT("Hello!"));
         c.EndUIBox();
 
-        c.BeginUIBox(c.STR8_LIT("C2"));
+        c.BeginUIBox();
         c.SetUIText(c.STR8_LIT("Goodbye!"));
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUIFrame();
 
-    const root = c.GetUIRoot();
-    const c1 = c.GetUIChild(root, c.STR8_LIT("C1"));
-    const c2 = c.GetUIChild(root, c.STR8_LIT("C2"));
-    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.KUITextSizeDefault).size;
-    const c2_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
+    const root = c.GetUIBox(0, 0);
+    const c0 = c.GetUIBox(root, 0);
+    const c1 = c.GetUIBox(root, 1);
+    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.KUITextSizeDefault).size;
+    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
 
-    try testing.expect(c1_text_size.x + c2_text_size.x > 100);
-    try expectBoxSize(c1, c1_text_size);
-    try expectBoxRelPos(c1, c.V2(0, 0));
-    try expectBoxSize(c2, c.V2(100 - c1_text_size.x, c2_text_size.y));
-    try expectBoxRelPos(c2, c.V2(c1_text_size.x, 0));
+    try testing.expect(c0_text_size.x + c1_text_size.x > 100);
+    try expectBoxSize(c0, c0_text_size);
+    try expectBoxRelPos(c0, c.V2(0, 0));
+    try expectBoxSize(c1, c.V2(100 - c0_text_size.x, c1_text_size.y));
+    try expectBoxRelPos(c1, c.V2(c0_text_size.x, 0));
 }
 
 test "Layout, row, constraint flex" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox(c.STR8_LIT("Root"));
+    c.BeginUIBox();
     {
-        c.BeginUIBox(c.STR8_LIT("C1"));
+        c.BeginUIBox();
         c.SetUIText(c.STR8_LIT("A very long text that can't be fit in one line!"));
         c.SetUIFlex(1);
         c.EndUIBox();
 
-        c.BeginUIBox(c.STR8_LIT("C2"));
+        c.BeginUIBox();
         c.SetUIText(c.STR8_LIT("Goodbye!"));
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUIFrame();
 
-    const root = c.GetUIRoot();
-    const c1 = c.GetUIChild(root, c.STR8_LIT("C1"));
-    const c2 = c.GetUIChild(root, c.STR8_LIT("C2"));
-    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("A very long text that can't be fit in one line!"), c.KUITextSizeDefault).size;
-    const c2_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
+    const root = c.GetUIBox(0, 0);
+    const c0 = c.GetUIBox(root, 0);
+    const c1 = c.GetUIBox(root, 1);
+    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("A very long text that can't be fit in one line!"), c.KUITextSizeDefault).size;
+    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
 
-    try testing.expect(c1_text_size.x > 100);
-    try expectBoxSize(c1, c.V2(100 - c2_text_size.x, c1_text_size.y));
-    try expectBoxRelPos(c1, c.V2(0, 0));
-    try expectBoxSize(c2, c2_text_size);
-    try expectBoxRelPos(c2, c.V2(100 - c2_text_size.x, 0));
+    try testing.expect(c0_text_size.x > 100);
+    try expectBoxSize(c0, c.V2(100 - c1_text_size.x, c0_text_size.y));
+    try expectBoxRelPos(c0, c.V2(0, 0));
+    try expectBoxSize(c1, c1_text_size);
+    try expectBoxRelPos(c1, c.V2(100 - c1_text_size.x, 0));
 }

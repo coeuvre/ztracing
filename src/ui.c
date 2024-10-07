@@ -11,23 +11,114 @@
 #include "src/string.h"
 #include "src/types.h"
 
-typedef struct BoxHashSlot {
+typedef struct BoxHashSlot BoxHashSlot;
+struct BoxHashSlot {
+  BoxHashSlot *prev;
+  BoxHashSlot *next;
   UIBox *first;
   UIBox *last;
-} BoxHashSlot;
+};
+
+typedef struct UIBoxCache {
+  u32 total_box_count;
+  // Free list for boxes
+  UIBox *first_free_box;
+  // Hash slots for box hash table
+  u32 box_hash_slots_count;
+  BoxHashSlot *box_hash_slots;
+  // Linked list for non-empty box hash slots
+  BoxHashSlot *first_hash_slot;
+  BoxHashSlot *last_hash_slot;
+} UIBoxCache;
+
+static void InitUIBoxCache(UIBoxCache *cache, Arena *arena) {
+  cache->box_hash_slots_count = 4096;
+  cache->box_hash_slots =
+      PushArray(arena, BoxHashSlot, cache->box_hash_slots_count);
+}
+
+static UIBox *GetOrPushBox(UIBoxCache *cache, Arena *arena) {
+  UIBox *result;
+  if (cache->first_free_box) {
+    result = cache->first_free_box;
+    cache->first_free_box = result->next;
+    ZeroMemory(result, sizeof(*result));
+  } else {
+    result = PushArray(arena, UIBox, 1);
+    ++cache->total_box_count;
+  }
+  return result;
+}
+
+static UIBox *GetBoxByKey(UIBoxCache *cache, UIKey key) {
+  UIBox *result = 0;
+  if (!IsEqualUIKey(key, UIKeyZero())) {
+    BoxHashSlot *slot =
+        &cache->box_hash_slots[key.hash % cache->box_hash_slots_count];
+    for (UIBox *box = slot->first; box; box = box->hash_next) {
+      if (IsEqualUIKey(box->key, key)) {
+        result = box;
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+static UIBox *GetOrPushBoxByKey(UIBoxCache *cache, Arena *arena, UIKey key) {
+  UIBox *box = GetBoxByKey(cache, key);
+  if (!box) {
+    box = GetOrPushBox(cache, arena);
+    box->key = key;
+    BoxHashSlot *slot =
+        &cache->box_hash_slots[key.hash % cache->box_hash_slots_count];
+    if (!slot->first) {
+      APPEND_DOUBLY_LINKED_LIST(cache->first_hash_slot, cache->last_hash_slot,
+                                slot, prev, next);
+    }
+    APPEND_DOUBLY_LINKED_LIST(slot->first, slot->last, box, hash_prev,
+                              hash_next);
+  }
+  return box;
+}
+
+static void GarbageCollectBoxes(UIBoxCache *cache, u64 build_index) {
+  // Garbage collect boxes that were not touched by last frame or don't have key.
+  for (BoxHashSlot *slot = cache->first_hash_slot; slot;) {
+    BoxHashSlot *next_slot = slot->next;
+
+    for (UIBox *box = slot->first; box;) {
+      UIBox *next = box->hash_next;
+      if (IsEqualUIKey(box->key, UIKeyZero()) ||
+          box->last_touched_build_index < build_index) {
+        REMOVE_DOUBLY_LINKED_LIST(slot->first, slot->last, box, hash_prev,
+                                  hash_next);
+
+        box->next = cache->first_free_box;
+        cache->first_free_box = box;
+      }
+      box = next;
+    }
+
+    if (!slot->first) {
+      REMOVE_DOUBLY_LINKED_LIST(cache->first_hash_slot, cache->last_hash_slot,
+                                slot, prev, next);
+    }
+
+    slot = next_slot;
+  }
+}
 
 typedef struct UIState {
   Arena *arena;
 
-  // box cache
-  UIBox *first_free_box;
-  u32 box_hash_slots_count;
-  BoxHashSlot *box_hash_slots;
+  UIBoxCache cache;
 
   Arena *build_arena[2];
   u64 build_index;
 
   // per-frame info
+  Str8 next_ui_key_str;
   f32 content_scale;
   Vec2 screen_size_in_pixel;
   Vec2 screen_size;
@@ -42,14 +133,22 @@ UIKey UIKeyZero(void) {
   return result;
 }
 
-UIKey UIKeyFromStr8(UIKey seed, Str8 str) {
-  // djb2 hash function
-  u64 hash = seed.hash ? seed.hash : 5381;
-  for (usize i = 0; i < str.len; i += 1) {
-    // hash * 33 + c
-    hash = ((hash << 5) + hash) + str.ptr[i];
-  }
+UIKey UIKeyFromHash(u64 hash) {
   UIKey result = {hash};
+  return result;
+}
+
+UIKey UIKeyFromStr8(UIKey seed, Str8 str) {
+  UIKey result = UIKeyZero();
+  if (str.len) {
+    // djb2 hash function
+    u64 hash = seed.hash ? seed.hash : 5381;
+    for (usize i = 0; i < str.len; i += 1) {
+      // hash * 33 + c
+      hash = ((hash << 5) + hash) + str.ptr[i];
+    }
+    result.hash = hash;
+  }
   return result;
 }
 
@@ -58,38 +157,15 @@ b32 IsEqualUIKey(UIKey a, UIKey b) {
   return result;
 }
 
-static UIBox *PushBox(Arena *arena) {
-  UIBox *result = PushArray(arena, UIBox, 1);
-  return result;
-}
-
 static UIState *GetUIState(void) {
   UIState *state = &t_ui_state;
   if (!state->arena) {
     state->arena = AllocArena();
-    state->box_hash_slots_count = 4096;
-    state->box_hash_slots =
-        PushArray(state->arena, BoxHashSlot, state->box_hash_slots_count);
-
-    state->root = PushBox(state->arena);
-
+    InitUIBoxCache(&state->cache, state->arena);
     state->build_arena[0] = AllocArena();
     state->build_arena[1] = AllocArena();
-    state->current = state->root;
   }
   return state;
-}
-
-static UIBox *GetOrPushBox(UIState *state) {
-  UIBox *result;
-  if (state->first_free_box) {
-    result = state->first_free_box;
-    state->first_free_box = result->next;
-    ZeroMemory(result, sizeof(*result));
-  } else {
-    result = PushBox(state->arena);
-  }
-  return result;
 }
 
 static Arena *GetBuildArena(UIState *state) {
@@ -100,6 +176,8 @@ static Arena *GetBuildArena(UIState *state) {
 
 void BeginUIFrame(Vec2 screen_size_in_pixel, f32 content_scale) {
   UIState *state = GetUIState();
+
+  GarbageCollectBoxes(&state->cache, state->build_index);
 
   state->build_index += 1;
   state->content_scale = content_scale;
@@ -308,7 +386,6 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
     child_main_axis_size = GetItemVec2(text_size, main_axis);
     child_cross_axis_max = GetItemVec2(text_size, cross_axis);
   }
-
   Vec2 child_size;
   SetItemVec2(&child_size, main_axis, child_main_axis_size);
   SetItemVec2(&child_size, cross_axis, child_cross_axis_max);
@@ -404,6 +481,8 @@ void EndUIFrame(void) {
   }
 
   // DebugPrintUI(state);
+
+  INFO("Total box count: %u", state->cache.total_box_count);
 }
 
 void RenderUI(void) {
@@ -413,42 +492,19 @@ void RenderUI(void) {
   }
 }
 
-static UIBox *GetBoxByKey(UIState *state, UIKey key) {
-  UIBox *result = 0;
-  if (!IsEqualUIKey(key, UIKeyZero())) {
-    BoxHashSlot *slot =
-        &state->box_hash_slots[key.hash % state->box_hash_slots_count];
-    for (UIBox *box = slot->first; box; box = box->hash_next) {
-      if (IsEqualUIKey(box->key, key)) {
-        result = box;
-        break;
-      }
-    }
-  }
-  return result;
-}
-
-void BeginUIBox(Str8 key_str) {
+void BeginUIBox(void) {
   UIState *state = GetUIState();
 
-  UIBox *parent = state->current;
-  UIKey seed = UIKeyZero();
-  if (parent) {
-    seed = parent->key;
-  }
-  UIKey key = UIKeyFromStr8(seed, key_str);
-  UIBox *box = GetBoxByKey(state, key);
-  if (!box) {
-    box = GetOrPushBox(state);
-    box->key = key;
-    BoxHashSlot *slot =
-        &state->box_hash_slots[key.hash % state->box_hash_slots_count];
-    APPEND_DOUBLY_LINKED_LIST(slot->first, slot->last, box, hash_prev,
-                              hash_next);
-  }
+  Str8 key_str = state->next_ui_key_str;
+  state->next_ui_key_str = Str8Zero();
 
+  UIBox *parent = state->current;
+  UIKey seed = UIKeyFromHash((u64)parent);
+  UIKey key = UIKeyFromStr8(seed, state->next_ui_key_str);
+  UIBox *box = GetOrPushBoxByKey(&state->cache, state->arena, key);
   ASSERTF(box->last_touched_build_index < state->build_index,
-          "%s is built more than once", key_str.ptr);
+          "%s is built more than once",
+          IsEmptyStr8(key_str) ? "<unknown>" : (char *)key_str.ptr);
 
   if (parent) {
     APPEND_DOUBLY_LINKED_LIST(parent->first, parent->last, box, prev, next);
@@ -463,8 +519,10 @@ void BeginUIBox(Str8 key_str) {
   box->first = box->last = 0;
   box->build = (UIBuildData){0};
 
-  Arena *build_arena = GetBuildArena(state);
-  box->build.key_str = PushStr8(build_arena, key_str);
+  if (!IsEmptyStr8(key_str)) {
+    Arena *build_arena = GetBuildArena(state);
+    box->build.key_str = PushStr8(build_arena, key_str);
+  }
 
   state->current = box;
 }
@@ -481,12 +539,41 @@ UIBox *GetUIRoot(void) {
   return state->root;
 }
 
-UIBox *GetUIChild(UIBox *box, Str8 key_str) {
-  UIState *state = GetUIState();
+UIBox *GetUIBoxByKey(UIBox *parent, Str8 key_str) {
+  UIBox *result = 0;
 
-  UIKey seed = box->key;
-  UIKey key = UIKeyFromStr8(seed, key_str);
-  UIBox *result = GetBoxByKey(state, key);
+  UIState *state = GetUIState();
+  if (!parent) {
+    parent = state->root;
+  }
+
+  if (parent) {
+    UIKey seed = UIKeyFromHash((u64)parent);
+    UIKey key = UIKeyFromStr8(seed, key_str);
+    result = GetBoxByKey(&state->cache, key);
+  }
+
+  return result;
+}
+
+UIBox *GetUIBox(UIBox *parent, u32 index) {
+  UIBox *result = 0;
+
+  UIState *state = GetUIState();
+  if (!parent) {
+    parent = state->root;
+  }
+
+  if (parent) {
+    u32 j = 0;
+    for (UIBox *child = parent->first; child; child = child->next) {
+      if (j++ == index) {
+        result = child;
+        break;
+      }
+    }
+  }
+
   return result;
 }
 
@@ -494,6 +581,13 @@ UIBox *GetUICurrent(void) {
   UIState *state = GetUIState();
   ASSERT(state->current);
   return state->current;
+}
+
+void SetNextUIKey(Str8 key) {
+  UIState *state = GetUIState();
+
+  Arena *arena = GetBuildArena(state);
+  state->next_ui_key_str = PushStr8(arena, key);
 }
 
 void SetUIColor(ColorU32 color) {
