@@ -8,6 +8,15 @@ const c = @cImport({
 const testing = std.testing;
 const log = std.log;
 
+const MainAxisOption = struct {
+    @"align": c.UIMainAxisAlign,
+    rel_pos: f32,
+};
+const CrossAxisOption = struct {
+    @"align": c.UICrossAxisAlign,
+    rel_pos: f32,
+};
+
 fn expectEqualVec2(expected: c.Vec2, actual: c.Vec2) !void {
     if (c.IsEqualVec2(expected, actual) == 0) {
         log.err("expected Vec2({d:.2}, {d:.2}), but got Vec2({d:.2}, {d:.2})", .{
@@ -72,14 +81,6 @@ test "Layout, root has the same size as the screen, with fixed size" {
 }
 
 test "Layout, aligns" {
-    const MainAxisOption = struct {
-        @"align": c.UIMainAxisAlign,
-        rel_pos: f32,
-    };
-    const CrossAxisOption = struct {
-        @"align": c.UICrossAxisAlign,
-        rel_pos: f32,
-    };
     const main_axis_options: []const MainAxisOption = &.{
         .{ .@"align" = c.kUIMainAxisAlignStart, .rel_pos = 0 },
         .{ .@"align" = c.kUIMainAxisAlignCenter, .rel_pos = 25 },
@@ -101,6 +102,47 @@ test "Layout, aligns" {
 
                 c.BeginUIBox(c.STR8_LIT("Container"));
                 c.SetUISize(c.V2(50, 50));
+                c.EndUIBox();
+            }
+            c.EndUIBox();
+            c.EndUIFrame();
+
+            const root = c.GetUIRoot();
+            const container = c.GetUIChild(root, c.STR8_LIT("Container"));
+            try expectBoxRelPos(container, c.V2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
+            try expectBoxSize(container, c.V2(50, 50));
+        }
+    }
+}
+
+test "Layout, padding" {
+    const padding = c.UIEdgeInsetsFromSTEB(1, 2, 3, 4);
+    const main_axis_options: []const MainAxisOption = &.{
+        .{ .@"align" = c.kUIMainAxisAlignStart, .rel_pos = 1 },
+        .{ .@"align" = c.kUIMainAxisAlignCenter, .rel_pos = 24 },
+        .{ .@"align" = c.kUIMainAxisAlignEnd, .rel_pos = 47 },
+    };
+    const cross_axis_options: []const CrossAxisOption = &.{
+        .{ .@"align" = c.kUICrossAxisAlignStart, .rel_pos = 2 },
+        .{ .@"align" = c.kUICrossAxisAlignCenter, .rel_pos = 24 },
+        .{ .@"align" = c.kUICrossAxisAlignEnd, .rel_pos = 46 },
+    };
+
+    for (main_axis_options) |main_axis_option| {
+        for (cross_axis_options) |cross_axis_option| {
+            c.BeginUIFrame(c.V2(100, 100), 1);
+            c.BeginUIBox(c.STR8_LIT("Root"));
+            {
+                c.SetUIMainAxisAlign(main_axis_option.@"align");
+                c.SetUICrossAxisAlign(cross_axis_option.@"align");
+                c.SetUIPadding(padding);
+
+                c.BeginUIBox(c.STR8_LIT("Container"));
+                {
+                    c.BeginUIBox(c.STR8_LIT("Child"));
+                    c.SetUISize(c.V2(50, 50));
+                    c.EndUIBox();
+                }
                 c.EndUIBox();
             }
             c.EndUIBox();
@@ -228,8 +270,6 @@ test "Layout, child has same main axis as parent" {
         try expectBoxSize(row, c.V2(20, 20));
     }
 }
-
-// TODO: test padding
 
 // TODO: test min/max size
 

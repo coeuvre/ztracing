@@ -31,6 +31,36 @@ typedef enum UICrossAxisAlign {
   kUICrossAxisAlignStretch,
 } UICrossAxisAlign;
 
+typedef struct UIEdgeInsets {
+  f32 start;
+  f32 end;
+  f32 top;
+  f32 bottom;
+} UIEdgeInsets;
+
+static inline UIEdgeInsets UIEdgeInsetsAll(f32 val) {
+  UIEdgeInsets result;
+  result.start = result.end = result.top = result.bottom = val;
+  return result;
+}
+
+static inline UIEdgeInsets UIEdgeInsetsSymmetric(f32 x, f32 y) {
+  UIEdgeInsets result;
+  result.start = result.end = x;
+  result.top = result.bottom = y;
+  return result;
+}
+
+static inline UIEdgeInsets UIEdgeInsetsFromSTEB(f32 start, f32 top, f32 end,
+                                                f32 bottom) {
+  UIEdgeInsets result;
+  result.start = start;
+  result.end = end;
+  result.top = top;
+  result.bottom = bottom;
+  return result;
+}
+
 typedef struct UIBuildData {
   Str8 key_str;
   ColorU32 color;
@@ -41,6 +71,7 @@ typedef struct UIBuildData {
   UIMainAxisSize main_axis_size;
   UIMainAxisAlign main_axis_align;
   UICrossAxisAlign cross_axis_align;
+  UIEdgeInsets padding;
 } UIBuildData;
 
 typedef struct UIComputedData {
@@ -95,6 +126,7 @@ void EndUIBox(void);
 
 UIBox *GetUIRoot(void);
 UIBox *GetUIChild(UIBox *box, Str8 key);
+UIBox *GetUICurrent(void);
 
 void SetUIColor(ColorU32 color);
 void SetUISize(Vec2 size);
@@ -105,5 +137,6 @@ void SetUIMainAxisSize(UIMainAxisSize main_axis_size);
 void SetUIMainAxisAlign(UIMainAxisAlign main_axis_align);
 void SetUICrossAxisAlign(UICrossAxisAlign cross_axis_align);
 void SetUIFlex(f32 flex);
+void SetUIPadding(UIEdgeInsets padding);
 
 #endif  // ZTRACING_SRC_UI_H_

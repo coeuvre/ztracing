@@ -112,21 +112,23 @@ void BeginUIFrame(Vec2 screen_size_in_pixel, f32 content_scale) {
   ResetArena(GetBuildArena(state));
 }
 
-static void AlignMainAxis(UIBox *box, Axis2 axis, UIMainAxisAlign align,
+static void AlignMainAxis(UIBox *box, Axis2 axis, f32 padding_start,
+                          f32 padding_end, UIMainAxisAlign align,
                           f32 children_size) {
-  // TODO: Handle padding.
-  f32 free = GetItemVec2(box->computed.size, axis) - children_size;
-  f32 pos = 0.0f;
+  // TODO: Handle margin.
+  f32 free = GetItemVec2(box->computed.size, axis) - children_size -
+             padding_start - padding_end;
+  f32 pos = padding_start;
   switch (align) {
     case kUIMainAxisAlignStart: {
     } break;
 
     case kUIMainAxisAlignCenter: {
-      pos = free / 2.0;
+      pos += free / 2.0;
     } break;
 
     case kUIMainAxisAlignEnd: {
-      pos = free;
+      pos += free;
     } break;
 
     default: {
@@ -140,27 +142,26 @@ static void AlignMainAxis(UIBox *box, Axis2 axis, UIMainAxisAlign align,
   }
 }
 
-static void AlignCrossAxis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
-  // TODO: Handle padding.
+static void AlignCrossAxis(UIBox *box, Axis2 axis, f32 padding_start,
+                           f32 padding_end, UICrossAxisAlign align) {
+  // TODO: Handle margin.
   for (UIBox *child = box->first; child; child = child->next) {
+    f32 free = GetItemVec2(box->computed.size, axis) -
+               GetItemVec2(child->computed.size, axis) - padding_start -
+               padding_end;
     switch (align) {
       case kUICrossAxisAlignStart:
       case kUICrossAxisAlignStretch: {
-        SetItemVec2(&child->computed.rel_pos, axis, 0.0f);
+        SetItemVec2(&child->computed.rel_pos, axis, padding_start);
       } break;
 
       case kUICrossAxisAlignCenter: {
-        f32 self_computed_size = GetItemVec2(box->computed.size, axis);
-        f32 child_computed_size = GetItemVec2(child->computed.size, axis);
         SetItemVec2(&child->computed.rel_pos, axis,
-                    (self_computed_size - child_computed_size) / 2.0f);
+                    padding_start + free / 2.0f);
       } break;
 
       case kUICrossAxisAlignEnd: {
-        f32 self_computed_size = GetItemVec2(box->computed.size, axis);
-        f32 child_computed_size = GetItemVec2(child->computed.size, axis);
-        SetItemVec2(&child->computed.rel_pos, axis,
-                    self_computed_size - child_computed_size);
+        SetItemVec2(&child->computed.rel_pos, axis, padding_start + free);
       } break;
 
       default: {
@@ -175,6 +176,28 @@ static inline b32 ShouldMaxAxis(UIBox *box, int axis, Axis2 main_axis,
   // cross axis is always as small as possible
   b32 result = axis == (int)main_axis && main_axis != unbounded_axis &&
                box->build.main_axis_size == kUIMainAxisSizeMax;
+  return result;
+}
+
+static inline f32 GetPaddingStart(UIEdgeInsets padding, Axis2 axis) {
+  // TODO: Handle text direction.
+  f32 result;
+  if (axis == kAxis2X) {
+    result = padding.start;
+  } else {
+    result = padding.top;
+  }
+  return result;
+}
+
+static inline f32 GetPaddingEnd(UIEdgeInsets padding, Axis2 axis) {
+  // TODO: Handle text direction.
+  f32 result;
+  if (axis == kAxis2X) {
+    result = padding.end;
+  } else {
+    result = padding.bottom;
+  }
   return result;
 }
 
@@ -207,12 +230,19 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
         SetItemVec2(&self_size, axis, max_size_axis);
       } else {
         // if constraint is unbounded, make it as small as possible.
-        SetItemVec2(&self_size, axis, min_size_axis);
+        f32 min_size_axis_plus_padding =
+            min_size_axis + GetPaddingStart(box->build.padding, axis) +
+            GetPaddingEnd(box->build.padding, axis);
+        SetItemVec2(&self_size, axis,
+                    MinF32(min_size_axis_plus_padding, max_size_axis));
       }
     }
   }
 
-  // TODO: handle padding and margin.
+  child_max_size.x -= (box->build.padding.start + box->build.padding.end);
+  child_max_size.y -= (box->build.padding.top + box->build.padding.bottom);
+
+  // TODO: handle margin.
   f32 child_main_axis_size = 0.0f;
   f32 child_cross_axis_max = 0.0f;
   if (box->first) {
@@ -284,23 +314,30 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
   SetItemVec2(&child_size, cross_axis, child_cross_axis_max);
 
   for (int axis = 0; axis < kAxis2Count; ++axis) {
-    if (ShouldMaxAxis(box, axis, main_axis, unbounded_axis)) {
-      SetItemVec2(&box->computed.size, axis, GetItemVec2(self_size, axis));
-    } else if (GetItemVec2(box->build.size, axis) == kUISizeUndefined &&
-               GetItemVec2(child_size, axis) != kUISizeUndefined) {
+    f32 child_size_axis = GetItemVec2(child_size, axis);
+    if (!ShouldMaxAxis(box, axis, main_axis, unbounded_axis) &&
+        GetItemVec2(box->build.size, axis) == kUISizeUndefined &&
+        child_size_axis != kUISizeUndefined) {
       // Size itself around children if it doesn't have specific size
-      SetItemVec2(&box->computed.size, axis,
-                  MinF32(MaxF32(GetItemVec2(child_size, axis),
-                                GetItemVec2(min_size, axis)),
-                         GetItemVec2(max_size, axis)));
+      f32 child_size_axis_plus_padding =
+          child_size_axis + GetPaddingStart(box->build.padding, axis) +
+          GetPaddingEnd(box->build.padding, axis);
+      SetItemVec2(
+          &box->computed.size, axis,
+          ClampF32(child_size_axis_plus_padding, GetItemVec2(min_size, axis),
+                   GetItemVec2(max_size, axis)));
     } else {
       SetItemVec2(&box->computed.size, axis, GetItemVec2(self_size, axis));
     }
   }
 
-  AlignMainAxis(box, main_axis, box->build.main_axis_align,
-                child_main_axis_size);
-  AlignCrossAxis(box, cross_axis, box->build.cross_axis_align);
+  AlignMainAxis(box, main_axis, GetPaddingStart(box->build.padding, main_axis),
+                GetPaddingEnd(box->build.padding, main_axis),
+                box->build.main_axis_align, child_main_axis_size);
+  AlignCrossAxis(box, cross_axis,
+                 GetPaddingStart(box->build.padding, cross_axis),
+                 GetPaddingEnd(box->build.padding, cross_axis),
+                 box->build.cross_axis_align);
 }
 
 static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos_in_pixel) {
@@ -453,6 +490,12 @@ UIBox *GetUIChild(UIBox *box, Str8 key_str) {
   return result;
 }
 
+UIBox *GetUICurrent(void) {
+  UIState *state = GetUIState();
+  ASSERT(state->current);
+  return state->current;
+}
+
 void SetUIColor(ColorU32 color) {
   UIState *state = GetUIState();
   ASSERT(state->current);
@@ -506,4 +549,8 @@ void SetUIFlex(f32 flex) {
   ASSERT(state->current);
 
   state->current->build.flex = flex;
+}
+
+void SetUIPadding(UIEdgeInsets padding) {
+  GetUICurrent()->build.padding = padding;
 }

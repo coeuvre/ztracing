@@ -20,6 +20,7 @@ static void BuildUI(f32 dt) {
       BeginUIBox(STR8_LIT("Load"));
       {
         SetUIColor(ColorU32FromHex(0x5EAC57));
+        SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
 
         BeginUIBox(STR8_LIT("Label"));
         SetUIText(STR8_LIT("Load"));
@@ -30,6 +31,7 @@ static void BuildUI(f32 dt) {
       BeginUIBox(STR8_LIT("About"));
       {
         SetUIColor(ColorU32FromHex(0x5EAC57));
+        SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
 
         BeginUIBox(STR8_LIT("Label"));
         SetUIText(STR8_LIT("About"));
@@ -44,6 +46,7 @@ static void BuildUI(f32 dt) {
       BeginUIBox(STR8_LIT("FPS"));
       {
         SetUIColor(ColorU32FromHex(0x5EAC57));
+        SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
 
         BeginUIBox(STR8_LIT("Label"));
         SetUIText(PushStr8F(scratch.arena, "%.0f", 1.0f / dt));
