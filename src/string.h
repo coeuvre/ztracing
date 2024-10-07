@@ -1,6 +1,8 @@
 #ifndef ZTRACING_SRC_STRING_H_
 #define ZTRACING_SRC_STRING_H_
 
+#include <string.h>
+
 #include "src/memory.h"
 #include "src/types.h"
 
@@ -22,6 +24,11 @@ static inline Str8 Str8Zero(void) {
 
 static inline b32 IsEmptyStr8(Str8 str) {
   b32 result = str.len == 0;
+  return result;
+}
+
+static inline b32 IsEqualStr8(Str8 a, Str8 b) {
+  b32 result = a.len == b.len && memcmp(a.ptr, b.ptr, a.len) == 0;
   return result;
 }
 

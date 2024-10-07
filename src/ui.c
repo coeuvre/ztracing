@@ -83,7 +83,8 @@ static UIBox *GetOrPushBoxByKey(UIBoxCache *cache, Arena *arena, UIKey key) {
 }
 
 static void GarbageCollectBoxes(UIBoxCache *cache, u64 build_index) {
-  // Garbage collect boxes that were not touched by last frame or don't have key.
+  // Garbage collect boxes that were not touched by last frame or don't have
+  // key.
   for (BoxHashSlot *slot = cache->first_hash_slot; slot;) {
     BoxHashSlot *next_slot = slot->next;
 
@@ -481,8 +482,6 @@ void EndUIFrame(void) {
   }
 
   // DebugPrintUI(state);
-
-  INFO("Total box count: %u", state->cache.total_box_count);
 }
 
 void RenderUI(void) {
@@ -499,8 +498,11 @@ void BeginUIBox(void) {
   state->next_ui_key_str = Str8Zero();
 
   UIBox *parent = state->current;
-  UIKey seed = UIKeyFromHash((u64)parent);
-  UIKey key = UIKeyFromStr8(seed, state->next_ui_key_str);
+  UIKey seed = UIKeyZero();
+  if (parent) {
+    seed = parent->key;
+  }
+  UIKey key = UIKeyFromStr8(seed, key_str);
   UIBox *box = GetOrPushBoxByKey(&state->cache, state->arena, key);
   ASSERTF(box->last_touched_build_index < state->build_index,
           "%s is built more than once",
@@ -561,10 +563,8 @@ UIBox *GetUIBox(UIBox *parent, u32 index) {
 
   UIState *state = GetUIState();
   if (!parent) {
-    parent = state->root;
-  }
-
-  if (parent) {
+    result = state->root;
+  } else {
     u32 j = 0;
     for (UIBox *child = parent->first; child; child = child->next) {
       if (j++ == index) {

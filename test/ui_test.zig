@@ -49,6 +49,41 @@ fn expectBoxText(box: [*c]c.UIBox, expected_text: []const u8) !void {
     try testing.expectEqualStrings(expected_text, sliceFromStr8(box.*.build.text));
 }
 
+test "Key, return the same box across frame" {
+    var box1: [*c]c.UIBox = null;
+    var box2: [*c]c.UIBox = null;
+
+    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIBox();
+    {
+        c.BeginUIBox();
+        c.EndUIBox();
+
+        c.SetNextUIKey(c.STR8_LIT("KEY"));
+        c.BeginUIBox();
+        box1 = c.GetUICurrent();
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUIFrame();
+
+    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIBox();
+    {
+        c.SetNextUIKey(c.STR8_LIT("KEY"));
+        c.BeginUIBox();
+        box2 = c.GetUICurrent();
+        c.EndUIBox();
+
+        c.BeginUIBox();
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUIFrame();
+
+    try testing.expectEqual(box1, box2);
+}
+
 test "Layout, root has the same size as the screen" {
     c.BeginUIFrame(c.V2(100, 100), 1);
     c.BeginUIBox();
