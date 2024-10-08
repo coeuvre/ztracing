@@ -29,9 +29,12 @@ f32 GetScreenContentScale(void) {
   return result;
 }
 
-Vec2I GetScreenSizeInPixel(void) {
-  Vec2I result = {0};
-  SDL_GetCurrentRenderOutputSize(g_renderer, &result.x, &result.y);
+Vec2 GetScreenSize(void) {
+  Vec2I screen_size_in_pixel = {0};
+  SDL_GetCurrentRenderOutputSize(g_renderer, &screen_size_in_pixel.x,
+                                 &screen_size_in_pixel.y);
+  Vec2 result = MulVec2(Vec2FromVec2I(screen_size_in_pixel),
+                        1.0f / GetScreenContentScale());
   return result;
 }
 

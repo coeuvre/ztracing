@@ -24,9 +24,7 @@ static void UIButton(Str8 label) {
     }
 
     BeginUIBox();
-    {
-      SetUIText(label);
-    }
+    { SetUIText(label); }
     EndUIBox();
   }
   EndUIBox();
@@ -38,9 +36,7 @@ static void UIText(Str8 text) {
     SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
 
     BeginUIBox();
-    {
-      SetUIText(text);
-    }
+    { SetUIText(text); }
     EndUIBox();
   }
   EndUIBox();
@@ -81,7 +77,7 @@ static void BuildUI(f32 dt) {
 void DoFrame(f32 dt) {
   ClearDraw();
 
-  BeginUIFrame(Vec2FromVec2I(GetScreenSizeInPixel()), GetScreenContentScale());
+  BeginUIFrame(GetScreenSize(), GetScreenContentScale());
   BuildUI(dt);
   EndUIFrame();
   RenderUI();

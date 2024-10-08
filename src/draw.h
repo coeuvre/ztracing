@@ -7,8 +7,8 @@
 
 // Get the DPI scale of the screen. It's the ratio for (pixels / point).
 f32 GetScreenContentScale(void);
-// Get the screen size in pixel.
-Vec2I GetScreenSizeInPixel(void);
+// Get the screen size in points.
+Vec2 GetScreenSize(void);
 
 typedef struct TextMetrics {
   Vec2 size;

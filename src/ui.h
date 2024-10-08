@@ -95,7 +95,7 @@ typedef struct UIComputedData {
   Vec2 size;
   Vec2 rel_pos;
 
-  Rect2 screen_rect_in_pixel;
+  Rect2 screen_rect;
 
   UISignal signal;
 } UIComputedData;
@@ -128,9 +128,10 @@ struct UIBox {
   f32 active_t;
 };
 
-void OnUIMousePos(Vec2 pos_in_pixel);
+// Mouse pos in points.
+void OnUIMousePos(Vec2 pos);
 
-void BeginUIFrame(Vec2 screen_size_in_pixel, f32 content_scale);
+void BeginUIFrame(Vec2 screen_size, f32 content_scale);
 void EndUIFrame(void);
 void RenderUI(void);
 

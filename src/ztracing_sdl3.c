@@ -1,7 +1,11 @@
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_mouse.h>
+#include <SDL3/SDL_video.h>
 
 #include "src/assert.h"
+#include "src/draw.h"
 #include "src/draw_sdl3.h"
+#include "src/log.h"
 #include "src/math.h"
 #include "src/types.h"
 #include "src/ui.h"
@@ -50,10 +54,6 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
       result = SDL_APP_SUCCESS;
     } break;
 
-    case SDL_EVENT_MOUSE_MOTION: {
-      OnUIMousePos(V2(event->motion.x, event->motion.y));
-    } break;
-
     default: {
     } break;
   }
@@ -70,6 +70,16 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
                (f64)SDL_GetPerformanceFrequency());
   }
   last_counter = current_counter;
+
+  {
+    Vec2I window_pos;
+    SDL_GetWindowPosition(window, &window_pos.x, &window_pos.y);
+    Vec2 mouse_pos;
+    SDL_GetGlobalMouseState(&mouse_pos.x, &mouse_pos.y);
+    mouse_pos = SubVec2(mouse_pos, Vec2FromVec2I(window_pos));
+    mouse_pos = MulVec2(mouse_pos, 1.0f / GetScreenContentScale());
+    OnUIMousePos(mouse_pos);
+  }
 
   DoFrame(dt);
 

@@ -112,7 +112,7 @@ static void GarbageCollectBoxes(UIBoxCache *cache, u64 build_index) {
 
 typedef struct UIInput {
   struct {
-    Vec2 pos_in_pixel;
+    Vec2 pos;
   } mouse;
 } UIInput;
 
@@ -128,7 +128,6 @@ typedef struct UIState {
   // per-frame info
   Str8 next_ui_key_str;
   f32 content_scale;
-  Vec2 screen_size_in_pixel;
   Vec2 screen_size;
   UIBox *root;
   UIBox *current;
@@ -144,7 +143,7 @@ static UIState *GetUIState(void) {
     state->build_arena[0] = AllocArena();
     state->build_arena[1] = AllocArena();
 
-    state->input.mouse.pos_in_pixel = V2(-1, -1);
+    state->input.mouse.pos = V2(-1, -1);
   }
   return state;
 }
@@ -155,22 +154,20 @@ static Arena *GetBuildArena(UIState *state) {
   return arena;
 }
 
-void OnUIMousePos(Vec2 pos_in_pixel) {
+void OnUIMousePos(Vec2 pos) {
   UIState *state = GetUIState();
 
-  state->input.mouse.pos_in_pixel = pos_in_pixel;
+  state->input.mouse.pos = pos;
 }
 
-void BeginUIFrame(Vec2 screen_size_in_pixel, f32 content_scale) {
+void BeginUIFrame(Vec2 screen_size, f32 content_scale) {
   UIState *state = GetUIState();
 
   GarbageCollectBoxes(&state->cache, state->build_index);
 
   state->build_index += 1;
   state->content_scale = content_scale;
-  state->screen_size_in_pixel = screen_size_in_pixel;
-  state->screen_size =
-      MulVec2(state->screen_size_in_pixel, 1.0f / state->content_scale);
+  state->screen_size = screen_size;
   state->root = 0;
   state->current = 0;
 
@@ -404,14 +401,12 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
                  box->build.cross_axis_align);
 }
 
-static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos_in_pixel) {
-  Vec2 min_in_pixel =
-      AddVec2(parent_pos_in_pixel,
-              MulVec2(box->computed.rel_pos, state->content_scale));
-  Vec2 max_in_pixel =
-      AddVec2(min_in_pixel, MulVec2(box->computed.size, state->content_scale));
-  box->computed.screen_rect_in_pixel =
-      (Rect2){.min = min_in_pixel, .max = max_in_pixel};
+static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos) {
+  Vec2 min = AddVec2(parent_pos, box->computed.rel_pos);
+  Vec2 max = AddVec2(min, box->computed.size);
+  Vec2 min_in_pixel = MulVec2(min, state->content_scale);
+  Vec2 max_in_pixel = MulVec2(max, state->content_scale);
+  box->computed.screen_rect = (Rect2){.min = min, .max = max};
 
   if (box->build.color.a) {
     DrawRect(min_in_pixel, max_in_pixel, box->build.color);
@@ -422,7 +417,7 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos_in_pixel) {
 
   if (box->first) {
     for (UIBox *child = box->first; child; child = child->next) {
-      RenderBox(state, child, min_in_pixel);
+      RenderBox(state, child, min);
     }
     if (!IsEmptyStr8(box->build.text)) {
       WARN("%s: text content is ignored because it has children",
@@ -471,9 +466,8 @@ static void ProcessSignal(UIState *state, UISignalState *signal_state,
   // Handle mouse
   if (box->build.signal_flags & kUISignalMouse &&
       !signal_state->mouse_captured) {
-    if (ContainsVec2(state->input.mouse.pos_in_pixel,
-                     box->computed.screen_rect_in_pixel.min,
-                     box->computed.screen_rect_in_pixel.max)) {
+    if (ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
+                     box->computed.screen_rect.max)) {
       signal_state->mouse_captured = 1;
       box->computed.signal.hovering = 1;
     } else {
