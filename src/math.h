@@ -170,6 +170,17 @@ typedef struct Rect2 {
   Vec2 max;
 } Rect2;
 
+static inline b32 ContainsF32(f32 val, f32 begin, f32 end) {
+  b32 result = begin <= val && val < end;
+  return result;
+}
+
+static inline b32 ContainsVec2(Vec2 val, Vec2 begin, Vec2 end) {
+  b32 result =
+      ContainsF32(val.x, begin.x, end.x) && ContainsF32(val.y, begin.y, end.y);
+  return result;
+}
+
 static inline f32 ClampF32(f32 value, f32 min, f32 max) {
   f32 result = MinF32(MaxF32(value, min), max);
   return result;

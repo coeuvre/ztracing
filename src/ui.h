@@ -72,7 +72,20 @@ typedef struct UIBuildData {
   UIMainAxisAlign main_axis_align;
   UICrossAxisAlign cross_axis_align;
   UIEdgeInsets padding;
+
+  u32 signal_flags;
 } UIBuildData;
+
+typedef struct UISignal {
+  b8 hovering;
+  b8 pressed;
+  b8 released;
+  b8 clicked;
+} UISignal;
+
+enum UISignalFlags {
+  kUISignalMouse = (1 << 1),
+};
 
 typedef struct UIComputedData {
   Vec2 min_size;
@@ -83,6 +96,8 @@ typedef struct UIComputedData {
   Vec2 rel_pos;
 
   Rect2 screen_rect_in_pixel;
+
+  UISignal signal;
 } UIComputedData;
 
 typedef struct UIBox UIBox;
@@ -113,6 +128,8 @@ struct UIBox {
   f32 active_t;
 };
 
+void OnUIMousePos(Vec2 pos_in_pixel);
+
 void BeginUIFrame(Vec2 screen_size_in_pixel, f32 content_scale);
 void EndUIFrame(void);
 void RenderUI(void);
@@ -140,5 +157,7 @@ void SetUIMainAxisAlign(UIMainAxisAlign main_axis_align);
 void SetUICrossAxisAlign(UICrossAxisAlign cross_axis_align);
 void SetUIFlex(f32 flex);
 void SetUIPadding(UIEdgeInsets padding);
+
+UISignal SetUISignal(u32 flags);
 
 #endif  // ZTRACING_SRC_UI_H_

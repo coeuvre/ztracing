@@ -110,10 +110,17 @@ static void GarbageCollectBoxes(UIBoxCache *cache, u64 build_index) {
   }
 }
 
+typedef struct UIInput {
+  struct {
+    Vec2 pos_in_pixel;
+  } mouse;
+} UIInput;
+
 typedef struct UIState {
   Arena *arena;
 
   UIBoxCache cache;
+  UIInput input;
 
   Arena *build_arena[2];
   u64 build_index;
@@ -129,35 +136,6 @@ typedef struct UIState {
 
 thread_local UIState t_ui_state;
 
-UIKey UIKeyZero(void) {
-  UIKey result = {0};
-  return result;
-}
-
-UIKey UIKeyFromHash(u64 hash) {
-  UIKey result = {hash};
-  return result;
-}
-
-UIKey UIKeyFromStr8(UIKey seed, Str8 str) {
-  UIKey result = UIKeyZero();
-  if (str.len) {
-    // djb2 hash function
-    u64 hash = seed.hash ? seed.hash : 5381;
-    for (usize i = 0; i < str.len; i += 1) {
-      // hash * 33 + c
-      hash = ((hash << 5) + hash) + str.ptr[i];
-    }
-    result.hash = hash;
-  }
-  return result;
-}
-
-b32 IsEqualUIKey(UIKey a, UIKey b) {
-  b32 result = a.hash == b.hash;
-  return result;
-}
-
 static UIState *GetUIState(void) {
   UIState *state = &t_ui_state;
   if (!state->arena) {
@@ -165,6 +143,8 @@ static UIState *GetUIState(void) {
     InitUIBoxCache(&state->cache, state->arena);
     state->build_arena[0] = AllocArena();
     state->build_arena[1] = AllocArena();
+
+    state->input.mouse.pos_in_pixel = V2(-1, -1);
   }
   return state;
 }
@@ -173,6 +153,12 @@ static Arena *GetBuildArena(UIState *state) {
   Arena *arena =
       state->build_arena[state->build_index % ARRAY_COUNT(state->build_arena)];
   return arena;
+}
+
+void OnUIMousePos(Vec2 pos_in_pixel) {
+  UIState *state = GetUIState();
+
+  state->input.mouse.pos_in_pixel = pos_in_pixel;
 }
 
 void BeginUIFrame(Vec2 screen_size_in_pixel, f32 content_scale) {
@@ -472,6 +458,35 @@ static void DebugPrintUI(UIState *state) {
 }
 #endif
 
+typedef struct UISignalState {
+  b32 mouse_captured;
+} UISignalState;
+
+static void ProcessSignal(UIState *state, UISignalState *signal_state,
+                          UIBox *box) {
+  for (UIBox *child = box->first; child; child = child->next) {
+    ProcessSignal(state, signal_state, child);
+  }
+
+  // Handle mouse
+  if (box->build.signal_flags & kUISignalMouse &&
+      !signal_state->mouse_captured) {
+    if (ContainsVec2(state->input.mouse.pos_in_pixel,
+                     box->computed.screen_rect_in_pixel.min,
+                     box->computed.screen_rect_in_pixel.max)) {
+      signal_state->mouse_captured = 1;
+      box->computed.signal.hovering = 1;
+    } else {
+      box->computed.signal.hovering = 0;
+    }
+  } else {
+    box->computed.signal.hovering = 0;
+    box->computed.signal.pressed = 0;
+    box->computed.signal.released = 0;
+    box->computed.signal.clicked = 0;
+  }
+}
+
 void EndUIFrame(void) {
   UIState *state = GetUIState();
   ASSERTF(!state->current, "Mismatched Begin/End calls");
@@ -479,6 +494,9 @@ void EndUIFrame(void) {
   if (state->root) {
     LayoutBox(state, state->root, state->screen_size, state->screen_size, 0);
     state->root->computed.rel_pos = V2(0, 0);
+
+    UISignalState signal_state = {0};
+    ProcessSignal(state, &signal_state, state->root);
   }
 
   // DebugPrintUI(state);
@@ -489,6 +507,35 @@ void RenderUI(void) {
   if (state->root) {
     RenderBox(state, state->root, V2(0, 0));
   }
+}
+
+UIKey UIKeyZero(void) {
+  UIKey result = {0};
+  return result;
+}
+
+UIKey UIKeyFromHash(u64 hash) {
+  UIKey result = {hash};
+  return result;
+}
+
+UIKey UIKeyFromStr8(UIKey seed, Str8 str) {
+  UIKey result = UIKeyZero();
+  if (str.len) {
+    // djb2 hash function
+    u64 hash = seed.hash ? seed.hash : 5381;
+    for (usize i = 0; i < str.len; i += 1) {
+      // hash * 33 + c
+      hash = ((hash << 5) + hash) + str.ptr[i];
+    }
+    result.hash = hash;
+  }
+  return result;
+}
+
+b32 IsEqualUIKey(UIKey a, UIKey b) {
+  b32 result = a.hash == b.hash;
+  return result;
 }
 
 void BeginUIBox(void) {
@@ -647,4 +694,14 @@ void SetUIFlex(f32 flex) {
 
 void SetUIPadding(UIEdgeInsets padding) {
   GetUICurrent()->build.padding = padding;
+}
+
+UISignal SetUISignal(u32 flags) {
+  UIBox *box = GetUICurrent();
+  ASSERTF(!IsEqualUIKey(box->key, UIKeyZero()),
+          "Must assign a key to the box in order to setup signal");
+  box->build.signal_flags = flags;
+
+  UISignal signal = box->computed.signal;
+  return signal;
 }
