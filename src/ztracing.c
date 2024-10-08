@@ -68,7 +68,7 @@ static void BuildUI(f32 dt) {
       f32 scroll = 12345.0f;
 
       f32 item_size = 20.0f;
-      u32 item_count = 10000;
+      u32 item_count = 3000;
       f32 total_size = item_size * item_count;
 
       SetNextUIKey(STR8_LIT("#ScrollArea"));
@@ -106,6 +106,8 @@ static void BuildUI(f32 dt) {
         f32 control_offset =
             (scroll / scroll_max) * (free_size - control_size.y);
 
+        ColorU32 background_color = ColorU32FromRGBA(128, 128, 128, 255);
+
         BeginUIBox();
         SetUISize(head_size);
         SetUIColor(ColorU32FromRGBA(255, 0, 0, 255));
@@ -113,15 +115,26 @@ static void BuildUI(f32 dt) {
 
         BeginUIBox();
         SetUISize(V2(head_size.x, control_offset));
+        SetUIColor(background_color);
         EndUIBox();
 
-        BeginUIBox();
-        SetUISize(control_size);
-        SetUIColor(ColorU32FromRGBA(0, 255, 0, 255));
-        EndUIBox();
+        BeginUIRow();
+        {
+          SetUISize(control_size);
+          SetUIColor(background_color);
+          SetUIPadding(UIEdgeInsetsSymmetric(1.5, 0));
+
+          BeginUIColumn();
+          SetUIFlex(1);
+          SetUIColor(ColorU32FromRGBA(255, 255, 255, 255));
+          EndUIColumn();
+        }
+        EndUIRow();
 
         BeginUIBox();
-        SetUIFlex(1.0);
+        SetUISize(V2(head_size.x, kUISizeUndefined));
+        SetUIFlex(1);
+        SetUIColor(background_color);
         EndUIBox();
 
         BeginUIBox();
