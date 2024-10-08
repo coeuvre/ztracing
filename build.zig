@@ -38,7 +38,9 @@ pub fn build(b: *std.Build) void {
         ztracing.linkSystemLibrary("OleAut32");
         ztracing.linkSystemLibrary("Imm32");
         ztracing.linkSystemLibrary("Version");
-        ztracing.subsystem = .Windows;
+        if (optimize != .Debug) {
+            ztracing.subsystem = .Windows;
+        }
     }
     b.installArtifact(ztracing);
 
