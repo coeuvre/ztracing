@@ -699,3 +699,10 @@ UISignal SetUISignal(u32 flags) {
   UISignal signal = box->computed.signal;
   return signal;
 }
+
+UIComputedData GetUIComputed(void) {
+  UIBox *box = GetUICurrent();
+  ASSERTF(!IsEqualUIKey(box->key, UIKeyZero()),
+          "Must assign a key to the box in order to get computed property");
+  return box->computed;
+}

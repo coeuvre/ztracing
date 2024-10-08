@@ -160,5 +160,6 @@ void SetUIFlex(f32 flex);
 void SetUIPadding(UIEdgeInsets padding);
 
 UISignal SetUISignal(u32 flags);
+UIComputedData GetUIComputed(void);
 
 #endif  // ZTRACING_SRC_UI_H_

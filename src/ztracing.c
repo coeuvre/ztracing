@@ -1,6 +1,7 @@
 #include "src/ztracing.h"
 
 #include "src/draw.h"
+#include "src/log.h"
 #include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
@@ -62,12 +63,35 @@ static void BuildUI(f32 dt) {
     }
     EndUIRow();
 
-    BeginUIBox();
+    BeginUIRow();
     {
-      SetUIColor(ColorU32FromHex(0x5EAC57));
-      SetUIText(STR8_LIT("Main"));
+      SetNextUIKey(STR8_LIT("Scroll"));
+      BeginUIColumn();
+      {
+        SetUIFlex(1.0);
+        // SetUIColor(ColorU32FromHex(0x5EAC57));
+
+        Vec2 size = GetUIComputed().size;
+        INFO("%d, %d", (int)size.x, (int)size.y);
+
+        f32 kItemHeight = 20.0f;
+        u32 item_count = 10000;
+        f32 scroll = 0.0f;
+
+        u32 item_index = FloorF32(scroll / kItemHeight);
+        f32 offset = item_index * kItemHeight - scroll;
+        for (; item_index < item_count && offset < size.y;
+             ++item_index, offset += kItemHeight) {
+          INFO("Build item %u", item_index);
+          BeginUIRow();
+          SetUISize(V2(kUISizeUndefined, kItemHeight));
+          SetUIColor(ColorU32FromRGBA(0, 0, item_index % 256, 255));
+          EndUIRow();
+        }
+      }
+      EndUIColumn();
     }
-    EndUIBox();
+    EndUIRow();
   }
   EndUIColumn();
 
