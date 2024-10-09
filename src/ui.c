@@ -332,9 +332,9 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
     if (self_size_axis != kUISizeUndefined) {
       // If box has specific size, use that as constraint for children and size
       // itself within the constraint.
-      SetItemVec2(&child_max_size, axis, self_size_axis);
       SetItemVec2(&self_size, axis,
-                  MaxF32(MinF32(max_size.x, self_size_axis), min_size_axis));
+                  MaxF32(MinF32(max_size_axis, self_size_axis), min_size_axis));
+      SetItemVec2(&child_max_size, axis, GetItemVec2(self_size, axis));
     } else {
       // Otherwise, pass down the constraint to children and ...
       SetItemVec2(&child_max_size, axis, max_size_axis);
@@ -367,15 +367,17 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
       // If child doesn't have flex, doesn't apply any constraint on the child.
       total_flex += child->build.flex;
       if (!child->build.flex) {
-        Vec2 max_size;
-        SetItemVec2(&max_size, main_axis, child_main_axis_free);
-        SetItemVec2(&max_size, cross_axis,
+        Vec2 this_child_max_size;
+        SetItemVec2(&this_child_max_size, main_axis, child_main_axis_free);
+        SetItemVec2(&this_child_max_size, cross_axis,
                     GetItemVec2(child_max_size, cross_axis));
-        Vec2 min_size = {0};
+        Vec2 this_child_min_size = {0};
         if (box->build.cross_axis_align == kUICrossAxisAlignStretch) {
-          SetItemVec2(&min_size, cross_axis, GetItemVec2(max_size, cross_axis));
+          SetItemVec2(&this_child_min_size, cross_axis,
+                      GetItemVec2(this_child_max_size, cross_axis));
         }
-        LayoutBox(state, child, min_size, max_size, main_axis);
+        LayoutBox(state, child, this_child_min_size, this_child_max_size,
+                  main_axis);
 
         child_main_axis_free -= GetItemVec2(child->computed.size, main_axis);
         child_main_axis_size += GetItemVec2(child->computed.size, main_axis);
@@ -497,12 +499,10 @@ static void DebugPrintUIR(UIBox *box, u32 level) {
 }
 
 static void DebugPrintUI(UIState *state) {
-  if (state->build_index > 1) {
-    if (state->root) {
-      DebugPrintUIR(state->root, 0);
-    }
-    exit(0);
+  if (state->root) {
+    DebugPrintUIR(state->root, 0);
   }
+  exit(0);
 }
 #endif
 

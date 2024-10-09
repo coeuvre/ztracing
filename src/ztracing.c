@@ -105,13 +105,15 @@ static void BuildUI(f32 dt) {
         Vec2 size = GetUIComputed().size;
 
         f32 min_control_size = 4;
-        f32 free_size = size.y - 2 * head_size.y;
+        f32 free_size = MaxF32(size.y - 2 * head_size.y, 0.0f);
         f32 control_size =
             MinF32(MaxF32(scroll_area_size / total_item_size * free_size,
                           min_control_size),
                    free_size);
 
         f32 scroll_max = total_item_size - scroll_area_size;
+        scroll = ClampF32(scroll, 0, scroll_max);
+
         f32 control_max = free_size - control_size;
         f32 control_offset = (scroll / scroll_max) * control_max;
 
@@ -160,11 +162,11 @@ static void BuildUI(f32 dt) {
             scroll = ClampF32(offset / control_max * scroll_max, 0, scroll_max);
           }
 
-          // BeginUIBox();
-          // SetUISize(V2(size.x * 0.8f, control_size));
+          BeginUIBox();
+          SetUISize(V2(size.x * 0.8f, control_size));
           SetUIColor(hovering ? ColorU32FromRGBA(255, 255, 255, 255)
                               : ColorU32FromRGBA(200, 200, 200, 255));
-          // EndUIBox();
+          EndUIBox();
         }
         EndUIBox();
 

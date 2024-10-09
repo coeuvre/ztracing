@@ -241,6 +241,54 @@ test "Layout, with one child, size around it" {
     try expectBoxSize(container, c.V2(50, 50));
 }
 
+test "Layout, with fixed size" {
+    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIBox();
+    {
+        c.BeginUIBox();
+        {
+            c.SetUISize(c.V2(30, 20));
+
+            c.BeginUIBox();
+            c.SetUISize(c.V2(50, 50));
+            c.EndUIBox();
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUIFrame();
+
+    const root = c.GetUIBox(0, 0);
+    const container = c.GetUIBox(root, 0);
+    const child = c.GetUIBox(container, 0);
+    try expectBoxSize(container, c.V2(30, 20));
+    try expectBoxSize(child, c.V2(30, 20));
+}
+
+test "Layout, with fixed size, negative" {
+    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIBox();
+    {
+        c.BeginUIBox();
+        {
+            c.SetUISize(c.V2(30, -20));
+
+            c.BeginUIBox();
+            c.SetUISize(c.V2(50, 50));
+            c.EndUIBox();
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUIFrame();
+
+    const root = c.GetUIBox(0, 0);
+    const container = c.GetUIBox(root, 0);
+    const child = c.GetUIBox(container, 0);
+    try expectBoxSize(container, c.V2(30, 0));
+    try expectBoxSize(child, c.V2(30, 0));
+}
+
 test "Layout, child has different main axis than parent" {
     const main_axis_sizes: []const c.UIMainAxisSize = &.{
         c.kUIMainAxisSizeMin,
