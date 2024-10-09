@@ -61,6 +61,15 @@ static inline UIEdgeInsets UIEdgeInsetsFromSTEB(f32 start, f32 top, f32 end,
   return result;
 }
 
+typedef enum UIMouseButton {
+  kUIMouseButtonLeft,
+  kUIMouseButtonRight,
+  kUIMouseButtonMiddle,
+  kUIMouseButtonX1,
+  kUIMouseButtonX2,
+  kUIMouseButtonCount,
+} UIMouseButton;
+
 typedef struct UIBuildData {
   Str8 key_str;
   ColorU32 color;
@@ -73,19 +82,9 @@ typedef struct UIBuildData {
   UICrossAxisAlign cross_axis_align;
   UIEdgeInsets padding;
 
-  u32 signal_flags;
+  b8 hoverable;
+  b8 clickable;
 } UIBuildData;
-
-typedef struct UISignal {
-  b8 hovering;
-  b8 pressed;
-  b8 released;
-  b8 clicked;
-} UISignal;
-
-enum UISignalFlags {
-  kUISignalMouse = (1 << 1),
-};
 
 typedef struct UIComputedData {
   Vec2 min_size;
@@ -96,8 +95,6 @@ typedef struct UIComputedData {
   Vec2 rel_pos;
 
   Rect2 screen_rect;
-
-  UISignal signal;
 } UIComputedData;
 
 typedef struct UIBox UIBox;
@@ -130,6 +127,8 @@ struct UIBox {
 
 // Mouse pos in points.
 void OnUIMousePos(Vec2 pos);
+void OnUIMouseButtonUp(Vec2 pos, UIMouseButton button);
+void OnUIMouseButtonDown(Vec2 pos, UIMouseButton button);
 
 void BeginUIFrame(Vec2 screen_size, f32 content_scale);
 void EndUIFrame(void);
@@ -159,7 +158,11 @@ void SetUICrossAxisAlign(UICrossAxisAlign cross_axis_align);
 void SetUIFlex(f32 flex);
 void SetUIPadding(UIEdgeInsets padding);
 
-UISignal SetUISignal(u32 flags);
 UIComputedData GetUIComputed(void);
+
+b32 IsUIHovering(void);
+b32 IsUIPressed(UIMouseButton button);
+b32 IsUIHolding(UIMouseButton button);
+b32 IsUIClicked(UIMouseButton button);
 
 #endif  // ZTRACING_SRC_UI_H_

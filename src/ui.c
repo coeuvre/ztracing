@@ -110,10 +110,23 @@ static void GarbageCollectBoxes(UIBoxCache *cache, u64 build_index) {
   }
 }
 
+typedef struct UIMouseButtonState {
+  b8 is_down;
+  b8 transition_count;
+} UIMouseButtonState;
+
+typedef struct UIMouseInput {
+  Vec2 pos;
+  UIMouseButtonState buttons[kUIMouseButtonCount];
+
+  UIBox *hovering;
+  UIBox *pressed[kUIMouseButtonCount];
+  UIBox *holding[kUIMouseButtonCount];
+  UIBox *clicked[kUIMouseButtonCount];
+} UIMouseInput;
+
 typedef struct UIInput {
-  struct {
-    Vec2 pos;
-  } mouse;
+  UIMouseInput mouse;
 } UIInput;
 
 typedef struct UIState {
@@ -154,10 +167,48 @@ static Arena *GetBuildArena(UIState *state) {
   return arena;
 }
 
+static inline b32 IsMouseButtonPressed(UIState *state, UIMouseButton button) {
+  UIMouseButtonState *mouse_button_state = &state->input.mouse.buttons[button];
+  b32 result =
+      mouse_button_state->is_down && mouse_button_state->transition_count > 0;
+  return result;
+}
+
+static inline b32 IsMouseButtonClicked(UIState *state, UIMouseButton button) {
+  UIMouseButtonState *mouse_button_state = &state->input.mouse.buttons[button];
+  b32 result =
+      !mouse_button_state->is_down && mouse_button_state->transition_count > 0;
+  return result;
+}
+
 void OnUIMousePos(Vec2 pos) {
   UIState *state = GetUIState();
 
   state->input.mouse.pos = pos;
+}
+
+void OnUIMouseButtonUp(Vec2 pos, UIMouseButton button) {
+  UIState *state = GetUIState();
+
+  state->input.mouse.pos = pos;
+
+  UIMouseButtonState *mouse_button_state = &state->input.mouse.buttons[button];
+  if (mouse_button_state->is_down) {
+    mouse_button_state->is_down = 0;
+    mouse_button_state->transition_count += 1;
+  }
+}
+
+void OnUIMouseButtonDown(Vec2 pos, UIMouseButton button) {
+  UIState *state = GetUIState();
+
+  state->input.mouse.pos = pos;
+
+  UIMouseButtonState *mouse_button_state = &state->input.mouse.buttons[button];
+  if (!mouse_button_state->is_down) {
+    mouse_button_state->is_down = 1;
+    mouse_button_state->transition_count += 1;
+  }
 }
 
 void BeginUIFrame(Vec2 screen_size, f32 content_scale) {
@@ -453,31 +504,55 @@ static void DebugPrintUI(UIState *state) {
 }
 #endif
 
-typedef struct UISignalState {
-  b32 mouse_captured;
-} UISignalState;
-
-static void ProcessSignal(UIState *state, UISignalState *signal_state,
-                          UIBox *box) {
+static void ProcessInputR(UIState *state, UIBox *box) {
   for (UIBox *child = box->first; child; child = child->next) {
-    ProcessSignal(state, signal_state, child);
+    ProcessInputR(state, child);
   }
 
-  // Handle mouse
-  if (box->build.signal_flags & kUISignalMouse &&
-      !signal_state->mouse_captured) {
-    if (ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
-                     box->computed.screen_rect.max)) {
-      signal_state->mouse_captured = 1;
-      box->computed.signal.hovering = 1;
-    } else {
-      box->computed.signal.hovering = 0;
+  // Mouse input
+  if (!state->input.mouse.hovering && box->build.hoverable &&
+      ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
+                   box->computed.screen_rect.max)) {
+    state->input.mouse.hovering = box;
+  }
+
+  for (int button = 0; button < kUIMouseButtonCount; ++button) {
+    if (!state->input.mouse.pressed[button] && box->build.clickable &&
+        ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
+                     box->computed.screen_rect.max) &&
+        IsMouseButtonPressed(state, button)) {
+      state->input.mouse.pressed[button] = box;
     }
-  } else {
-    box->computed.signal.hovering = 0;
-    box->computed.signal.pressed = 0;
-    box->computed.signal.released = 0;
-    box->computed.signal.clicked = 0;
+  }
+}
+
+static void ProcessInput(UIState *state) {
+  for (int button = 0; button < kUIMouseButtonCount; ++button) {
+    state->input.mouse.hovering = 0;
+    state->input.mouse.pressed[button] = 0;
+    state->input.mouse.clicked[button] = 0;
+  }
+
+  if (state->root) {
+    ProcessInputR(state, state->root);
+  }
+
+  for (int button = 0; button < kUIMouseButtonCount; ++button) {
+    if (state->input.mouse.pressed[button]) {
+      state->input.mouse.holding[button] = state->input.mouse.pressed[button];
+    }
+
+    if (IsMouseButtonClicked(state, button)) {
+      UIBox *box = state->input.mouse.holding[button];
+      if (box &&
+          ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
+                       box->computed.screen_rect.max)) {
+        state->input.mouse.clicked[button] = box;
+      }
+      state->input.mouse.holding[button] = 0;
+    }
+
+    state->input.mouse.buttons[button].transition_count = 0;
   }
 }
 
@@ -488,10 +563,9 @@ void EndUIFrame(void) {
   if (state->root) {
     LayoutBox(state, state->root, state->screen_size, state->screen_size, 0);
     state->root->computed.rel_pos = V2(0, 0);
-
-    UISignalState signal_state = {0};
-    ProcessSignal(state, &signal_state, state->root);
   }
+
+  ProcessInput(state);
 
   // DebugPrintUI(state);
 }
@@ -690,19 +764,52 @@ void SetUIPadding(UIEdgeInsets padding) {
   GetUICurrent()->build.padding = padding;
 }
 
-UISignal SetUISignal(u32 flags) {
-  UIBox *box = GetUICurrent();
+static UIBox *GetUIBoxForLastFrameData(UIState *state) {
+  UIBox *box = state->current;
+  ASSERT(box);
   ASSERTF(!IsEqualUIKey(box->key, UIKeyZero()),
-          "Must assign a key to the box in order to setup signal");
-  box->build.signal_flags = flags;
-
-  UISignal signal = box->computed.signal;
-  return signal;
+          "Must assign a key to the box in order to get computed property");
+  return box;
 }
 
 UIComputedData GetUIComputed(void) {
-  UIBox *box = GetUICurrent();
-  ASSERTF(!IsEqualUIKey(box->key, UIKeyZero()),
-          "Must assign a key to the box in order to get computed property");
+  UIState *state = GetUIState();
+  UIBox *box = GetUIBoxForLastFrameData(state);
   return box->computed;
+}
+
+b32 IsUIHovering(void) {
+  UIState *state = GetUIState();
+  UIBox *box = GetUIBoxForLastFrameData(state);
+  box->build.hoverable = 1;
+
+  b32 result = state->input.mouse.hovering == box;
+  return result;
+}
+
+b32 IsUIPressed(UIMouseButton button) {
+  UIState *state = GetUIState();
+  UIBox *box = GetUIBoxForLastFrameData(state);
+  box->build.clickable = 1;
+
+  b32 result = state->input.mouse.pressed[button] == box;
+  return result;
+}
+
+b32 IsUIHolding(UIMouseButton button) {
+  UIState *state = GetUIState();
+  UIBox *box = GetUIBoxForLastFrameData(state);
+  box->build.clickable = 1;
+
+  b32 result = state->input.mouse.holding[button] == box;
+  return result;
+}
+
+b32 IsUIClicked(UIMouseButton button) {
+  UIState *state = GetUIState();
+  UIBox *box = GetUIBoxForLastFrameData(state);
+  box->build.clickable = 1;
+
+  b32 result = state->input.mouse.clicked[button] == box;
+  return result;
 }

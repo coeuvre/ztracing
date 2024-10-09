@@ -47,6 +47,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   return SDL_APP_CONTINUE;
 }
 
+static UIMouseButton sdl_button_to_ui_button[] = {
+    [SDL_BUTTON_LEFT] = kUIMouseButtonLeft,
+    [SDL_BUTTON_MIDDLE] = kUIMouseButtonMiddle,
+    [SDL_BUTTON_RIGHT] = kUIMouseButtonRight,
+    [SDL_BUTTON_X1] = kUIMouseButtonX1,
+    [SDL_BUTTON_X2] = kUIMouseButtonX2,
+};
+
+static Vec2 MousePosFromSDL(Vec2 pos) {
+  Vec2 result = MulVec2(pos, 1.0f / GetScreenContentScale());
+  return result;
+}
+
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   SDL_AppResult result = SDL_APP_CONTINUE;
   switch (event->type) {
@@ -54,10 +67,31 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
       result = SDL_APP_SUCCESS;
     } break;
 
+    case SDL_EVENT_MOUSE_BUTTON_UP: {
+      Vec2 mouse_pos = MousePosFromSDL(V2(event->button.x, event->button.y));
+      OnUIMouseButtonUp(mouse_pos,
+                        sdl_button_to_ui_button[event->button.button]);
+    } break;
+
+    case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+      Vec2 mouse_pos = MousePosFromSDL(V2(event->button.x, event->button.y));
+      OnUIMouseButtonDown(mouse_pos,
+                          sdl_button_to_ui_button[event->button.button]);
+    } break;
+
     default: {
     } break;
   }
   return result;
+}
+
+static Vec2 GetGlobalWindowRelativeMousePos(void) {
+  Vec2I window_pos;
+  SDL_GetWindowPosition(window, &window_pos.x, &window_pos.y);
+  Vec2 abs_mouse_pos;
+  SDL_GetGlobalMouseState(&abs_mouse_pos.x, &abs_mouse_pos.y);
+  Vec2 result = SubVec2(abs_mouse_pos, Vec2FromVec2I(window_pos));
+  return MousePosFromSDL(result);
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
@@ -71,16 +105,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   }
   last_counter = current_counter;
 
-  {
-    Vec2I window_pos;
-    SDL_GetWindowPosition(window, &window_pos.x, &window_pos.y);
-    Vec2 mouse_pos;
-    SDL_GetGlobalMouseState(&mouse_pos.x, &mouse_pos.y);
-    mouse_pos = SubVec2(mouse_pos, Vec2FromVec2I(window_pos));
-    mouse_pos = MulVec2(mouse_pos, 1.0f / GetScreenContentScale());
-    OnUIMousePos(mouse_pos);
-  }
-
+  OnUIMousePos(GetGlobalWindowRelativeMousePos());
   DoFrame(dt);
 
   if (!window_shown) {

@@ -15,17 +15,20 @@ static void UIButton(Str8 label) {
   {
     SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
 
-    UISignal signal = SetUISignal(kUISignalMouse);
-    if (signal.hovering) {
-      SetUIColor(ColorU32FromHex(0xFF0000));
-    } else if (signal.pressed) {
+    if (IsUIClicked(kUIMouseButtonLeft)) {
+      SetUIColor(ColorU32FromHex(0x0000FF));
+    } else if (IsUIHolding(kUIMouseButtonLeft)) {
       SetUIColor(ColorU32FromHex(0x00FF00));
+    } else if (IsUIHovering()) {
+      SetUIColor(ColorU32FromHex(0xFF0000));
     } else {
-      SetUIColor(ColorU32FromHex(0x5EAC57));
+      // SetUIColor(ColorU32FromHex(0x5EAC57));
     }
 
     BeginUIBox();
-    { SetUIText(label); }
+    {
+      SetUIText(label);
+    }
     EndUIBox();
   }
   EndUIBox();
@@ -37,7 +40,9 @@ static void UIText(Str8 text) {
     SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
 
     BeginUIBox();
-    { SetUIText(text); }
+    {
+      SetUIText(text);
+    }
     EndUIBox();
   }
   EndUIBox();
