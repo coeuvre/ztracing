@@ -71,6 +71,7 @@ static void BuildUI(f32 dt) {
     BeginUIRow();
     {
       static f32 scroll = 0.0f;
+      static f32 controll_offset_drag_start = 0.0f;
       f32 scroll_step = 100.0f;
 
       f32 item_size = 20.0f;
@@ -155,17 +156,27 @@ static void BuildUI(f32 dt) {
           SetUIColor(background_color);
           SetUIMainAxisAlign(kUIMainAxisAlignCenter);
 
-          b32 hovering = IsUIHovering();
+          ColorU32 control_background_color =
+              ColorU32FromRGBA(192, 192, 192, 255);
+          if (IsUIHovering()) {
+            control_background_color = ColorU32FromRGBA(224, 224, 224, 255);
+          }
+
+          if (IsUIPressed(kUIMouseButtonLeft)) {
+            controll_offset_drag_start = control_offset;
+          }
+
           if (IsUIHolding(kUIMouseButtonLeft)) {
-            hovering = 1;
-            f32 offset = mouse_pos.y - head_size.y;
+            Vec2 delta = GetUIMouseDragDelta(kUIMouseButtonLeft);
+            f32 offset = controll_offset_drag_start + delta.y;
             scroll = ClampF32(offset / control_max * scroll_max, 0, scroll_max);
+
+            control_background_color = ColorU32FromRGBA(255, 255, 255, 255);
           }
 
           BeginUIBox();
           SetUISize(V2(size.x * 0.8f, control_size));
-          SetUIColor(hovering ? ColorU32FromRGBA(255, 255, 255, 255)
-                              : ColorU32FromRGBA(200, 200, 200, 255));
+          SetUIColor(control_background_color);
           EndUIBox();
         }
         EndUIBox();

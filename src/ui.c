@@ -121,6 +121,7 @@ typedef struct UIMouseInput {
 
   UIBox *hovering;
   UIBox *pressed[kUIMouseButtonCount];
+  Vec2 pressed_pos[kUIMouseButtonCount];
   UIBox *holding[kUIMouseButtonCount];
   UIBox *clicked[kUIMouseButtonCount];
 } UIMouseInput;
@@ -524,6 +525,7 @@ static void ProcessInputR(UIState *state, UIBox *box) {
                      box->computed.screen_rect.max) &&
         IsMouseButtonPressed(state, button)) {
       state->input.mouse.pressed[button] = box;
+      state->input.mouse.pressed_pos[button] = state->input.mouse.pos;
     }
   }
 }
@@ -811,6 +813,19 @@ b32 IsUIHolding(UIMouseButton button) {
   box->build.clickable[button] = 1;
 
   b32 result = state->input.mouse.holding[button] == box;
+  return result;
+}
+
+Vec2 GetUIMouseDragDelta(UIMouseButton button) {
+  UIState *state = GetUIState();
+  UIBox *box = GetUIBoxForLastFrameData(state);
+  box->build.clickable[button] = 1;
+
+  Vec2 result = V2(0, 0);
+  if (state->input.mouse.holding[button] == box) {
+    result =
+        SubVec2(state->input.mouse.pos, state->input.mouse.pressed_pos[button]);
+  }
   return result;
 }
 

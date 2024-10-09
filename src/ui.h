@@ -164,6 +164,7 @@ Vec2 GetUIMouseRelPos(void);
 b32 IsUIHovering(void);
 b32 IsUIPressed(UIMouseButton button);
 b32 IsUIHolding(UIMouseButton button);
+Vec2 GetUIMouseDragDelta(UIMouseButton button);
 b32 IsUIClicked(UIMouseButton button);
 
 #endif  // ZTRACING_SRC_UI_H_
