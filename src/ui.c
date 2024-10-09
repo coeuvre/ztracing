@@ -497,10 +497,12 @@ static void DebugPrintUIR(UIBox *box, u32 level) {
 }
 
 static void DebugPrintUI(UIState *state) {
-  if (state->root) {
-    DebugPrintUIR(state->root, 0);
+  if (state->build_index > 1) {
+    if (state->root) {
+      DebugPrintUIR(state->root, 0);
+    }
+    exit(0);
   }
-  exit(0);
 }
 #endif
 

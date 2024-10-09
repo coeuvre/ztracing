@@ -75,7 +75,8 @@ static void BuildUI(f32 dt) {
 
       f32 item_size = 20.0f;
       u32 item_count = 510;
-      f32 total_size = item_size * item_count;
+      f32 total_item_size = item_size * item_count;
+      f32 scroll_area_size;
 
       SetNextUIKey(STR8_LIT("#ScrollArea"));
       BeginUIColumn();
@@ -83,11 +84,11 @@ static void BuildUI(f32 dt) {
         SetUIFlex(1.0);
         // SetUIColor(ColorU32FromHex(0x5EAC57));
 
-        Vec2 size = GetUIComputed().size;
+        scroll_area_size = GetUIComputed().size.y;
 
         u32 item_index = FloorF32(scroll / item_size);
         f32 offset = item_index * item_size - scroll;
-        for (; item_index < item_count && offset < size.y;
+        for (; item_index < item_count && offset < scroll_area_size;
              ++item_index, offset += item_size) {
           BeginUIRow();
           SetUISize(V2(kUISizeUndefined, item_size));
@@ -97,9 +98,34 @@ static void BuildUI(f32 dt) {
       }
       EndUIColumn();
 
+      SetNextUIKey(STR8_LIT("#ScrollBar"));
       BeginUIColumn();
       {
         Vec2 head_size = V2(16, 16);
+        Vec2 size = GetUIComputed().size;
+
+        f32 min_control_size = 4;
+        f32 free_size = size.y - 2 * head_size.y;
+        f32 control_size =
+            MinF32(MaxF32(scroll_area_size / total_item_size * free_size,
+                          min_control_size),
+                   free_size);
+
+        f32 scroll_max = total_item_size - scroll_area_size;
+        f32 control_max = free_size - control_size;
+        f32 control_offset = (scroll / scroll_max) * control_max;
+
+        Vec2 mouse_pos = GetUIMouseRelPos();
+        if (IsUIHolding(kUIMouseButtonLeft)) {
+          if (ContainsF32(mouse_pos.x, 0, size.x)) {
+            f32 offset = mouse_pos.y - head_size.y;
+            if (offset < control_offset) {
+              scroll = MaxF32(scroll - scroll_step, 0);
+            } else if (offset > control_offset + control_size) {
+              scroll = MinF32(scroll + scroll_step, scroll_max);
+            }
+          }
+        }
 
         SetNextUIKey(STR8_LIT("#Head"));
         BeginUIBox();
@@ -108,75 +134,45 @@ static void BuildUI(f32 dt) {
           SetUIColor(ColorU32FromRGBA(255, 0, 0, 255));
 
           if (IsUIHolding(kUIMouseButtonLeft)) {
-            scroll = scroll - scroll_step;
+            scroll = ClampF32(scroll - scroll_step, 0, scroll_max);
           }
         }
         EndUIBox();
 
-        SetNextUIKey(STR8_LIT("#ScrollBar"));
-        BeginUIColumn();
+        ColorU32 background_color = ColorU32FromRGBA(128, 128, 128, 255);
+
+        BeginUIBox();
+        SetUISize(V2(head_size.x, control_offset));
+        SetUIColor(background_color);
+        EndUIBox();
+
+        SetNextUIKey(STR8_LIT("#Control"));
+        BeginUIBox();
         {
-          SetUIFlex(1);
+          SetUISize(V2(size.x, control_size));
+          SetUIColor(background_color);
+          SetUIMainAxisAlign(kUIMainAxisAlignCenter);
 
-          f32 min_control_size = 4;
-          Vec2 size = GetUIComputed().size;
-          Vec2 control_size =
-              V2(size.x,
-                 MinF32(MaxF32(size.y / total_size, min_control_size), size.y));
-          f32 scroll_max = total_size - size.y;
-          scroll = ClampF32(scroll, 0, scroll_max);
-          f32 control_offset =
-              (scroll / scroll_max) * (size.y - control_size.y);
-
-          Vec2 mouse_pos = GetUIMouseRelPos();
-
+          b32 hovering = IsUIHovering();
           if (IsUIHolding(kUIMouseButtonLeft)) {
-            if (ContainsF32(mouse_pos.x, 0, size.x)) {
-              if (mouse_pos.y < control_offset) {
-                scroll = MaxF32(scroll - scroll_step, 0);
-              } else if (mouse_pos.y > control_offset + control_size.y) {
-                scroll = MinF32(scroll + scroll_step, scroll_max);
-              }
-            }
+            hovering = 1;
+            f32 offset = mouse_pos.y - head_size.y;
+            scroll = ClampF32(offset / control_max * scroll_max, 0, scroll_max);
           }
 
-          ColorU32 background_color = ColorU32FromRGBA(128, 128, 128, 255);
-
-          BeginUIBox();
-          SetUISize(V2(head_size.x, control_offset));
-          SetUIColor(background_color);
-          EndUIBox();
-
-          SetNextUIKey(STR8_LIT("#Control"));
-          BeginUIBox();
-          {
-            SetUISize(control_size);
-            SetUIColor(background_color);
-            SetUIMainAxisAlign(kUIMainAxisAlignCenter);
-
-            b32 hovering = IsUIHovering();
-            if (IsUIHolding(kUIMouseButtonLeft)) {
-              hovering = 1;
-              scroll =
-                  ClampF32(mouse_pos.y / (size.y - control_size.y) * scroll_max,
-                           0, scroll_max);
-            }
-
-            BeginUIBox();
-            SetUISize(V2(control_size.x * 0.9f, control_size.y));
-            SetUIColor(hovering ? ColorU32FromRGBA(255, 255, 255, 255)
-                                : ColorU32FromRGBA(200, 200, 200, 255));
-            EndUIBox();
-          }
-          EndUIBox();
-
-          BeginUIBox();
-          SetUISize(V2(head_size.x, kUISizeUndefined));
-          SetUIFlex(1);
-          SetUIColor(background_color);
-          EndUIBox();
+          // BeginUIBox();
+          // SetUISize(V2(size.x * 0.8f, control_size));
+          SetUIColor(hovering ? ColorU32FromRGBA(255, 255, 255, 255)
+                              : ColorU32FromRGBA(200, 200, 200, 255));
+          // EndUIBox();
         }
-        EndUIColumn();
+        EndUIBox();
+
+        BeginUIBox();
+        SetUISize(V2(head_size.x, kUISizeUndefined));
+        SetUIFlex(1);
+        SetUIColor(background_color);
+        EndUIBox();
 
         SetNextUIKey(STR8_LIT("#Tail"));
         BeginUIBox();
@@ -185,7 +181,7 @@ static void BuildUI(f32 dt) {
           SetUIColor(ColorU32FromRGBA(255, 0, 0, 255));
 
           if (IsUIHolding(kUIMouseButtonLeft)) {
-            scroll = scroll + scroll_step;
+            scroll = ClampF32(scroll + scroll_step, 0, scroll_max);
           }
         }
         EndUIBox();
