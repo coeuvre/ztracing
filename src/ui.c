@@ -517,7 +517,7 @@ static void ProcessInputR(UIState *state, UIBox *box) {
   }
 
   for (int button = 0; button < kUIMouseButtonCount; ++button) {
-    if (!state->input.mouse.pressed[button] && box->build.clickable &&
+    if (!state->input.mouse.pressed[button] && box->build.clickable[button] &&
         ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
                      box->computed.screen_rect.max) &&
         IsMouseButtonPressed(state, button)) {
@@ -778,6 +778,13 @@ UIComputedData GetUIComputed(void) {
   return box->computed;
 }
 
+Vec2 GetUIMouseRelPos(void) {
+  UIState *state = GetUIState();
+  UIBox *box = GetUIBoxForLastFrameData(state);
+  Vec2 result = SubVec2(state->input.mouse.pos, box->computed.screen_rect.min);
+  return result;
+}
+
 b32 IsUIHovering(void) {
   UIState *state = GetUIState();
   UIBox *box = GetUIBoxForLastFrameData(state);
@@ -790,7 +797,7 @@ b32 IsUIHovering(void) {
 b32 IsUIPressed(UIMouseButton button) {
   UIState *state = GetUIState();
   UIBox *box = GetUIBoxForLastFrameData(state);
-  box->build.clickable = 1;
+  box->build.clickable[button] = 1;
 
   b32 result = state->input.mouse.pressed[button] == box;
   return result;
@@ -799,7 +806,7 @@ b32 IsUIPressed(UIMouseButton button) {
 b32 IsUIHolding(UIMouseButton button) {
   UIState *state = GetUIState();
   UIBox *box = GetUIBoxForLastFrameData(state);
-  box->build.clickable = 1;
+  box->build.clickable[button] = 1;
 
   b32 result = state->input.mouse.holding[button] == box;
   return result;
@@ -808,7 +815,7 @@ b32 IsUIHolding(UIMouseButton button) {
 b32 IsUIClicked(UIMouseButton button) {
   UIState *state = GetUIState();
   UIBox *box = GetUIBoxForLastFrameData(state);
-  box->build.clickable = 1;
+  box->build.clickable[button] = 1;
 
   b32 result = state->input.mouse.clicked[button] == box;
   return result;

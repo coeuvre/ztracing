@@ -83,7 +83,7 @@ typedef struct UIBuildData {
   UIEdgeInsets padding;
 
   b8 hoverable;
-  b8 clickable;
+  b8 clickable[kUIMouseButtonCount];
 } UIBuildData;
 
 typedef struct UIComputedData {
@@ -159,6 +159,7 @@ void SetUIFlex(f32 flex);
 void SetUIPadding(UIEdgeInsets padding);
 
 UIComputedData GetUIComputed(void);
+Vec2 GetUIMouseRelPos(void);
 
 b32 IsUIHovering(void);
 b32 IsUIPressed(UIMouseButton button);

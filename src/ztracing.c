@@ -70,10 +70,11 @@ static void BuildUI(f32 dt) {
 
     BeginUIRow();
     {
-      f32 scroll = 12345.0f;
+      static f32 scroll = 0.0f;
+      f32 scroll_step = 100.0f;
 
       f32 item_size = 20.0f;
-      u32 item_count = 3000;
+      u32 item_count = 510;
       f32 total_size = item_size * item_count;
 
       SetNextUIKey(STR8_LIT("#ScrollArea"));
@@ -96,55 +97,97 @@ static void BuildUI(f32 dt) {
       }
       EndUIColumn();
 
-      SetNextUIKey(STR8_LIT("#ScrollBar"));
       BeginUIColumn();
       {
         Vec2 head_size = V2(16, 16);
-        f32 min_control_size = 4;
-        Vec2 size = GetUIComputed().size;
-        f32 free_size = size.y - 2 * head_size.y;
-        Vec2 control_size =
-            V2(head_size.x,
-               MinF32(MaxF32(size.y / total_size * free_size, min_control_size),
-                      free_size));
-        f32 scroll_max = total_size - size.y;
-        f32 control_offset =
-            (scroll / scroll_max) * (free_size - control_size.y);
 
-        ColorU32 background_color = ColorU32FromRGBA(128, 128, 128, 255);
-
+        SetNextUIKey(STR8_LIT("#Head"));
         BeginUIBox();
-        SetUISize(head_size);
-        SetUIColor(ColorU32FromRGBA(255, 0, 0, 255));
-        EndUIBox();
-
-        BeginUIBox();
-        SetUISize(V2(head_size.x, control_offset));
-        SetUIColor(background_color);
-        EndUIBox();
-
-        BeginUIRow();
         {
-          SetUISize(control_size);
-          SetUIColor(background_color);
-          SetUIPadding(UIEdgeInsetsSymmetric(1.5, 0));
+          SetUISize(head_size);
+          SetUIColor(ColorU32FromRGBA(255, 0, 0, 255));
 
-          BeginUIColumn();
-          SetUIFlex(1);
-          SetUIColor(ColorU32FromRGBA(255, 255, 255, 255));
-          EndUIColumn();
+          if (IsUIHolding(kUIMouseButtonLeft)) {
+            scroll = scroll - scroll_step;
+          }
         }
-        EndUIRow();
-
-        BeginUIBox();
-        SetUISize(V2(head_size.x, kUISizeUndefined));
-        SetUIFlex(1);
-        SetUIColor(background_color);
         EndUIBox();
 
+        SetNextUIKey(STR8_LIT("#ScrollBar"));
+        BeginUIColumn();
+        {
+          SetUIFlex(1);
+
+          f32 min_control_size = 4;
+          Vec2 size = GetUIComputed().size;
+          Vec2 control_size =
+              V2(size.x,
+                 MinF32(MaxF32(size.y / total_size, min_control_size), size.y));
+          f32 scroll_max = total_size - size.y;
+          scroll = ClampF32(scroll, 0, scroll_max);
+          f32 control_offset =
+              (scroll / scroll_max) * (size.y - control_size.y);
+
+          Vec2 mouse_pos = GetUIMouseRelPos();
+
+          if (IsUIHolding(kUIMouseButtonLeft)) {
+            if (ContainsF32(mouse_pos.x, 0, size.x)) {
+              if (mouse_pos.y < control_offset) {
+                scroll = MaxF32(scroll - scroll_step, 0);
+              } else if (mouse_pos.y > control_offset + control_size.y) {
+                scroll = MinF32(scroll + scroll_step, scroll_max);
+              }
+            }
+          }
+
+          ColorU32 background_color = ColorU32FromRGBA(128, 128, 128, 255);
+
+          BeginUIBox();
+          SetUISize(V2(head_size.x, control_offset));
+          SetUIColor(background_color);
+          EndUIBox();
+
+          SetNextUIKey(STR8_LIT("#Control"));
+          BeginUIBox();
+          {
+            SetUISize(control_size);
+            SetUIColor(background_color);
+            SetUIMainAxisAlign(kUIMainAxisAlignCenter);
+
+            b32 hovering = IsUIHovering();
+            if (IsUIHolding(kUIMouseButtonLeft)) {
+              hovering = 1;
+              scroll =
+                  ClampF32(mouse_pos.y / (size.y - control_size.y) * scroll_max,
+                           0, scroll_max);
+            }
+
+            BeginUIBox();
+            SetUISize(V2(control_size.x * 0.9f, control_size.y));
+            SetUIColor(hovering ? ColorU32FromRGBA(255, 255, 255, 255)
+                                : ColorU32FromRGBA(200, 200, 200, 255));
+            EndUIBox();
+          }
+          EndUIBox();
+
+          BeginUIBox();
+          SetUISize(V2(head_size.x, kUISizeUndefined));
+          SetUIFlex(1);
+          SetUIColor(background_color);
+          EndUIBox();
+        }
+        EndUIColumn();
+
+        SetNextUIKey(STR8_LIT("#Tail"));
         BeginUIBox();
-        SetUISize(head_size);
-        SetUIColor(ColorU32FromRGBA(255, 0, 0, 255));
+        {
+          SetUISize(head_size);
+          SetUIColor(ColorU32FromRGBA(255, 0, 0, 255));
+
+          if (IsUIHolding(kUIMouseButtonLeft)) {
+            scroll = scroll + scroll_step;
+          }
+        }
         EndUIBox();
       }
       EndUIColumn();
