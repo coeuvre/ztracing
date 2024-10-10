@@ -70,7 +70,7 @@ typedef enum UIMouseButton {
   kUIMouseButtonCount,
 } UIMouseButton;
 
-typedef struct UIBuildData {
+typedef struct UIBuild {
   const char *tag;
   Str8 key_str;
   ColorU32 color;
@@ -85,9 +85,9 @@ typedef struct UIBuildData {
 
   b8 hoverable;
   b8 clickable[kUIMouseButtonCount];
-} UIBuildData;
+} UIBuild;
 
-typedef struct UIComputedData {
+typedef struct UIComputed {
   Vec2 min_size;
   Vec2 max_size;
   Axis2 unbounded_axis;
@@ -97,7 +97,7 @@ typedef struct UIComputedData {
   Vec2 rel_pos;
 
   Rect2 screen_rect;
-} UIComputedData;
+} UIComputed;
 
 typedef struct UIBox UIBox;
 struct UIBox {
@@ -117,10 +117,10 @@ struct UIBox {
   u64 last_touched_build_index;
 
   // per-frame info provided by builders
-  UIBuildData build;
+  UIBuild build;
 
   // computed every frame
-  UIComputedData computed;
+  UIComputed computed;
 
   // persistent data
   f32 hot_t;
@@ -144,43 +144,37 @@ UIKey UIKeyZero(void);
 UIKey UIKeyFromStr8(UIKey seed, Str8 str);
 b32 IsEqualUIKey(UIKey a, UIKey b);
 
-void BeginUIBoxWithTag(const char *tag);
-void EndUIBoxWithTag(const char *tag);
-
-static inline void BeginUIBox(void) {
-  BeginUIBoxWithTag("Box");
-}
-
-static inline void EndUIBox(void) {
-  EndUIBoxWithTag("Box");
-}
+void BeginUIBox(void);
+void EndUIBoxWithExpectedTag(const char *);
+static inline void EndUIBox(void) { EndUIBoxWithExpectedTag("Box"); }
 
 UIBox *GetUIBoxByKey(UIBox *box, Str8 key);
 UIBox *GetUIBox(UIBox *box, u32 index);
-UIBox *GetUICurrent(void);
+UIBox *GetCurrentUIBox(void);
 
 void SetNextUIKey(Str8 key);
 void SetNextUIKeyF(const char *fmt, ...);
 
-void SetUIColor(ColorU32 color);
-void SetUISize(Vec2 size);
-void SetUIText(Str8 text);
+void SetNextUITag(const char *tag);
+void SetNextUIColor(ColorU32 color);
+void SetNextUISize(Vec2 size);
+void SetNextUIText(Str8 text);
+void SetNextUIMainAxis(Axis2 axis);
+void SetNextUIMainAxisSize(UIMainAxisSize main_axis_size);
+void SetNextUIMainAxisAlign(UIMainAxisAlign main_axis_align);
+void SetNextUICrossAxisAlign(UICrossAxisAlign cross_axis_align);
+void SetNextUIFlex(f32 flex);
+void SetNextUIPadding(UIEdgeInsets padding);
 
-void SetUIMainAxis(Axis2 axis);
-void SetUIMainAxisSize(UIMainAxisSize main_axis_size);
-void SetUIMainAxisAlign(UIMainAxisAlign main_axis_align);
-void SetUICrossAxisAlign(UICrossAxisAlign cross_axis_align);
-void SetUIFlex(f32 flex);
-void SetUIPadding(UIEdgeInsets padding);
 
-UIComputedData GetUIComputed(void);
-Vec2 GetUIMouseRelPos(void);
+UIComputed GetNextUIComputed(void);
+Vec2 GetNextUIMouseRelPos(void);
 
-b32 IsUIMouseHovering(void);
-b32 IsUIMouseButtonPressed(UIMouseButton button);
-b32 IsUIMouseButtonDown(UIMouseButton button);
-b32 IsUIMouseButtonClicked(UIMouseButton button);
-b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta);
-b32 IsUIMouseScrolling(Vec2 *delta);
+b32 IsNextUIMouseHovering(void);
+b32 IsNextUIMouseButtonPressed(UIMouseButton button);
+b32 IsNextUIMouseButtonDown(UIMouseButton button);
+b32 IsNextUIMouseButtonClicked(UIMouseButton button);
+b32 IsNextUIMouseButtonDragging(UIMouseButton button, Vec2 *delta);
+b32 IsNextUIMouseScrolling(Vec2 *delta);
 
 #endif  // ZTRACING_SRC_UI_H_

@@ -11,38 +11,31 @@
 
 static void UIButton(Str8 label) {
   SetNextUIKey(label);
+  SetNextUIPadding(UIEdgeInsetsSymmetric(6, 4));
+  if (IsNextUIMouseButtonClicked(kUIMouseButtonLeft)) {
+    SetNextUIColor(ColorU32FromHex(0x0000FF));
+  } else if (IsNextUIMouseButtonDown(kUIMouseButtonLeft)) {
+    SetNextUIColor(ColorU32FromHex(0x00FF00));
+  } else if (IsNextUIMouseHovering()) {
+    SetNextUIColor(ColorU32FromHex(0xFF0000));
+  } else {
+    // SetUIColor(ColorU32FromHex(0x5EAC57));
+  }
   BeginUIBox();
   {
-    SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
-
-    if (IsUIMouseButtonClicked(kUIMouseButtonLeft)) {
-      SetUIColor(ColorU32FromHex(0x0000FF));
-    } else if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
-      SetUIColor(ColorU32FromHex(0x00FF00));
-    } else if (IsUIMouseHovering()) {
-      SetUIColor(ColorU32FromHex(0xFF0000));
-    } else {
-      // SetUIColor(ColorU32FromHex(0x5EAC57));
-    }
-
+    SetNextUIText(label);
     BeginUIBox();
-    {
-      SetUIText(label);
-    }
     EndUIBox();
   }
   EndUIBox();
 }
 
 static void UIText(Str8 text) {
+  SetNextUIPadding(UIEdgeInsetsSymmetric(6, 4));
   BeginUIBox();
   {
-    SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
-
+    SetNextUIText(text);
     BeginUIBox();
-    {
-      SetUIText(text);
-    }
     EndUIBox();
   }
   EndUIBox();
@@ -53,15 +46,14 @@ static void BuildUI(f32 dt) {
 
   BeginUIColumn();
   {
+    SetNextUIColor(ColorU32FromHex(0xE6573F));
     BeginUIRow();
     {
-      SetUIColor(ColorU32FromHex(0xE6573F));
-
       UIButton(STR8_LIT("Load"));
       UIButton(STR8_LIT("About"));
 
+      SetNextUIFlex(1.0f);
       BeginUIBox();
-      SetUIFlex(1.0f);
       EndUIBox();
 
       UIText(PushStr8F(scratch.arena, "%.0f", 1.0f / dt));
@@ -70,6 +62,7 @@ static void BuildUI(f32 dt) {
 
     static UIScrollableState state;
 
+    SetNextUIFlex(1.0);
     BeginUIScrollable(&state);
     {
       f32 item_size = 20.0f;
@@ -80,9 +73,9 @@ static void BuildUI(f32 dt) {
       // for (; item_index < item_count && offset < state->scroll_area_size;
       //      ++item_index, offset += item_size) {
       for (u32 item_index = 0; item_index < item_count; ++item_index) {
+        SetNextUISize(V2(kUISizeUndefined, item_size));
+        SetNextUIColor(ColorU32FromRGBA(0, 0, item_index % 256, 255));
         BeginUIRow();
-        SetUISize(V2(kUISizeUndefined, item_size));
-        SetUIColor(ColorU32FromRGBA(0, 0, item_index % 256, 255));
         EndUIRow();
       }
     }

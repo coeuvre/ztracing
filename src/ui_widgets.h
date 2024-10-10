@@ -6,22 +6,24 @@
 #include "src/ui.h"
 
 static inline void BeginUIRow() {
-  BeginUIBoxWithTag("Row");
-  SetUIMainAxis(kAxis2X);
-  SetUIMainAxisSize(kUIMainAxisSizeMax);
-  SetUICrossAxisAlign(kUICrossAxisAlignCenter);
+  SetNextUITag("Row");
+  SetNextUIMainAxis(kAxis2X);
+  SetNextUIMainAxisSize(kUIMainAxisSizeMax);
+  SetNextUICrossAxisAlign(kUICrossAxisAlignCenter);
+  BeginUIBox();
 }
 
-static inline void EndUIRow() { EndUIBoxWithTag("Row"); }
+static inline void EndUIRow() { EndUIBoxWithExpectedTag("Row"); }
 
 static inline void BeginUIColumn() {
-  BeginUIBoxWithTag("Column");
-  SetUIMainAxis(kAxis2Y);
-  SetUIMainAxisSize(kUIMainAxisSizeMax);
-  SetUICrossAxisAlign(kUICrossAxisAlignCenter);
+  SetNextUITag("Column");
+  SetNextUIMainAxis(kAxis2Y);
+  SetNextUIMainAxisSize(kUIMainAxisSizeMax);
+  SetNextUICrossAxisAlign(kUICrossAxisAlignCenter);
+  BeginUIBox();
 }
 
-static inline void EndUIColumn() { EndUIBoxWithTag("Column"); }
+static inline void EndUIColumn() { EndUIBoxWithExpectedTag("Column"); }
 
 typedef struct UIScrollableState {
   // persistent info

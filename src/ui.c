@@ -144,7 +144,7 @@ typedef struct UIState {
   u64 build_index;
 
   // per-frame info
-  Str8 next_ui_key_str;
+  UIBuild next_build;
   f32 content_scale;
   Vec2 screen_size;
   UIBox *root;
@@ -643,12 +643,10 @@ b32 IsEqualUIKey(UIKey a, UIKey b) {
   return result;
 }
 
-void BeginUIBoxWithTag(const char *tag) {
+void BeginUIBox(void) {
   UIState *state = GetUIState();
 
-  Str8 key_str = state->next_ui_key_str;
-  state->next_ui_key_str = Str8Zero();
-
+  Str8 key_str = state->next_build.key_str;
   UIBox *parent = state->current;
   UIKey seed = UIKeyZero();
   if (parent) {
@@ -671,17 +669,16 @@ void BeginUIBoxWithTag(const char *tag) {
 
   // Clear per frame state
   box->first = box->last = 0;
-  box->build = (UIBuildData){0};
-  box->build.tag = tag;
-  if (!IsEmptyStr8(key_str)) {
-    Arena *build_arena = GetBuildArena(state);
-    box->build.key_str = PushStr8(build_arena, key_str);
+  box->build = state->next_build;
+  state->next_build = (UIBuild){0};
+  if (!box->build.tag) {
+    box->build.tag = "Box";
   }
 
   state->current = box;
 }
 
-void EndUIBoxWithTag(const char *tag) {
+void EndUIBoxWithExpectedTag(const char *tag) {
   UIState *state = GetUIState();
 
   ASSERT(state->current);
@@ -705,8 +702,7 @@ UIBox *GetUIBoxByKey(UIBox *parent, Str8 key_str) {
   }
 
   if (parent) {
-    UIKey seed = UIKeyFromHash((u64)parent);
-    UIKey key = UIKeyFromStr8(seed, key_str);
+    UIKey key = UIKeyFromStr8(parent->key, key_str);
     result = GetBoxByKey(&state->cache, key);
   }
 
@@ -732,7 +728,7 @@ UIBox *GetUIBox(UIBox *parent, u32 index) {
   return result;
 }
 
-UIBox *GetUICurrent(void) {
+UIBox *GetCurrentUIBox(void) {
   UIState *state = GetUIState();
   ASSERT(state->current);
   return state->current;
@@ -742,7 +738,7 @@ void SetNextUIKey(Str8 key) {
   UIState *state = GetUIState();
 
   Arena *arena = GetBuildArena(state);
-  state->next_ui_key_str = PushStr8(arena, key);
+  state->next_build.key_str = PushStr8(arena, key);
 }
 
 void SetNextUIKeyF(const char *fmt, ...) {
@@ -751,132 +747,141 @@ void SetNextUIKeyF(const char *fmt, ...) {
   Arena *arena = GetBuildArena(state);
   va_list ap;
   va_start(ap, fmt);
-  state->next_ui_key_str = PushStr8FV(arena, fmt, ap);
+  state->next_build.key_str = PushStr8FV(arena, fmt, ap);
   va_end(ap);
 }
 
-void SetUIColor(ColorU32 color) {
+void SetNextUITag(const char *tag) {
   UIState *state = GetUIState();
-  ASSERT(state->current);
-  state->current->build.color = color;
+
+  state->next_build.tag = tag;
 }
 
-void SetUISize(Vec2 size) {
+void SetNextUIColor(ColorU32 color) {
   UIState *state = GetUIState();
-  ASSERT(state->current);
-  state->current->build.size = size;
+
+  state->next_build.color = color;
 }
 
-void SetUIText(Str8 text) {
+void SetNextUISize(Vec2 size) {
   UIState *state = GetUIState();
-  ASSERT(state->current);
+
+  state->next_build.size = size;
+}
+
+void SetNextUIText(Str8 text) {
+  UIState *state = GetUIState();
 
   Arena *arena = GetBuildArena(state);
-  state->current->build.text = PushStr8(arena, text);
+  state->next_build.text = PushStr8(arena, text);
 }
 
-void SetUIMainAxis(Axis2 axis) {
+void SetNextUIMainAxis(Axis2 axis) {
   UIState *state = GetUIState();
-  ASSERT(state->current);
 
-  state->current->build.main_axis = axis;
+  state->next_build.main_axis = axis;
 }
 
-void SetUIMainAxisSize(UIMainAxisSize main_axis_size) {
+void SetNextUIMainAxisSize(UIMainAxisSize main_axis_size) {
   UIState *state = GetUIState();
-  ASSERT(state->current);
 
-  state->current->build.main_axis_size = main_axis_size;
+  state->next_build.main_axis_size = main_axis_size;
 }
 
-void SetUIMainAxisAlign(UIMainAxisAlign main_axis_align) {
+void SetNextUIMainAxisAlign(UIMainAxisAlign main_axis_align) {
   UIState *state = GetUIState();
-  ASSERT(state->current);
 
-  state->current->build.main_axis_align = main_axis_align;
+  state->next_build.main_axis_align = main_axis_align;
 }
 
-void SetUICrossAxisAlign(UICrossAxisAlign cross_axis_align) {
+void SetNextUICrossAxisAlign(UICrossAxisAlign cross_axis_align) {
   UIState *state = GetUIState();
-  ASSERT(state->current);
 
-  state->current->build.cross_axis_align = cross_axis_align;
+  state->next_build.cross_axis_align = cross_axis_align;
 }
 
-void SetUIFlex(f32 flex) {
+void SetNextUIFlex(f32 flex) {
   UIState *state = GetUIState();
-  ASSERT(state->current);
 
-  state->current->build.flex = flex;
+  state->next_build.flex = flex;
 }
 
-void SetUIPadding(UIEdgeInsets padding) {
-  GetUICurrent()->build.padding = padding;
-}
-
-static UIBox *GetUIBoxForLastFrameData(UIState *state) {
-  UIBox *box = state->current;
-  ASSERT(box);
-  ASSERTF(!IsEqualUIKey(box->key, UIKeyZero()),
-          "Must assign a key to the box in order to get computed property");
-  return box;
-}
-
-UIComputedData GetUIComputed(void) {
+void SetNextUIPadding(UIEdgeInsets padding) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxForLastFrameData(state);
-  return box->computed;
+
+  state->next_build.padding = padding;
 }
 
-Vec2 GetUIMouseRelPos(void) {
-  UIState *state = GetUIState();
-  UIBox *box = GetUIBoxForLastFrameData(state);
-  Vec2 result = SubVec2(state->input.mouse.pos, box->computed.screen_rect.min);
+static UIBox *GetUIBoxByNextUIKey(UIState *state) {
+  ASSERTF(
+      !IsEmptyStr8(state->next_build.key_str),
+      "Must assign a key to the next box in order to get computed property");
+  UIBox *result = GetUIBoxByKey(state->current, state->next_build.key_str);
   return result;
 }
 
-b32 IsUIMouseHovering(void) {
+UIComputed GetNextUIComputed(void) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxForLastFrameData(state);
-  box->build.hoverable = 1;
-
-  b32 result = state->input.mouse.hovering == box;
+  UIBox *box = GetUIBoxByNextUIKey(state);
+  UIComputed result = {0};
+  if (box) {
+    result = box->computed;
+  }
   return result;
 }
 
-b32 IsUIMouseButtonPressed(UIMouseButton button) {
+Vec2 GetNextUIMouseRelPos(void) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxForLastFrameData(state);
-  box->build.clickable[button] = 1;
-
-  b32 result = state->input.mouse.pressed[button] == box;
+  UIBox *box = GetUIBoxByNextUIKey(state);
+  Vec2 result = V2(0, 0);
+  if (box) {
+    result = SubVec2(state->input.mouse.pos, box->computed.screen_rect.min);
+  }
   return result;
 }
 
-b32 IsUIMouseButtonDown(UIMouseButton button) {
+b32 IsNextUIMouseHovering(void) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxForLastFrameData(state);
-  box->build.clickable[button] = 1;
+  state->next_build.hoverable = 1;
 
-  b32 result = state->input.mouse.holding[button] == box;
+  UIBox *box = GetUIBoxByNextUIKey(state);
+  b32 result = box && state->input.mouse.hovering == box;
   return result;
 }
 
-b32 IsUIMouseButtonClicked(UIMouseButton button) {
+b32 IsNextUIMouseButtonPressed(UIMouseButton button) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxForLastFrameData(state);
-  box->build.clickable[button] = 1;
+  state->next_build.clickable[button] = 1;
 
-  b32 result = state->input.mouse.clicked[button] == box;
+  UIBox *box = GetUIBoxByNextUIKey(state);
+  b32 result = box && state->input.mouse.pressed[button] == box;
   return result;
 }
 
-b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
+b32 IsNextUIMouseButtonDown(UIMouseButton button) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxForLastFrameData(state);
-  box->build.clickable[button] = 1;
+  state->next_build.clickable[button] = 1;
 
-  f32 result = state->input.mouse.holding[button] == box;
+  UIBox *box = GetUIBoxByNextUIKey(state);
+  b32 result = box && state->input.mouse.holding[button] == box;
+  return result;
+}
+
+b32 IsNextUIMouseButtonClicked(UIMouseButton button) {
+  UIState *state = GetUIState();
+  state->next_build.clickable[button] = 1;
+
+  UIBox *box = GetUIBoxByNextUIKey(state);
+  b32 result = box && state->input.mouse.clicked[button] == box;
+  return result;
+}
+
+b32 IsNextUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
+  UIState *state = GetUIState();
+  state->next_build.clickable[button] = 1;
+
+  UIBox *box = GetUIBoxByNextUIKey(state);
+  f32 result = box && state->input.mouse.holding[button] == box;
   if (result && delta) {
     *delta =
         SubVec2(state->input.mouse.pos, state->input.mouse.pressed_pos[button]);
@@ -884,12 +889,12 @@ b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
   return result;
 }
 
-b32 IsUIMouseScrolling(Vec2 *delta) {
+b32 IsNextUIMouseScrolling(Vec2 *delta) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxForLastFrameData(state);
-  box->build.hoverable = 1;
+  state->next_build.hoverable = 1;
 
-  f32 result = state->input.mouse.hovering == box;
+  UIBox *box = GetUIBoxByNextUIKey(state);
+  f32 result = box && state->input.mouse.hovering == box;
   if (result && delta) {
     *delta = state->input.mouse.wheel;
   }
