@@ -789,7 +789,7 @@ Vec2 GetUIMouseRelPos(void) {
   return result;
 }
 
-b32 IsUIHovering(void) {
+b32 IsUIMouseHovering(void) {
   UIState *state = GetUIState();
   UIBox *box = GetUIBoxForLastFrameData(state);
   box->build.hoverable = 1;
@@ -798,7 +798,7 @@ b32 IsUIHovering(void) {
   return result;
 }
 
-b32 IsUIPressed(UIMouseButton button) {
+b32 IsUIMouseButtonPressed(UIMouseButton button) {
   UIState *state = GetUIState();
   UIBox *box = GetUIBoxForLastFrameData(state);
   box->build.clickable[button] = 1;
@@ -807,7 +807,7 @@ b32 IsUIPressed(UIMouseButton button) {
   return result;
 }
 
-b32 IsUIHolding(UIMouseButton button) {
+b32 IsUIMouseButtonDown(UIMouseButton button) {
   UIState *state = GetUIState();
   UIBox *box = GetUIBoxForLastFrameData(state);
   box->build.clickable[button] = 1;
@@ -816,24 +816,24 @@ b32 IsUIHolding(UIMouseButton button) {
   return result;
 }
 
-Vec2 GetUIMouseDragDelta(UIMouseButton button) {
-  UIState *state = GetUIState();
-  UIBox *box = GetUIBoxForLastFrameData(state);
-  box->build.clickable[button] = 1;
-
-  Vec2 result = V2(0, 0);
-  if (state->input.mouse.holding[button] == box) {
-    result =
-        SubVec2(state->input.mouse.pos, state->input.mouse.pressed_pos[button]);
-  }
-  return result;
-}
-
-b32 IsUIClicked(UIMouseButton button) {
+b32 IsUIMouseButtonClicked(UIMouseButton button) {
   UIState *state = GetUIState();
   UIBox *box = GetUIBoxForLastFrameData(state);
   box->build.clickable[button] = 1;
 
   b32 result = state->input.mouse.clicked[button] == box;
+  return result;
+}
+
+b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *drag_delta) {
+  UIState *state = GetUIState();
+  UIBox *box = GetUIBoxForLastFrameData(state);
+  box->build.clickable[button] = 1;
+
+  f32 result = state->input.mouse.holding[button] == box;
+  if (result && drag_delta) {
+    *drag_delta =
+        SubVec2(state->input.mouse.pos, state->input.mouse.pressed_pos[button]);
+  }
   return result;
 }

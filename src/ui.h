@@ -161,10 +161,10 @@ void SetUIPadding(UIEdgeInsets padding);
 UIComputedData GetUIComputed(void);
 Vec2 GetUIMouseRelPos(void);
 
-b32 IsUIHovering(void);
-b32 IsUIPressed(UIMouseButton button);
-b32 IsUIHolding(UIMouseButton button);
-Vec2 GetUIMouseDragDelta(UIMouseButton button);
-b32 IsUIClicked(UIMouseButton button);
+b32 IsUIMouseHovering(void);
+b32 IsUIMouseButtonPressed(UIMouseButton button);
+b32 IsUIMouseButtonDown(UIMouseButton button);
+b32 IsUIMouseButtonClicked(UIMouseButton button);
+b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *drag_delta);
 
 #endif  // ZTRACING_SRC_UI_H_

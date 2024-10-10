@@ -15,11 +15,11 @@ static void UIButton(Str8 label) {
   {
     SetUIPadding(UIEdgeInsetsSymmetric(6, 4));
 
-    if (IsUIClicked(kUIMouseButtonLeft)) {
+    if (IsUIMouseButtonClicked(kUIMouseButtonLeft)) {
       SetUIColor(ColorU32FromHex(0x0000FF));
-    } else if (IsUIHolding(kUIMouseButtonLeft)) {
+    } else if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
       SetUIColor(ColorU32FromHex(0x00FF00));
-    } else if (IsUIHovering()) {
+    } else if (IsUIMouseHovering()) {
       SetUIColor(ColorU32FromHex(0xFF0000));
     } else {
       // SetUIColor(ColorU32FromHex(0x5EAC57));
@@ -119,7 +119,7 @@ static void BuildUI(f32 dt) {
         f32 control_offset = (scroll / scroll_max) * control_max;
 
         Vec2 mouse_pos = GetUIMouseRelPos();
-        if (IsUIHolding(kUIMouseButtonLeft)) {
+        if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
           if (ContainsF32(mouse_pos.x, 0, size.x)) {
             f32 offset = mouse_pos.y - head_size.y;
             if (offset < control_offset) {
@@ -136,7 +136,7 @@ static void BuildUI(f32 dt) {
           SetUISize(head_size);
           SetUIColor(ColorU32FromRGBA(255, 0, 0, 255));
 
-          if (IsUIHolding(kUIMouseButtonLeft)) {
+          if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
             scroll = ClampF32(scroll - scroll_step, 0, scroll_max);
           }
         }
@@ -158,17 +158,17 @@ static void BuildUI(f32 dt) {
 
           ColorU32 control_background_color =
               ColorU32FromRGBA(192, 192, 192, 255);
-          if (IsUIHovering()) {
+          if (IsUIMouseHovering()) {
             control_background_color = ColorU32FromRGBA(224, 224, 224, 255);
           }
 
-          if (IsUIPressed(kUIMouseButtonLeft)) {
+          if (IsUIMouseButtonPressed(kUIMouseButtonLeft)) {
             controll_offset_drag_start = control_offset;
           }
 
-          if (IsUIHolding(kUIMouseButtonLeft)) {
-            Vec2 delta = GetUIMouseDragDelta(kUIMouseButtonLeft);
-            f32 offset = controll_offset_drag_start + delta.y;
+          Vec2 drag_delta;
+          if (IsUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta)) {
+            f32 offset = controll_offset_drag_start + drag_delta.y;
             scroll = ClampF32(offset / control_max * scroll_max, 0, scroll_max);
 
             control_background_color = ColorU32FromRGBA(255, 255, 255, 255);
@@ -193,7 +193,7 @@ static void BuildUI(f32 dt) {
           SetUISize(head_size);
           SetUIColor(ColorU32FromRGBA(255, 0, 0, 255));
 
-          if (IsUIHolding(kUIMouseButtonLeft)) {
+          if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
             scroll = ClampF32(scroll + scroll_step, 0, scroll_max);
           }
         }
