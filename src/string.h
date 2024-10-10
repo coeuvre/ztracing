@@ -2,6 +2,7 @@
 #define ZTRACING_SRC_STRING_H_
 
 #include <string.h>
+#include <stdarg.h>
 
 #include "src/memory.h"
 #include "src/types.h"
@@ -34,6 +35,7 @@ static inline b32 IsEqualStr8(Str8 a, Str8 b) {
 
 Str8 PushStr8(Arena *arena, Str8 str);
 Str8 PushStr8F(Arena *arena, const char *format, ...);
+Str8 PushStr8FV(Arena *arena, const char *format, va_list ap);
 
 typedef struct Str32 Str32;
 struct Str32 {

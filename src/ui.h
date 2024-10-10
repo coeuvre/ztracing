@@ -92,6 +92,7 @@ typedef struct UIComputedData {
   Vec2 max_size;
   Axis2 unbounded_axis;
 
+  Vec2 content_size;
   Vec2 size;
   Vec2 rel_pos;
 
@@ -159,6 +160,7 @@ UIBox *GetUIBox(UIBox *box, u32 index);
 UIBox *GetUICurrent(void);
 
 void SetNextUIKey(Str8 key);
+void SetNextUIKeyF(const char *fmt, ...);
 
 void SetUIColor(ColorU32 color);
 void SetUISize(Vec2 size);

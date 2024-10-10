@@ -1,5 +1,6 @@
 #include "src/ui.h"
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -391,7 +392,8 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
       total_flex += child->build.flex;
       if (!child->build.flex) {
         Vec2 this_child_max_size;
-        SetItemVec2(&this_child_max_size, main_axis, child_main_axis_free);
+        SetItemVec2(&this_child_max_size, main_axis,
+                    GetItemVec2(child_max_size, main_axis));
         SetItemVec2(&this_child_max_size, cross_axis,
                     GetItemVec2(child_max_size, cross_axis));
         Vec2 this_child_min_size = {0};
@@ -402,7 +404,8 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
         LayoutBox(state, child, this_child_min_size, this_child_max_size,
                   main_axis);
 
-        child_main_axis_free -= GetItemVec2(child->computed.size, main_axis);
+        child_main_axis_free -=
+            MaxF32(GetItemVec2(child->computed.size, main_axis), 0);
         child_main_axis_size += GetItemVec2(child->computed.size, main_axis);
         child_cross_axis_max =
             MaxF32(child_cross_axis_max,
@@ -452,17 +455,20 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
 
   for (int axis = 0; axis < kAxis2Count; ++axis) {
     f32 child_size_axis = GetItemVec2(child_size, axis);
+    if (child_size_axis != kUISizeUndefined) {
+      SetItemVec2(&box->computed.content_size, axis,
+                  child_size_axis + GetPaddingStart(box->build.padding, axis) +
+                      GetPaddingEnd(box->build.padding, axis));
+    }
+
     if (!ShouldMaxAxis(box, axis, main_axis, unbounded_axis) &&
         GetItemVec2(box->build.size, axis) == kUISizeUndefined &&
         child_size_axis != kUISizeUndefined) {
       // Size itself around children if it doesn't have specific size
-      f32 child_size_axis_plus_padding =
-          child_size_axis + GetPaddingStart(box->build.padding, axis) +
-          GetPaddingEnd(box->build.padding, axis);
       SetItemVec2(
           &box->computed.size, axis,
-          ClampF32(child_size_axis_plus_padding, GetItemVec2(min_size, axis),
-                   GetItemVec2(max_size, axis)));
+          ClampF32(GetItemVec2(box->computed.content_size, axis),
+                   GetItemVec2(min_size, axis), GetItemVec2(max_size, axis)));
     } else {
       SetItemVec2(&box->computed.size, axis, GetItemVec2(self_size, axis));
     }
@@ -509,23 +515,27 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos) {
 #if 1
 static void DebugPrintUIR(UIBox *box, u32 level) {
   INFO(
-      "%*s %s[min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), unbounded_axis=%d, "
-      "size=(%.2f, %.2f) rel_pos=(%.2f, %.2f)]",
-      level * 4, "", box->build.key_str.ptr, box->computed.min_size.x,
-      box->computed.min_size.y, box->computed.max_size.x,
-      box->computed.max_size.y, box->computed.unbounded_axis,
-      box->computed.size.x, box->computed.size.y, box->computed.rel_pos.x,
-      box->computed.rel_pos.y);
+      "%*s %s[id=%s, min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), "
+      "unbounded_axis=%d, "
+      "content_size(%.2f, %.2f), size=(%.2f, %.2f), rel_pos=(%.2f, %.2f)]",
+      level * 4, "", box->build.tag, box->build.key_str.ptr,
+      box->computed.min_size.x, box->computed.min_size.y,
+      box->computed.max_size.x, box->computed.max_size.y,
+      box->computed.unbounded_axis, box->computed.content_size.x,
+      box->computed.content_size.y, box->computed.size.x, box->computed.size.y,
+      box->computed.rel_pos.x, box->computed.rel_pos.y);
   for (UIBox *child = box->first; child; child = child->next) {
     DebugPrintUIR(child, level + 1);
   }
 }
 
 static void DebugPrintUI(UIState *state) {
-  if (state->root) {
-    DebugPrintUIR(state->root, 0);
+  if (state->build_index > 1) {
+    if (state->root) {
+      DebugPrintUIR(state->root, 0);
+    }
+    exit(0);
   }
-  exit(0);
 }
 #endif
 
@@ -733,6 +743,16 @@ void SetNextUIKey(Str8 key) {
 
   Arena *arena = GetBuildArena(state);
   state->next_ui_key_str = PushStr8(arena, key);
+}
+
+void SetNextUIKeyF(const char *fmt, ...) {
+  UIState *state = GetUIState();
+
+  Arena *arena = GetBuildArena(state);
+  va_list ap;
+  va_start(ap, fmt);
+  state->next_ui_key_str = PushStr8FV(arena, fmt, ap);
+  va_end(ap);
 }
 
 void SetUIColor(ColorU32 color) {

@@ -16,14 +16,21 @@ Str8 PushStr8(Arena *arena, Str8 str) {
 }
 
 Str8 PushStr8F(Arena *arena, const char *format, ...) {
+  va_list ap;
+  va_start(ap, format);
+  Str8 result = PushStr8FV(arena, format, ap);
+  va_end(ap);
+  return result;
+}
+
+Str8 PushStr8FV(Arena *arena, const char *format, va_list ap) {
   usize kInitBufferSize = 256;
   usize buf_len = kInitBufferSize;
   char *buf_ptr = PushArray(arena, char, buf_len);
 
   va_list args;
-  va_start(args, format);
+  va_copy(args, ap);
   usize str_len = vsnprintf(buf_ptr, buf_len, format, args);
-  va_end(args);
 
   if (str_len + 1 <= buf_len) {
     // Free the unused part of the buffer.
@@ -33,9 +40,8 @@ Str8 PushStr8F(Arena *arena, const char *format, ...) {
     PopArena(arena, buf_len);
     buf_len = str_len + 1;
     buf_ptr = PushArray(arena, char, buf_len);
-    va_start(args, format);
+    va_copy(args, ap);
     vsnprintf(buf_ptr, buf_len, format, args);
-    va_end(args);
   }
 
   Str8 result = {(u8 *)buf_ptr, str_len};
