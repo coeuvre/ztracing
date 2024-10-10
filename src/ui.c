@@ -1,6 +1,7 @@
 #include "src/ui.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "src/assert.h"
 #include "src/draw.h"
@@ -632,7 +633,7 @@ b32 IsEqualUIKey(UIKey a, UIKey b) {
   return result;
 }
 
-void BeginUIBox(void) {
+void BeginUIBoxWithTag(const char *tag) {
   UIState *state = GetUIState();
 
   Str8 key_str = state->next_ui_key_str;
@@ -661,7 +662,7 @@ void BeginUIBox(void) {
   // Clear per frame state
   box->first = box->last = 0;
   box->build = (UIBuildData){0};
-
+  box->build.tag = tag;
   if (!IsEmptyStr8(key_str)) {
     Arena *build_arena = GetBuildArena(state);
     box->build.key_str = PushStr8(build_arena, key_str);
@@ -670,10 +671,13 @@ void BeginUIBox(void) {
   state->current = box;
 }
 
-void EndUIBox(void) {
+void EndUIBoxWithTag(const char *tag) {
   UIState *state = GetUIState();
 
   ASSERT(state->current);
+  ASSERTF(strcmp(state->current->build.tag, tag) == 0,
+          "Mismatched Begin/End calls. Begin with %s, end with %s",
+          state->current->build.tag, tag);
   state->current = state->current->parent;
 }
 

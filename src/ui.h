@@ -71,6 +71,7 @@ typedef enum UIMouseButton {
 } UIMouseButton;
 
 typedef struct UIBuildData {
+  const char *tag;
   Str8 key_str;
   ColorU32 color;
   Vec2 size;
@@ -142,8 +143,16 @@ UIKey UIKeyZero(void);
 UIKey UIKeyFromStr8(UIKey seed, Str8 str);
 b32 IsEqualUIKey(UIKey a, UIKey b);
 
-void BeginUIBox(void);
-void EndUIBox(void);
+void BeginUIBoxWithTag(const char *tag);
+void EndUIBoxWithTag(const char *tag);
+
+static inline void BeginUIBox(void) {
+  BeginUIBoxWithTag("Box");
+}
+
+static inline void EndUIBox(void) {
+  EndUIBoxWithTag("Box");
+}
 
 UIBox *GetUIBoxByKey(UIBox *box, Str8 key);
 UIBox *GetUIBox(UIBox *box, u32 index);

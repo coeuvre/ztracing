@@ -6,21 +6,21 @@
 #include "src/ui.h"
 
 static inline void BeginUIRow() {
-  BeginUIBox();
+  BeginUIBoxWithTag("Row");
   SetUIMainAxis(kAxis2X);
   SetUIMainAxisSize(kUIMainAxisSizeMax);
   SetUICrossAxisAlign(kUICrossAxisAlignCenter);
 }
 
-static inline void EndUIRow() { EndUIBox(); }
+static inline void EndUIRow() { EndUIBoxWithTag("Row"); }
 
 static inline void BeginUIColumn() {
-  BeginUIBox();
+  BeginUIBoxWithTag("Column");
   SetUIMainAxis(kAxis2Y);
   SetUIMainAxisSize(kUIMainAxisSizeMax);
   SetUICrossAxisAlign(kUICrossAxisAlignCenter);
 }
 
-static inline void EndUIColumn() { EndUIBox(); }
+static inline void EndUIColumn() { EndUIBoxWithTag("Column"); }
 
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_
