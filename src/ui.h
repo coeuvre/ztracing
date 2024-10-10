@@ -129,6 +129,10 @@ struct UIBox {
 void OnUIMousePos(Vec2 pos);
 void OnUIMouseButtonUp(Vec2 pos, UIMouseButton button);
 void OnUIMouseButtonDown(Vec2 pos, UIMouseButton button);
+void OnUIMouseWheel(Vec2 delta);
+
+void SetUIDeltaTime(f32 dt);
+f32 GetUIDeltaTime(void);
 
 void BeginUIFrame(Vec2 screen_size, f32 content_scale);
 void EndUIFrame(void);
@@ -165,6 +169,7 @@ b32 IsUIMouseHovering(void);
 b32 IsUIMouseButtonPressed(UIMouseButton button);
 b32 IsUIMouseButtonDown(UIMouseButton button);
 b32 IsUIMouseButtonClicked(UIMouseButton button);
-b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *drag_delta);
+b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta);
+b32 IsUIMouseScrolling(Vec2 *delta);
 
 #endif  // ZTRACING_SRC_UI_H_

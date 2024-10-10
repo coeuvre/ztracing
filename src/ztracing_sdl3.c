@@ -85,6 +85,10 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
                           sdl_button_to_ui_button[event->button.button]);
     } break;
 
+    case SDL_EVENT_MOUSE_WHEEL: {
+      OnUIMouseWheel(V2(event->wheel.x, -event->wheel.y));
+    } break;
+
     default: {
     } break;
   }

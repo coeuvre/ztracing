@@ -117,6 +117,7 @@ typedef struct UIMouseButtonState {
 
 typedef struct UIMouseInput {
   Vec2 pos;
+  Vec2 wheel;
   UIMouseButtonState buttons[kUIMouseButtonCount];
 
   UIBox *hovering;
@@ -127,6 +128,7 @@ typedef struct UIMouseInput {
 } UIMouseInput;
 
 typedef struct UIInput {
+  f32 dt;
   UIMouseInput mouse;
 } UIInput;
 
@@ -157,6 +159,7 @@ static UIState *GetUIState(void) {
     state->build_arena[0] = AllocArena();
     state->build_arena[1] = AllocArena();
 
+    state->input.dt = 1.0f / 60.0f;  // Assume 60 FPS by default.
     state->input.mouse.pos = V2(-1, -1);
   }
   return state;
@@ -210,6 +213,24 @@ void OnUIMouseButtonDown(Vec2 pos, UIMouseButton button) {
     mouse_button_state->is_down = 1;
     mouse_button_state->transition_count += 1;
   }
+}
+
+void OnUIMouseWheel(Vec2 delta) {
+  UIState *state = GetUIState();
+
+  state->input.mouse.wheel = delta;
+}
+
+void SetUIDeltaTime(f32 dt) {
+  UIState *state = GetUIState();
+
+  state->input.dt = dt;
+}
+
+f32 GetUIDeltaTime(void) {
+  UIState *state = GetUIState();
+  f32 result = state->input.dt;
+  return result;
 }
 
 void BeginUIFrame(Vec2 screen_size, f32 content_scale) {
@@ -531,8 +552,9 @@ static void ProcessInputR(UIState *state, UIBox *box) {
 }
 
 static void ProcessInput(UIState *state) {
+  state->input.mouse.hovering = 0;
+  state->input.mouse.wheel = V2(0, 0);
   for (int button = 0; button < kUIMouseButtonCount; ++button) {
-    state->input.mouse.hovering = 0;
     state->input.mouse.pressed[button] = 0;
     state->input.mouse.clicked[button] = 0;
   }
@@ -825,15 +847,27 @@ b32 IsUIMouseButtonClicked(UIMouseButton button) {
   return result;
 }
 
-b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *drag_delta) {
+b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
   UIState *state = GetUIState();
   UIBox *box = GetUIBoxForLastFrameData(state);
   box->build.clickable[button] = 1;
 
   f32 result = state->input.mouse.holding[button] == box;
-  if (result && drag_delta) {
-    *drag_delta =
+  if (result && delta) {
+    *delta =
         SubVec2(state->input.mouse.pos, state->input.mouse.pressed_pos[button]);
+  }
+  return result;
+}
+
+b32 IsUIMouseScrolling(Vec2 *delta) {
+  UIState *state = GetUIState();
+  UIBox *box = GetUIBoxForLastFrameData(state);
+  box->build.hoverable = 1;
+
+  f32 result = state->input.mouse.hovering == box;
+  if (result && delta) {
+    *delta = state->input.mouse.wheel;
   }
   return result;
 }

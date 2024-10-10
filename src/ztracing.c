@@ -68,24 +68,46 @@ static void BuildUI(f32 dt) {
     }
     EndUIRow();
 
+    SetNextUIKey(STR8_LIT("#Scrollable"));
     BeginUIRow();
     {
       static f32 scroll = 0.0f;
       static f32 controll_offset_drag_start = 0.0f;
-      f32 scroll_step = 100.0f;
 
       f32 item_size = 20.0f;
       u32 item_count = 510;
       f32 total_item_size = item_size * item_count;
-      f32 scroll_area_size;
+
+      Vec2 head_size = V2(16, 16);
+      Vec2 size = GetUIComputed().size;
+      f32 scroll_area_size = size.y;
+
+      f32 min_control_size = 4;
+      f32 free_size = MaxF32(size.y - 2 * head_size.y, 0.0f);
+      f32 control_size =
+          MinF32(MaxF32(scroll_area_size / total_item_size * free_size,
+                        min_control_size),
+                 free_size);
+
+      f32 scroll_max = total_item_size - scroll_area_size;
+      scroll = ClampF32(scroll, 0, scroll_max);
+
+      f32 scroll_step = scroll_max * 0.1f;
+
+      f32 control_max = free_size - control_size;
+      f32 control_offset = (scroll / scroll_max) * control_max;
 
       SetNextUIKey(STR8_LIT("#ScrollArea"));
       BeginUIColumn();
       {
         SetUIFlex(1.0);
-        // SetUIColor(ColorU32FromHex(0x5EAC57));
 
-        scroll_area_size = GetUIComputed().size.y;
+        Vec2 wheel_delta;
+        if (IsUIMouseScrolling(&wheel_delta)) {
+          scroll =
+              ClampF32(scroll + wheel_delta.y * scroll_step * GetUIDeltaTime(),
+                       0, scroll_max);
+        }
 
         u32 item_index = FloorF32(scroll / item_size);
         f32 offset = item_index * item_size - scroll;
@@ -102,30 +124,15 @@ static void BuildUI(f32 dt) {
       SetNextUIKey(STR8_LIT("#ScrollBar"));
       BeginUIColumn();
       {
-        Vec2 head_size = V2(16, 16);
-        Vec2 size = GetUIComputed().size;
-
-        f32 min_control_size = 4;
-        f32 free_size = MaxF32(size.y - 2 * head_size.y, 0.0f);
-        f32 control_size =
-            MinF32(MaxF32(scroll_area_size / total_item_size * free_size,
-                          min_control_size),
-                   free_size);
-
-        f32 scroll_max = total_item_size - scroll_area_size;
-        scroll = ClampF32(scroll, 0, scroll_max);
-
-        f32 control_max = free_size - control_size;
-        f32 control_offset = (scroll / scroll_max) * control_max;
-
         Vec2 mouse_pos = GetUIMouseRelPos();
         if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
-          if (ContainsF32(mouse_pos.x, 0, size.x)) {
+          if (ContainsF32(mouse_pos.x, 0, head_size.x)) {
             f32 offset = mouse_pos.y - head_size.y;
             if (offset < control_offset) {
-              scroll = MaxF32(scroll - scroll_step, 0);
+              scroll = MaxF32(scroll - scroll_step * GetUIDeltaTime(), 0);
             } else if (offset > control_offset + control_size) {
-              scroll = MinF32(scroll + scroll_step, scroll_max);
+              scroll =
+                  MinF32(scroll + scroll_step * GetUIDeltaTime(), scroll_max);
             }
           }
         }
@@ -137,7 +144,8 @@ static void BuildUI(f32 dt) {
           SetUIColor(ColorU32FromRGBA(255, 0, 0, 255));
 
           if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
-            scroll = ClampF32(scroll - scroll_step, 0, scroll_max);
+            scroll = ClampF32(scroll - scroll_step * GetUIDeltaTime(), 0,
+                              scroll_max);
           }
         }
         EndUIBox();
@@ -152,7 +160,7 @@ static void BuildUI(f32 dt) {
         SetNextUIKey(STR8_LIT("#Control"));
         BeginUIBox();
         {
-          SetUISize(V2(size.x, control_size));
+          SetUISize(V2(head_size.x, control_size));
           SetUIColor(background_color);
           SetUIMainAxisAlign(kUIMainAxisAlignCenter);
 
@@ -175,7 +183,7 @@ static void BuildUI(f32 dt) {
           }
 
           BeginUIBox();
-          SetUISize(V2(size.x * 0.8f, control_size));
+          SetUISize(V2(head_size.x * 0.8f, control_size));
           SetUIColor(control_background_color);
           EndUIBox();
         }
@@ -194,7 +202,8 @@ static void BuildUI(f32 dt) {
           SetUIColor(ColorU32FromRGBA(255, 0, 0, 255));
 
           if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
-            scroll = ClampF32(scroll + scroll_step, 0, scroll_max);
+            scroll = ClampF32(scroll + scroll_step * GetUIDeltaTime(), 0,
+                              scroll_max);
           }
         }
         EndUIBox();
@@ -211,6 +220,7 @@ static void BuildUI(f32 dt) {
 void DoFrame(f32 dt) {
   ClearDraw();
 
+  SetUIDeltaTime(dt);
   BeginUIFrame(GetScreenSize(), GetScreenContentScale());
   BuildUI(dt);
   EndUIFrame();
