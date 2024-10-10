@@ -66,7 +66,7 @@ static void BuildUI(f32 dt) {
     BeginUIScrollable(&state);
     {
       f32 item_size = 20.0f;
-      u32 item_count = 510;
+      u32 item_count = 10;
 
       // u32 item_index = FloorF32(state->scroll / item_size);
       // f32 offset = item_index * item_size - state->scroll;
