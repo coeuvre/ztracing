@@ -56,7 +56,12 @@ static UIMouseButton sdl_button_to_ui_button[] = {
 };
 
 static Vec2 MousePosFromSDL(Vec2 pos) {
-  Vec2 result = MulVec2(pos, 1.0f / GetScreenContentScale());
+  Vec2 result = pos;
+
+#ifndef OS_MAC
+  result = MulVec2(result, 1.0f / GetScreenContentScale());
+#endif
+
   return result;
 }
 
