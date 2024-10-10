@@ -643,15 +643,24 @@ b32 IsEqualUIKey(UIKey a, UIKey b) {
   return result;
 }
 
+static UIKey GetFirstNonZeroUIKey(UIBox *box) {
+  UIKey result = UIKeyZero();
+  if (box) {
+    if (!IsEqualUIKey(box->key, UIKeyZero())) {
+      result = box->key;
+    } else {
+      result = GetFirstNonZeroUIKey(box->parent);
+    }
+  }
+  return result;
+}
+
 void BeginUIBox(void) {
   UIState *state = GetUIState();
 
   Str8 key_str = state->next_build.key_str;
   UIBox *parent = state->current;
-  UIKey seed = UIKeyZero();
-  if (parent) {
-    seed = parent->key;
-  }
+  UIKey seed = GetFirstNonZeroUIKey(parent);
   UIKey key = UIKeyFromStr8(seed, key_str);
   UIBox *box = GetOrPushBoxByKey(&state->cache, state->arena, key);
   ASSERTF(box->last_touched_build_index < state->build_index,
@@ -694,18 +703,13 @@ UIBox *GetUIRoot(void) {
 }
 
 UIBox *GetUIBoxByKey(UIBox *parent, Str8 key_str) {
-  UIBox *result = 0;
-
   UIState *state = GetUIState();
   if (!parent) {
     parent = state->root;
   }
-
-  if (parent) {
-    UIKey key = UIKeyFromStr8(parent->key, key_str);
-    result = GetBoxByKey(&state->cache, key);
-  }
-
+  UIKey seed = GetFirstNonZeroUIKey(parent);
+  UIKey key = UIKeyFromStr8(seed, key_str);
+  UIBox *result = GetBoxByKey(&state->cache, key);
   return result;
 }
 

@@ -6,6 +6,8 @@
 
 void BeginUIScrollable(UIScrollableState *state) {
   SetNextUIKeyF("Scrollable@%p", state);
+  Vec2 wheel_delta;
+  b32 scrolling = IsNextUIMouseScrolling(&wheel_delta);
   BeginUIRow();
   {
     SetNextUIKeyF("ScrollArea");
@@ -31,8 +33,7 @@ void BeginUIScrollable(UIScrollableState *state) {
     state->control_max = free_size - state->control_size;
     state->control_offset =
         (state->scroll / state->scroll_max) * state->control_max;
-    Vec2 wheel_delta;
-    if (IsNextUIMouseScrolling(&wheel_delta)) {
+    if (scrolling) {
       state->scroll = ClampF32(
           state->scroll + wheel_delta.y * state->scroll_step * GetUIDeltaTime(),
           0, state->scroll_max);
