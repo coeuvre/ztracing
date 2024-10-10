@@ -17,6 +17,7 @@
 
 static SDL_Window *window;
 static b32 window_shown;
+static b32 window_coordinate_is_in_pixels;
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   (void)argc, (void)argv;
@@ -25,14 +26,16 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
   int width = 1280;
   int height = 720;
-
   window = SDL_CreateWindow(
       "ztracing", 1280, 720,
       SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN);
   ASSERTF(window, "Failed to create window: %s", SDL_GetError());
 
+  int width_pixel, height_pixel;
+  SDL_GetWindowSizeInPixels(window, &width_pixel, &height_pixel);
   f32 scale = SDL_GetWindowDisplayScale(window);
-  if (scale != 1.0f) {
+  if (scale != 1.0f && width_pixel == width) {
+    window_coordinate_is_in_pixels = 1;
     width *= scale;
     height *= scale;
     SDL_SetWindowSize(window, width, height);
@@ -57,11 +60,9 @@ static UIMouseButton sdl_button_to_ui_button[] = {
 
 static Vec2 MousePosFromSDL(Vec2 pos) {
   Vec2 result = pos;
-
-#ifndef OS_MAC
-  result = MulVec2(result, 1.0f / GetScreenContentScale());
-#endif
-
+  if (window_coordinate_is_in_pixels) {
+    result = MulVec2(result, 1.0f / GetScreenContentScale());
+  }
   return result;
 }
 
