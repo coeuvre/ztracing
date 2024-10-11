@@ -285,7 +285,7 @@ test "Layout, with fixed size, negative" {
     try expectBoxSize(child, c.V2(30, 0));
 }
 
-test "Layout, child has different main axis than parent" {
+test "Layout, main axis size, child has different main axis than parent" {
     const main_axis_sizes: []const c.UIMainAxisSize = &.{
         c.kUIMainAxisSizeMin,
         c.kUIMainAxisSizeMax,
@@ -318,7 +318,7 @@ test "Layout, child has different main axis than parent" {
     }
 }
 
-test "Layout, child has same main axis as parent" {
+test "Layout, main axis size, child has same main axis as parent" {
     const main_axis_sizes: []const c.UIMainAxisSize = &.{
         c.kUIMainAxisSizeMin,
         c.kUIMainAxisSizeMax,
@@ -342,7 +342,11 @@ test "Layout, child has same main axis as parent" {
 
         const root = c.GetUIBox(0, 0);
         const row = c.GetUIBox(root, 0);
-        try expectBoxSize(row, c.V2(20, 20));
+        if (main_axis_size == c.kUIMainAxisSizeMin) {
+            try expectBoxSize(row, c.V2(20, 20));
+        } else {
+            try expectBoxSize(row, c.V2(100, 20));
+        }
     }
 }
 
@@ -442,7 +446,7 @@ test "Layout, row, constraint flex" {
     c.BeginUIFrame(c.V2(100, 100), 1);
     c.BeginUIBox();
     {
-        c.SetNextUIText(c.STR8_LIT("A very long text that can't be fit in one line!"));
+        c.SetNextUIText(c.STR8_LIT("A very long text that doesn't fit in one line!"));
         c.SetNextUIFlex(1);
         c.BeginUIBox();
         c.EndUIBox();
@@ -457,7 +461,7 @@ test "Layout, row, constraint flex" {
     const root = c.GetUIBox(0, 0);
     const c0 = c.GetUIBox(root, 0);
     const c1 = c.GetUIBox(root, 1);
-    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("A very long text that can't be fit in one line!"), c.KUITextSizeDefault).size;
+    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("A very long text that doesn't fit in one line!"), c.KUITextSizeDefault).size;
     const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
 
     try testing.expect(c0_text_size.x > 100);

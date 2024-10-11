@@ -5,8 +5,8 @@
 #include "src/string.h"
 #include "src/types.h"
 
-#define kUISizeMax F32_MAX
 #define kUISizeUndefined 0
+#define kUISizeInfinity F32_INFINITY
 #define KUITextSizeDefault 16.0f
 
 typedef struct UIKey {
@@ -90,9 +90,8 @@ typedef struct UIBuild {
 typedef struct UIComputed {
   Vec2 min_size;
   Vec2 max_size;
-  Axis2 unbounded_axis;
 
-  //Vec2 content_size;
+  Vec2 content_size;
   Vec2 size;
   Vec2 rel_pos;
 

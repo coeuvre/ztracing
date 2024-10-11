@@ -7,7 +7,7 @@
 #include "src/assert.h"
 #include "src/types.h"
 
-#define F32_MAX FLT_MAX
+#define F32_INFINITY ((f32)(INFINITY))
 
 static inline f32 MaxF32(f32 a, f32 b) {
   f32 result = MAX(a, b);
@@ -192,6 +192,7 @@ static inline b32 ContainsVec2IncludingEnd(Vec2 val, Vec2 begin, Vec2 end) {
   return result;
 }
 
+// Clamp value in range [min, max]
 static inline f32 ClampF32(f32 value, f32 min, f32 max) {
   f32 result = MinF32(MaxF32(value, min), max);
   return result;

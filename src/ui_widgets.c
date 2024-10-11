@@ -12,12 +12,15 @@ void BeginUIScrollable(UIScrollableState *state) {
   b32 scrolling = IsNextUIMouseScrolling(&wheel_delta);
   BeginUIBox();
   {
+    SetNextUITag("ScrollArea");
     SetNextUIFlex(1.0);
-    SetNextUIKeyF("Content");
+    SetNextUIMainAxis(kAxis2Y);
+    SetNextUISize(V2(kUISizeUndefined, kUISizeInfinity));
+    SetNextUIKeyF("ScrollArea");
     UIComputed computed = GetNextUIComputed();
     state->head_size = V2(16, 16);
 
-    f32 total_item_size = 0;  // computed.content_size.y;
+    f32 total_item_size = computed.content_size.y;
     state->scroll_area_size = computed.size.y;
     state->scroll_max = MaxF32(total_item_size - state->scroll_area_size, 0);
     state->scroll = ClampF32(state->scroll, 0, state->scroll_max);
@@ -39,13 +42,13 @@ void BeginUIScrollable(UIScrollableState *state) {
           state->scroll + wheel_delta.y * state->scroll_step * GetUIDeltaTime(),
           0, state->scroll_max);
     }
-    BeginUIColumn();
+    BeginUIBox();
   }
 }
 
 void EndUIScrollable(UIScrollableState *state) {
   {
-    EndUIColumn();
+    EndUIBoxWithExpectedTag("ScrollArea");
 
     if (state->scroll_max > 0) {
       SetNextUIKeyF("ScrollBar");

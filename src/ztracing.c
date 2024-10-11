@@ -66,18 +66,20 @@ static void BuildUI(f32 dt) {
     BeginUIScrollable(&state);
     {
       f32 item_size = 20.0f;
-      u32 item_count = 10;
+      u32 item_count = 510;
 
       // u32 item_index = FloorF32(state->scroll / item_size);
       // f32 offset = item_index * item_size - state->scroll;
       // for (; item_index < item_count && offset < state->scroll_area_size;
       //      ++item_index, offset += item_size) {
+      BeginUIColumn();
       for (u32 item_index = 0; item_index < item_count; ++item_index) {
         SetNextUISize(V2(kUISizeUndefined, item_size));
         SetNextUIColor(ColorU32FromRGBA(0, 0, item_index % 256, 255));
         BeginUIRow();
         EndUIRow();
       }
+      EndUIColumn();
     }
     EndUIScrollable(&state);
   }
