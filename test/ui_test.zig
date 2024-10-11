@@ -410,7 +410,7 @@ test "Layout, row, no constraints on children" {
     try expectBoxRelPos(c1, c.V2(c0_text_size.x, 0));
 }
 
-test "Layout, row, no constraints on children, no truncate" {
+test "Layout, row, no constraints on children, but truncate" {
     c.BeginUIFrame(c.V2(100, 100), 1);
     c.BeginUIBox();
     {
@@ -434,7 +434,7 @@ test "Layout, row, no constraints on children, no truncate" {
     try testing.expect(c0_text_size.x + c1_text_size.x > 100);
     try expectBoxSize(c0, c0_text_size);
     try expectBoxRelPos(c0, c.V2(0, 0));
-    try expectBoxSize(c1, c1_text_size);
+    try expectBoxSize(c1, c.V2(100 - c0_text_size.x, c1_text_size.y));
     try expectBoxRelPos(c1, c.V2(c0_text_size.x, 0));
 }
 

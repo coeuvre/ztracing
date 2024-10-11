@@ -316,170 +316,217 @@ static inline b32 ShouldMaxAxis(UIBox *box, int axis, Axis2 main_axis,
   return result;
 }
 
-static inline f32 GetPaddingStart(UIEdgeInsets padding, Axis2 axis) {
+static inline f32 GetEdgeInsetsSize(UIEdgeInsets edge_insets, Axis2 axis) {
   // TODO: Handle text direction.
   f32 result;
   if (axis == kAxis2X) {
-    result = padding.start;
+    result = edge_insets.start + edge_insets.end;
   } else {
-    result = padding.top;
+    result = edge_insets.top + edge_insets.bottom;
   }
   return result;
 }
 
-static inline f32 GetPaddingEnd(UIEdgeInsets padding, Axis2 axis) {
+static inline f32 GetEdgeInsetsStart(UIEdgeInsets edge_insets, Axis2 axis) {
   // TODO: Handle text direction.
   f32 result;
   if (axis == kAxis2X) {
-    result = padding.end;
+    result = edge_insets.start;
   } else {
-    result = padding.bottom;
+    result = edge_insets.top;
   }
   return result;
+}
+
+static inline f32 GetEdgeInsetsEnd(UIEdgeInsets edge_insets, Axis2 axis) {
+  // TODO: Handle text direction.
+  f32 result;
+  if (axis == kAxis2X) {
+    result = edge_insets.end;
+  } else {
+    result = edge_insets.bottom;
+  }
+  return result;
+}
+
+static Vec2 LayoutText(UIState *state, UIBox *box, Vec2 max_size,
+                       Axis2 main_axis, Axis2 cross_axis) {
+  ASSERT(!IsEmptyStr8(box->build.text));
+
+  // TODO: constraint text size within [(0, 0), max_size]
+
+  // Use pixel unit to measure text
+  TextMetrics metrics = GetTextMetricsStr8(
+      box->build.text, KUITextSizeDefault * state->content_scale);
+  Vec2 text_size_in_pixel = metrics.size;
+  Vec2 text_size = MulVec2(text_size_in_pixel, 1.0f / state->content_scale);
+  text_size = MinVec2(text_size, max_size);
+
+  Vec2 children_size;
+  SetItemVec2(&children_size, main_axis, GetItemVec2(text_size, main_axis));
+  SetItemVec2(&children_size, cross_axis, GetItemVec2(text_size, cross_axis));
+  return children_size;
+}
+
+static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
+                      Axis2 unbounded_axis);
+
+static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
+                           Axis2 main_axis, Axis2 cross_axis) {
+  ASSERT(box->first);
+
+  f32 child_main_axis_size = 0.0f;
+  f32 child_cross_axis_max = 0.0f;
+
+  f32 total_flex = 0;
+  f32 child_main_axis_free = GetItemVec2(max_size, main_axis);
+
+  // First pass: layout non-flex children
+  for (UIBox *child = box->first; child; child = child->next) {
+    total_flex += child->build.flex;
+    if (!child->build.flex) {
+      Vec2 this_child_max_size;
+      SetItemVec2(&this_child_max_size, main_axis, child_main_axis_free);
+      SetItemVec2(&this_child_max_size, cross_axis,
+                  GetItemVec2(max_size, cross_axis));
+      Vec2 this_child_min_size = {0};
+      if (box->build.cross_axis_align == kUICrossAxisAlignStretch) {
+        SetItemVec2(&this_child_min_size, cross_axis,
+                    GetItemVec2(this_child_max_size, cross_axis));
+      }
+      LayoutBox(state, child, this_child_min_size, this_child_max_size,
+                main_axis);
+
+      child_main_axis_free -= GetItemVec2(child->computed.size, main_axis);
+      child_main_axis_size += GetItemVec2(child->computed.size, main_axis);
+      child_cross_axis_max = MaxF32(
+          child_cross_axis_max, GetItemVec2(child->computed.size, cross_axis));
+    }
+  }
+
+  ASSERT(child_main_axis_free >= 0);
+
+  // Second pass: layout flex children
+  for (UIBox *child = box->first; child; child = child->next) {
+    if (child->build.flex) {
+      Vec2 this_child_max_size;
+      SetItemVec2(
+          &this_child_max_size, main_axis,
+          MaxF32(child->build.flex / total_flex * child_main_axis_free, 0));
+      SetItemVec2(&this_child_max_size, cross_axis,
+                  GetItemVec2(max_size, cross_axis));
+      Vec2 this_child_min_size = {0};
+      SetItemVec2(&this_child_min_size, main_axis,
+                  GetItemVec2(this_child_max_size, main_axis));
+      if (box->build.cross_axis_align == kUICrossAxisAlignStretch) {
+        SetItemVec2(&this_child_min_size, cross_axis,
+                    GetItemVec2(max_size, cross_axis));
+      } else {
+        SetItemVec2(&this_child_min_size, cross_axis, 0.0f);
+      }
+      LayoutBox(state, child, this_child_min_size, this_child_max_size,
+                kAxis2Count);
+
+      child_main_axis_size += GetItemVec2(child->computed.size, main_axis);
+      child_cross_axis_max = MaxF32(
+          child_cross_axis_max, GetItemVec2(child->computed.size, cross_axis));
+    }
+  }
+
+  Vec2 children_size = V2(0, 0);
+  SetItemVec2(&children_size, main_axis, child_main_axis_size);
+  SetItemVec2(&children_size, cross_axis, child_cross_axis_max);
+  return children_size;
 }
 
 static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size,
                       Axis2 unbounded_axis) {
+  ASSERTF(ContainsVec2IncludingEnd(min_size, V2(0, 0), max_size),
+          "min_size=(%.2f, %.2f), max_size=(%.2f, %.2f)", min_size.x,
+          min_size.y, max_size.x, max_size.y);
+
   box->computed.min_size = min_size;
   box->computed.max_size = max_size;
   box->computed.unbounded_axis = unbounded_axis;
 
-  Axis2 main_axis = box->build.main_axis;
-  Axis2 cross_axis = (main_axis + 1) % kAxis2Count;
-
-  Vec2 self_size = V2(0, 0);
-  Vec2 child_max_size = max_size;
+  Vec2 children_max_size = max_size;
   for (int axis = 0; axis < kAxis2Count; ++axis) {
     f32 min_size_axis = GetItemVec2(min_size, axis);
     f32 max_size_axis = GetItemVec2(max_size, axis);
     f32 self_size_axis = GetItemVec2(box->build.size, axis);
     if (self_size_axis != kUISizeUndefined) {
-      // If box has specific size, use that as constraint for children and size
-      // itself within the constraint.
-      SetItemVec2(&self_size, axis,
+      // If box has specific size, use that as constraint for children
+      SetItemVec2(&children_max_size, axis,
                   MaxF32(MinF32(max_size_axis, self_size_axis), min_size_axis));
-      SetItemVec2(&child_max_size, axis, GetItemVec2(self_size, axis));
     } else {
-      // Otherwise, pass down the constraint to children and ...
-      SetItemVec2(&child_max_size, axis, max_size_axis);
-
-      if (ShouldMaxAxis(box, axis, main_axis, unbounded_axis)) {
-        SetItemVec2(&self_size, axis, max_size_axis);
-      } else {
-        // if constraint is unbounded, make it as small as possible.
-        f32 min_size_axis_plus_padding =
-            min_size_axis + GetPaddingStart(box->build.padding, axis) +
-            GetPaddingEnd(box->build.padding, axis);
-        SetItemVec2(&self_size, axis,
-                    MinF32(min_size_axis_plus_padding, max_size_axis));
-      }
+      // Otherwise, pass down the constraint to children
+      SetItemVec2(&children_max_size, axis, max_size_axis);
     }
   }
 
-  child_max_size.x -= (box->build.padding.start + box->build.padding.end);
-  child_max_size.y -= (box->build.padding.top + box->build.padding.bottom);
+  // Leave space for padding
+  children_max_size.x = MaxF32(
+      children_max_size.x - (box->build.padding.start + box->build.padding.end),
+      0);
+  children_max_size.y =
+      MaxF32(children_max_size.y -
+                 (box->build.padding.top + box->build.padding.bottom),
+             0);
 
-  // TODO: handle margin.
-  f32 child_main_axis_size = 0.0f;
-  f32 child_cross_axis_max = 0.0f;
+  Axis2 main_axis = box->build.main_axis;
+  Axis2 cross_axis = (main_axis + 1) % kAxis2Count;
+  Vec2 children_size = V2(0, 0);
   if (box->first) {
-    f32 total_flex = 0;
-    f32 child_main_axis_free = GetItemVec2(child_max_size, main_axis);
-
-    // First pass: layout non-flex children
-    for (UIBox *child = box->first; child; child = child->next) {
-      // If child doesn't have flex, doesn't apply any constraint on the child.
-      total_flex += child->build.flex;
-      if (!child->build.flex) {
-        Vec2 this_child_max_size;
-        SetItemVec2(&this_child_max_size, main_axis,
-                    GetItemVec2(child_max_size, main_axis));
-        SetItemVec2(&this_child_max_size, cross_axis,
-                    GetItemVec2(child_max_size, cross_axis));
-        Vec2 this_child_min_size = {0};
-        if (box->build.cross_axis_align == kUICrossAxisAlignStretch) {
-          SetItemVec2(&this_child_min_size, cross_axis,
-                      GetItemVec2(this_child_max_size, cross_axis));
-        }
-        LayoutBox(state, child, this_child_min_size, this_child_max_size,
-                  main_axis);
-
-        child_main_axis_free -=
-            MaxF32(GetItemVec2(child->computed.size, main_axis), 0);
-        child_main_axis_size += GetItemVec2(child->computed.size, main_axis);
-        child_cross_axis_max =
-            MaxF32(child_cross_axis_max,
-                   GetItemVec2(child->computed.size, cross_axis));
-      }
-    }
-
-    // Second pass: layout flex children
-    for (UIBox *child = box->first; child; child = child->next) {
-      if (child->build.flex) {
-        Vec2 max_size;
-        SetItemVec2(&max_size, main_axis,
-                    child->build.flex / total_flex * child_main_axis_free);
-        SetItemVec2(&max_size, cross_axis,
-                    GetItemVec2(child_max_size, cross_axis));
-        Vec2 min_size = {0};
-        SetItemVec2(&min_size, main_axis, GetItemVec2(max_size, main_axis));
-        if (box->build.cross_axis_align == kUICrossAxisAlignStretch) {
-          SetItemVec2(&min_size, cross_axis, GetItemVec2(max_size, cross_axis));
-        } else {
-          SetItemVec2(&min_size, cross_axis, 0.0f);
-        }
-        LayoutBox(state, child, min_size, max_size, kAxis2Count);
-
-        child_main_axis_size += GetItemVec2(child->computed.size, main_axis);
-        child_cross_axis_max =
-            MaxF32(child_cross_axis_max,
-                   GetItemVec2(child->computed.size, cross_axis));
-      }
-    }
+    children_size =
+        LayoutChildren(state, box, children_max_size, main_axis, cross_axis);
   } else if (!IsEmptyStr8(box->build.text)) {
-    // TODO: constraint text size within [(0, 0), child_max_size]
-
-    // Use pixel unit to measure text
-    TextMetrics metrics = GetTextMetricsStr8(
-        box->build.text, KUITextSizeDefault * state->content_scale);
-    Vec2 text_size_in_pixel = metrics.size;
-    Vec2 text_size = MulVec2(text_size_in_pixel, 1.0f / state->content_scale);
-    text_size = MinVec2(text_size, child_max_size);
-
-    child_main_axis_size = GetItemVec2(text_size, main_axis);
-    child_cross_axis_max = GetItemVec2(text_size, cross_axis);
+    children_size =
+        LayoutText(state, box, children_max_size, main_axis, cross_axis);
   }
-  Vec2 child_size;
-  SetItemVec2(&child_size, main_axis, child_main_axis_size);
-  SetItemVec2(&child_size, cross_axis, child_cross_axis_max);
 
+  // Size box itself
   for (int axis = 0; axis < kAxis2Count; ++axis) {
-    f32 child_size_axis = GetItemVec2(child_size, axis);
-    if (child_size_axis != kUISizeUndefined) {
-      SetItemVec2(&box->computed.content_size, axis,
-                  child_size_axis + GetPaddingStart(box->build.padding, axis) +
-                      GetPaddingEnd(box->build.padding, axis));
-    }
+    f32 min_size_axis = GetItemVec2(min_size, axis);
+    f32 max_size_axis = GetItemVec2(max_size, axis);
 
-    if (!ShouldMaxAxis(box, axis, main_axis, unbounded_axis) &&
-        GetItemVec2(box->build.size, axis) == kUISizeUndefined &&
-        child_size_axis != kUISizeUndefined) {
-      // Size itself around children if it doesn't have specific size
+    // Assert that children_size plus padding should be within the constraint.
+    f32 padding_start_axis = GetEdgeInsetsStart(box->build.padding, axis);
+    f32 padding_end_axis = GetEdgeInsetsEnd(box->build.padding, axis);
+    f32 children_size_axis = GetItemVec2(children_size, axis);
+    ASSERTF(children_size_axis + padding_start_axis + padding_end_axis <=
+                max_size_axis,
+            "(children_size + padding) violates the constraint: axis=%d, "
+            "children_size=%.2f, padding.start=%.2f, padding.end=%.2f, "
+            "max_size=%.2f",
+            axis, children_size_axis, padding_start_axis, padding_end_axis,
+            max_size_axis);
+
+    f32 build_size_axis = GetItemVec2(box->build.size, axis);
+    if (build_size_axis != kUISizeUndefined) {
+      // If box has specific size, use that size but also respect to the
+      // constraint.
       SetItemVec2(
           &box->computed.size, axis,
-          ClampF32(GetItemVec2(box->computed.content_size, axis),
-                   GetItemVec2(min_size, axis), GetItemVec2(max_size, axis)));
+          MaxF32(MinF32(build_size_axis, max_size_axis), min_size_axis));
+    } else if (ShouldMaxAxis(box, axis, main_axis, unbounded_axis)) {
+      // If box should maximize this axis, regardless of it's children, do it.
+      SetItemVec2(&box->computed.size, axis, max_size_axis);
     } else {
-      SetItemVec2(&box->computed.size, axis, GetItemVec2(self_size, axis));
+      // Size itself around children
+      SetItemVec2(
+          &box->computed.size, axis,
+          MaxF32(children_size_axis + padding_start_axis + padding_end_axis,
+                 min_size_axis));
     }
   }
 
-  AlignMainAxis(box, main_axis, GetPaddingStart(box->build.padding, main_axis),
-                GetPaddingEnd(box->build.padding, main_axis),
-                box->build.main_axis_align, child_main_axis_size);
+  AlignMainAxis(
+      box, main_axis, GetEdgeInsetsStart(box->build.padding, main_axis),
+      GetEdgeInsetsEnd(box->build.padding, main_axis),
+      box->build.main_axis_align, GetItemVec2(children_size, main_axis));
   AlignCrossAxis(box, cross_axis,
-                 GetPaddingStart(box->build.padding, cross_axis),
-                 GetPaddingEnd(box->build.padding, cross_axis),
+                 GetEdgeInsetsStart(box->build.padding, cross_axis),
+                 GetEdgeInsetsEnd(box->build.padding, cross_axis),
                  box->build.cross_axis_align);
 }
 
@@ -495,7 +542,8 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos) {
   }
 
   // Debug outline
-  // DrawRectLine(min_in_pixel, max_in_pixel, ColorU32FromHex(0xFF00FF), 1.0f);
+  // DrawRectLine(min_in_pixel, max_in_pixel,
+  // ColorU32FromHex(0xFF00FF), 1.0f);
 
   if (box->first) {
     for (UIBox *child = box->first; child; child = child->next) {
@@ -516,13 +564,11 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos) {
 static void DebugPrintUIR(UIBox *box, u32 level) {
   INFO(
       "%*s %s[id=%s, min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), "
-      "unbounded_axis=%d, "
-      "content_size(%.2f, %.2f), size=(%.2f, %.2f), rel_pos=(%.2f, %.2f)]",
+      "unbounded_axis=%d, size=(%.2f, %.2f), rel_pos=(%.2f, %.2f)]",
       level * 4, "", box->build.tag, box->build.key_str.ptr,
       box->computed.min_size.x, box->computed.min_size.y,
       box->computed.max_size.x, box->computed.max_size.y,
-      box->computed.unbounded_axis, box->computed.content_size.x,
-      box->computed.content_size.y, box->computed.size.x, box->computed.size.y,
+      box->computed.unbounded_axis, box->computed.size.x, box->computed.size.y,
       box->computed.rel_pos.x, box->computed.rel_pos.y);
   for (UIBox *child = box->first; child; child = child->next) {
     DebugPrintUIR(child, level + 1);
