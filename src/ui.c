@@ -491,12 +491,6 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
     f32 min_size_axis = GetItemVec2(min_size, axis);
     f32 max_size_axis = GetItemVec2(max_size, axis);
 
-    f32 padding_start_axis = GetEdgeInsetsStart(box->build.padding, axis);
-    f32 padding_end_axis = GetEdgeInsetsEnd(box->build.padding, axis);
-    f32 children_size_axis = GetItemVec2(children_size, axis);
-    SetItemVec2(&box->computed.content_size, axis,
-                children_size_axis + padding_start_axis + padding_end_axis);
-
     f32 build_size_axis = GetItemVec2(box->build.size, axis);
     if (build_size_axis != kUISizeUndefined) {
       // If box has specific size, use that size but also respect the
@@ -507,10 +501,14 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
       // If box should maximize this axis, regardless of it's children, do it.
       SetItemVec2(&box->computed.size, axis, max_size_axis);
     } else {
-      // Size itself around content
+      // Size itself around children
+      f32 padding_start_axis = GetEdgeInsetsStart(box->build.padding, axis);
+      f32 padding_end_axis = GetEdgeInsetsEnd(box->build.padding, axis);
+      f32 children_size_axis = GetItemVec2(children_size, axis);
+      f32 content_size_axis =
+          children_size_axis + padding_start_axis + padding_end_axis;
       SetItemVec2(&box->computed.size, axis,
-                  ClampF32(GetItemVec2(box->computed.content_size, axis),
-                           min_size_axis, max_size_axis));
+                  ClampF32(content_size_axis, min_size_axis, max_size_axis));
     }
   }
 
@@ -564,13 +562,11 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos) {
 static void DebugPrintUIR(UIBox *box, u32 level) {
   INFO(
       "%*s %s[id=%s, min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), "
-      "build_size=(%.2f, %.2f), content_size=(%.2f, %.2f), size=(%.2f, %.2f), "
-      "rel_pos=(%.2f, %.2f)]",
+      "build_size=(%.2f, %.2f), size=(%.2f, %.2f), rel_pos=(%.2f, %.2f)]",
       level * 4, "", box->build.tag, box->build.key_str.ptr,
       box->computed.min_size.x, box->computed.min_size.y,
       box->computed.max_size.x, box->computed.max_size.y, box->build.size.x,
-      box->build.size.y, box->computed.content_size.x,
-      box->computed.content_size.y, box->computed.size.x, box->computed.size.y,
+      box->build.size.y, box->computed.size.x, box->computed.size.y,
       box->computed.rel_pos.x, box->computed.rel_pos.y);
   for (UIBox *child = box->first; child; child = child->next) {
     DebugPrintUIR(child, level + 1);

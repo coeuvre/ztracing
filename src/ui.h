@@ -91,7 +91,6 @@ typedef struct UIComputed {
   Vec2 min_size;
   Vec2 max_size;
 
-  Vec2 content_size;
   Vec2 size;
   Vec2 rel_pos;
 

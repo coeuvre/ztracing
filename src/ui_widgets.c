@@ -17,37 +17,50 @@ void BeginUIScrollable(UIScrollableState *state) {
     SetNextUIMainAxis(kAxis2Y);
     SetNextUISize(V2(kUISizeUndefined, kUISizeInfinity));
     SetNextUIKeyF("ScrollArea");
-    UIComputed computed = GetNextUIComputed();
-    state->head_size = V2(16, 16);
-
-    f32 total_item_size = computed.content_size.y;
-    state->scroll_area_size = computed.size.y;
-    state->scroll_max = MaxF32(total_item_size - state->scroll_area_size, 0);
-    state->scroll = ClampF32(state->scroll, 0, state->scroll_max);
-
-    f32 min_control_size = 4;
-    f32 free_size = MaxF32(computed.size.y - 2 * state->head_size.y, 0.0f);
-    state->control_size =
-        MinF32(MaxF32(state->scroll_area_size / total_item_size * free_size,
-                      min_control_size),
-               free_size);
-
-    state->scroll_step = state->scroll_area_size;
-
-    state->control_max = free_size - state->control_size;
-    state->control_offset =
-        (state->scroll / state->scroll_max) * state->control_max;
-    if (scrolling) {
-      state->scroll = ClampF32(
-          state->scroll + wheel_delta.y * state->scroll_step * GetUIDeltaTime(),
-          0, state->scroll_max);
-    }
+    state->scroll_area_size = GetNextUIComputed().size.y;
     BeginUIBox();
+    {
+      SetNextUITag("ScrollContent");
+      SetNextUIKeyF("ScrollContent");
+      UIComputed computed = GetNextUIComputed();
+      state->head_size = V2(16, 16);
+
+      f32 total_item_size = computed.size.y;
+      state->scroll_max = MaxF32(total_item_size - state->scroll_area_size, 0);
+      state->scroll = ClampF32(state->scroll, 0, state->scroll_max);
+
+      f32 min_control_size = 4;
+      f32 free_size =
+          MaxF32(state->scroll_area_size - 2 * state->head_size.y, 0.0f);
+      state->control_size =
+          MinF32(MaxF32(state->scroll_area_size / total_item_size * free_size,
+                        min_control_size),
+                 free_size);
+
+      state->scroll_step = state->scroll_area_size;
+
+      state->control_max = free_size - state->control_size;
+      state->control_offset =
+          (state->scroll / state->scroll_max) * state->control_max;
+      if (scrolling) {
+        state->scroll =
+            ClampF32(state->scroll +
+                         wheel_delta.y * state->scroll_step * GetUIDeltaTime(),
+                     0, state->scroll_max);
+      }
+
+      BeginUIBox();
+      // ...
+    }
   }
 }
 
 void EndUIScrollable(UIScrollableState *state) {
   {
+    {
+      // ...
+      EndUIBoxWithExpectedTag("ScrollContent");
+    }
     EndUIBoxWithExpectedTag("ScrollArea");
 
     if (state->scroll_max > 0) {

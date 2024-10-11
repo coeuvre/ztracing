@@ -85,17 +85,8 @@ test "Key, return the same box across frame" {
 }
 
 test "Layout, root has the same size as the screen" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
-    c.EndUIBox();
-    c.EndUIFrame();
-
-    const root = c.GetUIBox(0, 0);
-    try expectBoxSize(root, c.V2(100, 100));
-}
-
-test "Layout, root has the same size as the screen, with fixed size" {
     const sizes: []const c.Vec2 = &.{
+        c.V2(c.kUISizeUndefined, c.kUISizeUndefined),
         c.V2(50, 50),
         c.V2(50, 200),
         c.V2(200, 50),
@@ -246,7 +237,7 @@ test "Layout, with fixed size" {
         c.SetNextUISize(c.V2(30, 20));
         c.BeginUIBox();
         {
-            c.SetNextUISize(c.V2(50, 50));
+            c.SetNextUISize(c.V2(50, 40));
             c.BeginUIBox();
             c.EndUIBox();
         }
