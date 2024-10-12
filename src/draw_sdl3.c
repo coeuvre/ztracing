@@ -4,6 +4,7 @@
 
 #include "src/assert.h"
 #include "src/draw.h"
+#include "src/list.h"
 #include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
@@ -16,43 +17,96 @@
 
 stbtt_fontinfo g_font;
 
-static SDL_Window *g_window;
-static SDL_Renderer *g_renderer;
+typedef struct DrawClipRect DrawClipRect;
+struct DrawClipRect {
+  DrawClipRect *prev;
+  DrawClipRect *next;
+  SDL_Rect rect;
+};
+
+typedef struct SDL3DrawState {
+  Arena *arena;
+  SDL_Window *window;
+  SDL_Renderer *renderer;
+
+  DrawClipRect *first_clip_rect;
+  DrawClipRect *last_clip_rect;
+  DrawClipRect *first_free_clip_rect;
+} SDL3DrawState;
+
+thread_local SDL3DrawState t_draw_state;
 
 void InitDrawSDL3(SDL_Window *window, SDL_Renderer *renderer) {
-  g_window = window;
-  g_renderer = renderer;
+  t_draw_state.arena = AllocArena();
+  t_draw_state.window = window;
+  t_draw_state.renderer = renderer;
 }
 
 f32 GetScreenContentScale(void) {
-  f32 result = SDL_GetWindowDisplayScale(g_window);
+  f32 result = SDL_GetWindowDisplayScale(t_draw_state.window);
   return result;
 }
 
 Vec2 GetScreenSize(void) {
   Vec2I screen_size_in_pixel = {0};
-  SDL_GetCurrentRenderOutputSize(g_renderer, &screen_size_in_pixel.x,
+  SDL_GetCurrentRenderOutputSize(t_draw_state.renderer, &screen_size_in_pixel.x,
                                  &screen_size_in_pixel.y);
   Vec2 result = MulVec2(Vec2FromVec2I(screen_size_in_pixel),
                         1.0f / GetScreenContentScale());
   return result;
 }
 
-void ClearDraw(void) {
-  SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 0);
-  SDL_RenderClear(g_renderer);
+void PushClipRect(Vec2 min, Vec2 max) {
+  DrawClipRect *clip_rect;
+  if (t_draw_state.first_free_clip_rect) {
+    clip_rect = t_draw_state.first_free_clip_rect;
+    t_draw_state.first_free_clip_rect = t_draw_state.first_free_clip_rect->next;
+  } else {
+    clip_rect = PushArray(t_draw_state.arena, DrawClipRect, 1);
+  }
+  SDL_Rect rect;
+  rect.x = min.x;
+  rect.y = min.y;
+  rect.w = max.x - min.x;
+  rect.h = max.y - min.y;
+  clip_rect->rect = rect;
+  APPEND_DOUBLY_LINKED_LIST(t_draw_state.first_clip_rect,
+                            t_draw_state.last_clip_rect, clip_rect, prev, next);
+  SDL_SetRenderClipRect(t_draw_state.renderer, &rect);
 }
 
-void PresentDraw(void) { SDL_RenderPresent(g_renderer); }
+void PopClipRect(void) {
+  ASSERT(t_draw_state.last_clip_rect);
+  DrawClipRect *free_clip_rect = t_draw_state.last_clip_rect;
+  REMOVE_DOUBLY_LINKED_LIST(t_draw_state.first_clip_rect,
+                            t_draw_state.last_clip_rect, free_clip_rect, prev,
+                            next);
+  free_clip_rect->next = t_draw_state.first_free_clip_rect;
+  t_draw_state.first_free_clip_rect = free_clip_rect;
+
+  SDL_Rect *rect = 0;
+  if (t_draw_state.last_clip_rect) {
+    rect = &t_draw_state.last_clip_rect->rect;
+  }
+  SDL_SetRenderClipRect(t_draw_state.renderer, rect);
+}
+
+void ClearDraw(void) {
+  SDL_SetRenderDrawColor(t_draw_state.renderer, 0, 0, 0, 0);
+  SDL_RenderClear(t_draw_state.renderer);
+}
+
+void PresentDraw(void) { SDL_RenderPresent(t_draw_state.renderer); }
 
 void DrawRect(Vec2 min, Vec2 max, ColorU32 color) {
-  SDL_SetRenderDrawColor(g_renderer, color.r, color.g, color.b, color.a);
+  SDL_SetRenderDrawColor(t_draw_state.renderer, color.r, color.g, color.b,
+                         color.a);
   SDL_FRect rect;
   rect.x = min.x;
   rect.y = min.y;
   rect.w = max.x - min.x;
   rect.h = max.y - min.y;
-  SDL_RenderFillRect(g_renderer, &rect);
+  SDL_RenderFillRect(t_draw_state.renderer, &rect);
 }
 
 static stbtt_fontinfo *GetFontInfo(void) {
@@ -141,7 +195,8 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height) {
       SDL_Surface *surface = SDL_CreateSurfaceFrom(
           glyph_size.x, glyph_size.y, SDL_PIXELFORMAT_ARGB8888, pixels_argb8888,
           glyph_size.x * 4);
-      SDL_Texture *texture = SDL_CreateTextureFromSurface(g_renderer, surface);
+      SDL_Texture *texture =
+          SDL_CreateTextureFromSurface(t_draw_state.renderer, surface);
       ASSERT(texture);
       SDL_DestroySurface(surface);
 
@@ -158,7 +213,7 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height) {
       dst_rect.h = glyph_size.y;
 
       SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
-      SDL_RenderTexture(g_renderer, texture, &src_rect, &dst_rect);
+      SDL_RenderTexture(t_draw_state.renderer, texture, &src_rect, &dst_rect);
       SDL_DestroyTexture(texture);
     }
 

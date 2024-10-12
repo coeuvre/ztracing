@@ -601,33 +601,50 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
                  box->build.cross_axis_align);
 }
 
-static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos) {
+static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
+                      Rect2 parent_clip_rect) {
   Vec2 min = AddVec2(parent_pos, box->computed.rel_pos);
   Vec2 max = AddVec2(min, box->computed.size);
   Vec2 min_in_pixel = MulVec2(min, state->content_scale);
   Vec2 max_in_pixel = MulVec2(max, state->content_scale);
-  box->computed.screen_rect = (Rect2){.min = min, .max = max};
+  box->computed.screen_rect = R2(min, max);
 
-  if (box->build.color.a) {
-    DrawRect(min_in_pixel, max_in_pixel, box->build.color);
-  }
-
-  // Debug outline
-  // DrawRectLine(min_in_pixel, max_in_pixel,
-  // ColorU32FromHex(0xFF00FF), 1.0f);
-
-  if (box->first) {
-    for (UIBox *child = box->first; child; child = child->next) {
-      RenderBox(state, child, min);
+  Rect2 intersection =
+      Rect2FromIntersection(parent_clip_rect, box->computed.screen_rect);
+  f32 intersection_area = GetRect2Area(intersection);
+  if (intersection_area > 0) {
+    f32 screen_rect_area = GetRect2Area(box->computed.screen_rect);
+    b32 need_clip = intersection_area < screen_rect_area;
+    if (need_clip) {
+      PushClipRect(MulVec2(intersection.min, state->content_scale),
+                   MulVec2(intersection.max, state->content_scale));
     }
-    if (!IsEmptyStr8(box->build.text)) {
-      WARN("%s: text content is ignored because it has children",
-           box->build.key_str.ptr);
+
+    if (box->build.color.a) {
+      DrawRect(min_in_pixel, max_in_pixel, box->build.color);
     }
-  } else if (!IsEmptyStr8(box->build.text)) {
-    // TODO: clip
-    DrawTextStr8(min_in_pixel, box->build.text,
-                 KUITextSizeDefault * state->content_scale);
+
+    // Debug outline
+    // DrawRectLine(min_in_pixel, max_in_pixel,
+    // ColorU32FromHex(0xFF00FF), 1.0f);
+
+    if (box->first) {
+      for (UIBox *child = box->first; child; child = child->next) {
+        RenderBox(state, child, min, intersection);
+      }
+      if (!IsEmptyStr8(box->build.text)) {
+        WARN("%s: text content is ignored because it has children",
+             box->build.key_str.ptr);
+      }
+    } else if (!IsEmptyStr8(box->build.text)) {
+      // TODO: clip
+      DrawTextStr8(min_in_pixel, box->build.text,
+                   KUITextSizeDefault * state->content_scale);
+    }
+
+    if (need_clip) {
+      PopClipRect();
+    }
   }
 }
 
@@ -730,7 +747,7 @@ void RenderUI(void) {
   ASSERTF(!state->first_error, "%s", state->first_error->message.ptr);
 
   if (state->root) {
-    RenderBox(state, state->root, V2(0, 0));
+    RenderBox(state, state->root, V2(0, 0), R2(V2(0, 0), state->screen_size));
   }
 }
 

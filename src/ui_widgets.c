@@ -37,7 +37,7 @@ void BeginUIScrollable(UIScrollableState *state) {
                         min_control_size),
                  free_size);
 
-      state->scroll_step = state->scroll_area_size;
+      state->scroll_step = 0.2f * state->scroll_area_size / GetUIDeltaTime();
 
       state->control_max = free_size - state->control_size;
       state->control_offset =
@@ -112,8 +112,10 @@ void EndUIScrollable(UIScrollableState *state) {
         if (IsNextUIMouseButtonPressed(kUIMouseButtonLeft)) {
           state->control_offset_drag_start = state->control_offset;
         }
+        b32 is_dragging = 0;
         Vec2 drag_delta;
         if (IsNextUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta)) {
+          is_dragging = 1;
           f32 offset = state->control_offset_drag_start + drag_delta.y;
           state->scroll =
               ClampF32(offset / state->control_max * state->scroll_max, 0,
@@ -123,7 +125,9 @@ void EndUIScrollable(UIScrollableState *state) {
         }
         BeginUIBox();
         {
-          SetNextUISize(V2(state->head_size.x * 0.8f, state->control_size));
+          SetNextUISize(
+              V2(is_dragging ? state->head_size.x : state->head_size.x * 0.8f,
+                 state->control_size));
           SetNextUIColor(control_background_color);
           BeginUIBox();
           EndUIBox();

@@ -24,6 +24,11 @@ static inline b32 IsNaNF32(f32 a) {
   return result;
 }
 
+static inline b32 ContainsF32(f32 val, f32 begin, f32 end) {
+  b32 result = begin <= val && val < end;
+  return result;
+}
+
 typedef struct Vec2 {
   f32 x;
   f32 y;
@@ -47,6 +52,24 @@ static inline Vec2 V2(f32 x, f32 y) {
 
 static inline b32 IsEqualVec2(Vec2 a, Vec2 b) {
   b32 result = a.x == b.x && a.y == b.y;
+  return result;
+}
+
+// Vec2 is treated as one-dimension range, Vec2.x is begin, Vec2.y is end.
+static inline Vec2 Vec2FromIntersection(Vec2 a, Vec2 b) {
+  DEBUG_ASSERT(a.x <= a.y && b.x <= b.y);
+
+  Vec2 result = V2(0, 0);
+  if (ContainsF32(b.x, a.x, a.y)) {
+    result.x = b.x;
+    result.y = MinF32(a.y, b.y);
+  } else if (ContainsF32(b.y, a.x, a.y)) {
+    result.x = MaxF32(a.x, b.x);
+    result.y = b.y;
+  } else if (ContainsF32(a.x, b.x, b.y)) {
+    result.x = a.x;
+    result.y = a.y;
+  }
   return result;
 }
 
@@ -175,13 +198,32 @@ typedef struct Rect2 {
   Vec2 max;
 } Rect2;
 
-static inline b32 ContainsF32IncludingEnd(f32 val, f32 begin, f32 end) {
-  b32 result = begin <= val && val <= end;
+static inline Rect2 R2(Vec2 min, Vec2 max) {
+  Rect2 result = {min, max};
   return result;
 }
 
-static inline b32 ContainsF32(f32 val, f32 begin, f32 end) {
-  b32 result = begin <= val && val < end;
+static inline Rect2 Rect2FromIntersection(Rect2 a, Rect2 b) {
+  Vec2 x_axis =
+      Vec2FromIntersection(V2(a.min.x, a.max.x), V2(b.min.x, b.max.x));
+  Vec2 y_axis =
+      Vec2FromIntersection(V2(a.min.y, a.max.y), V2(b.min.y, b.max.y));
+  Rect2 result;
+  result.min.x = x_axis.x;
+  result.max.x = x_axis.y;
+  result.min.y = y_axis.x;
+  result.max.y = y_axis.y;
+  return result;
+}
+
+static inline f32 GetRect2Area(Rect2 a) {
+  Vec2 size = SubVec2(a.max, a.min);
+  f32 result = size.x * size.y;
+  return result;
+}
+
+static inline b32 ContainsF32IncludingEnd(f32 val, f32 begin, f32 end) {
+  b32 result = begin <= val && val <= end;
   return result;
 }
 

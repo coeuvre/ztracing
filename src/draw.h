@@ -10,6 +10,9 @@ f32 GetScreenContentScale(void);
 // Get the screen size in points.
 Vec2 GetScreenSize(void);
 
+void PushClipRect(Vec2 min, Vec2 max);
+void PopClipRect(void);
+
 typedef struct TextMetrics {
   Vec2 size;
 } TextMetrics;
