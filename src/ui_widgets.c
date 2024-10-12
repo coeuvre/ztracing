@@ -49,6 +49,7 @@ void BeginUIScrollable(UIScrollableState *state) {
                      0, state->scroll_max);
       }
 
+      SetNextUIMargin(UIEdgeInsetsFromSTEB(0, -state->scroll, 0, 0));
       BeginUIBox();
       // ...
     }

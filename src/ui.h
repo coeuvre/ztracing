@@ -82,6 +82,7 @@ typedef struct UIBuild {
   UIMainAxisAlign main_axis_align;
   UICrossAxisAlign cross_axis_align;
   UIEdgeInsets padding;
+  UIEdgeInsets margin;
 
   b8 hoverable;
   b8 clickable[kUIMouseButtonCount];
@@ -172,6 +173,7 @@ void SetNextUIMainAxisAlign(UIMainAxisAlign main_axis_align);
 void SetNextUICrossAxisAlign(UICrossAxisAlign cross_axis_align);
 void SetNextUIFlex(f32 flex);
 void SetNextUIPadding(UIEdgeInsets padding);
+void SetNextUIMargin(UIEdgeInsets margin);
 
 UIComputed GetNextUIComputed(void);
 Vec2 GetNextUIMouseRelPos(void);
