@@ -303,9 +303,8 @@ static inline f32 GetEdgeInsetsEnd(UIEdgeInsets edge_insets, Axis2 axis) {
 static void AlignMainAxis(UIBox *box, Axis2 axis, f32 padding_start,
                           f32 padding_end, UIMainAxisAlign align,
                           f32 children_size) {
-  // TODO: Handle margin.
-  f32 free = GetItemVec2(box->computed.size, axis) - children_size -
-             padding_start - padding_end;
+  f32 size_axis = GetItemVec2(box->computed.size, axis);
+  f32 free = size_axis - children_size - padding_start - padding_end;
   f32 pos = padding_start;
   switch (align) {
     case kUIMainAxisAlignStart: {
@@ -326,6 +325,9 @@ static void AlignMainAxis(UIBox *box, Axis2 axis, f32 padding_start,
 
   for (UIBox *child = box->first; child; child = child->next) {
     pos += GetEdgeInsetsStart(child->build.margin, axis);
+    if (pos < 0 || pos > size_axis) {
+      box->computed.clip = 1;
+    }
     SetItemVec2(&child->computed.rel_pos, axis, pos);
     pos += GetItemVec2(child->computed.size, axis) +
            GetEdgeInsetsEnd(child->build.margin, axis);
@@ -592,13 +594,6 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
           box->computed.size.x, box->computed.size.y, min_size.x, min_size.y,
           max_size.x, max_size.y);
 
-  // Clip if content size exceeds self size.
-  box->computed.clip =
-      children_size.x + box->build.padding.start + box->build.padding.end >
-          box->computed.size.x ||
-      children_size.y + box->build.padding.top + box->build.padding.bottom >
-          box->computed.size.y;
-
   AlignMainAxis(
       box, main_axis, GetEdgeInsetsStart(box->build.padding, main_axis),
       GetEdgeInsetsEnd(box->build.padding, main_axis),
@@ -607,6 +602,13 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
                  GetEdgeInsetsStart(box->build.padding, cross_axis),
                  GetEdgeInsetsEnd(box->build.padding, cross_axis),
                  box->build.cross_axis_align);
+  // Clip if content size exceeds self size.
+  box->computed.clip =
+      box->computed.clip ||
+      children_size.x + box->build.padding.start + box->build.padding.end >
+          box->computed.size.x ||
+      children_size.y + box->build.padding.top + box->build.padding.bottom >
+          box->computed.size.y;
 }
 
 static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
