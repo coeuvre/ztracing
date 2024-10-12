@@ -592,6 +592,13 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
           box->computed.size.x, box->computed.size.y, min_size.x, min_size.y,
           max_size.x, max_size.y);
 
+  // Clip if content size exceeds self size.
+  box->computed.clip =
+      children_size.x + box->build.padding.start + box->build.padding.end >
+          box->computed.size.x ||
+      children_size.y + box->build.padding.top + box->build.padding.bottom >
+          box->computed.size.y;
+
   AlignMainAxis(
       box, main_axis, GetEdgeInsetsStart(box->build.padding, main_axis),
       GetEdgeInsetsEnd(box->build.padding, main_axis),
@@ -614,8 +621,7 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
       Rect2FromIntersection(parent_clip_rect, box->computed.screen_rect);
   f32 intersection_area = GetRect2Area(intersection);
   if (intersection_area > 0) {
-    f32 screen_rect_area = GetRect2Area(box->computed.screen_rect);
-    b32 need_clip = intersection_area < screen_rect_area;
+    b32 need_clip = box->computed.clip;
     if (need_clip) {
       PushClipRect(MulVec2(intersection.min, state->content_scale),
                    MulVec2(intersection.max, state->content_scale));

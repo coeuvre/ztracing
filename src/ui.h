@@ -97,6 +97,7 @@ typedef struct UIComputed {
   Vec2 rel_pos;
 
   Rect2 screen_rect;
+  b8 clip;
 } UIComputed;
 
 typedef struct UIBuildError UIBuildError;
