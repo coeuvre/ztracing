@@ -23,7 +23,7 @@ void BeginUIScrollable(UIScrollableState *state) {
       SetNextUITag("ScrollContent");
       SetNextUIKeyF("ScrollContent");
       UIComputed computed = GetNextUIComputed();
-      state->head_size = V2(16, 16);
+      state->head_size = V2(10, 0);
 
       f32 total_item_size = computed.size.y;
       state->scroll_max = MaxF32(total_item_size - state->scroll_area_size, 0);

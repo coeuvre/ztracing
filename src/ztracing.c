@@ -1,7 +1,6 @@
 #include "src/ztracing.h"
 
 #include "src/draw.h"
-#include "src/log.h"
 #include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
@@ -41,7 +40,7 @@ static void UIText(Str8 text) {
   EndUIBox();
 }
 
-static void BuildUI(f32 dt) {
+static void BuildUI(f32 dt, f32 frame_time) {
   TempMemory scratch = BeginScratch(0, 0);
 
   BeginUIColumn();
@@ -56,7 +55,8 @@ static void BuildUI(f32 dt) {
       BeginUIBox();
       EndUIBox();
 
-      UIText(PushStr8F(scratch.arena, "%.0f", 1.0f / dt));
+      UIText(PushStr8F(scratch.arena, "%.0f %.1fms", 1.0f / dt,
+                       frame_time * 1000.0f));
     }
     EndUIRow();
 
@@ -88,14 +88,28 @@ static void BuildUI(f32 dt) {
   EndScratch(scratch);
 }
 
-void DoFrame(f32 dt) {
+void DoFrame(void) {
+  static u64 last_counter;
+  static f32 last_frame_time;
+
+  f32 dt = 0.0f;
+  u64 current_counter = GetPerformanceCounter();
+  if (last_counter) {
+    dt = (f32)((f64)(current_counter - last_counter) /
+               (f64)GetPerformanceFrequency());
+  }
+  last_counter = current_counter;
+
   ClearDraw();
 
   SetUIDeltaTime(dt);
   BeginUIFrame(GetScreenSize(), GetScreenContentScale());
-  BuildUI(dt);
+  BuildUI(dt, last_frame_time);
   EndUIFrame();
   RenderUI();
+
+  last_frame_time = (f32)((f64)(GetPerformanceCounter() - last_counter) /
+                          (f64)GetPerformanceFrequency());
 
   PresentDraw();
 }

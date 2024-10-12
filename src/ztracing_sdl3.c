@@ -19,6 +19,16 @@ static SDL_Window *window;
 static b32 window_shown;
 static b32 window_coordinate_is_in_pixels;
 
+u64 GetPerformanceCounter(void) {
+  u64 result = SDL_GetPerformanceCounter();
+  return result;
+}
+
+u64 GetPerformanceFrequency(void) {
+  u64 result = SDL_GetPerformanceFrequency();
+  return result;
+}
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   (void)argc, (void)argv;
 
@@ -105,18 +115,8 @@ static Vec2 GetGlobalWindowRelativeMousePos(void) {
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
-  static u64 last_counter;
-
-  f32 dt = 0.0f;
-  u64 current_counter = SDL_GetPerformanceCounter();
-  if (last_counter) {
-    dt = (f32)((f64)(current_counter - last_counter) /
-               (f64)SDL_GetPerformanceFrequency());
-  }
-  last_counter = current_counter;
-
   OnUIMousePos(GetGlobalWindowRelativeMousePos());
-  DoFrame(dt);
+  DoFrame();
 
   if (!window_shown) {
     SDL_ShowWindow(window);

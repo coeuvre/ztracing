@@ -127,6 +127,8 @@ typedef struct UIMouseInput {
   Vec2 pressed_pos[kUIMouseButtonCount];
   UIBox *holding[kUIMouseButtonCount];
   UIBox *clicked[kUIMouseButtonCount];
+  UIBox *scrolling;
+  Vec2 scroll_delta;
 } UIMouseInput;
 
 typedef struct UIInput {
@@ -398,8 +400,8 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
                            Axis2 main_axis, Axis2 cross_axis) {
   ASSERT(box->first);
 
-  f32 max_size_main_axis = GetItemVec2(max_size, main_axis);
-  f32 max_size_cross_axis = GetItemVec2(max_size, cross_axis);
+  f32 max_main_axis_size = GetItemVec2(max_size, main_axis);
+  f32 max_cross_axis_size = GetItemVec2(max_size, cross_axis);
 
   f32 child_main_axis_size = 0.0f;
   f32 child_cross_axis_size = 0.0f;
@@ -413,8 +415,8 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
     if (!child->build.flex) {
       Vec2 this_child_max_size;
       SetItemVec2(&this_child_max_size, main_axis,
-                  max_size_main_axis - child_main_axis_size);
-      SetItemVec2(&this_child_max_size, cross_axis, max_size_cross_axis);
+                  max_main_axis_size - child_main_axis_size);
+      SetItemVec2(&this_child_max_size, cross_axis, max_cross_axis_size);
       Vec2 this_child_min_size = {0};
       if (box->build.cross_axis_align == kUICrossAxisAlignStretch) {
         SetItemVec2(&this_child_min_size, cross_axis,
@@ -436,7 +438,7 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
           GetItemVec2(child->computed.size, cross_axis) +
           GetEdgeInsetsSize(child->build.margin, cross_axis);
 
-      if (max_size_main_axis == kUISizeInfinity &&
+      if (max_main_axis_size == kUISizeInfinity &&
           this_child_main_axis_size == kUISizeInfinity) {
         PushUIBuildErrorF(
             state, "Cannot have unbounded content within unbounded constraint");
@@ -450,33 +452,37 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
     }
   }
 
-  ASSERT(ContainsF32IncludingEnd(child_main_axis_size, 0, max_size_main_axis) ||
+  ASSERT(ContainsF32IncludingEnd(child_main_axis_size, 0, max_main_axis_size) ||
          child_main_axis_size == kUISizeInfinity);
 
   // Second pass: layout flex children
-  f32 child_main_axis_flex = max_size_main_axis - child_main_axis_size;
+  f32 child_main_axis_flex = max_main_axis_size - child_main_axis_size;
   for (UIBox *child = box->first; child; child = child->next) {
     if (child->build.flex) {
-      if (max_size_main_axis == kUISizeInfinity) {
+      if (max_main_axis_size == kUISizeInfinity) {
         PushUIBuildErrorF(state, "Unbounded constraint doesn't work with flex");
       }
 
-      f32 this_child_max_size_axis;
+      f32 this_child_max_main_axis_size;
       if (child == last_flex) {
-        this_child_max_size_axis = max_size_main_axis - child_main_axis_size;
+        this_child_max_main_axis_size =
+            max_main_axis_size - child_main_axis_size;
       } else {
-        this_child_max_size_axis =
-            MaxF32(child->build.flex / total_flex * child_main_axis_flex, 0);
+        this_child_max_main_axis_size =
+            ClampF32(child->build.flex / total_flex * child_main_axis_flex, 0,
+                     max_main_axis_size - child_main_axis_size);
       }
 
       // Tight constraint for child
       Vec2 this_child_max_size;
-      SetItemVec2(&this_child_max_size, main_axis, this_child_max_size_axis);
-      SetItemVec2(&this_child_max_size, cross_axis, max_size_cross_axis);
+      SetItemVec2(&this_child_max_size, main_axis,
+                  this_child_max_main_axis_size);
+      SetItemVec2(&this_child_max_size, cross_axis, max_cross_axis_size);
       Vec2 this_child_min_size;
-      SetItemVec2(&this_child_min_size, main_axis, this_child_max_size_axis);
+      SetItemVec2(&this_child_min_size, main_axis,
+                  this_child_max_main_axis_size);
       if (box->build.cross_axis_align == kUICrossAxisAlignStretch) {
-        SetItemVec2(&this_child_min_size, cross_axis, max_size_cross_axis);
+        SetItemVec2(&this_child_min_size, cross_axis, max_cross_axis_size);
       } else {
         SetItemVec2(&this_child_min_size, cross_axis, 0.0f);
       }
@@ -488,7 +494,7 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
       this_child_max_size.y = MaxF32(this_child_max_size.y - margin_y, 0);
       LayoutBox(state, child, this_child_min_size, this_child_max_size);
 
-      f32 this_child_main_axis_size = this_child_max_size_axis;
+      f32 this_child_main_axis_size = this_child_max_main_axis_size;
       // Add margin back
       f32 this_child_cross_axis_size =
           GetItemVec2(child->computed.size, cross_axis) +
@@ -553,11 +559,6 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
     children_size =
         LayoutText(state, box, children_max_size, main_axis, cross_axis);
   }
-  ASSERTF(ContainsVec2IncludingEnd(children_size, V2(0, 0), children_max_size),
-          "children size exceeds constraint: children_size=(%f, %f), "
-          "children_max_size=(%f, %f)",
-          children_size.x, children_size.y, children_max_size.x,
-          children_max_size.y);
 
   // Size box itself
   for (int axis = 0; axis < kAxis2Count; ++axis) {
@@ -694,11 +695,19 @@ static void ProcessInputR(UIState *state, UIBox *box) {
       state->input.mouse.pressed_pos[button] = state->input.mouse.pos;
     }
   }
+
+  if (!state->input.mouse.scrolling && box->build.scrollable &&
+      !IsZeroVec2(state->input.mouse.wheel) &&
+      ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
+                   box->computed.screen_rect.max)) {
+    state->input.mouse.scrolling = box;
+    state->input.mouse.scroll_delta = state->input.mouse.wheel;
+  }
 }
 
 static void ProcessInput(UIState *state) {
   state->input.mouse.hovering = 0;
-  state->input.mouse.wheel = V2(0, 0);
+  state->input.mouse.scrolling = 0;
   for (int button = 0; button < kUIMouseButtonCount; ++button) {
     state->input.mouse.pressed[button] = 0;
     state->input.mouse.clicked[button] = 0;
@@ -725,6 +734,7 @@ static void ProcessInput(UIState *state) {
 
     state->input.mouse.buttons[button].transition_count = 0;
   }
+  state->input.mouse.wheel = V2(0, 0);
 }
 
 void EndUIFrame(void) {
@@ -1044,12 +1054,12 @@ b32 IsNextUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
 
 b32 IsNextUIMouseScrolling(Vec2 *delta) {
   UIState *state = GetUIState();
-  state->next_build.hoverable = 1;
+  state->next_build.scrollable = 1;
 
   UIBox *box = GetUIBoxByNextUIKey(state);
-  f32 result = box && state->input.mouse.hovering == box;
+  f32 result = box && state->input.mouse.scrolling == box;
   if (result && delta) {
-    *delta = state->input.mouse.wheel;
+    *delta = state->input.mouse.scroll_delta;
   }
   return result;
 }

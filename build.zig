@@ -11,7 +11,6 @@ pub fn build(b: *std.Build) void {
         "src/string.c",
         "src/ui.c",
         "src/ui_widgets.c",
-        "src/ztracing.c",
 
         "src/draw_sdl3.c",
         "src/log_sdl3.c",
@@ -24,6 +23,7 @@ pub fn build(b: *std.Build) void {
     });
     ztracing.addCSourceFiles(.{
         .files = &(srcs ++ [_][]const u8{
+            "src/ztracing.c",
             "src/ztracing_sdl3.c",
         }),
     });

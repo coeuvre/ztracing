@@ -86,6 +86,7 @@ typedef struct UIBuild {
 
   b8 hoverable;
   b8 clickable[kUIMouseButtonCount];
+  b8 scrollable;
 } UIBuild;
 
 typedef struct UIComputed {
