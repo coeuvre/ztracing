@@ -17,6 +17,19 @@ const CrossAxisOption = struct {
     rel_pos: f32,
 };
 
+fn expectUIBuildError(expected: []const u8) !void {
+    var maybe_err = c.GetFirstUIBuildError();
+    while (maybe_err) |err| : (maybe_err = maybe_err.*.next) {
+        const actual = sliceFromStr8(err.*.message);
+        if (std.mem.eql(u8, actual, expected)) {
+            return;
+        }
+    }
+
+    log.err("expected build error \"{s}\" not found", .{expected});
+    return error.TestExpectedEqual;
+}
+
 fn expectEqualVec2(expected: c.Vec2, actual: c.Vec2) !void {
     if (c.IsEqualVec2(expected, actual) == 0) {
         log.err("expected Vec2({d:.2}, {d:.2}), but got Vec2({d:.2}, {d:.2})", .{
@@ -460,4 +473,54 @@ test "Layout, row, constraint flex" {
     try expectBoxRelPos(c0, c.V2(0, 0));
     try expectBoxSize(c1, c1_text_size);
     try expectBoxRelPos(c1, c.V2(100 - c1_text_size.x, 0));
+}
+
+test "Layout, main axis unbounded" {
+    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIBox();
+    {
+        c.SetNextUISize(c.V2(c.kUISizeInfinity, c.kUISizeUndefined));
+        c.BeginUIBox();
+        {
+            c.BeginUIBox();
+            {
+                c.SetNextUISize(c.V2(100000, 10));
+                c.BeginUIBox();
+                c.EndUIBox();
+
+                c.SetNextUISize(c.V2(100000, 20));
+                c.BeginUIBox();
+                c.EndUIBox();
+            }
+            c.EndUIBox();
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUIFrame();
+
+    const root = c.GetUIBox(0, 0);
+    const container = c.GetUIBox(root, 0);
+    const child = c.GetUIBox(container, 0);
+    try expectBoxSize(container, c.V2(100, 20));
+    try expectBoxSize(child, c.V2(200000, 20));
+}
+
+test "Layout, main axis unbounded, with unbounded content" {
+    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIBox();
+    {
+        c.SetNextUISize(c.V2(c.kUISizeInfinity, c.kUISizeUndefined));
+        c.BeginUIBox();
+        {
+            c.SetNextUISize(c.V2(c.kUISizeInfinity, c.kUISizeUndefined));
+            c.BeginUIBox();
+            c.EndUIBox();
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUIFrame();
+
+    try expectUIBuildError("Cannot have unbounded content within unbounded constrait");
 }

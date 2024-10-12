@@ -19,6 +19,11 @@ static inline f32 MinF32(f32 a, f32 b) {
   return result;
 }
 
+static inline b32 IsNaNF32(f32 a) {
+  b32 result = isnanf(a);
+  return result;
+}
+
 typedef struct Vec2 {
   f32 x;
   f32 y;

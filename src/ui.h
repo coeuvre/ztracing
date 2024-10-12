@@ -97,6 +97,13 @@ typedef struct UIComputed {
   Rect2 screen_rect;
 } UIComputed;
 
+typedef struct UIBuildError UIBuildError;
+struct UIBuildError {
+  UIBuildError *prev;
+  UIBuildError *next;
+  Str8 message;
+};
+
 typedef struct UIBox UIBox;
 struct UIBox {
   // hash links
@@ -138,6 +145,8 @@ void BeginUIFrame(Vec2 screen_size, f32 content_scale);
 void EndUIFrame(void);
 void RenderUI(void);
 
+UIBuildError *GetFirstUIBuildError(void);
+
 UIKey UIKeyZero(void);
 UIKey UIKeyFromStr8(UIKey seed, Str8 str);
 b32 IsEqualUIKey(UIKey a, UIKey b);
@@ -163,7 +172,6 @@ void SetNextUIMainAxisAlign(UIMainAxisAlign main_axis_align);
 void SetNextUICrossAxisAlign(UICrossAxisAlign cross_axis_align);
 void SetNextUIFlex(f32 flex);
 void SetNextUIPadding(UIEdgeInsets padding);
-
 
 UIComputed GetNextUIComputed(void);
 Vec2 GetNextUIMouseRelPos(void);

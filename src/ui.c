@@ -149,6 +149,8 @@ typedef struct UIState {
   Vec2 screen_size;
   UIBox *root;
   UIBox *current;
+  UIBuildError *first_error;
+  UIBuildError *last_error;
 } UIState;
 
 thread_local UIState t_ui_state;
@@ -171,6 +173,19 @@ static Arena *GetBuildArena(UIState *state) {
   Arena *arena =
       state->build_arena[state->build_index % ARRAY_COUNT(state->build_arena)];
   return arena;
+}
+
+static void PushUIBuildErrorF(UIState *state, const char *fmt, ...) {
+  Arena *arena = GetBuildArena(state);
+  UIBuildError *error = PushArray(arena, UIBuildError, 1);
+
+  va_list ap;
+  va_start(ap, fmt);
+  error->message = PushStr8FV(arena, fmt, ap);
+  va_end(ap);
+
+  APPEND_DOUBLY_LINKED_LIST(state->first_error, state->last_error, error, prev,
+                            next);
 }
 
 static inline b32 IsMouseButtonPressed(UIState *state, UIMouseButton button) {
@@ -245,6 +260,7 @@ void BeginUIFrame(Vec2 screen_size, f32 content_scale) {
   state->screen_size = screen_size;
   state->root = 0;
   state->current = 0;
+  state->first_error = state->last_error = 0;
 
   ResetArena(GetBuildArena(state));
 }
@@ -395,8 +411,19 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
       }
       LayoutBox(state, child, this_child_min_size, this_child_max_size);
 
-      child_main_axis_free -= GetItemVec2(child->computed.size, main_axis);
-      child_main_axis_size += GetItemVec2(child->computed.size, main_axis);
+      f32 this_child_main_axis_size =
+          GetItemVec2(child->computed.size, main_axis);
+      if (child_main_axis_free == kUISizeInfinity &&
+          this_child_main_axis_size == kUISizeInfinity) {
+        PushUIBuildErrorF(
+            state, "Cannot have unbounded content within unbounded constraint");
+      }
+
+      child_main_axis_free -= this_child_main_axis_size;
+      if (IsNaNF32(child_main_axis_free)) {
+        child_main_axis_free = 0;
+      }
+      child_main_axis_size += this_child_main_axis_size;
       child_cross_axis_max = MaxF32(
           child_cross_axis_max, GetItemVec2(child->computed.size, cross_axis));
     }
@@ -407,8 +434,9 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
   // Second pass: layout flex children
   for (UIBox *child = box->first; child; child = child->next) {
     if (child->build.flex) {
-      ASSERTF(child_main_axis_free != kUISizeInfinity,
-              "Unbounded constraint doesn't work with flex");
+      if (child_main_axis_free == kUISizeInfinity) {
+        PushUIBuildErrorF(state, "Unbounded constraint doesn't work with flex");
+      }
       Vec2 this_child_max_size;
       SetItemVec2(
           &this_child_max_size, main_axis,
@@ -653,9 +681,18 @@ void EndUIFrame(void) {
 
 void RenderUI(void) {
   UIState *state = GetUIState();
+
+  ASSERTF(!state->first_error, "%s", state->first_error->message.ptr);
+
   if (state->root) {
     RenderBox(state, state->root, V2(0, 0));
   }
+}
+
+UIBuildError *GetFirstUIBuildError(void) {
+  UIState *state = GetUIState();
+  UIBuildError *result = state->first_error;
+  return result;
 }
 
 UIKey UIKeyZero(void) {
