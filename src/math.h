@@ -19,11 +19,6 @@ static inline f32 MinF32(f32 a, f32 b) {
   return result;
 }
 
-static inline b32 IsNaNF32(f32 a) {
-  b32 result = isnanf(a);
-  return result;
-}
-
 static inline b32 ContainsF32(f32 val, f32 begin, f32 end) {
   b32 result = begin <= val && val < end;
   return result;
