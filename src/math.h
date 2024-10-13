@@ -172,6 +172,11 @@ typedef struct ColorU32 {
   u8 b;
 } ColorU32;
 
+static inline ColorU32 ColorU32Zero() {
+  ColorU32 result = {0};
+  return result;
+}
+
 static inline ColorU32 ColorU32FromRGBA(u8 r, u8 g, u8 b, u8 a) {
   ColorU32 result;
   result.r = r;

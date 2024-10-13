@@ -1,5 +1,7 @@
 #include "src/ztracing.h"
 
+#include <stdarg.h>
+
 #include "src/draw.h"
 #include "src/math.h"
 #include "src/memory.h"
@@ -9,61 +11,65 @@
 #include "src/ui_widgets.h"
 
 static void UIButton(Str8 label) {
-  SetNextUIKey(label);
-  SetNextUIPadding(UIEdgeInsetsSymmetric(6, 4));
-  if (IsNextUIMouseButtonClicked(kUIMouseButtonLeft)) {
-    SetNextUIColor(ColorU32FromHex(0x0000FF));
-  } else if (IsNextUIMouseButtonDown(kUIMouseButtonLeft)) {
-    SetNextUIColor(ColorU32FromHex(0x00FF00));
-  } else if (IsNextUIMouseHovering()) {
-    SetNextUIColor(ColorU32FromHex(0xFF0000));
+  UIKey key = PushUIKey(label);
+  ColorU32 color = ColorU32Zero();
+  if (IsUIMouseButtonClicked(key, kUIMouseButtonLeft)) {
+    color = ColorU32FromHex(0x0000FF);
+  } else if (IsUIMouseButtonDown(key, kUIMouseButtonLeft)) {
+    color = ColorU32FromHex(0x00FF00);
+  } else if (IsUIMouseHovering(key)) {
+    color = ColorU32FromHex(0xFF0000);
   } else {
-    // SetUIColor(ColorU32FromHex(0x5EAC57));
+    // color = ColorU32FromHex(0x5EAC57);
   }
-  BeginUIBox();
+  BeginUIBox((UIProps){
+      .key = key,
+      .padding = UIEdgeInsetsSymmetric(6, 4),
+      .hoverable = 1,
+      .clickable[kUIMouseButtonLeft] = 1,
+      .color = color,
+  });
   {
-    SetNextUIText(label);
-    BeginUIBox();
+    BeginUIBox((UIProps){
+        .text = PushUIText(label),
+    });
     EndUIBox();
   }
   EndUIBox();
 }
 
-static void UIText(Str8 text) {
-  SetNextUIPadding(UIEdgeInsetsSymmetric(6, 4));
-  BeginUIBox();
+static void UITextF(const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  BeginUIBox((UIProps){.padding = UIEdgeInsetsSymmetric(6, 4)});
   {
-    SetNextUIText(text);
-    BeginUIBox();
+    BeginUIBox((UIProps){.text = PushUITextFV(fmt, ap)});
     EndUIBox();
   }
   EndUIBox();
+  va_end(ap);
 }
 
 static void BuildUI(f32 dt, f32 frame_time) {
   TempMemory scratch = BeginScratch(0, 0);
 
-  BeginUIColumn();
+  BeginUIColumn((UIProps){0});
   {
-    SetNextUIColor(ColorU32FromHex(0xE6573F));
-    BeginUIRow();
+    BeginUIRow((UIProps){.color = ColorU32FromHex(0xE6573F)});
     {
       UIButton(STR8_LIT("Load"));
       UIButton(STR8_LIT("About"));
 
-      SetNextUIFlex(1.0f);
-      BeginUIBox();
+      BeginUIBox((UIProps){.flex = 1});
       EndUIBox();
 
-      UIText(PushStr8F(scratch.arena, "%.0f %.1fms", 1.0f / dt,
-                       frame_time * 1000.0f));
+      UITextF("%.0f %.1fms", 1.0f / dt, frame_time * 1000.0f);
     }
     EndUIRow();
 
     static UIScrollableState state;
 
-    SetNextUIFlex(1.0);
-    BeginUIScrollable(&state);
+    BeginUIScrollable((UIProps){.flex = 1}, &state);
     {
       f32 item_size = 20.0f;
       u32 item_count = 510;
@@ -72,11 +78,11 @@ static void BuildUI(f32 dt, f32 frame_time) {
       // f32 offset = item_index * item_size - state->scroll;
       // for (; item_index < item_count && offset < state->scroll_area_size;
       //      ++item_index, offset += item_size) {
-      BeginUIColumn();
+      BeginUIColumn((UIProps){0});
       for (u32 item_index = 0; item_index < item_count; ++item_index) {
-        SetNextUISize(V2(kUISizeUndefined, item_size));
-        SetNextUIColor(ColorU32FromRGBA(0, 0, item_index % 256, 255));
-        BeginUIRow();
+        BeginUIRow(
+            (UIProps){.size = V2(kUISizeUndefined, item_size),
+                      .color = ColorU32FromRGBA(0, 0, item_index % 256, 255)});
         EndUIRow();
       }
       EndUIColumn();

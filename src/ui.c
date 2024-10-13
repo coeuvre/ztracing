@@ -54,7 +54,7 @@ static UIBox *GetOrPushBox(UIBoxCache *cache, Arena *arena) {
 
 static UIBox *GetBoxByKey(UIBoxCache *cache, UIKey key) {
   UIBox *result = 0;
-  if (!IsEqualUIKey(key, UIKeyZero())) {
+  if (!IsZeroUIKey(key)) {
     BoxHashSlot *slot =
         &cache->box_hash_slots[key.hash % cache->box_hash_slots_count];
     for (UIBox *box = slot->first; box; box = box->hash_next) {
@@ -92,7 +92,7 @@ static void GarbageCollectBoxes(UIBoxCache *cache, u64 build_index) {
 
     for (UIBox *box = slot->first; box;) {
       UIBox *next = box->hash_next;
-      if (IsEqualUIKey(box->key, UIKeyZero()) ||
+      if (IsZeroUIKey(box->key) ||
           box->last_touched_build_index < build_index) {
         REMOVE_DOUBLY_LINKED_LIST(slot->first, slot->last, box, hash_prev,
                                   hash_next);
@@ -146,7 +146,6 @@ typedef struct UIState {
   u64 build_index;
 
   // per-frame info
-  UIBuild next_build;
   f32 content_scale;
   Vec2 screen_size;
   UIBox *root;
@@ -324,13 +323,13 @@ static void AlignMainAxis(UIBox *box, Axis2 axis, f32 padding_start,
   }
 
   for (UIBox *child = box->first; child; child = child->next) {
-    pos += GetEdgeInsetsStart(child->build.margin, axis);
+    pos += GetEdgeInsetsStart(child->props.margin, axis);
     if (pos < 0 || pos > size_axis) {
       box->computed.clip = 1;
     }
     SetItemVec2(&child->computed.rel_pos, axis, pos);
     pos += GetItemVec2(child->computed.size, axis) +
-           GetEdgeInsetsEnd(child->build.margin, axis);
+           GetEdgeInsetsEnd(child->props.margin, axis);
   }
 }
 
@@ -340,26 +339,26 @@ static void AlignCrossAxis(UIBox *box, Axis2 axis, f32 padding_start,
   for (UIBox *child = box->first; child; child = child->next) {
     f32 free = GetItemVec2(box->computed.size, axis) -
                GetItemVec2(child->computed.size, axis) - padding_start -
-               padding_end - GetEdgeInsetsSize(child->build.margin, axis);
+               padding_end - GetEdgeInsetsSize(child->props.margin, axis);
     switch (align) {
       case kUICrossAxisAlignStart:
       case kUICrossAxisAlignStretch: {
         SetItemVec2(
             &child->computed.rel_pos, axis,
-            padding_start + GetEdgeInsetsStart(child->build.margin, axis));
+            padding_start + GetEdgeInsetsStart(child->props.margin, axis));
       } break;
 
       case kUICrossAxisAlignCenter: {
         SetItemVec2(&child->computed.rel_pos, axis,
                     padding_start +
-                        GetEdgeInsetsStart(child->build.margin, axis) +
+                        GetEdgeInsetsStart(child->props.margin, axis) +
                         free / 2.0f);
       } break;
 
       case kUICrossAxisAlignEnd: {
         SetItemVec2(&child->computed.rel_pos, axis,
                     padding_start +
-                        GetEdgeInsetsStart(child->build.margin, axis) + free);
+                        GetEdgeInsetsStart(child->props.margin, axis) + free);
       } break;
 
       default: {
@@ -372,20 +371,20 @@ static void AlignCrossAxis(UIBox *box, Axis2 axis, f32 padding_start,
 static inline b32 ShouldMaxAxis(UIBox *box, int axis, Axis2 main_axis,
                                 f32 max_size_axis) {
   // cross axis is always as small as possible
-  b32 result = box->build.main_axis_size == kUIMainAxisSizeMax &&
+  b32 result = box->props.main_axis_size == kUIMainAxisSizeMax &&
                axis == (int)main_axis && max_size_axis != F32_INFINITY;
   return result;
 }
 
 static Vec2 LayoutText(UIState *state, UIBox *box, Vec2 max_size,
                        Axis2 main_axis, Axis2 cross_axis) {
-  ASSERT(!IsEmptyStr8(box->build.text));
+  ASSERT(!IsEmptyStr8(box->props.text));
 
   // TODO: constraint text size within [(0, 0), max_size]
 
   // Use pixel unit to measure text
   TextMetrics metrics = GetTextMetricsStr8(
-      box->build.text, KUITextSizeDefault * state->content_scale);
+      box->props.text, KUITextSizeDefault * state->content_scale);
   Vec2 text_size_in_pixel = metrics.size;
   Vec2 text_size = MulVec2(text_size_in_pixel, 1.0f / state->content_scale);
   text_size = MinVec2(text_size, max_size);
@@ -413,21 +412,21 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
 
   // First pass: layout non-flex children
   for (UIBox *child = box->first; child; child = child->next) {
-    total_flex += child->build.flex;
-    if (!child->build.flex) {
+    total_flex += child->props.flex;
+    if (!child->props.flex) {
       Vec2 this_child_max_size;
       SetItemVec2(&this_child_max_size, main_axis,
                   max_main_axis_size - child_main_axis_size);
       SetItemVec2(&this_child_max_size, cross_axis, max_cross_axis_size);
       Vec2 this_child_min_size = {0};
-      if (box->build.cross_axis_align == kUICrossAxisAlignStretch) {
+      if (box->props.cross_axis_align == kUICrossAxisAlignStretch) {
         SetItemVec2(&this_child_min_size, cross_axis,
                     GetItemVec2(this_child_max_size, cross_axis));
       }
 
       // Leave space for margin
-      f32 margin_x = child->build.margin.start + child->build.margin.end;
-      f32 margin_y = child->build.margin.top + child->build.margin.bottom;
+      f32 margin_x = child->props.margin.start + child->props.margin.end;
+      f32 margin_y = child->props.margin.top + child->props.margin.bottom;
       this_child_max_size.x = MaxF32(this_child_max_size.x - margin_x, 0);
       this_child_max_size.y = MaxF32(this_child_max_size.y - margin_y, 0);
       LayoutBox(state, child, this_child_min_size, this_child_max_size);
@@ -435,10 +434,10 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
       // Add margin back
       f32 this_child_main_axis_size =
           GetItemVec2(child->computed.size, main_axis) +
-          GetEdgeInsetsSize(child->build.margin, main_axis);
+          GetEdgeInsetsSize(child->props.margin, main_axis);
       f32 this_child_cross_axis_size =
           GetItemVec2(child->computed.size, cross_axis) +
-          GetEdgeInsetsSize(child->build.margin, cross_axis);
+          GetEdgeInsetsSize(child->props.margin, cross_axis);
 
       if (max_main_axis_size == kUISizeInfinity &&
           this_child_main_axis_size == kUISizeInfinity) {
@@ -460,7 +459,7 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
   // Second pass: layout flex children
   f32 child_main_axis_flex = max_main_axis_size - child_main_axis_size;
   for (UIBox *child = box->first; child; child = child->next) {
-    if (child->build.flex) {
+    if (child->props.flex) {
       if (max_main_axis_size == kUISizeInfinity) {
         PushUIBuildErrorF(state, "Unbounded constraint doesn't work with flex");
       }
@@ -471,7 +470,7 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
             max_main_axis_size - child_main_axis_size;
       } else {
         this_child_max_main_axis_size =
-            ClampF32(child->build.flex / total_flex * child_main_axis_flex, 0,
+            ClampF32(child->props.flex / total_flex * child_main_axis_flex, 0,
                      max_main_axis_size - child_main_axis_size);
       }
 
@@ -483,15 +482,15 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
       Vec2 this_child_min_size;
       SetItemVec2(&this_child_min_size, main_axis,
                   this_child_max_main_axis_size);
-      if (box->build.cross_axis_align == kUICrossAxisAlignStretch) {
+      if (box->props.cross_axis_align == kUICrossAxisAlignStretch) {
         SetItemVec2(&this_child_min_size, cross_axis, max_cross_axis_size);
       } else {
         SetItemVec2(&this_child_min_size, cross_axis, 0.0f);
       }
 
       // Leave space for margin
-      f32 margin_x = child->build.margin.start + child->build.margin.end;
-      f32 margin_y = child->build.margin.top + child->build.margin.bottom;
+      f32 margin_x = child->props.margin.start + child->props.margin.end;
+      f32 margin_y = child->props.margin.top + child->props.margin.bottom;
       this_child_max_size.x = MaxF32(this_child_max_size.x - margin_x, 0);
       this_child_max_size.y = MaxF32(this_child_max_size.y - margin_y, 0);
       LayoutBox(state, child, this_child_min_size, this_child_max_size);
@@ -500,7 +499,7 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
       // Add margin back
       f32 this_child_cross_axis_size =
           GetItemVec2(child->computed.size, cross_axis) +
-          GetEdgeInsetsSize(child->build.margin, cross_axis);
+          GetEdgeInsetsSize(child->props.margin, cross_axis);
 
       child_main_axis_size += this_child_main_axis_size;
       child_cross_axis_size =
@@ -527,7 +526,7 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
   for (int axis = 0; axis < kAxis2Count; ++axis) {
     f32 min_size_axis = GetItemVec2(min_size, axis);
     f32 max_size_axis = GetItemVec2(max_size, axis);
-    f32 build_size_axis = GetItemVec2(box->build.size, axis);
+    f32 build_size_axis = GetItemVec2(box->props.size, axis);
     if (build_size_axis == kUISizeInfinity) {
       // If it's infinity, let children be infinity.
       SetItemVec2(&children_max_size, axis, kUISizeInfinity);
@@ -544,20 +543,20 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
   }
   // Leave space for padding
   children_max_size.x = MaxF32(
-      children_max_size.x - (box->build.padding.start + box->build.padding.end),
+      children_max_size.x - (box->props.padding.start + box->props.padding.end),
       0);
   children_max_size.y =
       MaxF32(children_max_size.y -
-                 (box->build.padding.top + box->build.padding.bottom),
+                 (box->props.padding.top + box->props.padding.bottom),
              0);
 
-  Axis2 main_axis = box->build.main_axis;
+  Axis2 main_axis = box->props.main_axis;
   Axis2 cross_axis = (main_axis + 1) % kAxis2Count;
   Vec2 children_size = V2(0, 0);
   if (box->first) {
     children_size =
         LayoutChildren(state, box, children_max_size, main_axis, cross_axis);
-  } else if (!IsEmptyStr8(box->build.text)) {
+  } else if (!IsEmptyStr8(box->props.text)) {
     children_size =
         LayoutText(state, box, children_max_size, main_axis, cross_axis);
   }
@@ -567,7 +566,7 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
     f32 min_size_axis = GetItemVec2(min_size, axis);
     f32 max_size_axis = GetItemVec2(max_size, axis);
 
-    f32 build_size_axis = GetItemVec2(box->build.size, axis);
+    f32 build_size_axis = GetItemVec2(box->props.size, axis);
     if (build_size_axis != kUISizeUndefined) {
       // If box has specific size, use that size but also respect the
       // constraint.
@@ -578,8 +577,8 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
       SetItemVec2(&box->computed.size, axis, max_size_axis);
     } else {
       // Size itself around children
-      f32 padding_start_axis = GetEdgeInsetsStart(box->build.padding, axis);
-      f32 padding_end_axis = GetEdgeInsetsEnd(box->build.padding, axis);
+      f32 padding_start_axis = GetEdgeInsetsStart(box->props.padding, axis);
+      f32 padding_end_axis = GetEdgeInsetsEnd(box->props.padding, axis);
       f32 children_size_axis = GetItemVec2(children_size, axis);
       f32 content_size_axis =
           children_size_axis + padding_start_axis + padding_end_axis;
@@ -595,19 +594,19 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
           max_size.x, max_size.y);
 
   AlignMainAxis(
-      box, main_axis, GetEdgeInsetsStart(box->build.padding, main_axis),
-      GetEdgeInsetsEnd(box->build.padding, main_axis),
-      box->build.main_axis_align, GetItemVec2(children_size, main_axis));
+      box, main_axis, GetEdgeInsetsStart(box->props.padding, main_axis),
+      GetEdgeInsetsEnd(box->props.padding, main_axis),
+      box->props.main_axis_align, GetItemVec2(children_size, main_axis));
   AlignCrossAxis(box, cross_axis,
-                 GetEdgeInsetsStart(box->build.padding, cross_axis),
-                 GetEdgeInsetsEnd(box->build.padding, cross_axis),
-                 box->build.cross_axis_align);
+                 GetEdgeInsetsStart(box->props.padding, cross_axis),
+                 GetEdgeInsetsEnd(box->props.padding, cross_axis),
+                 box->props.cross_axis_align);
   // Clip if content size exceeds self size.
   box->computed.clip =
       box->computed.clip ||
-      children_size.x + box->build.padding.start + box->build.padding.end >
+      children_size.x + box->props.padding.start + box->props.padding.end >
           box->computed.size.x ||
-      children_size.y + box->build.padding.top + box->build.padding.bottom >
+      children_size.y + box->props.padding.top + box->props.padding.bottom >
           box->computed.size.y;
 }
 
@@ -629,8 +628,8 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
                    MulVec2(intersection.max, state->content_scale));
     }
 
-    if (box->build.color.a) {
-      DrawRect(min_in_pixel, max_in_pixel, box->build.color);
+    if (box->props.color.a) {
+      DrawRect(min_in_pixel, max_in_pixel, box->props.color);
     }
 
     // Debug outline
@@ -641,13 +640,13 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
       for (UIBox *child = box->first; child; child = child->next) {
         RenderBox(state, child, min, intersection);
       }
-      if (!IsEmptyStr8(box->build.text)) {
+      if (!IsEmptyStr8(box->props.text)) {
         WARN("%s: text content is ignored because it has children",
-             box->build.key_str.ptr);
+             box->props.key.str.ptr);
       }
-    } else if (!IsEmptyStr8(box->build.text)) {
+    } else if (!IsEmptyStr8(box->props.text)) {
       // TODO: clip
-      DrawTextStr8(min_in_pixel, box->build.text,
+      DrawTextStr8(min_in_pixel, box->props.text,
                    KUITextSizeDefault * state->content_scale);
     }
 
@@ -662,10 +661,10 @@ static void DebugPrintUIR(UIBox *box, u32 level) {
   INFO(
       "%*s %s[id=%s, min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), "
       "build_size=(%.2f, %.2f), size=(%.2f, %.2f), rel_pos=(%.2f, %.2f)]",
-      level * 4, "", box->build.tag, box->build.key_str.ptr,
+      level * 4, "", box->computed.tag, box->props.key.str.ptr,
       box->computed.min_size.x, box->computed.min_size.y,
-      box->computed.max_size.x, box->computed.max_size.y, box->build.size.x,
-      box->build.size.y, box->computed.size.x, box->computed.size.y,
+      box->computed.max_size.x, box->computed.max_size.y, box->props.size.x,
+      box->props.size.y, box->computed.size.x, box->computed.size.y,
       box->computed.rel_pos.x, box->computed.rel_pos.y);
   for (UIBox *child = box->first; child; child = child->next) {
     DebugPrintUIR(child, level + 1);
@@ -688,14 +687,14 @@ static void ProcessInputR(UIState *state, UIBox *box) {
   }
 
   // Mouse input
-  if (!state->input.mouse.hovering && box->build.hoverable &&
+  if (!state->input.mouse.hovering && box->props.hoverable &&
       ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
                    box->computed.screen_rect.max)) {
     state->input.mouse.hovering = box;
   }
 
   for (int button = 0; button < kUIMouseButtonCount; ++button) {
-    if (!state->input.mouse.pressed[button] && box->build.clickable[button] &&
+    if (!state->input.mouse.pressed[button] && box->props.clickable[button] &&
         ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
                      box->computed.screen_rect.max) &&
         IsMouseButtonPressed(state, button)) {
@@ -704,7 +703,7 @@ static void ProcessInputR(UIState *state, UIBox *box) {
     }
   }
 
-  if (!state->input.mouse.scrolling && box->build.scrollable &&
+  if (!state->input.mouse.scrolling && box->props.scrollable &&
       !IsZeroVec2(state->input.mouse.wheel) &&
       ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
                    box->computed.screen_rect.max)) {
@@ -775,17 +774,7 @@ UIBuildError *GetFirstUIBuildError(void) {
   return result;
 }
 
-UIKey UIKeyZero(void) {
-  UIKey result = {0};
-  return result;
-}
-
-UIKey UIKeyFromHash(u64 hash) {
-  UIKey result = {hash};
-  return result;
-}
-
-UIKey UIKeyFromStr8(UIKey seed, Str8 str) {
+static UIKey UIKeyFromStr8(UIKey seed, Str8 str) {
   UIKey result = UIKeyZero();
   if (str.len) {
     // djb2 hash function
@@ -795,19 +784,20 @@ UIKey UIKeyFromStr8(UIKey seed, Str8 str) {
       hash = ((hash << 5) + hash) + str.ptr[i];
     }
     result.hash = hash;
+    result.str = str;
   }
   return result;
 }
 
 b32 IsEqualUIKey(UIKey a, UIKey b) {
-  b32 result = a.hash == b.hash;
+  b32 result = a.hash == b.hash && IsEqualStr8(a.str, b.str);
   return result;
 }
 
 static UIKey GetFirstNonZeroUIKey(UIBox *box) {
   UIKey result = UIKeyZero();
   if (box) {
-    if (!IsEqualUIKey(box->key, UIKeyZero())) {
+    if (!IsZeroUIKey(box->key)) {
       result = box->key;
     } else {
       result = GetFirstNonZeroUIKey(box->parent);
@@ -816,17 +806,69 @@ static UIKey GetFirstNonZeroUIKey(UIBox *box) {
   return result;
 }
 
-void BeginUIBox(void) {
+static UIKey PushUIKeyWithStrFromBuildArena(Str8 key_str) {
+  UIState *state = GetUIState();
+  UIKey seed = GetFirstNonZeroUIKey(state->current);
+  UIKey result = UIKeyFromStr8(seed, key_str);
+  return result;
+}
+
+UIKey PushUIKey(Str8 key_str) {
+  UIState *state = GetUIState();
+  Arena *arena = GetBuildArena(state);
+  Str8 key_str_copy = PushStr8(arena, key_str);
+  UIKey seed = GetFirstNonZeroUIKey(state->current);
+  UIKey result = UIKeyFromStr8(seed, key_str_copy);
+  return result;
+}
+
+UIKey PushUIKeyF(const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  UIKey result = PushUIKeyFV(fmt, ap);
+  va_end(ap);
+  return result;
+}
+
+UIKey PushUIKeyFV(const char *fmt, va_list ap) {
+  UIState *state = GetUIState();
+  Arena *arena = GetBuildArena(state);
+  Str8 key_str = PushStr8FV(arena, fmt, ap);
+  UIKey result = PushUIKeyWithStrFromBuildArena(key_str);
+  return result;
+}
+
+Str8 PushUIText(Str8 key_str) {
+  UIState *state = GetUIState();
+  Arena *arena = GetBuildArena(state);
+  Str8 result = PushStr8(arena, key_str);
+  return result;
+}
+
+Str8 PushUITextF(const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  Str8 result = PushUITextFV(fmt, ap);
+  va_end(ap);
+  return result;
+}
+
+Str8 PushUITextFV(const char *fmt, va_list ap) {
+  UIState *state = GetUIState();
+  Arena *arena = GetBuildArena(state);
+  Str8 result = PushStr8FV(arena, fmt, ap);
+  return result;
+}
+
+void BeginUIBoxWithTag(const char *tag, UIProps props) {
   UIState *state = GetUIState();
 
-  Str8 key_str = state->next_build.key_str;
   UIBox *parent = state->current;
-  UIKey seed = GetFirstNonZeroUIKey(parent);
-  UIKey key = UIKeyFromStr8(seed, key_str);
+  UIKey key = props.key;
   UIBox *box = GetOrPushBoxByKey(&state->cache, state->arena, key);
   ASSERTF(box->last_touched_build_index < state->build_index,
           "%s is built more than once",
-          IsEmptyStr8(key_str) ? "<unknown>" : (char *)key_str.ptr);
+          IsEmptyStr8(key.str) ? "<unknown>" : (char *)key.str.ptr);
 
   if (parent) {
     APPEND_DOUBLY_LINKED_LIST(parent->first, parent->last, box, prev, next);
@@ -839,11 +881,8 @@ void BeginUIBox(void) {
 
   // Clear per frame state
   box->first = box->last = 0;
-  box->build = state->next_build;
-  state->next_build = (UIBuild){0};
-  if (!box->build.tag) {
-    box->build.tag = "Box";
-  }
+  box->props = props;
+  box->computed.tag = tag;
 
   state->current = box;
 }
@@ -852,9 +891,9 @@ void EndUIBoxWithExpectedTag(const char *tag) {
   UIState *state = GetUIState();
 
   ASSERT(state->current);
-  ASSERTF(strcmp(state->current->build.tag, tag) == 0,
+  ASSERTF(strcmp(state->current->computed.tag, tag) == 0,
           "Mismatched Begin/End calls. Begin with %s, end with %s",
-          state->current->build.tag, tag);
+          state->current->computed.tag, tag);
   state->current = state->current->parent;
 }
 
@@ -863,13 +902,7 @@ UIBox *GetUIRoot(void) {
   return state->root;
 }
 
-UIBox *GetUIBoxByKey(UIBox *parent, Str8 key_str) {
-  UIState *state = GetUIState();
-  if (!parent) {
-    parent = state->root;
-  }
-  UIKey seed = GetFirstNonZeroUIKey(parent);
-  UIKey key = UIKeyFromStr8(seed, key_str);
+static inline UIBox *GetUIBoxByKey(UIState *state, UIKey key) {
   UIBox *result = GetBoxByKey(&state->cache, key);
   return result;
 }
@@ -899,101 +932,9 @@ UIBox *GetCurrentUIBox(void) {
   return state->current;
 }
 
-void SetNextUIKey(Str8 key) {
+UIComputed GetUIComputed(UIKey key) {
   UIState *state = GetUIState();
-
-  Arena *arena = GetBuildArena(state);
-  state->next_build.key_str = PushStr8(arena, key);
-}
-
-void SetNextUIKeyF(const char *fmt, ...) {
-  UIState *state = GetUIState();
-
-  Arena *arena = GetBuildArena(state);
-  va_list ap;
-  va_start(ap, fmt);
-  state->next_build.key_str = PushStr8FV(arena, fmt, ap);
-  va_end(ap);
-}
-
-void SetNextUITag(const char *tag) {
-  UIState *state = GetUIState();
-
-  state->next_build.tag = tag;
-}
-
-void SetNextUIColor(ColorU32 color) {
-  UIState *state = GetUIState();
-
-  state->next_build.color = color;
-}
-
-void SetNextUISize(Vec2 size) {
-  UIState *state = GetUIState();
-
-  state->next_build.size = size;
-}
-
-void SetNextUIText(Str8 text) {
-  UIState *state = GetUIState();
-
-  Arena *arena = GetBuildArena(state);
-  state->next_build.text = PushStr8(arena, text);
-}
-
-void SetNextUIMainAxis(Axis2 axis) {
-  UIState *state = GetUIState();
-
-  state->next_build.main_axis = axis;
-}
-
-void SetNextUIMainAxisSize(UIMainAxisSize main_axis_size) {
-  UIState *state = GetUIState();
-
-  state->next_build.main_axis_size = main_axis_size;
-}
-
-void SetNextUIMainAxisAlign(UIMainAxisAlign main_axis_align) {
-  UIState *state = GetUIState();
-
-  state->next_build.main_axis_align = main_axis_align;
-}
-
-void SetNextUICrossAxisAlign(UICrossAxisAlign cross_axis_align) {
-  UIState *state = GetUIState();
-
-  state->next_build.cross_axis_align = cross_axis_align;
-}
-
-void SetNextUIFlex(f32 flex) {
-  UIState *state = GetUIState();
-
-  state->next_build.flex = flex;
-}
-
-void SetNextUIPadding(UIEdgeInsets padding) {
-  UIState *state = GetUIState();
-
-  state->next_build.padding = padding;
-}
-
-void SetNextUIMargin(UIEdgeInsets margin) {
-  UIState *state = GetUIState();
-
-  state->next_build.margin = margin;
-}
-
-static UIBox *GetUIBoxByNextUIKey(UIState *state) {
-  ASSERTF(
-      !IsEmptyStr8(state->next_build.key_str),
-      "Must assign a key to the next box in order to get computed property");
-  UIBox *result = GetUIBoxByKey(state->current, state->next_build.key_str);
-  return result;
-}
-
-UIComputed GetNextUIComputed(void) {
-  UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByNextUIKey(state);
+  UIBox *box = GetUIBoxByKey(state, key);
   UIComputed result = {0};
   if (box) {
     result = box->computed;
@@ -1001,9 +942,9 @@ UIComputed GetNextUIComputed(void) {
   return result;
 }
 
-Vec2 GetNextUIMouseRelPos(void) {
+Vec2 GetUIMouseRelPos(UIKey key) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByNextUIKey(state);
+  UIBox *box = GetUIBoxByKey(state, key);
   Vec2 result = V2(0, 0);
   if (box) {
     result = SubVec2(state->input.mouse.pos, box->computed.screen_rect.min);
@@ -1011,47 +952,37 @@ Vec2 GetNextUIMouseRelPos(void) {
   return result;
 }
 
-b32 IsNextUIMouseHovering(void) {
+b32 IsUIMouseHovering(UIKey key) {
   UIState *state = GetUIState();
-  state->next_build.hoverable = 1;
-
-  UIBox *box = GetUIBoxByNextUIKey(state);
+  UIBox *box = GetUIBoxByKey(state, key);
   b32 result = box && state->input.mouse.hovering == box;
   return result;
 }
 
-b32 IsNextUIMouseButtonPressed(UIMouseButton button) {
+b32 IsUIMouseButtonPressed(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  state->next_build.clickable[button] = 1;
-
-  UIBox *box = GetUIBoxByNextUIKey(state);
+  UIBox *box = GetUIBoxByKey(state, key);
   b32 result = box && state->input.mouse.pressed[button] == box;
   return result;
 }
 
-b32 IsNextUIMouseButtonDown(UIMouseButton button) {
+b32 IsUIMouseButtonDown(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  state->next_build.clickable[button] = 1;
-
-  UIBox *box = GetUIBoxByNextUIKey(state);
+  UIBox *box = GetUIBoxByKey(state, key);
   b32 result = box && state->input.mouse.holding[button] == box;
   return result;
 }
 
-b32 IsNextUIMouseButtonClicked(UIMouseButton button) {
+b32 IsUIMouseButtonClicked(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  state->next_build.clickable[button] = 1;
-
-  UIBox *box = GetUIBoxByNextUIKey(state);
+  UIBox *box = GetUIBoxByKey(state, key);
   b32 result = box && state->input.mouse.clicked[button] == box;
   return result;
 }
 
-b32 IsNextUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
+b32 IsUIMouseButtonDragging(UIKey key, UIMouseButton button, Vec2 *delta) {
   UIState *state = GetUIState();
-  state->next_build.clickable[button] = 1;
-
-  UIBox *box = GetUIBoxByNextUIKey(state);
+  UIBox *box = GetUIBoxByKey(state, key);
   f32 result = box && state->input.mouse.holding[button] == box;
   if (result && delta) {
     *delta =
@@ -1060,11 +991,9 @@ b32 IsNextUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
   return result;
 }
 
-b32 IsNextUIMouseScrolling(Vec2 *delta) {
+b32 IsUIMouseScrolling(UIKey key, Vec2 *delta) {
   UIState *state = GetUIState();
-  state->next_build.scrollable = 1;
-
-  UIBox *box = GetUIBoxByNextUIKey(state);
+  UIBox *box = GetUIBoxByKey(state, key);
   f32 result = box && state->input.mouse.scrolling == box;
   if (result && delta) {
     *delta = state->input.mouse.scroll_delta;

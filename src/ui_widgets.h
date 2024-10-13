@@ -2,25 +2,24 @@
 #define ZTRACING_SRC_UI_WIDGETS_H_
 
 #include "src/assert.h"
+#include "src/math.h"
 #include "src/string.h"
 #include "src/ui.h"
 
-static inline void BeginUIRow() {
-  SetNextUITag("Row");
-  SetNextUIMainAxis(kAxis2X);
-  SetNextUIMainAxisSize(kUIMainAxisSizeMax);
-  SetNextUICrossAxisAlign(kUICrossAxisAlignCenter);
-  BeginUIBox();
+static inline void BeginUIRow(UIProps props) {
+  props.main_axis = kAxis2X;
+  props.main_axis_size = kUIMainAxisSizeMax;
+  props.cross_axis_align = kUICrossAxisAlignCenter;
+  BeginUIBoxWithTag("Row", props);
 }
 
 static inline void EndUIRow() { EndUIBoxWithExpectedTag("Row"); }
 
-static inline void BeginUIColumn() {
-  SetNextUITag("Column");
-  SetNextUIMainAxis(kAxis2Y);
-  SetNextUIMainAxisSize(kUIMainAxisSizeMax);
-  SetNextUICrossAxisAlign(kUICrossAxisAlignCenter);
-  BeginUIBox();
+static inline void BeginUIColumn(UIProps props) {
+  props.main_axis = kAxis2Y;
+  props.main_axis_size = kUIMainAxisSizeMax;
+  props.cross_axis_align = kUICrossAxisAlignCenter;
+  BeginUIBoxWithTag("Column", props);
 }
 
 static inline void EndUIColumn() { EndUIBoxWithExpectedTag("Column"); }
@@ -40,7 +39,7 @@ typedef struct UIScrollableState {
   f32 control_size;
 } UIScrollableState;
 
-void BeginUIScrollable(UIScrollableState *state);
+void BeginUIScrollable(UIProps props, UIScrollableState *state);
 void EndUIScrollable(UIScrollableState *state);
 
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_

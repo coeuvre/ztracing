@@ -67,13 +67,12 @@ test "Key, return the same box across frame" {
     var box2: [*c]c.UIBox = null;
 
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.BeginUIBox();
+        c.BeginUIBox(.{});
         c.EndUIBox();
 
-        c.SetNextUIKey(c.STR8_LIT("KEY"));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .key = c.PushUIKeyF("KEY") });
         box1 = c.GetCurrentUIBox();
         c.EndUIBox();
     }
@@ -81,14 +80,13 @@ test "Key, return the same box across frame" {
     c.EndUIFrame();
 
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.SetNextUIKey(c.STR8_LIT("KEY"));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .key = c.PushUIKeyF("KEY") });
         box2 = c.GetCurrentUIBox();
         c.EndUIBox();
 
-        c.BeginUIBox();
+        c.BeginUIBox(.{});
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -108,8 +106,7 @@ test "Layout, root has the same size as the screen" {
 
     for (sizes) |size| {
         c.BeginUIFrame(c.V2(100, 100), 1);
-        c.SetNextUISize(size);
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .size = size });
         c.EndUIBox();
         c.EndUIFrame();
 
@@ -133,12 +130,12 @@ test "Layout, aligns" {
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
             c.BeginUIFrame(c.V2(100, 100), 1);
-            c.SetNextUIMainAxisAlign(main_axis_option.@"align");
-            c.SetNextUICrossAxisAlign(cross_axis_option.@"align");
-            c.BeginUIBox();
+            c.BeginUIBox(.{
+                .main_axis_align = main_axis_option.@"align",
+                .cross_axis_align = cross_axis_option.@"align",
+            });
             {
-                c.SetNextUISize(c.V2(50, 50));
-                c.BeginUIBox();
+                c.BeginUIBox(.{ .size = c.V2(50, 50) });
                 c.EndUIBox();
             }
             c.EndUIBox();
@@ -168,15 +165,15 @@ test "Layout, padding" {
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
             c.BeginUIFrame(c.V2(100, 100), 1);
-            c.SetNextUIMainAxisAlign(main_axis_option.@"align");
-            c.SetNextUICrossAxisAlign(cross_axis_option.@"align");
-            c.SetNextUIPadding(padding);
-            c.BeginUIBox();
+            c.BeginUIBox(.{
+                .main_axis_align = main_axis_option.@"align",
+                .cross_axis_align = cross_axis_option.@"align",
+                .padding = padding,
+            });
             {
-                c.BeginUIBox();
+                c.BeginUIBox(.{});
                 {
-                    c.SetNextUISize(c.V2(50, 50));
-                    c.BeginUIBox();
+                    c.BeginUIBox(.{ .size = c.V2(50, 50) });
                     c.EndUIBox();
                 }
                 c.EndUIBox();
@@ -194,9 +191,9 @@ test "Layout, padding" {
 
 test "Layout, no children, no fixed size, as small as possible" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.BeginUIBox();
+        c.BeginUIBox(.{});
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -209,10 +206,9 @@ test "Layout, no children, no fixed size, as small as possible" {
 
 test "Layout, no children, no fixed size, flex, main axis is as big as possible" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.SetNextUIFlex(1);
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .flex = 1 });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -225,12 +221,11 @@ test "Layout, no children, no fixed size, flex, main axis is as big as possible"
 
 test "Layout, with one child, size around it" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.BeginUIBox();
+        c.BeginUIBox(.{});
         {
-            c.SetNextUISize(c.V2(50, 50));
-            c.BeginUIBox();
+            c.BeginUIBox(.{ .size = c.V2(50, 50) });
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -245,13 +240,11 @@ test "Layout, with one child, size around it" {
 
 test "Layout, with fixed size" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.SetNextUISize(c.V2(30, 20));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .size = c.V2(30, 20) });
         {
-            c.SetNextUISize(c.V2(50, 40));
-            c.BeginUIBox();
+            c.BeginUIBox(.{ .size = c.V2(50, 40) });
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -268,13 +261,11 @@ test "Layout, with fixed size" {
 
 test "Layout, with fixed size, negative" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.SetNextUISize(c.V2(30, -20));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .size = c.V2(30, -20) });
         {
-            c.SetNextUISize(c.V2(50, 50));
-            c.BeginUIBox();
+            c.BeginUIBox(.{ .size = c.V2(50, 50) });
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -297,14 +288,11 @@ test "Layout, main axis size, child has different main axis than parent" {
 
     for (main_axis_sizes) |main_axis_size| {
         c.BeginUIFrame(c.V2(100, 100), 1);
-        c.SetNextUIMainAxis(c.kAxis2Y);
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .main_axis = c.kAxis2Y });
         {
-            c.SetNextUIMainAxisSize(main_axis_size);
-            c.BeginUIBox();
+            c.BeginUIBox(.{ .main_axis_size = main_axis_size });
             {
-                c.SetNextUISize(c.V2(20, 20));
-                c.BeginUIBox();
+                c.BeginUIBox(.{ .size = c.V2(30, 20) });
                 c.EndUIBox();
             }
             c.EndUIBox();
@@ -315,7 +303,7 @@ test "Layout, main axis size, child has different main axis than parent" {
         const root = c.GetUIBox(0, 0);
         const row = c.GetUIBox(root, 0);
         if (main_axis_size == c.kUIMainAxisSizeMin) {
-            try expectBoxSize(row, c.V2(20, 20));
+            try expectBoxSize(row, c.V2(30, 20));
         } else {
             try expectBoxSize(row, c.V2(100, 20));
         }
@@ -330,13 +318,11 @@ test "Layout, main axis size, child has same main axis as parent" {
 
     for (main_axis_sizes) |main_axis_size| {
         c.BeginUIFrame(c.V2(100, 100), 1);
-        c.BeginUIBox();
+        c.BeginUIBox(.{});
         {
-            c.SetNextUIMainAxisSize(main_axis_size);
-            c.BeginUIBox();
+            c.BeginUIBox(.{ .main_axis_size = main_axis_size });
             {
-                c.SetNextUISize(c.V2(20, 20));
-                c.BeginUIBox();
+                c.BeginUIBox(.{ .size = c.V2(20, 20) });
                 c.EndUIBox();
             }
             c.EndUIBox();
@@ -358,10 +344,9 @@ test "Layout, main axis size, child has same main axis as parent" {
 
 test "Layout, no fixed size, size around text" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.SetNextUIText(c.STR8_LIT("Text"));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .text = c.PushUITextF("text") });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -375,11 +360,9 @@ test "Layout, no fixed size, size around text" {
 
 test "Layout, fixed size, truncate text" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.SetNextUISize(c.V2(2, 2));
-        c.SetNextUIText(c.STR8_LIT("Text"));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .size = c.V2(2, 2), .text = c.PushUITextF("Text") });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -392,14 +375,12 @@ test "Layout, fixed size, truncate text" {
 
 test "Layout, row, no constraints on children" {
     c.BeginUIFrame(c.V2(1000, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.SetNextUIText(c.STR8_LIT("Hello!"));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .text = c.PushUITextF("Hello!") });
         c.EndUIBox();
 
-        c.SetNextUIText(c.STR8_LIT("Goodbye!"));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .text = c.PushUITextF("Goodbye!") });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -420,14 +401,12 @@ test "Layout, row, no constraints on children" {
 
 test "Layout, row, no constraints on children, but truncate" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.SetNextUIText(c.STR8_LIT("Hello!"));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .text = c.PushUITextF("Hello!") });
         c.EndUIBox();
 
-        c.SetNextUIText(c.STR8_LIT("Goodbye!"));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .text = c.PushUITextF("Goodbye!") });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -448,15 +427,15 @@ test "Layout, row, no constraints on children, but truncate" {
 
 test "Layout, row, constraint flex" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.SetNextUIText(c.STR8_LIT("A very long text that doesn't fit in one line!"));
-        c.SetNextUIFlex(1);
-        c.BeginUIBox();
+        c.BeginUIBox(.{
+            .flex = 1,
+            .text = c.PushUITextF("A very long text that doesn't fit in one line!"),
+        });
         c.EndUIBox();
 
-        c.SetNextUIText(c.STR8_LIT("Goodbye!"));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .text = c.PushUITextF("Goodbye!") });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -477,19 +456,16 @@ test "Layout, row, constraint flex" {
 
 test "Layout, main axis unbounded" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.SetNextUISize(c.V2(c.kUISizeInfinity, c.kUISizeUndefined));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
         {
-            c.BeginUIBox();
+            c.BeginUIBox(.{});
             {
-                c.SetNextUISize(c.V2(100000, 10));
-                c.BeginUIBox();
+                c.BeginUIBox(.{ .size = c.V2(100000, 10) });
                 c.EndUIBox();
 
-                c.SetNextUISize(c.V2(100000, 20));
-                c.BeginUIBox();
+                c.BeginUIBox(.{ .size = c.V2(100000, 20) });
                 c.EndUIBox();
             }
             c.EndUIBox();
@@ -508,13 +484,11 @@ test "Layout, main axis unbounded" {
 
 test "Layout, main axis unbounded, with unbounded content" {
     c.BeginUIFrame(c.V2(100, 100), 1);
-    c.BeginUIBox();
+    c.BeginUIBox(.{});
     {
-        c.SetNextUISize(c.V2(c.kUISizeInfinity, c.kUISizeUndefined));
-        c.BeginUIBox();
+        c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
         {
-            c.SetNextUISize(c.V2(c.kUISizeInfinity, c.kUISizeUndefined));
-            c.BeginUIBox();
+            c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
             c.EndUIBox();
         }
         c.EndUIBox();
