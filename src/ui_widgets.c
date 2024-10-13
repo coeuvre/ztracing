@@ -152,3 +152,12 @@ void EndUIScrollable(UIScrollableState *state) {
   }
   EndUIBoxWithExpectedTag("Scrollable");
 }
+
+f32 GetUIScrollableScroll(UIScrollableState *state) {
+  f32 result = state->scroll;
+  return result;
+}
+
+void SetUIScrollableScroll(UIScrollableState *state, f32 scroll) {
+  state->scroll = ClampF32(scroll, 0, state->scroll_max);
+}

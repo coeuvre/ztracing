@@ -68,6 +68,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
     EndUIRow();
 
     static UIScrollableState state;
+    static f32 scroll_drag_started;
 
     BeginUIScrollable((UIProps){.flex = 1}, &state);
     {
@@ -78,7 +79,15 @@ static void BuildUI(f32 dt, f32 frame_time) {
       // f32 offset = item_index * item_size - state->scroll;
       // for (; item_index < item_count && offset < state->scroll_area_size;
       //      ++item_index, offset += item_size) {
-      BeginUIColumn((UIProps){0});
+      UIKey key = PushUIKeyF("Content");
+      if (IsUIMouseButtonPressed(key, kUIMouseButtonLeft)) {
+        scroll_drag_started = GetUIScrollableScroll(&state);
+      }
+      Vec2 drag_delta;
+      if (IsUIMouseButtonDragging(key, kUIMouseButtonLeft, &drag_delta)) {
+        SetUIScrollableScroll(&state, scroll_drag_started - drag_delta.y);
+      }
+      BeginUIColumn((UIProps){.key = key, .clickable = 1});
       for (u32 item_index = 0; item_index < item_count; ++item_index) {
         BeginUIRow(
             (UIProps){.size = V2(kUISizeUndefined, item_size),

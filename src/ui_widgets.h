@@ -41,5 +41,7 @@ typedef struct UIScrollableState {
 
 void BeginUIScrollable(UIProps props, UIScrollableState *state);
 void EndUIScrollable(UIScrollableState *state);
+f32 GetUIScrollableScroll(UIScrollableState *state);
+void SetUIScrollableScroll(UIScrollableState *state, f32 scroll);
 
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_
