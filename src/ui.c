@@ -954,38 +954,41 @@ Vec2 GetUIMouseRelPos(UIKey key) {
   return result;
 }
 
+static inline b32 IsEqualUIKeyAndNonZero(UIBox *box, UIKey key) {
+  b32 result = 0;
+  if (box && !IsZeroUIKey(key)) {
+    result = IsEqualUIKey(box->key, key);
+  }
+  return result;
+}
+
 b32 IsUIMouseHovering(UIKey key) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByKey(state, key);
-  b32 result = box && state->input.mouse.hovering == box;
+  b32 result = IsEqualUIKeyAndNonZero(state->input.mouse.hovering, key);
   return result;
 }
 
 b32 IsUIMouseButtonPressed(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByKey(state, key);
-  b32 result = box && state->input.mouse.pressed[button] == box;
+  b32 result = IsEqualUIKeyAndNonZero(state->input.mouse.pressed[button], key);
   return result;
 }
 
 b32 IsUIMouseButtonDown(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByKey(state, key);
-  b32 result = box && state->input.mouse.holding[button] == box;
+  b32 result = IsEqualUIKeyAndNonZero(state->input.mouse.holding[button], key);
   return result;
 }
 
 b32 IsUIMouseButtonClicked(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByKey(state, key);
-  b32 result = box && state->input.mouse.clicked[button] == box;
+  b32 result = IsEqualUIKeyAndNonZero(state->input.mouse.clicked[button], key);
   return result;
 }
 
 b32 IsUIMouseButtonDragging(UIKey key, UIMouseButton button, Vec2 *delta) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByKey(state, key);
-  f32 result = box && state->input.mouse.holding[button] == box;
+  f32 result = IsEqualUIKeyAndNonZero(state->input.mouse.holding[button], key);
   if (result && delta) {
     *delta =
         SubVec2(state->input.mouse.pos, state->input.mouse.pressed_pos[button]);
@@ -995,8 +998,7 @@ b32 IsUIMouseButtonDragging(UIKey key, UIMouseButton button, Vec2 *delta) {
 
 b32 IsUIMouseScrolling(UIKey key, Vec2 *delta) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByKey(state, key);
-  f32 result = box && state->input.mouse.scrolling == box;
+  f32 result = IsEqualUIKeyAndNonZero(state->input.mouse.scrolling, key);
   if (result && delta) {
     *delta = state->input.mouse.scroll_delta;
   }
