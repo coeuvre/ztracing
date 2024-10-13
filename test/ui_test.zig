@@ -71,7 +71,7 @@ test "Key, return the same box across frame" {
     var box1: [*c]c.UIBox = null;
     var box2: [*c]c.UIBox = null;
 
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{});
@@ -84,7 +84,7 @@ test "Key, return the same box across frame" {
     c.EndUIBox();
     c.EndUIFrame();
 
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .key = c.PushUIKeyF("KEY") });
@@ -110,7 +110,7 @@ test "Layout, root has the same size as the screen" {
     };
 
     for (sizes) |size| {
-        c.BeginUIFrame(c.V2(100, 100), 1);
+        c.BeginUIFrame(c.V2(100, 100));
         c.BeginUIBox(.{ .size = size });
         c.EndUIBox();
         c.EndUIFrame();
@@ -134,7 +134,7 @@ test "Layout, aligns" {
 
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
-            c.BeginUIFrame(c.V2(100, 100), 1);
+            c.BeginUIFrame(c.V2(100, 100));
             c.BeginUIBox(.{
                 .main_axis_align = main_axis_option.@"align",
                 .cross_axis_align = cross_axis_option.@"align",
@@ -169,7 +169,7 @@ test "Layout, padding" {
 
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
-            c.BeginUIFrame(c.V2(100, 100), 1);
+            c.BeginUIFrame(c.V2(100, 100));
             c.BeginUIBox(.{
                 .main_axis_align = main_axis_option.@"align",
                 .cross_axis_align = cross_axis_option.@"align",
@@ -195,7 +195,7 @@ test "Layout, padding" {
 }
 
 test "Layout, no children, no fixed size, as small as possible" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{});
@@ -210,7 +210,7 @@ test "Layout, no children, no fixed size, as small as possible" {
 }
 
 test "Layout, no children, no fixed size, flex, main axis is as big as possible" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .flex = 1 });
@@ -225,7 +225,7 @@ test "Layout, no children, no fixed size, flex, main axis is as big as possible"
 }
 
 test "Layout, with one child, size around it" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{});
@@ -244,7 +244,7 @@ test "Layout, with one child, size around it" {
 }
 
 test "Layout, with fixed size" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .size = c.V2(30, 20) });
@@ -265,7 +265,7 @@ test "Layout, with fixed size" {
 }
 
 test "Layout, with fixed size, negative" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .size = c.V2(30, -20) });
@@ -292,7 +292,7 @@ test "Layout, main axis size, child has different main axis than parent" {
     };
 
     for (main_axis_sizes) |main_axis_size| {
-        c.BeginUIFrame(c.V2(100, 100), 1);
+        c.BeginUIFrame(c.V2(100, 100));
         c.BeginUIBox(.{ .main_axis = c.kAxis2Y });
         {
             c.BeginUIBox(.{ .main_axis_size = main_axis_size });
@@ -322,7 +322,7 @@ test "Layout, main axis size, child has same main axis as parent" {
     };
 
     for (main_axis_sizes) |main_axis_size| {
-        c.BeginUIFrame(c.V2(100, 100), 1);
+        c.BeginUIFrame(c.V2(100, 100));
         c.BeginUIBox(.{});
         {
             c.BeginUIBox(.{ .main_axis_size = main_axis_size });
@@ -348,7 +348,7 @@ test "Layout, main axis size, child has same main axis as parent" {
 // TODO: test min/max size
 
 test "Layout, no fixed size, size around text" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .text = c.PushUITextF("text") });
@@ -364,7 +364,7 @@ test "Layout, no fixed size, size around text" {
 }
 
 test "Layout, fixed size, truncate text" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .size = c.V2(2, 2), .text = c.PushUITextF("Text") });
@@ -379,7 +379,7 @@ test "Layout, fixed size, truncate text" {
 }
 
 test "Layout, row, no constraints on children" {
-    c.BeginUIFrame(c.V2(1000, 100), 1);
+    c.BeginUIFrame(c.V2(1000, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .text = c.PushUITextF("Hello!") });
@@ -405,7 +405,7 @@ test "Layout, row, no constraints on children" {
 }
 
 test "Layout, row, no constraints on children, but truncate" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .text = c.PushUITextF("Hello!") });
@@ -431,7 +431,7 @@ test "Layout, row, no constraints on children, but truncate" {
 }
 
 test "Layout, row, constraint flex" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{
@@ -460,7 +460,7 @@ test "Layout, row, constraint flex" {
 }
 
 test "Layout, main axis unbounded" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
@@ -488,7 +488,7 @@ test "Layout, main axis unbounded" {
 }
 
 test "Layout, main axis unbounded, with unbounded content" {
-    c.BeginUIFrame(c.V2(100, 100), 1);
+    c.BeginUIFrame(c.V2(100, 100));
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });

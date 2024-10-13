@@ -146,7 +146,6 @@ typedef struct UIState {
   u64 build_index;
 
   // per-frame info
-  f32 content_scale;
   Vec2 screen_size;
   UIBox *root;
   UIBox *current;
@@ -251,13 +250,12 @@ f32 GetUIDeltaTime(void) {
   return result;
 }
 
-void BeginUIFrame(Vec2 screen_size, f32 content_scale) {
+void BeginUIFrame(Vec2 screen_size) {
   UIState *state = GetUIState();
 
   GarbageCollectBoxes(&state->cache, state->build_index);
 
   state->build_index += 1;
-  state->content_scale = content_scale;
   state->screen_size = screen_size;
   state->root = 0;
   state->current = 0;
@@ -376,17 +374,14 @@ static inline b32 ShouldMaxAxis(UIBox *box, int axis, Axis2 main_axis,
   return result;
 }
 
-static Vec2 LayoutText(UIState *state, UIBox *box, Vec2 max_size,
-                       Axis2 main_axis, Axis2 cross_axis) {
+static Vec2 LayoutText(UIBox *box, Vec2 max_size, Axis2 main_axis,
+                       Axis2 cross_axis) {
   ASSERT(!IsEmptyStr8(box->props.text));
 
   // TODO: constraint text size within [(0, 0), max_size]
 
-  // Use pixel unit to measure text
-  TextMetrics metrics = GetTextMetricsStr8(
-      box->props.text, KUITextSizeDefault * state->content_scale);
-  Vec2 text_size_in_pixel = metrics.size;
-  Vec2 text_size = MulVec2(text_size_in_pixel, 1.0f / state->content_scale);
+  TextMetrics metrics = GetTextMetricsStr8(box->props.text, KUITextSizeDefault);
+  Vec2 text_size = metrics.size;
   text_size = MinVec2(text_size, max_size);
 
   Vec2 children_size;
@@ -557,8 +552,7 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
     children_size =
         LayoutChildren(state, box, children_max_size, main_axis, cross_axis);
   } else if (!IsEmptyStr8(box->props.text)) {
-    children_size =
-        LayoutText(state, box, children_max_size, main_axis, cross_axis);
+    children_size = LayoutText(box, children_max_size, main_axis, cross_axis);
   }
 
   // Size box itself
@@ -614,8 +608,6 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
                       Rect2 parent_clip_rect) {
   Vec2 min = AddVec2(parent_pos, box->computed.rel_pos);
   Vec2 max = AddVec2(min, box->computed.size);
-  Vec2 min_in_pixel = MulVec2(min, state->content_scale);
-  Vec2 max_in_pixel = MulVec2(max, state->content_scale);
   box->computed.screen_rect = R2(min, max);
 
   Rect2 intersection =
@@ -624,12 +616,11 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
   if (intersection_area > 0) {
     b32 need_clip = box->computed.clip;
     if (need_clip) {
-      PushClipRect(MulVec2(intersection.min, state->content_scale),
-                   MulVec2(intersection.max, state->content_scale));
+      PushClipRect(intersection.min, intersection.max);
     }
 
     if (box->props.color.a) {
-      DrawRect(min_in_pixel, max_in_pixel, box->props.color);
+      DrawRect(min, max, box->props.color);
     }
 
     // Debug outline
@@ -645,9 +636,7 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
              box->props.key.str.ptr);
       }
     } else if (!IsEmptyStr8(box->props.text)) {
-      // TODO: clip
-      DrawTextStr8(min_in_pixel, box->props.text,
-                   KUITextSizeDefault * state->content_scale);
+      DrawTextStr8(min, box->props.text, KUITextSizeDefault);
     }
 
     if (need_clip) {

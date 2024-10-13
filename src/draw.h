@@ -14,9 +14,11 @@ void PushClipRect(Vec2 min, Vec2 max);
 void PopClipRect(void);
 
 typedef struct TextMetrics {
+  // Text size in points
   Vec2 size;
 } TextMetrics;
 
+// height in points
 TextMetrics GetTextMetricsStr8(Str8 text, f32 height);
 void DrawTextStr8(Vec2 pos, Str8 text, f32 height);
 

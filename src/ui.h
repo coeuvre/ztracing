@@ -147,7 +147,7 @@ void OnUIMouseWheel(Vec2 delta);
 void SetUIDeltaTime(f32 dt);
 f32 GetUIDeltaTime(void);
 
-void BeginUIFrame(Vec2 screen_size, f32 content_scale);
+void BeginUIFrame(Vec2 screen_size);
 void EndUIFrame(void);
 void RenderUI(void);
 

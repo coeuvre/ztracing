@@ -57,6 +57,9 @@ Vec2 GetScreenSize(void) {
 }
 
 void PushClipRect(Vec2 min, Vec2 max) {
+  min = MulVec2(min, GetScreenContentScale());
+  max = MulVec2(max, GetScreenContentScale());
+
   DrawClipRect *clip_rect;
   if (t_draw_state.first_free_clip_rect) {
     clip_rect = t_draw_state.first_free_clip_rect;
@@ -99,6 +102,9 @@ void ClearDraw(void) {
 void PresentDraw(void) { SDL_RenderPresent(t_draw_state.renderer); }
 
 void DrawRect(Vec2 min, Vec2 max, ColorU32 color) {
+  min = MulVec2(min, GetScreenContentScale());
+  max = MulVec2(max, GetScreenContentScale());
+
   SDL_SetRenderDrawColor(t_draw_state.renderer, color.r, color.g, color.b,
                          color.a);
   SDL_FRect rect;
@@ -120,9 +126,10 @@ static stbtt_fontinfo *GetFontInfo(void) {
 TextMetrics GetTextMetricsStr8(Str8 text, f32 height) {
   TempMemory scratch = BeginScratch(0, 0);
   TextMetrics result = {0};
+  f32 content_scale = GetScreenContentScale();
 
   stbtt_fontinfo *font = GetFontInfo();
-  f32 scale = stbtt_ScaleForPixelHeight(font, height);
+  f32 scale = stbtt_ScaleForPixelHeight(font, height * content_scale);
   i32 ascent, descent, line_gap;
   stbtt_GetFontVMetrics(font, &ascent, &descent, &line_gap);
   result.size.y = (ascent - descent) * scale;
@@ -144,6 +151,7 @@ TextMetrics GetTextMetricsStr8(Str8 text, f32 height) {
     }
   }
   result.size.x = pos_x;
+  result.size = MulVec2(result.size, 1.0f / content_scale);
 
   EndScratch(scratch);
   return result;
@@ -152,8 +160,11 @@ TextMetrics GetTextMetricsStr8(Str8 text, f32 height) {
 void DrawTextStr8(Vec2 pos, Str8 text, f32 height) {
   TempMemory scratch = BeginScratch(0, 0);
 
+  f32 content_scale = GetScreenContentScale();
+  pos = MulVec2(pos, content_scale);
+
   stbtt_fontinfo *font = GetFontInfo();
-  f32 scale = stbtt_ScaleForPixelHeight(font, height);
+  f32 scale = stbtt_ScaleForPixelHeight(font, height * content_scale);
   i32 ascent, descent, line_gap;
   stbtt_GetFontVMetrics(font, &ascent, &descent, &line_gap);
 

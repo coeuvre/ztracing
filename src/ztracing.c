@@ -109,7 +109,7 @@ void DoFrame(void) {
   ClearDraw();
 
   SetUIDeltaTime(dt);
-  BeginUIFrame(GetScreenSize(), GetScreenContentScale());
+  BeginUIFrame(GetScreenSize());
   BuildUI(dt, last_frame_time);
   EndUIFrame();
   RenderUI();
