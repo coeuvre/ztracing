@@ -26,7 +26,12 @@ fn expectUIBuildError(expected: []const u8) !void {
         }
     }
 
-    log.err("expected build error \"{s}\" not found", .{expected});
+    log.err("Expected build error \"{s}\" not found", .{expected});
+    log.err("Existing build error:", .{});
+    maybe_err = c.GetFirstUIBuildError();
+    while (maybe_err) |err| : (maybe_err = maybe_err.*.next) {
+        log.err("    {s}", .{sliceFromStr8(err.*.message)});
+    }
     return error.TestExpectedEqual;
 }
 
@@ -496,5 +501,5 @@ test "Layout, main axis unbounded, with unbounded content" {
     c.EndUIBox();
     c.EndUIFrame();
 
-    try expectUIBuildError("Cannot have unbounded content within unbounded constrait");
+    try expectUIBuildError("Cannot have unbounded content within unbounded constraint");
 }
