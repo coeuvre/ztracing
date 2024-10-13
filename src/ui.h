@@ -7,7 +7,7 @@
 
 #define kUISizeUndefined 0
 #define kUISizeInfinity F32_INFINITY
-#define KUITextSizeDefault 16.0f
+#define kUIFontSizeDefault 16.0f
 
 typedef struct UIKey {
   u64 hash;
@@ -76,7 +76,6 @@ typedef struct UIProps {
 
   ColorU32 color;
   Vec2 size;
-  Str8 text;
   Axis2 main_axis;
   f32 flex;
   UIMainAxisSize main_axis_size;
@@ -84,6 +83,9 @@ typedef struct UIProps {
   UICrossAxisAlign cross_axis_align;
   UIEdgeInsets padding;
   UIEdgeInsets margin;
+
+  Str8 text;
+  f32 font_size;
 
   b8 hoverable;
   b8 clickable[kUIMouseButtonCount];
@@ -98,6 +100,8 @@ typedef struct UIComputed {
 
   Vec2 size;
   Vec2 rel_pos;
+
+  f32 font_size;
 
   Rect2 screen_rect;
   b8 clip;

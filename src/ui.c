@@ -374,13 +374,26 @@ static inline b32 ShouldMaxAxis(UIBox *box, int axis, Axis2 main_axis,
   return result;
 }
 
+static f32 GetFirstNonZeroFontSize(UIBox *box) {
+  f32 font_size = box->props.font_size;
+  if (font_size <= 0 && box->parent) {
+    font_size = GetFirstNonZeroFontSize(box->parent);
+  }
+  return font_size;
+}
+
 static Vec2 LayoutText(UIBox *box, Vec2 max_size, Axis2 main_axis,
                        Axis2 cross_axis) {
   ASSERT(!IsEmptyStr8(box->props.text));
 
   // TODO: constraint text size within [(0, 0), max_size]
 
-  TextMetrics metrics = GetTextMetricsStr8(box->props.text, KUITextSizeDefault);
+  f32 font_size = GetFirstNonZeroFontSize(box);
+  if (font_size <= 0) {
+    font_size = kUIFontSizeDefault;
+  }
+  box->computed.font_size = font_size;
+  TextMetrics metrics = GetTextMetricsStr8(box->props.text, font_size);
   Vec2 text_size = metrics.size;
   text_size = MinVec2(text_size, max_size);
 
@@ -636,7 +649,7 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
              box->props.key.str.ptr);
       }
     } else if (!IsEmptyStr8(box->props.text)) {
-      DrawTextStr8(min, box->props.text, KUITextSizeDefault);
+      DrawTextStr8(min, box->props.text, box->computed.font_size);
     }
 
     if (need_clip) {

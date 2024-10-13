@@ -359,7 +359,7 @@ test "Layout, no fixed size, size around text" {
 
     const root = c.GetUIBox(0, 0);
     const text = c.GetUIBox(root, 0);
-    const text_metrics = c.GetTextMetricsStr8(c.STR8_LIT("Text"), c.KUITextSizeDefault);
+    const text_metrics = c.GetTextMetricsStr8(c.STR8_LIT("Text"), c.kUIFontSizeDefault);
     try expectBoxSize(text, text_metrics.size);
 }
 
@@ -394,8 +394,8 @@ test "Layout, row, no constraints on children" {
     const root = c.GetUIBox(0, 0);
     const c0 = c.GetUIBox(root, 0);
     const c1 = c.GetUIBox(root, 1);
-    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.KUITextSizeDefault).size;
-    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
+    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.kUIFontSizeDefault).size;
+    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.kUIFontSizeDefault).size;
 
     try testing.expect(c0_text_size.x + c1_text_size.x < 1000);
     try expectBoxSize(c0, c0_text_size);
@@ -420,8 +420,8 @@ test "Layout, row, no constraints on children, but truncate" {
     const root = c.GetUIBox(0, 0);
     const c0 = c.GetUIBox(root, 0);
     const c1 = c.GetUIBox(root, 1);
-    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.KUITextSizeDefault).size;
-    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
+    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.kUIFontSizeDefault).size;
+    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.kUIFontSizeDefault).size;
 
     try testing.expect(c0_text_size.x + c1_text_size.x > 100);
     try expectBoxSize(c0, c0_text_size);
@@ -449,8 +449,8 @@ test "Layout, row, constraint flex" {
     const root = c.GetUIBox(0, 0);
     const c0 = c.GetUIBox(root, 0);
     const c1 = c.GetUIBox(root, 1);
-    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("A very long text that doesn't fit in one line!"), c.KUITextSizeDefault).size;
-    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.KUITextSizeDefault).size;
+    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("A very long text that doesn't fit in one line!"), c.kUIFontSizeDefault).size;
+    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.kUIFontSizeDefault).size;
 
     try testing.expect(c0_text_size.x > 100);
     try expectBoxSize(c0, c.V2(100 - c1_text_size.x, c0_text_size.y));
