@@ -168,6 +168,7 @@ void SetUIScrollableScroll(UIScrollableState *state, f32 scroll) {
 void UIDebugLayer(UIDebugLayerState *state) {
   f32 resize_handle_size = 16;
   Vec2 default_frame_size = V2(800, 600);
+  Vec2 min_frame_size = V2(resize_handle_size * 2, resize_handle_size * 2);
 
   if (IsZeroVec2(SubVec2(state->max, state->min))) {
     state->max =
@@ -258,6 +259,7 @@ void UIDebugLayer(UIDebugLayerState *state) {
       if (IsUIMouseButtonDragging(resize_handle, kUIMouseButtonLeft,
                                   &drag_delta)) {
         state->max = AddVec2(state->pressed_max, drag_delta);
+        state->max = MaxVec2(state->max, AddVec2(state->min, min_frame_size));
       }
     }
     EndUIBox();

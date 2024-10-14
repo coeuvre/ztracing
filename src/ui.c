@@ -965,6 +965,7 @@ void BeginUILayer(UILayerProps props, const char *fmt, ...) {
   va_end(ap);
 
   layer->key = UIKeyFromStr8(UIKeyZero(), key_str);
+  props.max = MaxVec2(props.min, props.max);
   layer->props = props;
 
   BeginUIKeyStack(state, layer->key);
