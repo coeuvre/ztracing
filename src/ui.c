@@ -306,9 +306,9 @@ static inline f32 GetEdgeInsetsEnd(UIEdgeInsets edge_insets, Axis2 axis) {
   return result;
 }
 
-static void AlignMainAxis(UIBox *box, Axis2 axis, f32 padding_start,
-                          f32 padding_end, UIMainAxisAlign align,
-                          f32 children_size) {
+static void AlignMainAxisFlex(UIBox *box, Axis2 axis, f32 padding_start,
+                              f32 padding_end, UIMainAxisAlign align,
+                              f32 children_size) {
   f32 size_axis = GetItemVec2(box->computed.size, axis);
   f32 free = size_axis - children_size - padding_start - padding_end;
   f32 pos = padding_start;
@@ -331,47 +331,95 @@ static void AlignMainAxis(UIBox *box, Axis2 axis, f32 padding_start,
 
   for (UIBox *child = box->first; child; child = child->next) {
     pos += GetEdgeInsetsStart(child->props.margin, axis);
-    if (pos < 0 || pos > size_axis) {
-      box->computed.clip = 1;
-    }
+    box->computed.clip = box->computed.clip || (pos < 0 || pos > size_axis);
     SetItemVec2(&child->computed.rel_pos, axis, pos);
     pos += GetItemVec2(child->computed.size, axis) +
            GetEdgeInsetsEnd(child->props.margin, axis);
+    box->computed.clip = box->computed.clip || (pos < 0 || pos > size_axis);
   }
 }
 
-static void AlignCrossAxis(UIBox *box, Axis2 axis, f32 padding_start,
-                           f32 padding_end, UICrossAxisAlign align) {
-  // TODO: Handle margin.
+static void AlignMainAxisStack(UIBox *box, Axis2 axis, f32 padding_start,
+                               f32 padding_end, UIMainAxisAlign align) {
+  f32 size = GetItemVec2(box->computed.size, axis);
   for (UIBox *child = box->first; child; child = child->next) {
-    f32 free = GetItemVec2(box->computed.size, axis) -
-               GetItemVec2(child->computed.size, axis) - padding_start -
-               padding_end - GetEdgeInsetsSize(child->props.margin, axis);
+    f32 pos = 0;
+    f32 child_size = GetItemVec2(child->computed.size, axis);
+    f32 free = size - child_size - padding_start - padding_end -
+               GetEdgeInsetsSize(child->props.margin, axis);
+    f32 margin_start = GetEdgeInsetsStart(child->props.margin, axis);
     switch (align) {
-      case kUICrossAxisAlignStart:
-      case kUICrossAxisAlignStretch: {
-        SetItemVec2(
-            &child->computed.rel_pos, axis,
-            padding_start + GetEdgeInsetsStart(child->props.margin, axis));
+      case kUIMainAxisAlignStart: {
+        pos = padding_start + margin_start;
       } break;
 
-      case kUICrossAxisAlignCenter: {
-        SetItemVec2(&child->computed.rel_pos, axis,
-                    padding_start +
-                        GetEdgeInsetsStart(child->props.margin, axis) +
-                        free / 2.0f);
+      case kUIMainAxisAlignCenter: {
+        pos = padding_start + margin_start + free / 2.0f;
       } break;
 
-      case kUICrossAxisAlignEnd: {
-        SetItemVec2(&child->computed.rel_pos, axis,
-                    padding_start +
-                        GetEdgeInsetsStart(child->props.margin, axis) + free);
+      case kUIMainAxisAlignEnd: {
+        pos = padding_start + margin_start + free;
       } break;
 
       default: {
         UNREACHABLE;
       } break;
     }
+
+    SetItemVec2(&child->computed.rel_pos, axis, pos);
+
+    box->computed.clip =
+        box->computed.clip || (pos < 0 || pos + child_size > size);
+  }
+}
+
+static void AlignMainAxis(UIBox *box, Axis2 axis, f32 padding_start,
+                          f32 padding_end, UIMainAxisAlign align,
+                          f32 children_size) {
+  switch (box->props.layout) {
+    case kUILayoutFlex: {
+      AlignMainAxisFlex(box, axis, padding_start, padding_end, align,
+                        children_size);
+    } break;
+
+    case kUILayoutStack: {
+      AlignMainAxisStack(box, axis, padding_start, padding_end, align);
+    } break;
+
+    default: {
+      UNREACHABLE;
+    } break;
+  }
+}
+
+static void AlignCrossAxis(UIBox *box, Axis2 axis, f32 padding_start,
+                           f32 padding_end, UICrossAxisAlign align) {
+  for (UIBox *child = box->first; child; child = child->next) {
+    f32 free = GetItemVec2(box->computed.size, axis) -
+               GetItemVec2(child->computed.size, axis) - padding_start -
+               padding_end - GetEdgeInsetsSize(child->props.margin, axis);
+    f32 margin_start = GetEdgeInsetsStart(child->props.margin, axis);
+    f32 pos = 0;
+    switch (align) {
+      case kUICrossAxisAlignStart:
+      case kUICrossAxisAlignStretch: {
+        pos = padding_start + margin_start;
+      } break;
+
+      case kUICrossAxisAlignCenter: {
+        pos = padding_start + margin_start + free / 2.0f;
+      } break;
+
+      case kUICrossAxisAlignEnd: {
+        pos = padding_start + margin_start + free;
+      } break;
+
+      default: {
+        UNREACHABLE;
+      } break;
+    }
+
+    SetItemVec2(&child->computed.rel_pos, axis, pos);
   }
 }
 
@@ -422,10 +470,32 @@ static Vec2 LayoutText(UIBox *box, Vec2 max_size, Axis2 main_axis,
 
 static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size);
 
-static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
-                           Axis2 main_axis, Axis2 cross_axis) {
-  ASSERT(box->first);
+static Vec2 LayoutChild(UIState *state, UIBox *child, Vec2 min_size,
+                        Vec2 max_size, Axis2 main_axis) {
+  // Leave space for margin
+  f32 margin_x = child->props.margin.start + child->props.margin.end;
+  f32 margin_y = child->props.margin.top + child->props.margin.bottom;
+  max_size.x = MaxF32(max_size.x - margin_x, 0);
+  max_size.y = MaxF32(max_size.y - margin_y, 0);
 
+  LayoutBox(state, child, min_size, max_size);
+
+  // Add margin back
+  Vec2 child_size;
+  child_size.x = MinF32(child->computed.size.x + margin_x, max_size.x);
+  child_size.y = MinF32(child->computed.size.y + margin_y, max_size.y);
+
+  if (GetItemVec2(child_size, main_axis) == kUISizeInfinity &&
+      GetItemVec2(max_size, main_axis) == kUISizeInfinity) {
+    PushUIBuildErrorF(
+        state, "Cannot have unbounded content within unbounded constraint");
+  }
+
+  return child_size;
+}
+
+static Vec2 LayoutChildrenFlex(UIState *state, UIBox *box, Vec2 max_size,
+                               Axis2 main_axis, Axis2 cross_axis) {
   f32 max_main_axis_size = GetItemVec2(max_size, main_axis);
   f32 max_cross_axis_size = GetItemVec2(max_size, cross_axis);
 
@@ -449,30 +519,12 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
                     GetItemVec2(this_child_max_size, cross_axis));
       }
 
-      // Leave space for margin
-      f32 margin_x = child->props.margin.start + child->props.margin.end;
-      f32 margin_y = child->props.margin.top + child->props.margin.bottom;
-      this_child_max_size.x = MaxF32(this_child_max_size.x - margin_x, 0);
-      this_child_max_size.y = MaxF32(this_child_max_size.y - margin_y, 0);
-      LayoutBox(state, child, this_child_min_size, this_child_max_size);
+      Vec2 this_child_size = LayoutChild(state, child, this_child_min_size,
+                                         this_child_max_size, main_axis);
 
-      // Add margin back
-      f32 this_child_main_axis_size =
-          GetItemVec2(child->computed.size, main_axis) +
-          GetEdgeInsetsSize(child->props.margin, main_axis);
-      f32 this_child_cross_axis_size =
-          GetItemVec2(child->computed.size, cross_axis) +
-          GetEdgeInsetsSize(child->props.margin, cross_axis);
-
-      if (max_main_axis_size == kUISizeInfinity &&
-          this_child_main_axis_size == kUISizeInfinity) {
-        PushUIBuildErrorF(
-            state, "Cannot have unbounded content within unbounded constraint");
-      }
-
-      child_main_axis_size += this_child_main_axis_size;
-      child_cross_axis_size =
-          MaxF32(child_cross_axis_size, this_child_cross_axis_size);
+      child_main_axis_size += GetItemVec2(this_child_size, main_axis);
+      child_cross_axis_size = MaxF32(child_cross_axis_size,
+                                     GetItemVec2(this_child_size, cross_axis));
     } else {
       last_flex = child;
     }
@@ -513,22 +565,12 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
         SetItemVec2(&this_child_min_size, cross_axis, 0.0f);
       }
 
-      // Leave space for margin
-      f32 margin_x = child->props.margin.start + child->props.margin.end;
-      f32 margin_y = child->props.margin.top + child->props.margin.bottom;
-      this_child_max_size.x = MaxF32(this_child_max_size.x - margin_x, 0);
-      this_child_max_size.y = MaxF32(this_child_max_size.y - margin_y, 0);
-      LayoutBox(state, child, this_child_min_size, this_child_max_size);
+      Vec2 this_child_size = LayoutChild(state, child, this_child_min_size,
+                                         this_child_max_size, main_axis);
 
-      f32 this_child_main_axis_size = this_child_max_main_axis_size;
-      // Add margin back
-      f32 this_child_cross_axis_size =
-          GetItemVec2(child->computed.size, cross_axis) +
-          GetEdgeInsetsSize(child->props.margin, cross_axis);
-
-      child_main_axis_size += this_child_main_axis_size;
-      child_cross_axis_size =
-          MaxF32(child_cross_axis_size, this_child_cross_axis_size);
+      child_main_axis_size += GetItemVec2(this_child_size, main_axis);
+      child_cross_axis_size = MaxF32(child_cross_axis_size,
+                                     GetItemVec2(this_child_size, cross_axis));
     }
   }
 
@@ -536,6 +578,58 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
   SetItemVec2(&children_size, main_axis, child_main_axis_size);
   SetItemVec2(&children_size, cross_axis, child_cross_axis_size);
   return children_size;
+}
+
+static Vec2 LayoutChildrenStack(UIState *state, UIBox *box, Vec2 max_size,
+                                Axis2 main_axis, Axis2 cross_axis) {
+  f32 max_main_axis_size = GetItemVec2(max_size, main_axis);
+  f32 max_cross_axis_size = GetItemVec2(max_size, cross_axis);
+
+  f32 child_main_axis_size = 0.0f;
+  f32 child_cross_axis_size = 0.0f;
+
+  for (UIBox *child = box->first; child; child = child->next) {
+    Vec2 this_child_max_size;
+    SetItemVec2(&this_child_max_size, main_axis, max_main_axis_size);
+    SetItemVec2(&this_child_max_size, cross_axis, max_cross_axis_size);
+    Vec2 this_child_min_size = {0};
+    if (box->props.cross_axis_align == kUICrossAxisAlignStretch) {
+      SetItemVec2(&this_child_min_size, cross_axis,
+                  GetItemVec2(this_child_max_size, cross_axis));
+    }
+
+    Vec2 this_child_size = LayoutChild(state, child, this_child_min_size,
+                                       this_child_max_size, main_axis);
+
+    child_main_axis_size =
+        MaxF32(child_main_axis_size, GetItemVec2(this_child_size, main_axis));
+    child_cross_axis_size =
+        MaxF32(child_cross_axis_size, GetItemVec2(this_child_size, cross_axis));
+  }
+
+  Vec2 children_size = V2(0, 0);
+  SetItemVec2(&children_size, main_axis, child_main_axis_size);
+  SetItemVec2(&children_size, cross_axis, child_cross_axis_size);
+  return children_size;
+}
+
+static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
+                           Axis2 main_axis, Axis2 cross_axis) {
+  ASSERT(box->first);
+
+  Vec2 result;
+  switch (box->props.layout) {
+    case kUILayoutFlex: {
+      result = LayoutChildrenFlex(state, box, max_size, main_axis, cross_axis);
+    } break;
+    case kUILayoutStack: {
+      result = LayoutChildrenStack(state, box, max_size, main_axis, cross_axis);
+    } break;
+    default: {
+      UNREACHABLE;
+    } break;
+  }
+  return result;
 }
 
 static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
@@ -546,6 +640,7 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
 
   box->computed.min_size = min_size;
   box->computed.max_size = max_size;
+  box->computed.clip = 0;
 
   Vec2 children_max_size = max_size;
   for (int axis = 0; axis < kAxis2Count; ++axis) {
@@ -711,7 +806,7 @@ static void DebugPrintUI(UIState *state) { (void)state; }
 #endif
 
 static void ProcessInputR(UIState *state, UIBox *box) {
-  for (UIBox *child = box->first; child; child = child->next) {
+  for (UIBox *child = box->last; child; child = child->prev) {
     ProcessInputR(state, child);
   }
 

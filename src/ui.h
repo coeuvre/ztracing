@@ -14,6 +14,11 @@ typedef struct UIKey {
   Str8 str;
 } UIKey;
 
+typedef enum UILayout {
+  kUILayoutFlex,
+  kUILayoutStack,
+} UILayout;
+
 typedef enum UIMainAxisSize {
   kUIMainAxisSizeMin,
   kUIMainAxisSizeMax,
@@ -76,6 +81,7 @@ typedef struct UIProps {
 
   ColorU32 background_color;
   Vec2 size;
+  UILayout layout;
   Axis2 main_axis;
   f32 flex;
   UIMainAxisSize main_axis_size;
