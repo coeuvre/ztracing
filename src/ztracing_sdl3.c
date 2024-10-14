@@ -5,7 +5,6 @@
 #include "src/assert.h"
 #include "src/draw.h"
 #include "src/draw_sdl3.h"
-#include "src/log.h"
 #include "src/math.h"
 #include "src/types.h"
 #include "src/ui.h"
@@ -30,7 +29,7 @@ u64 GetPerformanceFrequency(void) {
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
-  (void)argc, (void)argv;
+  (void)appstate, (void)argc, (void)argv;
 
   ASSERTF(SDL_Init(SDL_INIT_VIDEO), "Failed to init SDL3: %s", SDL_GetError());
 
@@ -56,6 +55,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   SDL_SetRenderVSync(renderer, 1);
 
   InitDrawSDL3(window, renderer);
+  InitUI();
 
   return SDL_APP_CONTINUE;
 }
@@ -77,6 +77,8 @@ static Vec2 MousePosFromSDL(Vec2 pos) {
 }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
+  (void)appstate;
+
   SDL_AppResult result = SDL_APP_CONTINUE;
   switch (event->type) {
     case SDL_EVENT_QUIT: {
@@ -115,6 +117,8 @@ static Vec2 GetGlobalWindowRelativeMousePos(void) {
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
+  (void)appstate;
+
   OnUIMousePos(GetGlobalWindowRelativeMousePos());
   DoFrame();
 
@@ -126,4 +130,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   return SDL_APP_CONTINUE; /* carry on with the program! */
 }
 
-void SDL_AppQuit(void *appstate, SDL_AppResult result) {}
+void SDL_AppQuit(void *appstate, SDL_AppResult result) {
+  (void)appstate, (void)result;
+  QuitUI();
+}

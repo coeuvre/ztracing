@@ -68,6 +68,9 @@ fn expectBoxText(box: [*c]c.UIBox, expected_text: []const u8) !void {
 }
 
 test "Key, return the same box across frame" {
+    c.InitUI();
+    defer c.QuitUI();
+
     var box1: [*c]c.UIBox = null;
     var box2: [*c]c.UIBox = null;
 
@@ -107,6 +110,9 @@ test "Key, return the same box across frame" {
 }
 
 test "Layout, root has the same size as the screen" {
+    c.InitUI();
+    defer c.QuitUI();
+
     const sizes: []const c.Vec2 = &.{
         c.V2(c.kUISizeUndefined, c.kUISizeUndefined),
         c.V2(50, 50),
@@ -130,6 +136,9 @@ test "Layout, root has the same size as the screen" {
 }
 
 test "Layout, aligns" {
+    c.InitUI();
+    defer c.QuitUI();
+
     const main_axis_options: []const MainAxisOption = &.{
         .{ .@"align" = c.kUIMainAxisAlignStart, .rel_pos = 0 },
         .{ .@"align" = c.kUIMainAxisAlignCenter, .rel_pos = 25 },
@@ -166,6 +175,9 @@ test "Layout, aligns" {
 }
 
 test "Layout, padding" {
+    c.InitUI();
+    defer c.QuitUI();
+
     const padding = c.UIEdgeInsetsFromSTEB(1, 2, 3, 4);
     const main_axis_options: []const MainAxisOption = &.{
         .{ .@"align" = c.kUIMainAxisAlignStart, .rel_pos = 1 },
@@ -208,6 +220,9 @@ test "Layout, padding" {
 }
 
 test "Layout, no children, no fixed size, as small as possible" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(100, 100));
     const key = c.PushUIKeyF("key");
     c.BeginUILayer();
@@ -225,6 +240,9 @@ test "Layout, no children, no fixed size, as small as possible" {
 }
 
 test "Layout, no children, no fixed size, flex, main axis is as big as possible" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(100, 100));
     const key = c.PushUIKeyF("key");
     c.BeginUILayer();
@@ -242,6 +260,9 @@ test "Layout, no children, no fixed size, flex, main axis is as big as possible"
 }
 
 test "Layout, with one child, size around it" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(100, 100));
     const key = c.PushUIKeyF("key");
     c.BeginUILayer();
@@ -263,6 +284,9 @@ test "Layout, with one child, size around it" {
 }
 
 test "Layout, with fixed size" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(100, 100));
     const container_key = c.PushUIKeyF("container");
     const child_key = c.PushUIKeyF("child");
@@ -287,6 +311,9 @@ test "Layout, with fixed size" {
 }
 
 test "Layout, with fixed size, negative" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(100, 100));
     const container_key = c.PushUIKeyF("container");
     const child_key = c.PushUIKeyF("child");
@@ -311,6 +338,9 @@ test "Layout, with fixed size, negative" {
 }
 
 test "Layout, main axis size, child has different main axis than parent" {
+    c.InitUI();
+    defer c.QuitUI();
+
     const main_axis_sizes: []const c.UIMainAxisSize = &.{
         c.kUIMainAxisSizeMin,
         c.kUIMainAxisSizeMax,
@@ -343,6 +373,9 @@ test "Layout, main axis size, child has different main axis than parent" {
 }
 
 test "Layout, main axis size, child has same main axis as parent" {
+    c.InitUI();
+    defer c.QuitUI();
+
     const main_axis_sizes: []const c.UIMainAxisSize = &.{
         c.kUIMainAxisSizeMin,
         c.kUIMainAxisSizeMax,
@@ -377,6 +410,9 @@ test "Layout, main axis size, child has same main axis as parent" {
 // TODO: test min/max size
 
 test "Layout, no fixed size, size around text" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(100, 100));
     c.BeginUILayer();
     const key = c.PushUIKeyF("key");
@@ -395,6 +431,9 @@ test "Layout, no fixed size, size around text" {
 }
 
 test "Layout, fixed size, truncate text" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(100, 100));
     const key = c.PushUIKeyF("key");
     c.BeginUILayer();
@@ -412,6 +451,9 @@ test "Layout, fixed size, truncate text" {
 }
 
 test "Layout, row, no constraints on children" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(1000, 100));
     const key0 = c.PushUIKeyF("key0");
     const key1 = c.PushUIKeyF("key1");
@@ -441,6 +483,9 @@ test "Layout, row, no constraints on children" {
 }
 
 test "Layout, row, no constraints on children, but truncate" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(100, 100));
     const key0 = c.PushUIKeyF("key0");
     const key1 = c.PushUIKeyF("key1");
@@ -470,6 +515,9 @@ test "Layout, row, no constraints on children, but truncate" {
 }
 
 test "Layout, row, constraint flex" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(100, 100));
     const key0 = c.PushUIKeyF("key0");
     const key1 = c.PushUIKeyF("key1");
@@ -503,6 +551,9 @@ test "Layout, row, constraint flex" {
 }
 
 test "Layout, main axis unbounded" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(100, 100));
     const container_key = c.PushUIKeyF("container");
     const child_key = c.PushUIKeyF("child");
@@ -534,6 +585,9 @@ test "Layout, main axis unbounded" {
 }
 
 test "Layout, main axis unbounded, with unbounded content" {
+    c.InitUI();
+    defer c.QuitUI();
+
     c.BeginUIFrame(c.V2(100, 100));
     c.BeginUILayer();
     c.BeginUIBox(.{});

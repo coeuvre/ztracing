@@ -158,15 +158,7 @@ thread_local UIState t_ui_state;
 
 static UIState *GetUIState(void) {
   UIState *state = &t_ui_state;
-  if (!state->arena) {
-    state->arena = AllocArena();
-    InitUIBoxCache(&state->cache, state->arena);
-    state->build_arena[0] = AllocArena();
-    state->build_arena[1] = AllocArena();
-
-    state->input.dt = 1.0f / 60.0f;  // Assume 60 FPS by default.
-    state->input.mouse.pos = V2(-1, -1);
-  }
+  ASSERTF(state->arena, "InitUI is not called");
   return state;
 }
 
@@ -201,6 +193,26 @@ static inline b32 IsMouseButtonClicked(UIState *state, UIMouseButton button) {
   b32 result =
       !mouse_button_state->is_down && mouse_button_state->transition_count > 0;
   return result;
+}
+
+void InitUI(void) {
+  UIState *state = &t_ui_state;
+  ASSERTF(!state->arena, "InitUI called more than once");
+  state->arena = AllocArena();
+  InitUIBoxCache(&state->cache, state->arena);
+  state->build_arena[0] = AllocArena();
+  state->build_arena[1] = AllocArena();
+
+  state->input.dt = 1.0f / 60.0f;  // Assume 60 FPS by default.
+  state->input.mouse.pos = V2(-1, -1);
+}
+
+void QuitUI(void) {
+  UIState *state = GetUIState();
+  FreeArena(state->build_arena[0]);
+  FreeArena(state->build_arena[1]);
+  FreeArena(state->arena);
+  *state = (UIState){0};
 }
 
 void OnUIMousePos(Vec2 pos) {

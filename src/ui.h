@@ -142,7 +142,6 @@ struct UIBox {
   f32 active_t;
 };
 
-
 typedef struct UILayer UILayer;
 struct UILayer {
   UILayer *prev;
@@ -152,6 +151,9 @@ struct UILayer {
   UIBox *root;
   UIBox *current;
 };
+
+void InitUI(void);
+void QuitUI(void);
 
 // Mouse pos in points.
 void OnUIMousePos(Vec2 pos);
