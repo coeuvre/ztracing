@@ -44,4 +44,11 @@ void EndUIScrollable(UIScrollableState *state);
 f32 GetUIScrollableScroll(UIScrollableState *state);
 void SetUIScrollableScroll(UIScrollableState *state, f32 scroll);
 
+typedef struct UIDebugLayerState {
+  Vec2 pos;
+  Vec2 pressed_pos;
+} UIDebugLayerState;
+
+void UIDebugLayer(UIDebugLayerState *state);
+
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_

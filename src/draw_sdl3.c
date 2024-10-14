@@ -161,8 +161,10 @@ TextMetrics GetTextMetricsStr8(Str8 text, f32 height) {
   return result;
 }
 
-void DrawTextStr8(Vec2 pos, Str8 text, f32 height) {
+void DrawTextStr8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
   TempMemory scratch = BeginScratch(0, 0);
+
+  Vec4 colorf = LinearColorFromSRGB(color);
 
   f32 content_scale = GetScreenContentScale();
   pos = MulVec2(pos, content_scale);
@@ -184,31 +186,44 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height) {
     stbtt_GetGlyphBitmapBox(font, glyph, scale, scale, &min.x, &min.y, &max.x,
                             &max.y);
     Vec2I glyph_size = SubVec2I(max, min);
-    u8 *pixels_a8 = PushArray(scratch.arena, u8, glyph_size.x * glyph_size.y);
-    u32 *pixels_argb8888 =
-        PushArray(scratch.arena, u32, glyph_size.x * glyph_size.y);
-    ASSERT(pixels_a8 && pixels_argb8888);
-    stbtt_MakeGlyphBitmap(font, pixels_a8, glyph_size.x, glyph_size.y,
+
+    // TODO: font cache/atlas
+    u8 *pixels_u8 =
+        PushArrayNoZero(scratch.arena, u8, glyph_size.x * glyph_size.y);
+    u32 *pixels_u32 =
+        PushArrayNoZero(scratch.arena, u32, glyph_size.x * glyph_size.y);
+    ASSERT(pixels_u8 && pixels_u32);
+    stbtt_MakeGlyphBitmap(font, pixels_u8, glyph_size.x, glyph_size.y,
                           glyph_size.x, scale, scale, glyph);
 
-    u32 *dst_row = pixels_argb8888;
-    u8 *src_row = pixels_a8;
+    u32 *dst_row = pixels_u32;
+    u8 *src_row = pixels_u8;
     for (i32 y = 0; y < glyph_size.y; ++y) {
       u32 *dst = dst_row;
       u8 *src = src_row;
       for (i32 x = 0; x < glyph_size.x; ++x) {
+#if 1
+        f32 alpha = (*src++) / 255.0f;
+        Vec4 texel;
+        texel.x = colorf.x * alpha;
+        texel.y = colorf.y * alpha;
+        texel.z = colorf.z * alpha;
+        texel.w = colorf.w * alpha;
+        ColorU32 c = ColorU32FromLinearPremultipliedColor(texel);
+        (*dst++) = *(u32 *)&c;
+#else
         u8 alpha = *src++;
         (*dst++) = (((u32)alpha << 24) | ((u32)alpha << 16) |
                     ((u32)alpha << 8) | ((u32)alpha << 0));
+#endif
       }
       dst_row += glyph_size.x;
       src_row += glyph_size.x;
     }
 
-    // TODO: font cache/atlas
     if (glyph_size.x > 0 && glyph_size.y > 0) {
       SDL_Surface *surface = SDL_CreateSurfaceFrom(
-          glyph_size.x, glyph_size.y, SDL_PIXELFORMAT_ARGB8888, pixels_argb8888,
+          glyph_size.x, glyph_size.y, SDL_PIXELFORMAT_ARGB32, pixels_u32,
           glyph_size.x * 4);
       SDL_Texture *texture =
           SDL_CreateTextureFromSurface(t_draw_state.renderer, surface);

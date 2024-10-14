@@ -20,7 +20,7 @@ typedef struct TextMetrics {
 
 // height in points
 TextMetrics GetTextMetricsStr8(Str8 text, f32 height);
-void DrawTextStr8(Vec2 pos, Str8 text, f32 height);
+void DrawTextStr8(Vec2 pos, Str8 text, f32 height, ColorU32 color);
 
 void ClearDraw(void);
 void PresentDraw(void);

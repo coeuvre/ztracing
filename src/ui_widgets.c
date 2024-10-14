@@ -92,20 +92,20 @@ void EndUIScrollable(UIScrollableState *state) {
       });
       {
         ColorU32 background_color =
-            ColorU32RGBANotPremultiplied(128, 128, 128, 255);
+            ColorU32FromSRGBNotPremultiplied(128, 128, 128, 255);
 
         BeginUIBox((UIProps){
             .size = V2(state->head_size.x, state->control_offset),
-            .color = background_color,
+            .background_color = background_color,
         });
         EndUIBox();
 
         UIKey control_key = PushUIKeyF("Control");
         ColorU32 control_background_color =
-            ColorU32RGBANotPremultiplied(192, 192, 192, 255);
+            ColorU32FromSRGBNotPremultiplied(192, 192, 192, 255);
         if (IsUIMouseHovering(control_key)) {
           control_background_color =
-              ColorU32RGBANotPremultiplied(224, 224, 224, 255);
+              ColorU32FromSRGBNotPremultiplied(224, 224, 224, 255);
         }
         if (IsUIMouseButtonPressed(control_key, kUIMouseButtonLeft)) {
           state->control_offset_drag_start = state->control_offset;
@@ -121,13 +121,13 @@ void EndUIScrollable(UIScrollableState *state) {
                        state->scroll_max);
 
           control_background_color =
-              ColorU32RGBANotPremultiplied(255, 255, 255, 255);
+              ColorU32FromSRGBNotPremultiplied(255, 255, 255, 255);
         }
 
         BeginUIBox((UIProps){
             .key = control_key,
             .size = V2(state->head_size.x, state->control_size),
-            .color = background_color,
+            .background_color = background_color,
             .main_axis_align = kUIMainAxisAlignCenter,
             .hoverable = 1,
             .clickable[kUIMouseButtonLeft] = 1,
@@ -137,7 +137,7 @@ void EndUIScrollable(UIScrollableState *state) {
               .size = V2(
                   is_dragging ? state->head_size.x : state->head_size.x * 0.8f,
                   state->control_size),
-              .color = control_background_color,
+              .background_color = control_background_color,
           });
           EndUIBox();
         }
@@ -146,7 +146,7 @@ void EndUIScrollable(UIScrollableState *state) {
         BeginUIBox((UIProps){
             .size = V2(state->head_size.x, kUISizeUndefined),
             .flex = 1,
-            .color = background_color,
+            .background_color = background_color,
         });
         EndUIBox();
       }
@@ -163,4 +163,59 @@ f32 GetUIScrollableScroll(UIScrollableState *state) {
 
 void SetUIScrollableScroll(UIScrollableState *state, f32 scroll) {
   state->scroll = ClampF32(scroll, 0, state->scroll_max);
+}
+
+void UIDebugLayer(UIDebugLayerState *state) {
+  BeginUILayer("Debug@%p", state);
+  BeginUIBox((UIProps){
+      .color = ColorU32FromHex(0x000000),
+  });
+  {
+    UIKey container_key = PushUIKeyF("Container");
+    if (IsUIMouseButtonPressed(container_key, kUIMouseButtonLeft)) {
+      state->pressed_pos = state->pos;
+    }
+    Vec2 drag_delta;
+    if (IsUIMouseButtonDragging(container_key, kUIMouseButtonLeft,
+                                &drag_delta)) {
+      state->pos = AddVec2(state->pressed_pos, drag_delta);
+    }
+    BeginUIColumn((UIProps){
+        .key = container_key,
+        .size = V2(800, 600),
+        .margin = UIEdgeInsetsFromSTEB(state->pos.x, state->pos.y, 0, 0),
+        .background_color = ColorU32FromHex(0xF0F0F0),
+        .clickable[kUIMouseButtonLeft] = 1,
+    });
+    {
+      BeginUIRow((UIProps){
+          .background_color = ColorU32FromHex(0xD1D1D1),
+          .padding = UIEdgeInsetsSymmetric(6, 3),
+      });
+      {
+        BeginUIBox((UIProps){
+            .text = PushUITextF("UI Debug"),
+        });
+        EndUIBox();
+
+        BeginUIBox((UIProps){.flex = 1});
+        EndUIBox();
+
+        BeginUIBox((UIProps){
+            .text = PushUITextF("X"),
+        });
+        EndUIBox();
+      }
+      EndUIRow();
+
+      static UIScrollableState scrollable_state;
+      BeginUIScrollable((UIProps){0}, &scrollable_state);
+      {
+      }
+      EndUIScrollable(&scrollable_state);
+    }
+    EndUIColumn();
+  }
+  EndUIBox();
+  EndUILayer();
 }

@@ -394,6 +394,14 @@ static f32 GetFirstNonZeroFontSize(UIBox *box) {
   return font_size;
 }
 
+static ColorU32 GetFirstNonZeroColor(UIBox *box) {
+  ColorU32 color = box->props.color;
+  if (color.a == 0 && box->parent) {
+    color = GetFirstNonZeroColor(box->parent);
+  }
+  return color;
+}
+
 static Vec2 LayoutText(UIBox *box, Vec2 max_size, Axis2 main_axis,
                        Axis2 cross_axis) {
   ASSERT(!IsEmptyStr8(box->props.text));
@@ -649,8 +657,8 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
       PushClipRect(intersection.min, intersection.max);
     }
 
-    if (box->props.color.a) {
-      DrawRect(min, max, box->props.color);
+    if (box->props.background_color.a) {
+      DrawRect(min, max, box->props.background_color);
     }
 
     // Debug outline
@@ -662,7 +670,8 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
         RenderBox(state, child, min, intersection);
       }
     } else if (!IsEmptyStr8(box->props.text)) {
-      DrawTextStr8(min, box->props.text, box->computed.font_size);
+      DrawTextStr8(min, box->props.text, box->computed.font_size,
+                   GetFirstNonZeroColor(box));
     }
 
     if (need_clip) {
@@ -677,7 +686,7 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
 #include "src/log.h"
 static void DebugPrintUIR(UIBox *box, u32 level) {
   INFO(
-      "%*s %s[id=%s, min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), "
+      "%*s%s[id=%s, min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), "
       "build_size=(%.2f, %.2f), size=(%.2f, %.2f), rel_pos=(%.2f, %.2f)]",
       level * 4, "", box->computed.tag, box->props.key.str.ptr,
       box->computed.min_size.x, box->computed.min_size.y,
@@ -692,6 +701,7 @@ static void DebugPrintUIR(UIBox *box, u32 level) {
 static void DebugPrintUI(UIState *state) {
   if (state->build_index > 1) {
     for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
+      INFO("Layer: %s", layer->key.str.ptr);
       if (layer->root) {
         DebugPrintUIR(layer->root, 0);
       }

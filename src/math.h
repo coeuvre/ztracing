@@ -188,12 +188,12 @@ static inline ColorU32 ColorU32Zero() {
   return result;
 }
 
-static Vec4 LinearColorFromSRGB(u8 r, u8 g, u8 b, u8 a) {
+static Vec4 LinearColorFromSRGB(ColorU32 color) {
   Vec4 result;
-  result.x = PowF32((r / 255.0f), 2.2f);
-  result.y = PowF32((g / 255.0f), 2.2f);
-  result.z = PowF32((b / 255.0f), 2.2f);
-  result.w = a / 255.0f;
+  result.x = PowF32(color.r / 255.0f, 2.2f);
+  result.y = PowF32(color.g / 255.0f, 2.2f);
+  result.z = PowF32(color.b / 255.0f, 2.2f);
+  result.w = color.a / 255.0f;
   return result;
 }
 
@@ -202,25 +202,32 @@ static ColorU32 ColorU32FromLinearPremultipliedColor(Vec4 color) {
   color.y = PowF32(color.y, 1.0f / 2.2f);
   color.z = PowF32(color.z, 1.0f / 2.2f);
   ColorU32 result;
-  result.r = RoundF32(color.x * 255.0f);
-  result.g = RoundF32(color.y * 255.0f);
-  result.b = RoundF32(color.z * 255.0f);
-  result.a = RoundF32(color.w * 255.0f);
+  result.r = (u8)RoundF32(color.x * 255.0f);
+  result.g = (u8)RoundF32(color.y * 255.0f);
+  result.b = (u8)RoundF32(color.z * 255.0f);
+  result.a = (u8)RoundF32(color.w * 255.0f);
   return result;
 }
 
-static inline ColorU32 ColorU32RGBANotPremultiplied(u8 r, u8 g, u8 b, u8 a) {
-  Vec4 color = LinearColorFromSRGB(r, g, b, a);
+static inline ColorU32 ColorU32FromSRGBNotPremultiplied(u8 r, u8 g, u8 b,
+                                                        u8 a) {
+  ColorU32 result;
+  result.r = r;
+  result.g = g;
+  result.b = b;
+  result.a = a;
+
+  Vec4 color = LinearColorFromSRGB(result);
   color.x *= color.w;
   color.y *= color.w;
   color.z *= color.w;
 
-  ColorU32 result = ColorU32FromLinearPremultipliedColor(color);
+  result = ColorU32FromLinearPremultipliedColor(color);
   return result;
 }
 
 static inline ColorU32 ColorU32FromHex(u32 hex) {
-  ColorU32 result = ColorU32RGBANotPremultiplied(
+  ColorU32 result = ColorU32FromSRGBNotPremultiplied(
       (hex >> 16) & 0xFF, (hex >> 8) & 0xFF, hex & 0xFF, 0xFF);
   return result;
 }

@@ -74,7 +74,7 @@ typedef enum UIMouseButton {
 typedef struct UIProps {
   UIKey key;
 
-  ColorU32 color;
+  ColorU32 background_color;
   Vec2 size;
   Axis2 main_axis;
   f32 flex;
@@ -85,6 +85,7 @@ typedef struct UIProps {
   UIEdgeInsets margin;
 
   Str8 text;
+  ColorU32 color;
   f32 font_size;
 
   b8 hoverable;

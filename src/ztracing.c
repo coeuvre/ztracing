@@ -27,7 +27,7 @@ static void UIButton(Str8 label) {
       .padding = UIEdgeInsetsSymmetric(6, 4),
       .hoverable = 1,
       .clickable[kUIMouseButtonLeft] = 1,
-      .color = color,
+      .background_color = color,
   });
   {
     BeginUIBox((UIProps){
@@ -55,9 +55,11 @@ static void BuildUI(f32 dt, f32 frame_time) {
   TempMemory scratch = BeginScratch(0, 0);
 
   BeginUILayer("Base");
-  BeginUIColumn((UIProps){0});
+  BeginUIColumn((UIProps){
+      .color = ColorU32FromSRGBNotPremultiplied(255, 255, 255, 255),
+  });
   {
-    BeginUIRow((UIProps){.color = ColorU32FromHex(0xE6573F)});
+    BeginUIRow((UIProps){.background_color = ColorU32FromHex(0xE6573F)});
     {
       UIButton(STR8_LIT("Load"));
       UIButton(STR8_LIT("About"));
@@ -91,61 +93,22 @@ static void BuildUI(f32 dt, f32 frame_time) {
       }
       BeginUIColumn((UIProps){.key = key, .clickable = 1});
       for (u32 item_index = 0; item_index < item_count; ++item_index) {
-        BeginUIRow((UIProps){.size = V2(kUISizeUndefined, item_size),
-                             .color = ColorU32RGBANotPremultiplied(
-                                 0, 0, item_index % 256, 255)});
+        BeginUIRow((UIProps){
+            .size = V2(kUISizeUndefined, item_size),
+            .background_color =
+                ColorU32FromSRGBNotPremultiplied(0, 0, item_index % 256, 255),
+        });
         EndUIRow();
       }
       EndUIColumn();
     }
     EndUIScrollable(&state);
-
-    BeginUILayer("Popup1");
-    {
-      BeginUIBox((UIProps){0});
-      BeginUIBox((UIProps){
-          .margin = UIEdgeInsetsFromSTEB(100, 100, 0, 0),
-          .size = V2(100, 100),
-          .color = ColorU32RGBANotPremultiplied(255, 0, 0, 255),
-      });
-      EndUIBox();
-      EndUIBox();
-    }
-    EndUILayer();
   }
   EndUIColumn();
   EndUILayer();
 
-  static b32 enable_this_layer = 1;
-  if (enable_this_layer) {
-    BeginUILayer("Popup2");
-    {
-      UIKey root_key = PushUIKeyF("Root");
-      BeginUIBox((UIProps){
-          .key = root_key,
-          .hoverable = 1,
-          .clickable = {1},
-          .scrollable = 1,
-          .color = ColorU32RGBANotPremultiplied(0, 0, 0, 32),
-      });
-      {
-        UIKey container_key = PushUIKeyF("Container");
-        if (IsUIMouseButtonClicked(container_key, kUIMouseButtonLeft)) {
-          enable_this_layer = 0;
-        }
-        BeginUIBox((UIProps){
-            .key = container_key,
-            .margin = UIEdgeInsetsFromSTEB(500, 200, 0, 0),
-            .size = V2(100, 100),
-            .color = ColorU32RGBANotPremultiplied(0, 255, 0, 255),
-            .clickable[kUIMouseButtonLeft] = 1,
-        });
-        EndUIBox();
-      }
-      EndUIBox();
-    }
-    EndUILayer();
-  }
+  static UIDebugLayerState debug_layer_state;
+  UIDebugLayer(&debug_layer_state);
 
   EndScratch(scratch);
 }
