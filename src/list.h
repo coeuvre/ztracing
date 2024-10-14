@@ -14,6 +14,20 @@
     }                                                            \
   } while (0)
 
+// Insert node after node `after`. If `after` is NULL, append to the end of the
+// list.
+#define INSERT_DOUBLY_LINKED_LIST(first, last, after, node, prev, next) \
+  do {                                                                  \
+    if (after && last != after) {                                       \
+      (node)->prev = (after);                                           \
+      (node)->next = (after)->next;                                     \
+      (node)->next->prev = (node);                                      \
+      (node)->prev->next = (node);                                      \
+    } else {                                                            \
+      APPEND_DOUBLY_LINKED_LIST(first, last, node, prev, next);         \
+    }                                                                   \
+  } while (0)
+
 #define REMOVE_DOUBLY_LINKED_LIST(first, last, node, prev, next) \
   do {                                                           \
     if ((first) == (node)) {                                     \

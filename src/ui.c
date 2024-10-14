@@ -1,13 +1,11 @@
 #include "src/ui.h"
 
 #include <stdarg.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "src/assert.h"
 #include "src/draw.h"
 #include "src/list.h"
-#include "src/log.h"
 #include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
@@ -147,8 +145,11 @@ typedef struct UIState {
 
   // per-frame info
   Vec2 screen_size;
-  UIBox *root;
-  UIBox *current;
+
+  UILayer *first_layer;
+  UILayer *last_layer;
+  UILayer *current_layer;
+
   UIBuildError *first_error;
   UIBuildError *last_error;
 } UIState;
@@ -257,8 +258,7 @@ void BeginUIFrame(Vec2 screen_size) {
 
   state->build_index += 1;
   state->screen_size = screen_size;
-  state->root = 0;
-  state->current = 0;
+  state->first_layer = state->last_layer = state->current_layer = 0;
   state->first_error = state->last_error = 0;
 
   ResetArena(GetBuildArena(state));
@@ -562,6 +562,11 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
   Axis2 cross_axis = (main_axis + 1) % kAxis2Count;
   Vec2 children_size = V2(0, 0);
   if (box->first) {
+    if (!IsEmptyStr8(box->props.text)) {
+      PushUIBuildErrorF(state,
+                        "%s: text content is ignored because box has children",
+                        box->props.key.str.ptr);
+    }
     children_size =
         LayoutChildren(state, box, children_max_size, main_axis, cross_axis);
   } else if (!IsEmptyStr8(box->props.text)) {
@@ -644,10 +649,6 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
       for (UIBox *child = box->first; child; child = child->next) {
         RenderBox(state, child, min, intersection);
       }
-      if (!IsEmptyStr8(box->props.text)) {
-        WARN("%s: text content is ignored because it has children",
-             box->props.key.str.ptr);
-      }
     } else if (!IsEmptyStr8(box->props.text)) {
       DrawTextStr8(min, box->props.text, box->computed.font_size);
     }
@@ -658,7 +659,10 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
   }
 }
 
-#if 1
+#if 0
+#include <stdlib.h>
+
+#include "src/log.h"
 static void DebugPrintUIR(UIBox *box, u32 level) {
   INFO(
       "%*s %s[id=%s, min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), "
@@ -675,12 +679,16 @@ static void DebugPrintUIR(UIBox *box, u32 level) {
 
 static void DebugPrintUI(UIState *state) {
   if (state->build_index > 1) {
-    if (state->root) {
-      DebugPrintUIR(state->root, 0);
+    for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
+      if (layer->root) {
+        DebugPrintUIR(layer->root, 0);
+      }
     }
     exit(0);
   }
 }
+#else
+static void DebugPrintUI(UIState *state) { (void)state; }
 #endif
 
 static void ProcessInputR(UIState *state, UIBox *box) {
@@ -722,8 +730,10 @@ static void ProcessInput(UIState *state) {
     state->input.mouse.clicked[button] = 0;
   }
 
-  if (state->root) {
-    ProcessInputR(state, state->root);
+  for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
+    if (layer->root) {
+      ProcessInputR(state, layer->root);
+    }
   }
 
   for (int button = 0; button < kUIMouseButtonCount; ++button) {
@@ -748,16 +758,18 @@ static void ProcessInput(UIState *state) {
 
 void EndUIFrame(void) {
   UIState *state = GetUIState();
-  ASSERTF(!state->current, "Mismatched Begin/End calls");
+  ASSERTF(!state->current_layer, "Mismatched BeginLayer/EndLayer calls");
 
-  if (state->root) {
-    LayoutBox(state, state->root, state->screen_size, state->screen_size);
-    state->root->computed.rel_pos = V2(0, 0);
+  for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
+    if (layer->root) {
+      LayoutBox(state, layer->root, state->screen_size, state->screen_size);
+      layer->root->computed.rel_pos = V2(0, 0);
+    }
   }
 
   ProcessInput(state);
 
-  // DebugPrintUI(state);
+  DebugPrintUI(state);
 }
 
 void RenderUI(void) {
@@ -765,9 +777,30 @@ void RenderUI(void) {
 
   ASSERTF(!state->first_error, "%s", state->first_error->message.ptr);
 
-  if (state->root) {
-    RenderBox(state, state->root, V2(0, 0), R2(V2(0, 0), state->screen_size));
+  for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
+    if (layer->root) {
+      RenderBox(state, layer->root, V2(0, 0), R2(V2(0, 0), state->screen_size));
+    }
   }
+}
+
+void BeginUILayer(void) {
+  UIState *state = GetUIState();
+  Arena *arena = GetBuildArena(state);
+  UILayer *layer = PushArray(arena, UILayer, 1);
+  INSERT_DOUBLY_LINKED_LIST(state->first_layer, state->last_layer,
+                            state->current_layer, layer, prev, next);
+  layer->parent = state->current_layer;
+  state->current_layer = layer;
+}
+
+void EndUILayer(void) {
+  UIState *state = GetUIState();
+  ASSERTF(state->current_layer, "Mismatched BeginLayer/EndLayer calls");
+  ASSERTF(!state->current_layer->current,
+          "Mismatched BeginUIBox/EndUIBox calls");
+
+  state->current_layer = state->current_layer->parent;
 }
 
 UIBuildError *GetFirstUIBuildError(void) {
@@ -796,21 +829,29 @@ b32 IsEqualUIKey(UIKey a, UIKey b) {
   return result;
 }
 
-static UIKey GetFirstNonZeroUIKey(UIBox *box) {
+static UIKey GetFirstNonZeroUIKeyR(UIBox *box) {
   UIKey result = UIKeyZero();
   if (box) {
     if (!IsZeroUIKey(box->key)) {
       result = box->key;
     } else {
-      result = GetFirstNonZeroUIKey(box->parent);
+      result = GetFirstNonZeroUIKeyR(box->parent);
     }
+  }
+  return result;
+}
+
+static UIKey GetFirstNonZeroUIKey(UIState *state) {
+  UIKey result = UIKeyZero();
+  if (state->current_layer) {
+    result = GetFirstNonZeroUIKeyR(state->current_layer->current);
   }
   return result;
 }
 
 static UIKey PushUIKeyWithStrFromBuildArena(Str8 key_str) {
   UIState *state = GetUIState();
-  UIKey seed = GetFirstNonZeroUIKey(state->current);
+  UIKey seed = GetFirstNonZeroUIKey(state);
   UIKey result = UIKeyFromStr8(seed, key_str);
   return result;
 }
@@ -819,7 +860,7 @@ UIKey PushUIKey(Str8 key_str) {
   UIState *state = GetUIState();
   Arena *arena = GetBuildArena(state);
   Str8 key_str_copy = PushStr8(arena, key_str);
-  UIKey seed = GetFirstNonZeroUIKey(state->current);
+  UIKey seed = GetFirstNonZeroUIKey(state);
   UIKey result = UIKeyFromStr8(seed, key_str_copy);
   return result;
 }
@@ -865,7 +906,10 @@ Str8 PushUITextFV(const char *fmt, va_list ap) {
 void BeginUIBoxWithTag(const char *tag, UIProps props) {
   UIState *state = GetUIState();
 
-  UIBox *parent = state->current;
+  UILayer *layer = state->current_layer;
+  ASSERTF(layer, "No active UILayer");
+
+  UIBox *parent = layer->current;
   UIKey key = props.key;
   UIBox *box = GetOrPushBoxByKey(&state->cache, state->arena, key);
   ASSERTF(box->last_touched_build_index < state->build_index,
@@ -875,8 +919,8 @@ void BeginUIBoxWithTag(const char *tag, UIProps props) {
   if (parent) {
     APPEND_DOUBLY_LINKED_LIST(parent->first, parent->last, box, prev, next);
   } else {
-    ASSERTF(!state->root, "More than one root box provided");
-    state->root = box;
+    ASSERTF(!layer->root, "More than one root provided");
+    layer->root = box;
   }
   box->parent = parent;
   box->last_touched_build_index = state->build_index;
@@ -886,57 +930,35 @@ void BeginUIBoxWithTag(const char *tag, UIProps props) {
   box->props = props;
   box->computed.tag = tag;
 
-  state->current = box;
+  layer->current = box;
 }
 
 void EndUIBoxWithExpectedTag(const char *tag) {
   UIState *state = GetUIState();
+  UILayer *layer = state->current_layer;
+  ASSERTF(layer, "No active UILayer");
 
-  ASSERT(state->current);
-  ASSERTF(strcmp(state->current->computed.tag, tag) == 0,
+  ASSERT(layer->current);
+  ASSERTF(strcmp(layer->current->computed.tag, tag) == 0,
           "Mismatched Begin/End calls. Begin with %s, end with %s",
-          state->current->computed.tag, tag);
-  state->current = state->current->parent;
+          layer->current->computed.tag, tag);
+  layer->current = layer->current->parent;
 }
 
-UIBox *GetUIRoot(void) {
-  UIState *state = GetUIState();
-  return state->root;
-}
-
-static inline UIBox *GetUIBoxByKey(UIState *state, UIKey key) {
+static inline UIBox *GetUIBoxByKeyInternal(UIState *state, UIKey key) {
   UIBox *result = GetBoxByKey(&state->cache, key);
   return result;
 }
 
-UIBox *GetUIBox(UIBox *parent, u32 index) {
-  UIBox *result = 0;
-
+UIBox *GetUIBox(UIKey key) {
   UIState *state = GetUIState();
-  if (!parent) {
-    result = state->root;
-  } else {
-    u32 j = 0;
-    for (UIBox *child = parent->first; child; child = child->next) {
-      if (j++ == index) {
-        result = child;
-        break;
-      }
-    }
-  }
-
+  UIBox *result = GetUIBoxByKeyInternal(state, key);
   return result;
-}
-
-UIBox *GetCurrentUIBox(void) {
-  UIState *state = GetUIState();
-  ASSERT(state->current);
-  return state->current;
 }
 
 UIComputed GetUIComputed(UIKey key) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByKey(state, key);
+  UIBox *box = GetUIBoxByKeyInternal(state, key);
   UIComputed result = {0};
   if (box) {
     result = box->computed;
@@ -946,7 +968,7 @@ UIComputed GetUIComputed(UIKey key) {
 
 Vec2 GetUIMouseRelPos(UIKey key) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByKey(state, key);
+  UIBox *box = GetUIBoxByKeyInternal(state, key);
   Vec2 result = V2(0, 0);
   if (box) {
     result = SubVec2(state->input.mouse.pos, box->computed.screen_rect.min);

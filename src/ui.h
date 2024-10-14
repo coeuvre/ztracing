@@ -142,6 +142,17 @@ struct UIBox {
   f32 active_t;
 };
 
+
+typedef struct UILayer UILayer;
+struct UILayer {
+  UILayer *prev;
+  UILayer *next;
+  UILayer *parent;
+
+  UIBox *root;
+  UIBox *current;
+};
+
 // Mouse pos in points.
 void OnUIMousePos(Vec2 pos);
 void OnUIMouseButtonUp(Vec2 pos, UIMouseButton button);
@@ -154,6 +165,9 @@ f32 GetUIDeltaTime(void);
 void BeginUIFrame(Vec2 screen_size);
 void EndUIFrame(void);
 void RenderUI(void);
+
+void BeginUILayer(void);
+void EndUILayer(void);
 
 UIBuildError *GetFirstUIBuildError(void);
 
@@ -185,8 +199,7 @@ static inline void BeginUIBox(UIProps props) {
 }
 static inline void EndUIBox(void) { EndUIBoxWithExpectedTag("Box"); }
 
-UIBox *GetUIBox(UIBox *box, u32 index);
-UIBox *GetCurrentUIBox(void);
+UIBox *GetUIBox(UIKey key);
 
 UIComputed GetUIComputed(UIKey key);
 Vec2 GetUIMouseRelPos(UIKey key);

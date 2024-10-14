@@ -44,6 +44,9 @@ void InitDrawSDL3(SDL_Window *window, SDL_Renderer *renderer) {
 
 f32 GetScreenContentScale(void) {
   f32 result = SDL_GetWindowDisplayScale(t_draw_state.window);
+  if (result == 0) {
+    result = 1;
+  }
   return result;
 }
 

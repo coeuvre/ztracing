@@ -54,6 +54,7 @@ static void UITextF(UIProps props, const char *fmt, ...) {
 static void BuildUI(f32 dt, f32 frame_time) {
   TempMemory scratch = BeginScratch(0, 0);
 
+  BeginUILayer();
   BeginUIColumn((UIProps){0});
   {
     BeginUIRow((UIProps){.color = ColorU32FromHex(0xE6573F)});
@@ -79,7 +80,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
       // u32 item_index = FloorF32(state->scroll / item_size);
       // f32 offset = item_index * item_size - state->scroll;
       // for (; item_index < item_count && offset < state->scroll_area_size;
-      //      ++item_index, offset += item_size) {
+      //      ++item_index, offset += item_size) 
       UIKey key = PushUIKeyF("Content");
       if (IsUIMouseButtonPressed(key, kUIMouseButtonLeft)) {
         scroll_drag_started = GetUIScrollableScroll(&state);
@@ -98,8 +99,35 @@ static void BuildUI(f32 dt, f32 frame_time) {
       EndUIColumn();
     }
     EndUIScrollable(&state);
+
+    BeginUILayer();
+    {
+      BeginUIBox((UIProps){0});
+      BeginUIBox((UIProps){
+          .margin = UIEdgeInsetsFromSTEB(100, 100, 0, 0),
+          .size = V2(100, 100),
+          .color = ColorU32FromRGBA(255, 0, 0, 255),
+      });
+      EndUIBox();
+      EndUIBox();
+    }
+    EndUILayer();
   }
   EndUIColumn();
+  EndUILayer();
+
+  BeginUILayer();
+  {
+    BeginUIBox((UIProps){0});
+    BeginUIBox((UIProps){
+        .margin = UIEdgeInsetsFromSTEB(500, 200, 0, 0),
+        .size = V2(100, 100),
+        .color = ColorU32FromRGBA(0, 255, 0, 255),
+    });
+    EndUIBox();
+    EndUIBox();
+  }
+  EndUILayer();
 
   EndScratch(scratch);
 }
