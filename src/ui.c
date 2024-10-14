@@ -730,7 +730,7 @@ static void ProcessInput(UIState *state) {
     state->input.mouse.clicked[button] = 0;
   }
 
-  for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
+  for (UILayer *layer = state->last_layer; layer; layer = layer->prev) {
     if (layer->root) {
       ProcessInputR(state, layer->root);
     }

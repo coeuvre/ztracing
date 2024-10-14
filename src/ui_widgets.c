@@ -91,7 +91,8 @@ void EndUIScrollable(UIScrollableState *state) {
           .clickable[kUIMouseButtonLeft] = 1,
       });
       {
-        ColorU32 background_color = ColorU32FromRGBA(128, 128, 128, 255);
+        ColorU32 background_color =
+            ColorU32RGBANotPremultiplied(128, 128, 128, 255);
 
         BeginUIBox((UIProps){
             .size = V2(state->head_size.x, state->control_offset),
@@ -101,9 +102,10 @@ void EndUIScrollable(UIScrollableState *state) {
 
         UIKey control_key = PushUIKeyF("Control");
         ColorU32 control_background_color =
-            ColorU32FromRGBA(192, 192, 192, 255);
+            ColorU32RGBANotPremultiplied(192, 192, 192, 255);
         if (IsUIMouseHovering(control_key)) {
-          control_background_color = ColorU32FromRGBA(224, 224, 224, 255);
+          control_background_color =
+              ColorU32RGBANotPremultiplied(224, 224, 224, 255);
         }
         if (IsUIMouseButtonPressed(control_key, kUIMouseButtonLeft)) {
           state->control_offset_drag_start = state->control_offset;
@@ -118,7 +120,8 @@ void EndUIScrollable(UIScrollableState *state) {
               ClampF32(offset / state->control_max * state->scroll_max, 0,
                        state->scroll_max);
 
-          control_background_color = ColorU32FromRGBA(255, 255, 255, 255);
+          control_background_color =
+              ColorU32RGBANotPremultiplied(255, 255, 255, 255);
         }
 
         BeginUIBox((UIProps){

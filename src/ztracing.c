@@ -80,7 +80,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
       // u32 item_index = FloorF32(state->scroll / item_size);
       // f32 offset = item_index * item_size - state->scroll;
       // for (; item_index < item_count && offset < state->scroll_area_size;
-      //      ++item_index, offset += item_size) 
+      //      ++item_index, offset += item_size)
       UIKey key = PushUIKeyF("Content");
       if (IsUIMouseButtonPressed(key, kUIMouseButtonLeft)) {
         scroll_drag_started = GetUIScrollableScroll(&state);
@@ -91,9 +91,9 @@ static void BuildUI(f32 dt, f32 frame_time) {
       }
       BeginUIColumn((UIProps){.key = key, .clickable = 1});
       for (u32 item_index = 0; item_index < item_count; ++item_index) {
-        BeginUIRow(
-            (UIProps){.size = V2(kUISizeUndefined, item_size),
-                      .color = ColorU32FromRGBA(0, 0, item_index % 256, 255)});
+        BeginUIRow((UIProps){.size = V2(kUISizeUndefined, item_size),
+                             .color = ColorU32RGBANotPremultiplied(
+                                 0, 0, item_index % 256, 255)});
         EndUIRow();
       }
       EndUIColumn();
@@ -106,7 +106,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
       BeginUIBox((UIProps){
           .margin = UIEdgeInsetsFromSTEB(100, 100, 0, 0),
           .size = V2(100, 100),
-          .color = ColorU32FromRGBA(255, 0, 0, 255),
+          .color = ColorU32RGBANotPremultiplied(255, 0, 0, 255),
       });
       EndUIBox();
       EndUIBox();
@@ -116,18 +116,36 @@ static void BuildUI(f32 dt, f32 frame_time) {
   EndUIColumn();
   EndUILayer();
 
-  BeginUILayer();
-  {
-    BeginUIBox((UIProps){0});
-    BeginUIBox((UIProps){
-        .margin = UIEdgeInsetsFromSTEB(500, 200, 0, 0),
-        .size = V2(100, 100),
-        .color = ColorU32FromRGBA(0, 255, 0, 255),
-    });
-    EndUIBox();
-    EndUIBox();
+  static b32 enable_this_layer = 1;
+  if (enable_this_layer) {
+    BeginUILayer();
+    {
+      UIKey root_key = PushUIKeyF("Root");
+      BeginUIBox((UIProps){
+          .key = root_key,
+          .hoverable = 1,
+          .clickable = {1},
+          .scrollable = 1,
+          .color = ColorU32RGBANotPremultiplied(0, 0, 0, 32),
+      });
+      {
+        UIKey container_key = PushUIKeyF("Container");
+        if (IsUIMouseButtonClicked(container_key, kUIMouseButtonLeft)) {
+          enable_this_layer = 0;
+        }
+        BeginUIBox((UIProps){
+            .key = container_key,
+            .margin = UIEdgeInsetsFromSTEB(500, 200, 0, 0),
+            .size = V2(100, 100),
+            .color = ColorU32RGBANotPremultiplied(0, 255, 0, 255),
+            .clickable[kUIMouseButtonLeft] = 1,
+        });
+        EndUIBox();
+      }
+      EndUIBox();
+    }
+    EndUILayer();
   }
-  EndUILayer();
 
   EndScratch(scratch);
 }

@@ -9,6 +9,11 @@
 
 #define F32_INFINITY ((f32)(INFINITY))
 
+static inline f32 PowF32(f32 a, f32 b) {
+  f32 result = powf(a, b);
+  return result;
+}
+
 static inline f32 MaxF32(f32 a, f32 b) {
   f32 result = MAX(a, b);
   return result;
@@ -21,6 +26,11 @@ static inline f32 MinF32(f32 a, f32 b) {
 
 static inline b32 ContainsF32(f32 val, f32 begin, f32 end) {
   b32 result = begin <= val && val < end;
+  return result;
+}
+
+static inline f32 RoundF32(f32 value) {
+  f32 result = roundf(value);
   return result;
 }
 
@@ -165,6 +175,7 @@ typedef struct Vec4 {
   f32 w;
 } Vec4;
 
+// Premultiplied Color in sRGB space.
 typedef struct ColorU32 {
   u8 a;
   u8 r;
@@ -177,18 +188,40 @@ static inline ColorU32 ColorU32Zero() {
   return result;
 }
 
-static inline ColorU32 ColorU32FromRGBA(u8 r, u8 g, u8 b, u8 a) {
+static Vec4 LinearColorFromSRGB(u8 r, u8 g, u8 b, u8 a) {
+  Vec4 result;
+  result.x = PowF32((r / 255.0f), 2.2f);
+  result.y = PowF32((g / 255.0f), 2.2f);
+  result.z = PowF32((b / 255.0f), 2.2f);
+  result.w = a / 255.0f;
+  return result;
+}
+
+static ColorU32 ColorU32FromLinearPremultipliedColor(Vec4 color) {
+  color.x = PowF32(color.x, 1.0f / 2.2f);
+  color.y = PowF32(color.y, 1.0f / 2.2f);
+  color.z = PowF32(color.z, 1.0f / 2.2f);
   ColorU32 result;
-  result.r = r;
-  result.g = g;
-  result.b = b;
-  result.a = a;
+  result.r = RoundF32(color.x * 255.0f);
+  result.g = RoundF32(color.y * 255.0f);
+  result.b = RoundF32(color.z * 255.0f);
+  result.a = RoundF32(color.w * 255.0f);
+  return result;
+}
+
+static inline ColorU32 ColorU32RGBANotPremultiplied(u8 r, u8 g, u8 b, u8 a) {
+  Vec4 color = LinearColorFromSRGB(r, g, b, a);
+  color.x *= color.w;
+  color.y *= color.w;
+  color.z *= color.w;
+
+  ColorU32 result = ColorU32FromLinearPremultipliedColor(color);
   return result;
 }
 
 static inline ColorU32 ColorU32FromHex(u32 hex) {
-  ColorU32 result =
-      ColorU32FromRGBA((hex >> 16) & 0xFF, (hex >> 8) & 0xFF, hex & 0xFF, 0xFF);
+  ColorU32 result = ColorU32RGBANotPremultiplied(
+      (hex >> 16) & 0xFF, (hex >> 8) & 0xFF, hex & 0xFF, 0xFF);
   return result;
 }
 
@@ -265,11 +298,6 @@ static inline Vec2 ClampVec2(Vec2 value, Vec2 min, Vec2 max) {
 static inline Vec2I ClampVec2I(Vec2I value, Vec2I min, Vec2I max) {
   Vec2I result = {ClampI32(value.x, min.x, max.x),
                   ClampI32(value.y, min.y, max.y)};
-  return result;
-}
-
-static inline f32 RoundF32(f32 value) {
-  f32 result = roundf(value);
   return result;
 }
 

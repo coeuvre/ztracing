@@ -40,6 +40,7 @@ void InitDrawSDL3(SDL_Window *window, SDL_Renderer *renderer) {
   t_draw_state.arena = AllocArena();
   t_draw_state.window = window;
   t_draw_state.renderer = renderer;
+  SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
 }
 
 f32 GetScreenContentScale(void) {
