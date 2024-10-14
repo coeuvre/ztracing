@@ -54,7 +54,7 @@ static void UITextF(UIProps props, const char *fmt, ...) {
 static void BuildUI(f32 dt, f32 frame_time) {
   TempMemory scratch = BeginScratch(0, 0);
 
-  BeginUILayer();
+  BeginUILayer("Base");
   BeginUIColumn((UIProps){0});
   {
     BeginUIRow((UIProps){.color = ColorU32FromHex(0xE6573F)});
@@ -100,7 +100,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
     }
     EndUIScrollable(&state);
 
-    BeginUILayer();
+    BeginUILayer("Popup1");
     {
       BeginUIBox((UIProps){0});
       BeginUIBox((UIProps){
@@ -118,7 +118,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
 
   static b32 enable_this_layer = 1;
   if (enable_this_layer) {
-    BeginUILayer();
+    BeginUILayer("Popup2");
     {
       UIKey root_key = PushUIKeyF("Root");
       BeginUIBox((UIProps){

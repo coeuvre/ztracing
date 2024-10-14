@@ -796,31 +796,6 @@ void RenderUI(void) {
   }
 }
 
-void BeginUILayer(void) {
-  UIState *state = GetUIState();
-  Arena *arena = GetBuildArena(state);
-  UILayer *layer = PushArray(arena, UILayer, 1);
-  INSERT_DOUBLY_LINKED_LIST(state->first_layer, state->last_layer,
-                            state->current_layer, layer, prev, next);
-  layer->parent = state->current_layer;
-  state->current_layer = layer;
-}
-
-void EndUILayer(void) {
-  UIState *state = GetUIState();
-  ASSERTF(state->current_layer, "Mismatched BeginLayer/EndLayer calls");
-  ASSERTF(!state->current_layer->current,
-          "Mismatched BeginUIBox/EndUIBox calls");
-
-  state->current_layer = state->current_layer->parent;
-}
-
-UIBuildError *GetFirstUIBuildError(void) {
-  UIState *state = GetUIState();
-  UIBuildError *result = state->first_error;
-  return result;
-}
-
 static UIKey UIKeyFromStr8(UIKey seed, Str8 str) {
   UIKey result = UIKeyZero();
   if (str.len) {
@@ -836,8 +811,74 @@ static UIKey UIKeyFromStr8(UIKey seed, Str8 str) {
   return result;
 }
 
+static void BeginUIKeyStack(UIState *state, UIKey key) {
+  UILayer *layer = state->current_layer;
+  ASSERT(layer);
+
+  if (!IsZeroUIKey(key)) {
+    UIKeyNode *node;
+    if (layer->first_free_key) {
+      node = layer->first_free_key;
+      layer->first_free_key = layer->first_free_key->next;
+    } else {
+      Arena *arena = GetBuildArena(state);
+      node = PushArray(arena, UIKeyNode, 1);
+    }
+    node->key = key;
+    APPEND_DOUBLY_LINKED_LIST(layer->first_key, layer->last_key, node, prev,
+                              next);
+  }
+}
+
+static void EndUIKeyStack(UIState *state, UIKey key) {
+  UILayer *layer = state->current_layer;
+  ASSERT(layer);
+  if (!IsZeroUIKey(key)) {
+    UIKeyNode *node = layer->last_key;
+    ASSERT(node && IsEqualUIKey(node->key, key));
+    REMOVE_DOUBLY_LINKED_LIST(layer->first_key, layer->last_key, node, prev,
+                              next);
+    node->next = layer->first_free_key;
+    layer->first_free_key = node;
+  }
+}
+
+void BeginUILayer(const char *fmt, ...) {
+  UIState *state = GetUIState();
+  Arena *arena = GetBuildArena(state);
+
+  UILayer *layer = PushArray(arena, UILayer, 1);
+  INSERT_DOUBLY_LINKED_LIST(state->first_layer, state->last_layer,
+                            state->current_layer, layer, prev, next);
+  layer->parent = state->current_layer;
+  state->current_layer = layer;
+
+  va_list ap;
+  va_start(ap, fmt);
+  Str8 key_str = PushStr8FV(arena, fmt, ap);
+  va_end(ap);
+  layer->key = UIKeyFromStr8(UIKeyZero(), key_str);
+  BeginUIKeyStack(state, layer->key);
+}
+
+void EndUILayer(void) {
+  UIState *state = GetUIState();
+  ASSERTF(state->current_layer, "Mismatched BeginLayer/EndLayer calls");
+  ASSERTF(!state->current_layer->current,
+          "Mismatched BeginUIBox/EndUIBox calls");
+
+  EndUIKeyStack(state, state->current_layer->key);
+  state->current_layer = state->current_layer->parent;
+}
+
+UIBuildError *GetFirstUIBuildError(void) {
+  UIState *state = GetUIState();
+  UIBuildError *result = state->first_error;
+  return result;
+}
+
 b32 IsEqualUIKey(UIKey a, UIKey b) {
-  b32 result = a.hash == b.hash && IsEqualStr8(a.str, b.str);
+  b32 result = a.hash == b.hash;
   return result;
 }
 
@@ -942,6 +983,8 @@ void BeginUIBoxWithTag(const char *tag, UIProps props) {
   box->props = props;
   box->computed.tag = tag;
 
+  BeginUIKeyStack(state, box->props.key);
+
   layer->current = box;
 }
 
@@ -954,6 +997,9 @@ void EndUIBoxWithExpectedTag(const char *tag) {
   ASSERTF(strcmp(layer->current->computed.tag, tag) == 0,
           "Mismatched Begin/End calls. Begin with %s, end with %s",
           layer->current->computed.tag, tag);
+
+  EndUIKeyStack(state, layer->current->props.key);
+
   layer->current = layer->current->parent;
 }
 

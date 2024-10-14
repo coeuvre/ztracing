@@ -142,11 +142,23 @@ struct UIBox {
   f32 active_t;
 };
 
+typedef struct UIKeyNode UIKeyNode;
+struct UIKeyNode {
+  UIKeyNode *prev;
+  UIKeyNode *next;
+  UIKey key;
+};
+
 typedef struct UILayer UILayer;
 struct UILayer {
   UILayer *prev;
   UILayer *next;
   UILayer *parent;
+  UIKey key;
+
+  UIKeyNode *first_key;
+  UIKeyNode *last_key;
+  UIKeyNode *first_free_key;
 
   UIBox *root;
   UIBox *current;
@@ -168,7 +180,7 @@ void BeginUIFrame(Vec2 screen_size);
 void EndUIFrame(void);
 void RenderUI(void);
 
-void BeginUILayer(void);
+void BeginUILayer(const char *fmt, ...);
 void EndUILayer(void);
 
 UIBuildError *GetFirstUIBuildError(void);
