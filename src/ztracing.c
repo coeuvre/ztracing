@@ -54,7 +54,12 @@ static void UITextF(UIProps props, const char *fmt, ...) {
 static void BuildUI(f32 dt, f32 frame_time) {
   TempMemory scratch = BeginScratch(0, 0);
 
-  BeginUILayer("Base");
+  BeginUILayer(
+      (UILayerProps){
+          .min = V2(0, 0),
+          .max = GetScreenSize(),
+      },
+      "Base");
   BeginUIColumn((UIProps){
       .color = ColorU32FromSRGBNotPremultiplied(255, 255, 255, 255),
   });
@@ -128,7 +133,7 @@ void DoFrame(void) {
   ClearDraw();
 
   SetUIDeltaTime(dt);
-  BeginUIFrame(GetScreenSize());
+  BeginUIFrame();
   BuildUI(dt, last_frame_time);
   EndUIFrame();
   RenderUI();

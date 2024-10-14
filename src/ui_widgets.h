@@ -45,8 +45,12 @@ f32 GetUIScrollableScroll(UIScrollableState *state);
 void SetUIScrollableScroll(UIScrollableState *state, f32 scroll);
 
 typedef struct UIDebugLayerState {
-  Vec2 pos;
-  Vec2 pressed_pos;
+  UIScrollableState scrollable;
+
+  Vec2 min;
+  Vec2 max;
+  Vec2 pressed_min;
+  Vec2 pressed_max;
 } UIDebugLayerState;
 
 void UIDebugLayer(UIDebugLayerState *state);

@@ -144,8 +144,6 @@ typedef struct UIState {
   u64 build_index;
 
   // per-frame info
-  Vec2 screen_size;
-
   UILayer *first_layer;
   UILayer *last_layer;
   UILayer *current_layer;
@@ -263,13 +261,12 @@ f32 GetUIDeltaTime(void) {
   return result;
 }
 
-void BeginUIFrame(Vec2 screen_size) {
+void BeginUIFrame(void) {
   UIState *state = GetUIState();
 
   GarbageCollectBoxes(&state->cache, state->build_index);
 
   state->build_index += 1;
-  state->screen_size = screen_size;
   state->first_layer = state->last_layer = state->current_layer = 0;
   state->first_error = state->last_error = 0;
 
@@ -784,7 +781,8 @@ void EndUIFrame(void) {
 
   for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
     if (layer->root) {
-      LayoutBox(state, layer->root, state->screen_size, state->screen_size);
+      Vec2 size = SubVec2(layer->props.max, layer->props.min);
+      LayoutBox(state, layer->root, size, size);
       layer->root->computed.rel_pos = V2(0, 0);
     }
   }
@@ -801,7 +799,10 @@ void RenderUI(void) {
 
   for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
     if (layer->root) {
-      RenderBox(state, layer->root, V2(0, 0), R2(V2(0, 0), state->screen_size));
+      PushClipRect(layer->props.min, layer->props.max);
+      RenderBox(state, layer->root, layer->props.min,
+                R2(layer->props.min, layer->props.max));
+      PopClipRect();
     }
   }
 }
@@ -853,7 +854,7 @@ static void EndUIKeyStack(UIState *state, UIKey key) {
   }
 }
 
-void BeginUILayer(const char *fmt, ...) {
+void BeginUILayer(UILayerProps props, const char *fmt, ...) {
   UIState *state = GetUIState();
   Arena *arena = GetBuildArena(state);
 
@@ -867,7 +868,10 @@ void BeginUILayer(const char *fmt, ...) {
   va_start(ap, fmt);
   Str8 key_str = PushStr8FV(arena, fmt, ap);
   va_end(ap);
+
   layer->key = UIKeyFromStr8(UIKeyZero(), key_str);
+  layer->props = props;
+
   BeginUIKeyStack(state, layer->key);
 }
 
@@ -892,22 +896,11 @@ b32 IsEqualUIKey(UIKey a, UIKey b) {
   return result;
 }
 
-static UIKey GetFirstNonZeroUIKeyR(UIBox *box) {
-  UIKey result = UIKeyZero();
-  if (box) {
-    if (!IsZeroUIKey(box->key)) {
-      result = box->key;
-    } else {
-      result = GetFirstNonZeroUIKeyR(box->parent);
-    }
-  }
-  return result;
-}
-
 static UIKey GetFirstNonZeroUIKey(UIState *state) {
   UIKey result = UIKeyZero();
-  if (state->current_layer) {
-    result = GetFirstNonZeroUIKeyR(state->current_layer->current);
+  if (state->current_layer && state->current_layer->last_key) {
+    result = state->current_layer->last_key->key;
+    ASSERT(!IsZeroUIKey(result));
   }
   return result;
 }

@@ -150,12 +150,19 @@ struct UIKeyNode {
   UIKey key;
 };
 
+typedef struct UILayerProps {
+  Vec2 min;
+  Vec2 max;
+} UILayerProps;
+
 typedef struct UILayer UILayer;
 struct UILayer {
   UILayer *prev;
   UILayer *next;
   UILayer *parent;
+
   UIKey key;
+  UILayerProps props;
 
   UIKeyNode *first_key;
   UIKeyNode *last_key;
@@ -177,11 +184,11 @@ void OnUIMouseWheel(Vec2 delta);
 void SetUIDeltaTime(f32 dt);
 f32 GetUIDeltaTime(void);
 
-void BeginUIFrame(Vec2 screen_size);
+void BeginUIFrame(void);
 void EndUIFrame(void);
 void RenderUI(void);
 
-void BeginUILayer(const char *fmt, ...);
+void BeginUILayer(UILayerProps props, const char *fmt, ...);
 void EndUILayer(void);
 
 UIBuildError *GetFirstUIBuildError(void);
