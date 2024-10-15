@@ -12,6 +12,10 @@
 
 static inline void ZeroMemory(void *ptr, usize size) { memset(ptr, 0, size); }
 
+void *AllocMemory(usize size);
+void FreeMemory(void *ptr, usize size);
+usize GetAllocatedBytes(void);
+
 typedef struct MemoryBlock MemoryBlock;
 struct MemoryBlock {
   MemoryBlock *prev;
@@ -38,7 +42,6 @@ enum PushArenaFlag {
   kPushArenaNoZero = (1 << 0),
 };
 
-Arena *AllocArena(void);
 void FreeArena(Arena *arena);
 void ResetArena(Arena *arena);
 void *PushArena(Arena *arena, usize size, u32 flags);

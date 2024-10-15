@@ -28,6 +28,11 @@ typedef ptrdiff_t isize;
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
 
+static inline usize MaxUSize(usize a, usize b) {
+  usize result = MAX(a, b);
+  return result;
+}
+
 #if COMPILER_MSVC
 #define thread_local __declspec(thread)
 #elif COMPILER_CLANG || COMPILER_GCC

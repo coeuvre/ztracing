@@ -35,14 +35,14 @@ struct PackedFont {
 
   stbtt_fontinfo *font;
   SDL_Texture *texture;
-  u8 *pixels;
+  u8 *pixels_u8;
   i32 width;
   i32 height;
   stbtt_pack_range range;
 };
 
 typedef struct SDL3DrawState {
-  Arena *arena;
+  Arena arena;
   SDL_Window *window;
   SDL_Renderer *renderer;
 
@@ -62,10 +62,10 @@ static PackedFont PackFont(Arena *arena, stbtt_fontinfo *info, f32 font_size) {
   result.font = info;
   result.width = 1024;
   result.height = 1024;
-  result.pixels = PushArrayNoZero(arena, u8, result.width * result.height);
+  result.pixels_u8 = (u8 *)AllocMemory(result.width * result.height);
   stbtt_pack_context spc;
-  ASSERT(stbtt_PackBegin(&spc, result.pixels, result.width, result.height, 0, 1,
-                         0) == 1);
+  ASSERT(stbtt_PackBegin(&spc, result.pixels_u8, result.width, result.height, 0,
+                         1, 0) == 1);
   stbtt_PackSetOversampling(&spc, 2, 2);
   result.range.font_size = font_size;
   result.range.first_unicode_codepoint_in_range = 1;
@@ -97,8 +97,8 @@ static PackedFont *GetOrPackFont(stbtt_fontinfo *font, f32 font_size) {
     }
   }
   if (!result) {
-    result = PushArray(t_draw_state.arena, PackedFont, 1);
-    *result = PackFont(t_draw_state.arena, font, font_size);
+    result = PushArray(&t_draw_state.arena, PackedFont, 1);
+    *result = PackFont(&t_draw_state.arena, font, font_size);
     APPEND_DOUBLY_LINKED_LIST(t_draw_state.first_packed_font,
                               t_draw_state.last_packed_font, result, prev,
                               next);
@@ -108,7 +108,6 @@ static PackedFont *GetOrPackFont(stbtt_fontinfo *font, f32 font_size) {
 }
 
 void InitDrawSDL3(SDL_Window *window, SDL_Renderer *renderer) {
-  t_draw_state.arena = AllocArena();
   t_draw_state.window = window;
   t_draw_state.renderer = renderer;
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
@@ -140,7 +139,7 @@ void PushClipRect(Vec2 min, Vec2 max) {
     clip_rect = t_draw_state.first_free_clip_rect;
     t_draw_state.first_free_clip_rect = t_draw_state.first_free_clip_rect->next;
   } else {
-    clip_rect = PushArray(t_draw_state.arena, DrawClipRect, 1);
+    clip_rect = PushArray(&t_draw_state.arena, DrawClipRect, 1);
   }
   SDL_Rect rect;
   rect.x = min.x;
@@ -255,12 +254,13 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
   stbtt_fontinfo *font = GetFontInfo();
   PackedFont *packed_font = GetOrPackFont(font, font_size);
   if (!packed_font->texture) {
+    ASSERT(packed_font->pixels_u8);
     int pw = packed_font->width;
     int ph = packed_font->height;
     u32 *pixels_u32 =
         PushArrayNoZero(scratch.arena, u32, pw * ph * sizeof(u32));
     u32 *dst_row = pixels_u32;
-    u8 *src_row = packed_font->pixels;
+    u8 *src_row = packed_font->pixels_u8;
     for (i32 y = 0; y < ph; ++y) {
       u32 *dst = dst_row;
       u8 *src = src_row;
@@ -279,6 +279,9 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
         SDL_CreateTextureFromSurface(t_draw_state.renderer, surface);
     ASSERT(packed_font->texture);
     SDL_DestroySurface(surface);
+    FreeMemory(packed_font->pixels_u8,
+               packed_font->width * packed_font->height);
+    packed_font->pixels_u8 = 0;
   }
 
   f32 scale = stbtt_ScaleForPixelHeight(font, height * content_scale);

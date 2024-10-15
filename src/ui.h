@@ -252,12 +252,12 @@ typedef struct UIInput {
 } UIInput;
 
 typedef struct UIState {
-  Arena *arena;
+  Arena arena;
 
   UIBoxCache cache;
   UIInput input;
 
-  Arena *build_arena[2];
+  Arena build_arena[2];
   u64 build_index;
 
   // per-frame info

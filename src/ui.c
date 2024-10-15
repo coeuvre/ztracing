@@ -94,13 +94,13 @@ thread_local UIState t_ui_state;
 
 UIState *GetUIState(void) {
   UIState *state = &t_ui_state;
-  ASSERTF(state->arena, "InitUI is not called");
+  ASSERTF(state->arena.current_block, "InitUI is not called");
   return state;
 }
 
 static Arena *GetBuildArena(UIState *state) {
-  Arena *arena =
-      state->build_arena[state->build_index % ARRAY_COUNT(state->build_arena)];
+  Arena *arena = state->build_arena +
+                 (state->build_index % ARRAY_COUNT(state->build_arena));
   return arena;
 }
 
@@ -133,11 +133,8 @@ static inline b32 IsMouseButtonClicked(UIState *state, UIMouseButton button) {
 
 void InitUI(void) {
   UIState *state = &t_ui_state;
-  ASSERTF(!state->arena, "InitUI called more than once");
-  state->arena = AllocArena();
-  InitUIBoxCache(&state->cache, state->arena);
-  state->build_arena[0] = AllocArena();
-  state->build_arena[1] = AllocArena();
+  ASSERTF(!state->arena.current_block, "InitUI called more than once");
+  InitUIBoxCache(&state->cache, &state->arena);
 
   state->input.dt = 1.0f / 60.0f;  // Assume 60 FPS by default.
   state->input.mouse.pos = V2(-1, -1);
@@ -145,9 +142,9 @@ void InitUI(void) {
 
 void QuitUI(void) {
   UIState *state = GetUIState();
-  FreeArena(state->build_arena[0]);
-  FreeArena(state->build_arena[1]);
-  FreeArena(state->arena);
+  FreeArena(&state->build_arena[0]);
+  FreeArena(&state->build_arena[1]);
+  FreeArena(&state->arena);
   *state = (UIState){0};
 }
 
@@ -1064,7 +1061,7 @@ void BeginUIBoxWithTag(const char *tag, UIProps props) {
 
   UIBox *parent = layer->current;
   UIKey key = props.key;
-  UIBox *box = GetOrPushBoxByKey(&state->cache, state->arena, key);
+  UIBox *box = GetOrPushBoxByKey(&state->cache, &state->arena, key);
   ASSERTF(box->last_touched_build_index < state->build_index,
           "%s is built more than once",
           IsEmptyStr8(key.str) ? "<unknown>" : (char *)key.str.ptr);

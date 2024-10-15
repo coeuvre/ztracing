@@ -41,7 +41,7 @@ static b32 UIButton(Str8 label) {
 }
 
 static void BuildUI(f32 dt, f32 frame_time) {
-  static UIDebugLayerState debug_layer_state = {.open = 1};
+  static UIDebugLayerState debug_layer_state = {0};
 
   TempMemory scratch = BeginScratch(0, 0);
 
@@ -65,8 +65,10 @@ static void BuildUI(f32 dt, f32 frame_time) {
       BeginUIBox((UIProps){.flex = 1});
       EndUIBox();
 
-      UITextF((UIProps){.padding = UIEdgeInsetsSymmetric(6, 4)}, "%.0f %.1fms",
-              1.0f / dt, frame_time * 1000.0f);
+      UITextF((UIProps){.padding = UIEdgeInsetsSymmetric(6, 4)},
+              "%.0f %.1fMB %.1fms", 1.0f / dt,
+              (f32)((f64)GetAllocatedBytes() / 1024.0 / 1024.0),
+              frame_time * 1000.0f);
     }
     EndUIRow();
 
