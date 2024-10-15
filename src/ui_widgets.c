@@ -235,7 +235,7 @@ void UIDebugLayer(UIDebugLayerState *state) {
           "DebugOverlay@%p", state);
       state->debug_overlay = GetUIState()->current_layer;
       BeginUIBox((UIProps){
-          .background_color = ColorU32FromSRGBNotPremultiplied(0, 0, 128, 50),
+          .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255, 64),
       });
       EndUIBox();
       EndUILayer();
