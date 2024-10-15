@@ -1203,6 +1203,12 @@ Vec2 GetUIMouseRelPos(UIKey key) {
   return result;
 }
 
+Vec2 GetUIMousePos(void) {
+  UIState *state = GetUIState();
+  Vec2 result = state->input.mouse.pos;
+  return result;
+}
+
 static inline b32 IsEqualUIKeyAndNonZero(UIBox *box, UIKey key) {
   b32 result = 0;
   if (box && !IsZeroUIKey(key)) {

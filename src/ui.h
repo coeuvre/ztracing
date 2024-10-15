@@ -260,6 +260,7 @@ UIBox *GetUIBox(UIKey key);
 
 UIComputed GetUIComputed(UIKey key);
 Vec2 GetUIMouseRelPos(UIKey key);
+Vec2 GetUIMousePos(void);
 
 b32 IsUIMouseHovering(UIKey key);
 b32 IsUIMouseButtonPressed(UIKey key, UIMouseButton button);

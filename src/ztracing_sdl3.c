@@ -1,7 +1,3 @@
-#include <SDL3/SDL_events.h>
-#include <SDL3/SDL_mouse.h>
-#include <SDL3/SDL_video.h>
-
 #include "src/assert.h"
 #include "src/draw.h"
 #include "src/draw_sdl3.h"
