@@ -768,19 +768,16 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
           box->computed.size.y;
 }
 
-static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
-                      Rect2 parent_clip_rect) {
-  Vec2 min = AddVec2(parent_pos, box->computed.rel_pos);
-  Vec2 max = AddVec2(min, box->computed.size);
-  box->computed.screen_rect = R2(min, max);
+static void RenderBox(UIState *state, UIBox *box) {
+  Vec2 min = box->computed.screen_rect.min;
+  Vec2 max = box->computed.screen_rect.max;
 
-  Rect2 intersection =
-      Rect2FromIntersection(parent_clip_rect, box->computed.screen_rect);
-  f32 intersection_area = GetRect2Area(intersection);
-  if (intersection_area > 0) {
+  Rect2 clip_rect = box->computed.clip_rect;
+  f32 clip_area = GetRect2Area(clip_rect);
+  if (clip_area > 0) {
     b32 need_clip = box->computed.clip;
     if (need_clip) {
-      PushClipRect(intersection.min, intersection.max);
+      PushClipRect(clip_rect.min, clip_rect.max);
     }
 
     if (box->props.background_color.a) {
@@ -813,7 +810,7 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
 
     if (box->first) {
       for (UIBox *child = box->first; child; child = child->next) {
-        RenderBox(state, child, min, intersection);
+        RenderBox(state, child);
       }
     } else if (!IsEmptyStr8(box->props.text)) {
       DrawTextStr8(
@@ -868,15 +865,15 @@ static void ProcessInputR(UIState *state, UIBox *box) {
 
   // Mouse input
   if (!state->input.mouse.hovering && box->props.hoverable &&
-      ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
-                   box->computed.screen_rect.max)) {
+      ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
+                   box->computed.clip_rect.max)) {
     state->input.mouse.hovering = box;
   }
 
   for (int button = 0; button < kUIMouseButtonCount; ++button) {
     if (!state->input.mouse.pressed[button] && box->props.clickable[button] &&
-        ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
-                     box->computed.screen_rect.max) &&
+        ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
+                     box->computed.clip_rect.max) &&
         IsMouseButtonPressed(state, button)) {
       state->input.mouse.pressed[button] = box;
       state->input.mouse.pressed_pos[button] = state->input.mouse.pos;
@@ -885,8 +882,8 @@ static void ProcessInputR(UIState *state, UIBox *box) {
 
   if (!state->input.mouse.scrolling && box->props.scrollable &&
       !IsZeroVec2(state->input.mouse.wheel) &&
-      ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
-                   box->computed.screen_rect.max)) {
+      ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
+                   box->computed.clip_rect.max)) {
     state->input.mouse.scrolling = box;
     state->input.mouse.scroll_delta = state->input.mouse.wheel;
   }
@@ -914,8 +911,8 @@ static void ProcessInput(UIState *state) {
     if (IsMouseButtonClicked(state, button)) {
       UIBox *box = state->input.mouse.holding[button];
       if (box &&
-          ContainsVec2(state->input.mouse.pos, box->computed.screen_rect.min,
-                       box->computed.screen_rect.max)) {
+          ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
+                       box->computed.clip_rect.max)) {
         state->input.mouse.clicked[button] = box;
       }
       state->input.mouse.holding[button] = 0;
@@ -924,6 +921,17 @@ static void ProcessInput(UIState *state) {
     state->input.mouse.buttons[button].transition_count = 0;
   }
   state->input.mouse.wheel = V2(0, 0);
+}
+
+static void PositionBox(UIBox *box, Vec2 parent_pos, Rect2 parent_clip_rect) {
+  Vec2 min = AddVec2(parent_pos, box->computed.rel_pos);
+  Vec2 max = AddVec2(min, box->computed.size);
+  box->computed.screen_rect = R2(min, max);
+  box->computed.clip_rect =
+      Rect2FromIntersection(parent_clip_rect, box->computed.screen_rect);
+  for (UIBox *child = box->first; child; child = child->next) {
+    PositionBox(child, min, box->computed.clip_rect);
+  }
 }
 
 void EndUIFrame(void) {
@@ -935,6 +943,13 @@ void EndUIFrame(void) {
       Vec2 size = SubVec2(layer->props.max, layer->props.min);
       LayoutBox(state, layer->root, size, size);
       layer->root->computed.rel_pos = V2(0, 0);
+    }
+  }
+
+  for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
+    if (layer->root) {
+      PositionBox(layer->root, layer->props.min,
+                  R2(layer->props.min, layer->props.max));
     }
   }
 
@@ -951,8 +966,7 @@ void RenderUI(void) {
   for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
     if (layer->root) {
       PushClipRect(layer->props.min, layer->props.max);
-      RenderBox(state, layer->root, layer->props.min,
-                R2(layer->props.min, layer->props.max));
+      RenderBox(state, layer->root);
       PopClipRect();
     }
   }

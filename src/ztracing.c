@@ -10,7 +10,7 @@
 #include "src/ui.h"
 #include "src/ui_widgets.h"
 
-static void UIButton(Str8 label) {
+static b32 UIButton(Str8 label) {
   UIKey key = PushUIKey(label);
   ColorU32 color = ColorU32Zero();
   if (IsUIMouseButtonClicked(key, kUIMouseButtonLeft)) {
@@ -22,6 +22,7 @@ static void UIButton(Str8 label) {
   } else {
     // color = ColorU32FromHex(0x5EAC57);
   }
+  b32 result = IsUIMouseButtonClicked(key, kUIMouseButtonLeft);
   BeginUIBox((UIProps){
       .key = key,
       .padding = UIEdgeInsetsSymmetric(6, 4),
@@ -36,6 +37,7 @@ static void UIButton(Str8 label) {
     EndUIBox();
   }
   EndUIBox();
+  return result;
 }
 
 static void UITextF(UIProps props, const char *fmt, ...) {
@@ -52,6 +54,8 @@ static void UITextF(UIProps props, const char *fmt, ...) {
 }
 
 static void BuildUI(f32 dt, f32 frame_time) {
+  static UIDebugLayerState debug_layer_state = {.open = 1};
+
   TempMemory scratch = BeginScratch(0, 0);
 
   BeginUILayer(
@@ -67,7 +71,9 @@ static void BuildUI(f32 dt, f32 frame_time) {
     BeginUIRow((UIProps){.background_color = ColorU32FromHex(0xE6573F)});
     {
       UIButton(STR8_LIT("Load"));
-      UIButton(STR8_LIT("About"));
+      if (UIButton(STR8_LIT("Debug"))) {
+        debug_layer_state.open = 1;
+      }
 
       BeginUIBox((UIProps){.flex = 1});
       EndUIBox();
@@ -112,7 +118,6 @@ static void BuildUI(f32 dt, f32 frame_time) {
   EndUIColumn();
   EndUILayer();
 
-  static UIDebugLayerState debug_layer_state = {.open = 1};
   UIDebugLayer(&debug_layer_state);
 
   EndScratch(scratch);

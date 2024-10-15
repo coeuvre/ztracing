@@ -139,6 +139,7 @@ typedef struct UIComputed {
   f32 font_size;
 
   Rect2 screen_rect;
+  Rect2 clip_rect;
   b8 clip;
 } UIComputed;
 
