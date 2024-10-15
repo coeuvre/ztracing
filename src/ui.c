@@ -1112,10 +1112,16 @@ UIBox *GetUIBox(UIKey key) {
 UIComputed GetUIComputed(UIKey key) {
   UIState *state = GetUIState();
   UIBox *box = GetUIBoxByKeyInternal(state, key);
-  UIComputed result = {0};
-  if (box) {
-    result = box->computed;
-  }
+  ASSERTF(box, "No box associated with this UIKey");
+  UIComputed result = box->computed;
+  return result;
+}
+
+UIPersistent *GetUIPersistent(UIKey key) {
+  UIState *state = GetUIState();
+  UIBox *box = GetUIBoxByKeyInternal(state, key);
+  ASSERTF(box, "No box associated with this UIKey");
+  UIPersistent *result = &box->persistent;
   return result;
 }
 

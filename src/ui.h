@@ -150,6 +150,11 @@ struct UIBuildError {
   Str8 message;
 };
 
+// General data that is persistent across frames until the box is GCed.
+typedef struct UIPersistent {
+  b8 enabled;
+} UIPersistent;
+
 typedef struct UIBox UIBox;
 struct UIBox {
   // hash links
@@ -172,9 +177,8 @@ struct UIBox {
   // computed every frame
   UIComputed computed;
 
-  // persistent data
-  f32 hot_t;
-  f32 active_t;
+  // persistent data for the life time of the box
+  UIPersistent persistent;
 };
 
 typedef struct UIKeyNode UIKeyNode;
@@ -322,6 +326,8 @@ static inline void EndUIBox(void) { EndUIBoxWithExpectedTag("Box"); }
 UIBox *GetUIBox(UIKey key);
 
 UIComputed GetUIComputed(UIKey key);
+UIPersistent *GetUIPersistent(UIKey key);
+
 Vec2 GetUIMouseRelPos(UIKey key);
 Vec2 GetUIMousePos(void);
 

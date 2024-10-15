@@ -24,15 +24,7 @@ static inline void BeginUIColumn(UIProps props) {
 
 static inline void EndUIColumn() { EndUIBoxWithExpectedTag("Column"); }
 
-static void UITextF(UIProps props, const char *fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  props.text = PushUITextFV(fmt, ap);
-  va_end(ap);
-
-  BeginUIBox(props);
-  EndUIBox();
-}
+void UITextF(UIProps props, const char *fmt, ...);
 
 typedef struct UIScrollableState {
   // persistent info

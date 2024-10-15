@@ -1,9 +1,21 @@
 #include "src/ui_widgets.h"
 
+#include <stdarg.h>
+
 #include "src/math.h"
 #include "src/string.h"
 #include "src/types.h"
 #include "src/ui.h"
+
+void UITextF(UIProps props, const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  props.text = PushUITextFV(fmt, ap);
+  va_end(ap);
+
+  BeginUIBoxWithTag("Text", props);
+  EndUIBoxWithExpectedTag("Text");
+}
 
 void BeginUIScrollable(UIProps props, UIScrollableState *state) {
   if (IsZeroUIKey(props.key)) {
@@ -16,7 +28,6 @@ void BeginUIScrollable(UIProps props, UIScrollableState *state) {
   BeginUIBoxWithTag("Scrollable", props);
   {
     UIKey scroll_area_key = PushUIKeyF("%p", state);
-    state->scroll_area_size = GetUIComputed(scroll_area_key).size.y;
     BeginUIBoxWithTag("ScrollArea",
                       (UIProps){
                           .key = scroll_area_key,
@@ -25,7 +36,14 @@ void BeginUIScrollable(UIProps props, UIScrollableState *state) {
                           .size = V2(kUISizeUndefined, kUISizeInfinity),
                       });
     {
+      state->scroll_area_size = GetUIComputed(scroll_area_key).size.y;
+
       UIKey content_key = PushUIKeyF("%p", state);
+      BeginUIBoxWithTag("ScrollContent", (UIProps){
+                                             .key = content_key,
+                                             .margin = UIEdgeInsetsFromSTEB(
+                                                 0, -state->scroll, 0, 0),
+                                         });
       UIComputed computed = GetUIComputed(content_key);
       state->head_size = V2(10, 0);
 
@@ -53,11 +71,6 @@ void BeginUIScrollable(UIProps props, UIScrollableState *state) {
                      0, state->scroll_max);
       }
 
-      BeginUIBoxWithTag("ScrollContent", (UIProps){
-                                             .key = content_key,
-                                             .margin = UIEdgeInsetsFromSTEB(
-                                                 0, -state->scroll, 0, 0),
-                                         });
       // ...
     }
   }
