@@ -10,6 +10,10 @@
 #include "src/string.h"
 #include "src/types.h"
 
+#define STB_RECT_PACK_IMPLEMENTATION
+#define STBRP_STATIC
+#include "third_party/stb/stb_rect_pack.h"
+
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_STATIC
 #include "assets/JetBrainsMono-Regular.h"
@@ -24,6 +28,18 @@ struct DrawClipRect {
   SDL_Rect rect;
 };
 
+typedef struct PackedFont PackedFont;
+struct PackedFont {
+  PackedFont *prev;
+  PackedFont *next;
+
+  stbtt_fontinfo *font;
+  SDL_Texture *texture;
+  i32 width;
+  i32 height;
+  stbtt_pack_range range;
+};
+
 typedef struct SDL3DrawState {
   Arena *arena;
   SDL_Window *window;
@@ -32,9 +48,66 @@ typedef struct SDL3DrawState {
   DrawClipRect *first_clip_rect;
   DrawClipRect *last_clip_rect;
   DrawClipRect *first_free_clip_rect;
+
+  PackedFont *first_packed_font;
+  PackedFont *last_packed_font;
 } SDL3DrawState;
 
 thread_local SDL3DrawState t_draw_state;
+
+static PackedFont PackFont(Arena *arena, stbtt_fontinfo *info, f32 font_size) {
+  TempMemory scratch = BeginScratch(&arena, 1);
+  PackedFont result = {0};
+  result.font = info;
+  result.width = 1024;
+  result.height = 1024;
+  u8 *pixels_u8 =
+      PushArrayNoZero(scratch.arena, u8, result.width * result.height);
+  stbtt_pack_context spc;
+  ASSERT(stbtt_PackBegin(&spc, pixels_u8, result.width, result.height, 0, 1,
+                         0) == 1);
+  stbtt_PackSetOversampling(&spc, 2, 2);
+  result.range.font_size = font_size;
+  result.range.first_unicode_codepoint_in_range = 1;
+  result.range.num_chars = 254;
+  result.range.chardata_for_range =
+      PushArray(arena, stbtt_packedchar, result.range.num_chars);
+  {
+    stbrp_rect *rects =
+        PushArray(scratch.arena, stbrp_rect, result.range.num_chars);
+    int n =
+        stbtt_PackFontRangesGatherRects(&spc, info, &result.range, 1, rects);
+    stbtt_PackFontRangesPackRects(&spc, rects, n);
+    ASSERT(stbtt_PackFontRangesRenderIntoRects(&spc, info, &result.range, 1,
+                                               rects) == 1);
+  }
+  stbtt_PackEnd(&spc);
+
+  u32 *pixels_u32 = PushArrayNoZero(scratch.arena, u32,
+                                    result.width * result.height * sizeof(u32));
+  u32 *dst_row = pixels_u32;
+  u8 *src_row = pixels_u8;
+  for (i32 y = 0; y < result.height; ++y) {
+    u32 *dst = dst_row;
+    u8 *src = src_row;
+    for (i32 x = 0; x < result.width; ++x) {
+      u8 alpha = *src++;
+      (*dst++) = (((u32)alpha << 24) | ((u32)alpha << 16) | ((u32)alpha << 8) |
+                  ((u32)alpha << 0));
+    }
+    dst_row += result.width;
+    src_row += result.width;
+  }
+
+  SDL_Surface *surface =
+      SDL_CreateSurfaceFrom(result.width, result.height, SDL_PIXELFORMAT_ARGB32,
+                            pixels_u32, result.width * 4);
+  result.texture = SDL_CreateTextureFromSurface(t_draw_state.renderer, surface);
+  ASSERT(result.texture);
+  SDL_DestroySurface(surface);
+  EndScratch(scratch);
+  return result;
+}
 
 void InitDrawSDL3(SDL_Window *window, SDL_Renderer *renderer) {
   t_draw_state.arena = AllocArena();
@@ -161,6 +234,27 @@ TextMetrics GetTextMetricsStr8(Str8 text, f32 height) {
   return result;
 }
 
+static PackedFont *GetOrPackFont(stbtt_fontinfo *font, f32 font_size) {
+  PackedFont *result = 0;
+  for (PackedFont *packed_font = t_draw_state.first_packed_font; packed_font;
+       packed_font = packed_font->next) {
+    if (packed_font->font == font &&
+        packed_font->range.font_size == font_size) {
+      result = packed_font;
+      break;
+    }
+  }
+  if (!result) {
+    result = PushArray(t_draw_state.arena, PackedFont, 1);
+    *result = PackFont(t_draw_state.arena, font, font_size);
+    APPEND_DOUBLY_LINKED_LIST(t_draw_state.first_packed_font,
+                              t_draw_state.last_packed_font, result, prev,
+                              next);
+  }
+
+  return result;
+}
+
 void DrawTextStr8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
   TempMemory scratch = BeginScratch(0, 0);
 
@@ -169,85 +263,55 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
   f32 content_scale = GetScreenContentScale();
   pos = MulVec2(pos, content_scale);
 
+  f32 font_size = height * content_scale;
   stbtt_fontinfo *font = GetFontInfo();
+  PackedFont *packed_font = GetOrPackFont(font, font_size);
+
   f32 scale = stbtt_ScaleForPixelHeight(font, height * content_scale);
   i32 ascent, descent, line_gap;
   stbtt_GetFontVMetrics(font, &ascent, &descent, &line_gap);
 
   Str32 text32 = PushStr32FromStr8(scratch.arena, text);
-  i32 baseline = (i32)(pos.y + ascent * scale);
+  f32 pos_y = pos.y + (f32)ascent * scale;
   f32 pos_x = pos.x;
   for (u32 i = 0; i < text32.len; ++i) {
-    Vec2I min, max;
     i32 advance, lsb;
     u32 ch = text32.ptr[i];
     i32 glyph = stbtt_FindGlyphIndex(font, ch);
     stbtt_GetGlyphHMetrics(font, glyph, &advance, &lsb);
-    stbtt_GetGlyphBitmapBox(font, glyph, scale, scale, &min.x, &min.y, &max.x,
-                            &max.y);
-    Vec2I glyph_size = SubVec2I(max, min);
 
-    // TODO: font cache/atlas
-    u8 *pixels_u8 =
-        PushArrayNoZero(scratch.arena, u8, glyph_size.x * glyph_size.y);
-    u32 *pixels_u32 =
-        PushArrayNoZero(scratch.arena, u32, glyph_size.x * glyph_size.y);
-    ASSERT(pixels_u8 && pixels_u32);
-    stbtt_MakeGlyphBitmap(font, pixels_u8, glyph_size.x, glyph_size.y,
-                          glyph_size.x, scale, scale, glyph);
+    int char_index =
+        ClampI32(ch - packed_font->range.first_unicode_codepoint_in_range, 0,
+                 packed_font->range.num_chars - 1);
+    stbtt_aligned_quad quad;
+    stbtt_GetPackedQuad(packed_font->range.chardata_for_range,
+                        packed_font->width, packed_font->height, char_index,
+                        &pos_x, &pos_y, &quad, 0);
 
-    u32 *dst_row = pixels_u32;
-    u8 *src_row = pixels_u8;
-    for (i32 y = 0; y < glyph_size.y; ++y) {
-      u32 *dst = dst_row;
-      u8 *src = src_row;
-      for (i32 x = 0; x < glyph_size.x; ++x) {
-#if 1
-        f32 alpha = (*src++) / 255.0f;
-        Vec4 texel;
-        texel.x = colorf.x * alpha;
-        texel.y = colorf.y * alpha;
-        texel.z = colorf.z * alpha;
-        texel.w = colorf.w * alpha;
-        ColorU32 c = ColorU32FromLinearPremultipliedColor(texel);
-        (*dst++) = *(u32 *)&c;
-#else
-        u8 alpha = *src++;
-        (*dst++) = (((u32)alpha << 24) | ((u32)alpha << 16) |
-                    ((u32)alpha << 8) | ((u32)alpha << 0));
-#endif
-      }
-      dst_row += glyph_size.x;
-      src_row += glyph_size.x;
-    }
-
-    if (glyph_size.x > 0 && glyph_size.y > 0) {
-      SDL_Surface *surface = SDL_CreateSurfaceFrom(
-          glyph_size.x, glyph_size.y, SDL_PIXELFORMAT_ARGB32, pixels_u32,
-          glyph_size.x * 4);
-      SDL_Texture *texture =
-          SDL_CreateTextureFromSurface(t_draw_state.renderer, surface);
-      ASSERT(texture);
-      SDL_DestroySurface(surface);
-
+    f32 quad_w = quad.x1 - quad.x0;
+    f32 quad_h = quad.y1 - quad.y0;
+    if (quad_w > 0 && quad_h > 0) {
       SDL_FRect src_rect;
-      src_rect.x = 0;
-      src_rect.y = 0;
-      src_rect.w = glyph_size.x;
-      src_rect.h = glyph_size.y;
+      src_rect.x = quad.s0 * packed_font->width;
+      src_rect.y = quad.t0 * packed_font->height;
+      src_rect.w = (quad.s1 - quad.s0) * packed_font->width;
+      src_rect.h = (quad.t1 - quad.t0) * packed_font->height;
 
       SDL_FRect dst_rect;
-      dst_rect.x = pos_x + min.x;
-      dst_rect.y = (f32)baseline + min.y;
-      dst_rect.w = glyph_size.x;
-      dst_rect.h = glyph_size.y;
+      dst_rect.x = quad.x0;
+      dst_rect.y = quad.y0;
+      dst_rect.w = quad_w;
+      dst_rect.h = quad_h;
 
-      SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
-      SDL_RenderTexture(t_draw_state.renderer, texture, &src_rect, &dst_rect);
-      SDL_DestroyTexture(texture);
+      SDL_SetTextureBlendMode(packed_font->texture,
+                              SDL_BLENDMODE_BLEND_PREMULTIPLIED);
+      SDL_SetTextureColorModFloat(packed_font->texture, colorf.x, colorf.y,
+                                  colorf.z);
+      SDL_SetTextureAlphaModFloat(packed_font->texture, colorf.w);
+      SDL_RenderTexture(t_draw_state.renderer, packed_font->texture, &src_rect,
+                        &dst_rect);
     }
 
-    pos_x += advance * scale;
     if (i + 1 < text32.len) {
       i32 kern = stbtt_GetCodepointKernAdvance(font, ch, text32.ptr[i + 1]);
       pos_x += scale * kern;
