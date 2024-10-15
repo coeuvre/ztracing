@@ -55,6 +55,11 @@ static inline Vec2 V2(f32 x, f32 y) {
   return result;
 }
 
+static inline Vec2 Vec2Zero(void) {
+  Vec2 result = {0};
+  return result;
+}
+
 static inline b32 IsZeroVec2(Vec2 a) {
   b32 result = a.x == 0 && a.y == 0;
   return result;

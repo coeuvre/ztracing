@@ -61,7 +61,7 @@ Vec2 GetScreenSize(void) {
 }
 
 void PushClipRect(Vec2 min, Vec2 max) {
-  min = MulVec2(min, GetScreenContentScale());
+  min = MulVec2(MaxVec2(min, Vec2Zero()), GetScreenContentScale());
   max = MulVec2(max, GetScreenContentScale());
 
   DrawClipRect *clip_rect;

@@ -182,7 +182,19 @@ void UIDebugLayer(UIDebugLayerState *state) {
           .max = state->max,
       },
       "Debug@%p", state);
+  UIKey frame_key = PushUIKeyF("Frame");
+  if (IsUIMouseButtonPressed(frame_key, kUIMouseButtonLeft)) {
+    state->pressed_min = state->min;
+    state->pressed_max = state->max;
+  }
+  Vec2 drag_delta;
+  if (IsUIMouseButtonDragging(frame_key, kUIMouseButtonLeft, &drag_delta)) {
+    Vec2 size = SubVec2(state->max, state->min);
+    state->min = RoundVec2(AddVec2(state->pressed_min, drag_delta));
+    state->max = AddVec2(state->min, size);
+  }
   BeginUIBox((UIProps){
+      .key = frame_key,
       .layout = kUILayoutStack,
       .color = ColorU32FromHex(0x000000),
       .background_color = ColorU32FromHex(0xFF00FF),
@@ -197,21 +209,9 @@ void UIDebugLayer(UIDebugLayerState *state) {
         .background_color = ColorU32FromHex(0xF0F0F0),
     });
     {
-      UIKey title_key = PushUIKeyF("Title");
-      if (IsUIMouseButtonPressed(title_key, kUIMouseButtonLeft)) {
-        state->pressed_min = state->min;
-        state->pressed_max = state->max;
-      }
-      Vec2 drag_delta;
-      if (IsUIMouseButtonDragging(title_key, kUIMouseButtonLeft, &drag_delta)) {
-        state->min = AddVec2(state->pressed_min, drag_delta);
-        state->max = AddVec2(state->pressed_max, drag_delta);
-      }
       BeginUIRow((UIProps){
-          .key = title_key,
           .background_color = ColorU32FromHex(0xD1D1D1),
           .padding = UIEdgeInsetsSymmetric(6, 3),
-          .clickable[kUIMouseButtonLeft] = 1,
       });
       {
         BeginUIBox((UIProps){
@@ -258,7 +258,7 @@ void UIDebugLayer(UIDebugLayerState *state) {
       Vec2 drag_delta;
       if (IsUIMouseButtonDragging(resize_handle, kUIMouseButtonLeft,
                                   &drag_delta)) {
-        state->max = AddVec2(state->pressed_max, drag_delta);
+        state->max = RoundVec2(AddVec2(state->pressed_max, drag_delta));
         state->max = MaxVec2(state->max, AddVec2(state->min, min_frame_size));
       }
     }
