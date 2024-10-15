@@ -816,8 +816,10 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
         RenderBox(state, child, min, intersection);
       }
     } else if (!IsEmptyStr8(box->props.text)) {
-      DrawTextStr8(min, box->props.text, box->computed.font_size,
-                   GetFirstNonZeroColor(box));
+      DrawTextStr8(
+          V2(min.x + box->props.border.left.width + box->props.padding.start,
+             min.y + box->props.border.top.width + box->props.padding.top),
+          box->props.text, box->computed.font_size, GetFirstNonZeroColor(box));
     }
 
     if (need_clip) {

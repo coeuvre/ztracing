@@ -176,97 +176,119 @@ void UIDebugLayer(UIDebugLayerState *state) {
                                default_frame_size.y + resize_handle_size));
   }
 
-  BeginUILayer(
-      (UILayerProps){
-          .min = state->min,
-          .max = state->max,
-      },
-      "Debug@%p", state);
-  UIKey frame_key = PushUIKeyF("Frame");
-  if (IsUIMouseButtonPressed(frame_key, kUIMouseButtonLeft)) {
-    state->pressed_min = state->min;
-    state->pressed_max = state->max;
-  }
-  Vec2 drag_delta;
-  if (IsUIMouseButtonDragging(frame_key, kUIMouseButtonLeft, &drag_delta)) {
-    Vec2 size = SubVec2(state->max, state->min);
-    state->min = RoundVec2(AddVec2(state->pressed_min, drag_delta));
-    state->max = AddVec2(state->min, size);
-  }
-  BeginUIBox((UIProps){
-      .key = frame_key,
-      .layout = kUILayoutStack,
-      .color = ColorU32FromHex(0x000000),
-      .border = UIBorderFromBorderSide((UIBorderSide){
-          .color = ColorU32FromHex(0xA8A8A8),
-          .width = 1,
-      }),
-      .main_axis_align = kUIMainAxisAlignEnd,
-      .cross_axis_align = kUICrossAxisAlignEnd,
-      .hoverable = 1,
-      .clickable = {1},
-      .scrollable = 1,
-  });
-  {
-    BeginUIColumn((UIProps){
-        .background_color = ColorU32FromHex(0xF0F0F0),
-    });
-    {
-      BeginUIRow((UIProps){
-          .background_color = ColorU32FromHex(0xD1D1D1),
-          .padding = UIEdgeInsetsSymmetric(6, 3),
-      });
-      {
-        BeginUIBox((UIProps){
-            .text = PushUITextF("UI Debug"),
-        });
-        EndUIBox();
-
-        BeginUIBox((UIProps){.flex = 1});
-        EndUIBox();
-
-        BeginUIBox((UIProps){
-            .text = PushUITextF("X"),
-        });
-        EndUIBox();
-      }
-      EndUIRow();
-
-      BeginUIScrollable((UIProps){0}, &state->scrollable);
-      {
-      }
-      EndUIScrollable(&state->scrollable);
+  if (state->open) {
+    BeginUILayer(
+        (UILayerProps){
+            .min = state->min,
+            .max = state->max,
+        },
+        "Debug@%p", state);
+    UIKey frame_key = PushUIKeyF("Frame");
+    if (IsUIMouseButtonPressed(frame_key, kUIMouseButtonLeft)) {
+      state->pressed_min = state->min;
+      state->pressed_max = state->max;
     }
-    EndUIColumn();
-
-    UIKey resize_handle = PushUIKeyF("ResizeHandle");
-    ColorU32 resize_handle_color;
-    if (IsUIMouseHovering(resize_handle)) {
-      resize_handle_color = ColorU32FromHex(0x618FC5);
-    } else {
-      resize_handle_color = ColorU32FromHex(0xD1D1D1);
+    Vec2 drag_delta;
+    if (IsUIMouseButtonDragging(frame_key, kUIMouseButtonLeft, &drag_delta)) {
+      Vec2 size = SubVec2(state->max, state->min);
+      state->min = RoundVec2(AddVec2(state->pressed_min, drag_delta));
+      state->max = AddVec2(state->min, size);
     }
     BeginUIBox((UIProps){
-        .key = resize_handle,
-        .size = V2(resize_handle_size, resize_handle_size),
-        .background_color = resize_handle_color,
+        .key = frame_key,
+        .layout = kUILayoutStack,
+        .color = ColorU32FromHex(0x000000),
+        .border = UIBorderFromBorderSide((UIBorderSide){
+            .color = ColorU32FromHex(0xA8A8A8),
+            .width = 1,
+        }),
+        .main_axis_align = kUIMainAxisAlignEnd,
+        .cross_axis_align = kUICrossAxisAlignEnd,
         .hoverable = 1,
-        .clickable[kUIMouseButtonLeft] = 1,
+        .clickable = {1},
+        .scrollable = 1,
     });
     {
-      if (IsUIMouseButtonPressed(resize_handle, kUIMouseButtonLeft)) {
-        state->pressed_min = state->min;
-        state->pressed_max = state->max;
+      BeginUIColumn((UIProps){
+          .background_color = ColorU32FromHex(0xF0F0F0),
+      });
+      {
+        BeginUIRow((UIProps){
+            .background_color = ColorU32FromHex(0xD1D1D1),
+        });
+        {
+          BeginUIBox((UIProps){
+              .padding = UIEdgeInsetsSymmetric(6, 3),
+              .text = PushUITextF("UI Debug"),
+          });
+          EndUIBox();
+
+          BeginUIBox((UIProps){.flex = 1});
+          EndUIBox();
+
+          UIKey close_key = PushUIKeyF("Close");
+          ColorU32 background_color = ColorU32Zero();
+          if (IsUIMouseButtonDown(close_key, kUIMouseButtonLeft)) {
+            background_color = ColorU32FromHex(0x2D69AE);
+          } else if (IsUIMouseHovering(close_key)) {
+            background_color =
+                ColorU32FromSRGBNotPremultiplied(53, 119, 197, 255);
+          }
+
+          if (IsUIMouseButtonClicked(close_key, kUIMouseButtonLeft)) {
+            state->open = 0;
+          }
+
+          BeginUIBox((UIProps){
+              .key = close_key,
+              .padding = UIEdgeInsetsSymmetric(6, 3),
+              .background_color = background_color,
+              .text = PushUITextF("X"),
+              .hoverable = 1,
+              .clickable[kUIMouseButtonLeft] = 1,
+          });
+          EndUIBox();
+        }
+        EndUIRow();
+
+        BeginUIScrollable((UIProps){0}, &state->scrollable);
+        {
+        }
+        EndUIScrollable(&state->scrollable);
       }
-      Vec2 drag_delta;
-      if (IsUIMouseButtonDragging(resize_handle, kUIMouseButtonLeft,
-                                  &drag_delta)) {
-        state->max = RoundVec2(AddVec2(state->pressed_max, drag_delta));
-        state->max = MaxVec2(state->max, AddVec2(state->min, min_frame_size));
+      EndUIColumn();
+
+      UIKey resize_handle = PushUIKeyF("ResizeHandle");
+      ColorU32 resize_handle_color;
+      if (IsUIMouseButtonDown(resize_handle, kUIMouseButtonLeft)) {
+        resize_handle_color = ColorU32FromHex(0x4B6F9E);
+      } else if (IsUIMouseHovering(resize_handle)) {
+        resize_handle_color = ColorU32FromHex(0x618FC5);
+      } else {
+        resize_handle_color = ColorU32FromHex(0xD1D1D1);
       }
+      BeginUIBox((UIProps){
+          .key = resize_handle,
+          .size = V2(resize_handle_size, resize_handle_size),
+          .background_color = resize_handle_color,
+          .hoverable = 1,
+          .clickable[kUIMouseButtonLeft] = 1,
+      });
+      {
+        if (IsUIMouseButtonPressed(resize_handle, kUIMouseButtonLeft)) {
+          state->pressed_min = state->min;
+          state->pressed_max = state->max;
+        }
+        Vec2 drag_delta;
+        if (IsUIMouseButtonDragging(resize_handle, kUIMouseButtonLeft,
+                                    &drag_delta)) {
+          state->max = RoundVec2(AddVec2(state->pressed_max, drag_delta));
+          state->max = MaxVec2(state->max, AddVec2(state->min, min_frame_size));
+        }
+      }
+      EndUIBox();
     }
     EndUIBox();
+    EndUILayer();
   }
-  EndUIBox();
-  EndUILayer();
 }

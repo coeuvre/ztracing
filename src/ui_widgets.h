@@ -47,6 +47,7 @@ void SetUIScrollableScroll(UIScrollableState *state, f32 scroll);
 typedef struct UIDebugLayerState {
   UIScrollableState scrollable;
 
+  b8 open;
   Vec2 min;
   Vec2 max;
   Vec2 pressed_min;

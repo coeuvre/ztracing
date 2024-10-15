@@ -112,7 +112,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
   EndUIColumn();
   EndUILayer();
 
-  static UIDebugLayerState debug_layer_state;
+  static UIDebugLayerState debug_layer_state = {.open = 1};
   UIDebugLayer(&debug_layer_state);
 
   EndScratch(scratch);
