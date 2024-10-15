@@ -253,6 +253,11 @@ static inline Rect2 R2(Vec2 min, Vec2 max) {
   return result;
 }
 
+static inline Rect2 Rect2Zero(void) {
+  Rect2 result = {0};
+  return result;
+}
+
 static inline Rect2 Rect2FromIntersection(Rect2 a, Rect2 b) {
   Vec2 x_axis =
       Vec2FromIntersection(V2(a.min.x, a.max.x), V2(b.min.x, b.max.x));

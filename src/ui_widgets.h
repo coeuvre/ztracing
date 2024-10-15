@@ -24,6 +24,16 @@ static inline void BeginUIColumn(UIProps props) {
 
 static inline void EndUIColumn() { EndUIBoxWithExpectedTag("Column"); }
 
+static void UITextF(UIProps props, const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  props.text = PushUITextFV(fmt, ap);
+  va_end(ap);
+
+  BeginUIBox(props);
+  EndUIBox();
+}
+
 typedef struct UIScrollableState {
   // persistent info
   f32 scroll;
@@ -52,6 +62,9 @@ typedef struct UIDebugLayerState {
   Vec2 max;
   Vec2 pressed_min;
   Vec2 pressed_max;
+
+  UILayer *debug_overlay;
+  Rect2 hovered_clip_rect;
 } UIDebugLayerState;
 
 void UIDebugLayer(UIDebugLayerState *state);

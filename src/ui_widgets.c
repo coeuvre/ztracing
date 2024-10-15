@@ -1,12 +1,13 @@
 #include "src/ui_widgets.h"
 
 #include "src/math.h"
+#include "src/string.h"
 #include "src/types.h"
 #include "src/ui.h"
 
 void BeginUIScrollable(UIProps props, UIScrollableState *state) {
   if (IsZeroUIKey(props.key)) {
-    props.key = PushUIKeyF("Scrollable@%p", state);
+    props.key = PushUIKeyF("%p", state);
   }
   props.main_axis = kAxis2X;
   props.scrollable = 1;
@@ -14,7 +15,7 @@ void BeginUIScrollable(UIProps props, UIScrollableState *state) {
   b32 scrolling = IsUIMouseScrolling(props.key, &wheel_delta);
   BeginUIBoxWithTag("Scrollable", props);
   {
-    UIKey scroll_area_key = PushUIKeyF("ScrollArea");
+    UIKey scroll_area_key = PushUIKeyF("%p", state);
     state->scroll_area_size = GetUIComputed(scroll_area_key).size.y;
     BeginUIBoxWithTag("ScrollArea",
                       (UIProps){
@@ -24,7 +25,7 @@ void BeginUIScrollable(UIProps props, UIScrollableState *state) {
                           .size = V2(kUISizeUndefined, kUISizeInfinity),
                       });
     {
-      UIKey content_key = PushUIKeyF("ScrollContent");
+      UIKey content_key = PushUIKeyF("%p", state);
       UIComputed computed = GetUIComputed(content_key);
       state->head_size = V2(10, 0);
 
@@ -165,9 +166,57 @@ void SetUIScrollableScroll(UIScrollableState *state, f32 scroll) {
   state->scroll = ClampF32(scroll, 0, state->scroll_max);
 }
 
+static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 *index,
+                             u32 level) {
+  UIKey key = PushUIKeyF("Box%d", *index);
+  *index = *index + 1;
+
+  ColorU32 background_color = ColorU32Zero();
+  if (IsUIMouseHovering(key)) {
+    background_color = ColorU32FromSRGBNotPremultiplied(53, 119, 197, 255);
+    state->hovered_clip_rect = box->computed.clip_rect;
+  }
+  BeginUIRow((UIProps){
+      .key = key,
+      .background_color = background_color,
+      .padding = UIEdgeInsetsSymmetric(level * 20, 0),
+      .hoverable = 1,
+  });
+  b32 has_key = !IsEmptyStr8(box->key.str);
+  UITextF((UIProps){0}, "%s%s%s", box->computed.tag, has_key ? "#" : "",
+          has_key ? (char *)box->key.str.ptr : "");
+  EndUIRow();
+  for (UIBox *child = box->first; child; child = child->next) {
+    UIDebugLayerBoxR(state, child, index, level + 1);
+  }
+}
+
+static void UIDebugLayerInternal(UIDebugLayerState *state) {
+  UIState *ui_state = GetUIState();
+  UILayer *current_layer = ui_state->current_layer;
+
+  state->hovered_clip_rect = Rect2Zero();
+
+  u32 index = 0;
+  BeginUIColumn((UIProps){
+      .padding = UIEdgeInsetsSymmetric(6, 3),
+  });
+  for (UILayer *layer = ui_state->first_layer; layer; layer = layer->next) {
+    if (current_layer != layer && layer != state->debug_overlay) {
+      BeginUIRow((UIProps){0});
+      UITextF((UIProps){0}, "%s", layer->key.str.ptr);
+      EndUIRow();
+      if (layer->root) {
+        UIDebugLayerBoxR(state, layer->root, &index, 1);
+      }
+    }
+  }
+  EndUIColumn();
+}
+
 void UIDebugLayer(UIDebugLayerState *state) {
   f32 resize_handle_size = 16;
-  Vec2 default_frame_size = V2(800, 600);
+  Vec2 default_frame_size = V2(400, 500);
   Vec2 min_frame_size = V2(resize_handle_size * 2, resize_handle_size * 2);
 
   if (IsZeroVec2(SubVec2(state->max, state->min))) {
@@ -177,12 +226,29 @@ void UIDebugLayer(UIDebugLayerState *state) {
   }
 
   if (state->open) {
+    if (GetRect2Area(state->hovered_clip_rect) > 0) {
+      BeginUILayer(
+          (UILayerProps){
+              .min = state->hovered_clip_rect.min,
+              .max = state->hovered_clip_rect.max,
+          },
+          "DebugOverlay@%p", state);
+      state->debug_overlay = GetUIState()->current_layer;
+      BeginUIBox((UIProps){
+          .background_color = ColorU32FromSRGBNotPremultiplied(0, 0, 128, 50),
+      });
+      EndUIBox();
+      EndUILayer();
+    } else {
+      state->debug_overlay = 0;
+    }
+
     BeginUILayer(
         (UILayerProps){
             .min = state->min,
             .max = state->max,
         },
-        "Debug@%p", state);
+        "%p", state);
     UIKey frame_key = PushUIKeyF("Frame");
     if (IsUIMouseButtonPressed(frame_key, kUIMouseButtonLeft)) {
       state->pressed_min = state->min;
@@ -217,11 +283,8 @@ void UIDebugLayer(UIDebugLayerState *state) {
             .background_color = ColorU32FromHex(0xD1D1D1),
         });
         {
-          BeginUIBox((UIProps){
-              .padding = UIEdgeInsetsSymmetric(6, 3),
-              .text = PushUITextF("UI Debug"),
-          });
-          EndUIBox();
+          UITextF((UIProps){.padding = UIEdgeInsetsSymmetric(6, 3)},
+                  "UI Debug");
 
           BeginUIBox((UIProps){.flex = 1});
           EndUIBox();
@@ -252,8 +315,7 @@ void UIDebugLayer(UIDebugLayerState *state) {
         EndUIRow();
 
         BeginUIScrollable((UIProps){0}, &state->scrollable);
-        {
-        }
+        UIDebugLayerInternal(state);
         EndUIScrollable(&state->scrollable);
       }
       EndUIColumn();

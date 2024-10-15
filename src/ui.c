@@ -11,26 +11,6 @@
 #include "src/string.h"
 #include "src/types.h"
 
-typedef struct BoxHashSlot BoxHashSlot;
-struct BoxHashSlot {
-  BoxHashSlot *prev;
-  BoxHashSlot *next;
-  UIBox *first;
-  UIBox *last;
-};
-
-typedef struct UIBoxCache {
-  u32 total_box_count;
-  // Free list for boxes
-  UIBox *first_free_box;
-  // Hash slots for box hash table
-  u32 box_hash_slots_count;
-  BoxHashSlot *box_hash_slots;
-  // Linked list for non-empty box hash slots
-  BoxHashSlot *first_hash_slot;
-  BoxHashSlot *last_hash_slot;
-} UIBoxCache;
-
 static void InitUIBoxCache(UIBoxCache *cache, Arena *arena) {
   cache->box_hash_slots_count = 4096;
   cache->box_hash_slots =
@@ -110,51 +90,9 @@ static void GarbageCollectBoxes(UIBoxCache *cache, u64 build_index) {
   }
 }
 
-typedef struct UIMouseButtonState {
-  b8 is_down;
-  b8 transition_count;
-} UIMouseButtonState;
-
-typedef struct UIMouseInput {
-  Vec2 pos;
-  Vec2 wheel;
-  UIMouseButtonState buttons[kUIMouseButtonCount];
-
-  UIBox *hovering;
-  UIBox *pressed[kUIMouseButtonCount];
-  Vec2 pressed_pos[kUIMouseButtonCount];
-  UIBox *holding[kUIMouseButtonCount];
-  UIBox *clicked[kUIMouseButtonCount];
-  UIBox *scrolling;
-  Vec2 scroll_delta;
-} UIMouseInput;
-
-typedef struct UIInput {
-  f32 dt;
-  UIMouseInput mouse;
-} UIInput;
-
-typedef struct UIState {
-  Arena *arena;
-
-  UIBoxCache cache;
-  UIInput input;
-
-  Arena *build_arena[2];
-  u64 build_index;
-
-  // per-frame info
-  UILayer *first_layer;
-  UILayer *last_layer;
-  UILayer *current_layer;
-
-  UIBuildError *first_error;
-  UIBuildError *last_error;
-} UIState;
-
 thread_local UIState t_ui_state;
 
-static UIState *GetUIState(void) {
+UIState *GetUIState(void) {
   UIState *state = &t_ui_state;
   ASSERTF(state->arena, "InitUI is not called");
   return state;
@@ -937,24 +875,7 @@ static void PositionBox(UIBox *box, Vec2 parent_pos, Rect2 parent_clip_rect) {
 void EndUIFrame(void) {
   UIState *state = GetUIState();
   ASSERTF(!state->current_layer, "Mismatched BeginLayer/EndLayer calls");
-
-  for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
-    if (layer->root) {
-      Vec2 size = SubVec2(layer->props.max, layer->props.min);
-      LayoutBox(state, layer->root, size, size);
-      layer->root->computed.rel_pos = V2(0, 0);
-    }
-  }
-
-  for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
-    if (layer->root) {
-      PositionBox(layer->root, layer->props.min,
-                  R2(layer->props.min, layer->props.max));
-    }
-  }
-
   ProcessInput(state);
-
   DebugPrintUI(state);
 }
 
@@ -1046,6 +967,16 @@ void EndUILayer(void) {
   ASSERTF(state->current_layer, "Mismatched BeginLayer/EndLayer calls");
   ASSERTF(!state->current_layer->current,
           "Mismatched BeginUIBox/EndUIBox calls");
+
+  UILayer *layer = state->current_layer;
+  if (layer->root) {
+    Vec2 size = SubVec2(layer->props.max, layer->props.min);
+    LayoutBox(state, layer->root, size, size);
+    layer->root->computed.rel_pos = V2(0, 0);
+
+    PositionBox(layer->root, layer->props.min,
+                R2(layer->props.min, layer->props.max));
+  }
 
   EndUIKeyStack(state, state->current_layer->key);
   state->current_layer = state->current_layer->parent;

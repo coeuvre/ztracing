@@ -40,19 +40,6 @@ static b32 UIButton(Str8 label) {
   return result;
 }
 
-static void UITextF(UIProps props, const char *fmt, ...) {
-  props.padding = UIEdgeInsetsSymmetric(6, 4);
-  va_list ap;
-  va_start(ap, fmt);
-  BeginUIBox(props);
-  {
-    BeginUIBox((UIProps){.text = PushUITextFV(fmt, ap)});
-    EndUIBox();
-  }
-  EndUIBox();
-  va_end(ap);
-}
-
 static void BuildUI(f32 dt, f32 frame_time) {
   static UIDebugLayerState debug_layer_state = {.open = 1};
 
@@ -78,7 +65,8 @@ static void BuildUI(f32 dt, f32 frame_time) {
       BeginUIBox((UIProps){.flex = 1});
       EndUIBox();
 
-      UITextF((UIProps){0}, "%.0f %.1fms", 1.0f / dt, frame_time * 1000.0f);
+      UITextF((UIProps){.padding = UIEdgeInsetsSymmetric(6, 4)}, "%.0f %.1fms",
+              1.0f / dt, frame_time * 1000.0f);
     }
     EndUIRow();
 
