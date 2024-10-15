@@ -5,19 +5,15 @@
 #include "src/assert.h"
 #include "src/types.h"
 
-static inline void *AlignPow2(void *ptr, usize align) {
-  void *result = (void *)(((usize)ptr + align - 1) & (~(align - 1)));
+#define kPageSize KB(4)
+#define kAlign 8
+
+static inline usize AlignPow2USize(usize addr, usize align) {
+  usize result = ((addr + align - 1) & (~(align - 1)));
   return result;
 }
 
-static inline usize NextPow2USize(usize value) {
-  usize result = 1;
-  while (result <= value) {
-    result <<= 1;
-  }
-  return result;
-}
-
+// TODO: thread-safe
 static usize g_allocated_bytes;
 
 void *AllocMemory(usize size) {
@@ -34,11 +30,9 @@ void FreeMemory(void *ptr, usize size) {
 
 usize GetAllocatedBytes(void) { return g_allocated_bytes; }
 
-const usize kInitMemoryBlockSize = KB(4);
-
+// Allocate a memory block which is at least `size` bytes large.
 static MemoryBlock *AllocMemoryBlock(usize size) {
-  usize block_size =
-      MaxUSize(NextPow2USize(sizeof(MemoryBlock) + size), kInitMemoryBlockSize);
+  usize block_size = AlignPow2USize(sizeof(MemoryBlock) + size, kPageSize);
 
   MemoryBlock *block = (MemoryBlock *)AllocMemory(block_size);
   block->prev = 0;
@@ -48,7 +42,7 @@ static MemoryBlock *AllocMemoryBlock(usize size) {
   return block;
 }
 
-static void FreeMemoryBlock(MemoryBlock *block) {
+static inline void FreeMemoryBlock(MemoryBlock *block) {
   usize block_size = block->end - (u8 *)block;
   FreeMemory(block, block_size);
 }
@@ -84,13 +78,12 @@ void ResetArena(Arena *arena) { PopArenaTo(arena, 0, 0); }
 
 void *PushArena(Arena *arena, usize size, u32 flags) {
   u8 *result = 0;
-  usize align = 8;
 
   MemoryBlock *block = arena->current_block;
   if (block) {
-    result = (u8 *)AlignPow2(block->pos, align);
-    if (result + size > block->end) {
-      result = 0;
+    u8 *addr = (u8 *)AlignPow2USize((usize)block->pos, kAlign);
+    if (addr + size <= block->end) {
+      result = addr;
     }
   }
 
@@ -98,9 +91,9 @@ void *PushArena(Arena *arena, usize size, u32 flags) {
     MemoryBlock *new_block = AllocMemoryBlock(size);
     new_block->prev = arena->current_block;
     block = new_block;
-
     arena->current_block = block;
-    result = (u8 *)AlignPow2(block->pos, align);
+
+    result = (u8 *)AlignPow2USize((usize)block->pos, kAlign);
   }
 
   DEBUG_ASSERT(result + size <= block->end);

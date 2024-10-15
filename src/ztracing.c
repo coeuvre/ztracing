@@ -43,8 +43,6 @@ static b32 UIButton(Str8 label) {
 static void BuildUI(f32 dt, f32 frame_time) {
   static UIDebugLayerState debug_layer_state = {0};
 
-  TempMemory scratch = BeginScratch(0, 0);
-
   BeginUILayer(
       (UILayerProps){
           .min = V2(0, 0),
@@ -109,8 +107,6 @@ static void BuildUI(f32 dt, f32 frame_time) {
   EndUILayer();
 
   UIDebugLayer(&debug_layer_state);
-
-  EndScratch(scratch);
 }
 
 void DoFrame(void) {

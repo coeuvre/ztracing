@@ -163,8 +163,7 @@ struct UIBox {
   UIBox *next;
   UIBox *parent;
 
-  // key + generation
-  UIKey key;
+  // generation
   u64 last_touched_build_index;
 
   // per-frame info provided by builders

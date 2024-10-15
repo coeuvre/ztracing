@@ -182,9 +182,9 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 *index,
       .padding = UIEdgeInsetsSymmetric(level * 20, 0),
       .hoverable = 1,
   });
-  b32 has_key = !IsEmptyStr8(box->key.str);
+  b32 has_key = !IsEmptyStr8(box->props.key.str);
   UITextF((UIProps){0}, "%s%s%s", box->computed.tag, has_key ? "#" : "",
-          has_key ? (char *)box->key.str.ptr : "");
+          has_key ? (char *)box->props.key.str.ptr : "");
   EndUIRow();
   for (UIBox *child = box->first; child; child = child->next) {
     UIDebugLayerBoxR(state, child, index, level + 1);

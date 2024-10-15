@@ -36,7 +36,7 @@ static UIBox *GetBoxByKey(UIBoxCache *cache, UIKey key) {
     BoxHashSlot *slot =
         &cache->box_hash_slots[key.hash % cache->box_hash_slots_count];
     for (UIBox *box = slot->first; box; box = box->hash_next) {
-      if (IsEqualUIKey(box->key, key)) {
+      if (IsEqualUIKey(box->props.key, key)) {
         result = box;
         break;
       }
@@ -49,7 +49,6 @@ static UIBox *GetOrPushBoxByKey(UIBoxCache *cache, Arena *arena, UIKey key) {
   UIBox *box = GetBoxByKey(cache, key);
   if (!box) {
     box = GetOrPushBox(cache, arena);
-    box->key = key;
     BoxHashSlot *slot =
         &cache->box_hash_slots[key.hash % cache->box_hash_slots_count];
     if (!slot->first) {
@@ -70,7 +69,7 @@ static void GarbageCollectBoxes(UIBoxCache *cache, u64 build_index) {
 
     for (UIBox *box = slot->first; box;) {
       UIBox *next = box->hash_next;
-      if (IsZeroUIKey(box->key) ||
+      if (IsZeroUIKey(box->props.key) ||
           box->last_touched_build_index < build_index) {
         REMOVE_DOUBLY_LINKED_LIST(slot->first, slot->last, box, hash_prev,
                                   hash_next);
@@ -1010,8 +1009,7 @@ UIKey PushUIKey(Str8 key_str) {
   UIState *state = GetUIState();
   Arena *arena = GetBuildArena(state);
   Str8 key_str_copy = PushStr8(arena, key_str);
-  UIKey seed = GetFirstNonZeroUIKey(state);
-  UIKey result = UIKeyFromStr8(seed, key_str_copy);
+  UIKey result = PushUIKeyWithStrFromBuildArena(key_str_copy);
   return result;
 }
 
@@ -1140,7 +1138,7 @@ Vec2 GetUIMousePos(void) {
 static inline b32 IsEqualUIKeyAndNonZero(UIBox *box, UIKey key) {
   b32 result = 0;
   if (box && !IsZeroUIKey(key)) {
-    result = IsEqualUIKey(box->key, key);
+    result = IsEqualUIKey(box->props.key, key);
   }
   return result;
 }
