@@ -306,12 +306,34 @@ static inline f32 GetEdgeInsetsEnd(UIEdgeInsets edge_insets, Axis2 axis) {
   return result;
 }
 
-static void AlignMainAxisFlex(UIBox *box, Axis2 axis, f32 padding_start,
+static inline UIBorderSide GetBorderSideStart(UIBorder border, Axis2 axis) {
+  UIBorderSide result;
+  if (axis == kAxis2X) {
+    result = border.left;
+  } else {
+    result = border.top;
+  }
+  return result;
+}
+
+static inline UIBorderSide GetBorderSideEnd(UIBorder border, Axis2 axis) {
+  UIBorderSide result;
+  if (axis == kAxis2X) {
+    result = border.right;
+  } else {
+    result = border.bottom;
+  }
+  return result;
+}
+
+static void AlignMainAxisFlex(UIBox *box, Axis2 axis, f32 border_start,
+                              f32 border_end, f32 padding_start,
                               f32 padding_end, UIMainAxisAlign align,
                               f32 children_size) {
   f32 size_axis = GetItemVec2(box->computed.size, axis);
-  f32 free = size_axis - children_size - padding_start - padding_end;
-  f32 pos = padding_start;
+  f32 free = size_axis - children_size - border_start - border_end -
+             padding_start - padding_end;
+  f32 pos = border_start + padding_start;
   switch (align) {
     case kUIMainAxisAlignStart: {
     } break;
@@ -339,26 +361,27 @@ static void AlignMainAxisFlex(UIBox *box, Axis2 axis, f32 padding_start,
   }
 }
 
-static void AlignMainAxisStack(UIBox *box, Axis2 axis, f32 padding_start,
+static void AlignMainAxisStack(UIBox *box, Axis2 axis, f32 border_start,
+                               f32 border_end, f32 padding_start,
                                f32 padding_end, UIMainAxisAlign align) {
   f32 size = GetItemVec2(box->computed.size, axis);
   for (UIBox *child = box->first; child; child = child->next) {
     f32 pos = 0;
     f32 child_size = GetItemVec2(child->computed.size, axis);
-    f32 free = size - child_size - padding_start - padding_end -
-               GetEdgeInsetsSize(child->props.margin, axis);
+    f32 free = size - child_size - border_start - border_end - padding_start -
+               padding_end - GetEdgeInsetsSize(child->props.margin, axis);
     f32 margin_start = GetEdgeInsetsStart(child->props.margin, axis);
     switch (align) {
       case kUIMainAxisAlignStart: {
-        pos = padding_start + margin_start;
+        pos = border_start + padding_start + margin_start;
       } break;
 
       case kUIMainAxisAlignCenter: {
-        pos = padding_start + margin_start + free / 2.0f;
+        pos = border_start + padding_start + margin_start + free / 2.0f;
       } break;
 
       case kUIMainAxisAlignEnd: {
-        pos = padding_start + margin_start + free;
+        pos = border_start + padding_start + margin_start + free;
       } break;
 
       default: {
@@ -373,17 +396,22 @@ static void AlignMainAxisStack(UIBox *box, Axis2 axis, f32 padding_start,
   }
 }
 
-static void AlignMainAxis(UIBox *box, Axis2 axis, f32 padding_start,
-                          f32 padding_end, UIMainAxisAlign align,
+static void AlignMainAxis(UIBox *box, Axis2 axis, UIMainAxisAlign align,
                           f32 children_size) {
+  f32 border_start = GetBorderSideStart(box->props.border, axis).width;
+  f32 border_end = GetBorderSideEnd(box->props.border, axis).width;
+  f32 padding_start = GetEdgeInsetsStart(box->props.padding, axis);
+  f32 padding_end = GetEdgeInsetsEnd(box->props.padding, axis);
+
   switch (box->props.layout) {
     case kUILayoutFlex: {
-      AlignMainAxisFlex(box, axis, padding_start, padding_end, align,
-                        children_size);
+      AlignMainAxisFlex(box, axis, border_start, border_end, padding_start,
+                        padding_end, align, children_size);
     } break;
 
     case kUILayoutStack: {
-      AlignMainAxisStack(box, axis, padding_start, padding_end, align);
+      AlignMainAxisStack(box, axis, border_start, border_end, padding_start,
+                         padding_end, align);
     } break;
 
     default: {
@@ -392,26 +420,31 @@ static void AlignMainAxis(UIBox *box, Axis2 axis, f32 padding_start,
   }
 }
 
-static void AlignCrossAxis(UIBox *box, Axis2 axis, f32 padding_start,
-                           f32 padding_end, UICrossAxisAlign align) {
+static void AlignCrossAxis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
+  f32 border_start = GetBorderSideStart(box->props.border, axis).width;
+  f32 border_end = GetBorderSideEnd(box->props.border, axis).width;
+  f32 padding_start = GetEdgeInsetsStart(box->props.padding, axis);
+  f32 padding_end = GetEdgeInsetsEnd(box->props.padding, axis);
+
   for (UIBox *child = box->first; child; child = child->next) {
     f32 free = GetItemVec2(box->computed.size, axis) -
-               GetItemVec2(child->computed.size, axis) - padding_start -
-               padding_end - GetEdgeInsetsSize(child->props.margin, axis);
+               GetItemVec2(child->computed.size, axis) - border_start -
+               border_end - padding_start - padding_end -
+               GetEdgeInsetsSize(child->props.margin, axis);
     f32 margin_start = GetEdgeInsetsStart(child->props.margin, axis);
     f32 pos = 0;
     switch (align) {
       case kUICrossAxisAlignStart:
       case kUICrossAxisAlignStretch: {
-        pos = padding_start + margin_start;
+        pos = border_start + padding_start + margin_start;
       } break;
 
       case kUICrossAxisAlignCenter: {
-        pos = padding_start + margin_start + free / 2.0f;
+        pos = border_start + padding_start + margin_start + free / 2.0f;
       } break;
 
       case kUICrossAxisAlignEnd: {
-        pos = padding_start + margin_start + free;
+        pos = border_start + padding_start + margin_start + free;
       } break;
 
       default: {
@@ -661,14 +694,17 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
       SetItemVec2(&children_max_size, axis, max_size_axis);
     }
   }
-  // Leave space for padding
+  // Leave space for padding and border
   children_max_size.x = MaxF32(
-      children_max_size.x - (box->props.padding.start + box->props.padding.end),
+      children_max_size.x -
+          (box->props.border.left.width + box->props.border.right.width) -
+          (box->props.padding.start + box->props.padding.end),
       0);
-  children_max_size.y =
-      MaxF32(children_max_size.y -
-                 (box->props.padding.top + box->props.padding.bottom),
-             0);
+  children_max_size.y = MaxF32(
+      children_max_size.y -
+          (box->props.border.top.width + box->props.border.bottom.width) -
+          (box->props.padding.top + box->props.padding.bottom),
+      0);
 
   Axis2 main_axis = box->props.main_axis;
   Axis2 cross_axis = (main_axis + 1) % kAxis2Count;
@@ -701,11 +737,14 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
       SetItemVec2(&box->computed.size, axis, max_size_axis);
     } else {
       // Size itself around children
+      f32 border_start_axis = GetBorderSideStart(box->props.border, axis).width;
+      f32 border_end_axis = GetBorderSideEnd(box->props.border, axis).width;
       f32 padding_start_axis = GetEdgeInsetsStart(box->props.padding, axis);
       f32 padding_end_axis = GetEdgeInsetsEnd(box->props.padding, axis);
       f32 children_size_axis = GetItemVec2(children_size, axis);
-      f32 content_size_axis =
-          children_size_axis + padding_start_axis + padding_end_axis;
+      f32 content_size_axis = children_size_axis + border_start_axis +
+                              border_end_axis + padding_start_axis +
+                              padding_end_axis;
       SetItemVec2(&box->computed.size, axis,
                   ClampF32(content_size_axis, min_size_axis, max_size_axis));
     }
@@ -717,14 +756,9 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
           box->computed.size.x, box->computed.size.y, min_size.x, min_size.y,
           max_size.x, max_size.y);
 
-  AlignMainAxis(
-      box, main_axis, GetEdgeInsetsStart(box->props.padding, main_axis),
-      GetEdgeInsetsEnd(box->props.padding, main_axis),
-      box->props.main_axis_align, GetItemVec2(children_size, main_axis));
-  AlignCrossAxis(box, cross_axis,
-                 GetEdgeInsetsStart(box->props.padding, cross_axis),
-                 GetEdgeInsetsEnd(box->props.padding, cross_axis),
-                 box->props.cross_axis_align);
+  AlignMainAxis(box, main_axis, box->props.main_axis_align,
+                GetItemVec2(children_size, main_axis));
+  AlignCrossAxis(box, cross_axis, box->props.cross_axis_align);
   // Clip if content size exceeds self size.
   box->computed.clip =
       box->computed.clip ||
@@ -751,6 +785,26 @@ static void RenderBox(UIState *state, UIBox *box, Vec2 parent_pos,
 
     if (box->props.background_color.a) {
       DrawRect(min, max, box->props.background_color);
+    }
+
+    if (box->props.border.left.width > 0) {
+      DrawRect(min, V2(min.x + box->props.border.left.width, max.y),
+               box->props.border.left.color);
+    }
+
+    if (box->props.border.top.width > 0) {
+      DrawRect(min, V2(max.x, min.y + box->props.border.top.width),
+               box->props.border.left.color);
+    }
+
+    if (box->props.border.right.width > 0) {
+      DrawRect(V2(max.x - box->props.border.right.width, min.y), max,
+               box->props.border.left.color);
+    }
+
+    if (box->props.border.bottom.width > 0) {
+      DrawRect(V2(min.x, max.y - box->props.border.bottom.width), max,
+               box->props.border.left.color);
     }
 
     // Debug outline

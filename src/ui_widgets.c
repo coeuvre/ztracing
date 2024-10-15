@@ -197,7 +197,10 @@ void UIDebugLayer(UIDebugLayerState *state) {
       .key = frame_key,
       .layout = kUILayoutStack,
       .color = ColorU32FromHex(0x000000),
-      .background_color = ColorU32FromHex(0xFF00FF),
+      .border = UIBorderFromBorderSide((UIBorderSide){
+          .color = ColorU32FromHex(0xA8A8A8),
+          .width = 1,
+      }),
       .main_axis_align = kUIMainAxisAlignEnd,
       .cross_axis_align = kUICrossAxisAlignEnd,
       .hoverable = 1,

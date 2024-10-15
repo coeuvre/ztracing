@@ -67,6 +67,32 @@ static inline UIEdgeInsets UIEdgeInsetsFromSTEB(f32 start, f32 top, f32 end,
   return result;
 }
 
+// A side of a border of a box.
+typedef struct UIBorderSide {
+  // The color of this side of the border.
+  ColorU32 color;
+  // The width of this side of the border, in points.
+  f32 width;
+} UIBorderSide;
+
+// A border of a box, comprised of four sides: left, top, right, bottom.
+typedef struct UIBorder {
+  UIBorderSide left;
+  UIBorderSide top;
+  UIBorderSide right;
+  UIBorderSide bottom;
+} UIBorder;
+
+// A uniform border with all sides the same color and width.
+static inline UIBorder UIBorderFromBorderSide(UIBorderSide border_side) {
+  UIBorder result;
+  result.left = border_side;
+  result.top = border_side;
+  result.right = border_side;
+  result.bottom = border_side;
+  return result;
+}
+
 typedef enum UIMouseButton {
   kUIMouseButtonLeft,
   kUIMouseButtonRight,
@@ -80,6 +106,7 @@ typedef struct UIProps {
   UIKey key;
 
   ColorU32 background_color;
+  // The size of the box, including border and padding.
   Vec2 size;
   UILayout layout;
   Axis2 main_axis;
@@ -89,6 +116,7 @@ typedef struct UIProps {
   UICrossAxisAlign cross_axis_align;
   UIEdgeInsets padding;
   UIEdgeInsets margin;
+  UIBorder border;
 
   Str8 text;
   ColorU32 color;
