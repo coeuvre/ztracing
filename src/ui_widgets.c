@@ -113,9 +113,6 @@ void EndUIScrollable(UIScrollableState *state) {
         EndUIBox();
 
         BeginUIBox((UIProps){
-            .size = V2(state->head_size.x, state->control_size),
-            .background_color = background_color,
-            .main_axis_align = kUIMainAxisAlignCenter,
             .hoverable = 1,
             .clickable[kUIMouseButtonLeft] = 1,
         });
@@ -143,9 +140,7 @@ void EndUIScrollable(UIScrollableState *state) {
           }
 
           BeginUIBox((UIProps){
-              .size = V2(
-                  is_dragging ? state->head_size.x : state->head_size.x * 0.8f,
-                  state->control_size),
+              .size = V2(state->head_size.x, state->control_size),
               .background_color = control_background_color,
           });
           EndUIBox();
