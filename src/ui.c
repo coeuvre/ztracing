@@ -991,6 +991,7 @@ void BeginUITag(const char *tag, UIProps props) {
 
   UIKey key = UIKeyForBox(seed, seq, tag, props.key);
   UIBox *box = PushUIBox(&frame->cache, &frame->arena, key);
+  box->tag = tag;
 
   if (parent) {
     APPEND_DOUBLY_LINKED_LIST(parent->first, parent->last, box, prev, next);
@@ -1001,7 +1002,6 @@ void BeginUITag(const char *tag, UIProps props) {
   }
   box->parent = parent;
   box->props = props;
-  box->computed.tag = tag;
 
   // Copy state from last frame, if any
   UIFrame *last_frame = GetLastUIFrame(state);
@@ -1023,26 +1023,14 @@ void EndUITag(const char *tag) {
   ASSERTF(layer, "No active UILayer");
 
   ASSERT(layer->current);
-  ASSERTF(strcmp(layer->current->computed.tag, tag) == 0,
+  ASSERTF(strcmp(layer->current->tag, tag) == 0,
           "Mismatched Begin/End calls. Begin with %s, end with %s",
-          layer->current->computed.tag, tag);
+          layer->current->tag, tag);
 
   layer->current = layer->current->parent;
 }
 
-static inline UIBox *GetUIBoxByKeyInternal(UIFrame *frame, UIKey key) {
-  UIBox *result = GetBoxByKey(&frame->cache, key);
-  return result;
-}
-
-UIBox *GetUIBox(UIKey key) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
-  UIBox *result = GetUIBoxByKeyInternal(frame, key);
-  return result;
-}
-
-static UIBox *GetCurrentUIBox(void) {
+UIBox *GetCurrentUIBox(void) {
   UIState *state = GetUIState();
   UIFrame *frame = GetCurrentUIFrame(state);
   ASSERT(frame->current_layer && frame->current_layer->current);
@@ -1072,46 +1060,38 @@ Vec2 GetUIMousePos(void) {
   return result;
 }
 
-static inline b32 IsEqualUIKeyAndNonZero(UIKey a, UIKey b) {
-  b32 result = 0;
-  if (!IsZeroUIKey(a) && !IsZeroUIKey(b)) {
-    result = IsEqualUIKey(a, b);
-  }
-  return result;
-}
-
 b32 IsUIMouseHovering(void) {
   UIState *state = GetUIState();
-  b32 result = IsEqualUIKeyAndNonZero(state->input.mouse.hovering,
-                                      GetCurrentUIBox()->key);
+  b32 result =
+      IsEqualUIKey(state->input.mouse.hovering, GetCurrentUIBox()->key);
   return result;
 }
 
 b32 IsUIMouseButtonPressed(UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result = IsEqualUIKeyAndNonZero(state->input.mouse.pressed[button],
-                                      GetCurrentUIBox()->key);
+  b32 result =
+      IsEqualUIKey(state->input.mouse.pressed[button], GetCurrentUIBox()->key);
   return result;
 }
 
 b32 IsUIMouseButtonDown(UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result = IsEqualUIKeyAndNonZero(state->input.mouse.holding[button],
-                                      GetCurrentUIBox()->key);
+  b32 result =
+      IsEqualUIKey(state->input.mouse.holding[button], GetCurrentUIBox()->key);
   return result;
 }
 
 b32 IsUIMouseButtonClicked(UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result = IsEqualUIKeyAndNonZero(state->input.mouse.clicked[button],
-                                      GetCurrentUIBox()->key);
+  b32 result =
+      IsEqualUIKey(state->input.mouse.clicked[button], GetCurrentUIBox()->key);
   return result;
 }
 
 b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
   UIState *state = GetUIState();
-  f32 result = IsEqualUIKeyAndNonZero(state->input.mouse.holding[button],
-                                      GetCurrentUIBox()->key);
+  f32 result =
+      IsEqualUIKey(state->input.mouse.holding[button], GetCurrentUIBox()->key);
   if (result && delta) {
     *delta =
         SubVec2(state->input.mouse.pos, state->input.mouse.pressed_pos[button]);
@@ -1121,8 +1101,8 @@ b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
 
 b32 IsUIMouseScrolling(Vec2 *delta) {
   UIState *state = GetUIState();
-  f32 result = IsEqualUIKeyAndNonZero(state->input.mouse.scrolling,
-                                      GetCurrentUIBox()->key);
+  f32 result =
+      IsEqualUIKey(state->input.mouse.scrolling, GetCurrentUIBox()->key);
   if (result && delta) {
     *delta = state->input.mouse.scroll_delta;
   }

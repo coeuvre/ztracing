@@ -129,8 +129,6 @@ typedef struct UIProps {
 
 // Data that is computed every frame
 typedef struct UIComputed {
-  const char *tag;
-
   Vec2 min_size;
   Vec2 max_size;
 
@@ -151,6 +149,7 @@ typedef struct UIPersistent {
 
 typedef struct UIBox UIBox;
 struct UIBox {
+  const char *tag;
   UIKey key;
 
   // hash links
@@ -302,7 +301,7 @@ void EndUITag(const char *tag);
 static inline void BeginUIBox(UIProps props) { BeginUITag("Box", props); }
 static inline void EndUIBox(void) { EndUITag("Box"); }
 
-UIBox *GetUIBox(UIKey key);
+UIBox *GetCurrentUIBox(void);
 
 UIComputed GetUIComputed(void);
 UIPersistent *GetUIPersistent(void);

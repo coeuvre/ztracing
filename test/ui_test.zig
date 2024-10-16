@@ -123,15 +123,16 @@ test "Layout, root has the same size as the screen" {
     };
 
     for (sizes) |size| {
+        var root: [*c]c.UIBox = undefined;
+
         c.BeginUIFrame();
         c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-        const key = c.PushUIKeyF("Root");
-        c.BeginUIBox(.{ .key = key, .size = size });
+        c.BeginUIBox(.{ .size = size });
+        root = c.GetCurrentUIBox();
         c.EndUIBox();
         c.EndUILayer();
         c.EndUIFrame();
 
-        const root = c.GetUIBox(key);
         try expectBoxSize(root, c.V2(100, 100));
     }
 }
@@ -153,22 +154,23 @@ test "Layout, aligns" {
 
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
+            var container: [*c]c.UIBox = undefined;
+
             c.BeginUIFrame();
             c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-            const key = c.PushUIKeyF("key");
             c.BeginUIBox(.{
                 .main_axis_align = main_axis_option.@"align",
                 .cross_axis_align = cross_axis_option.@"align",
             });
             {
-                c.BeginUIBox(.{ .key = key, .size = c.V2(50, 50) });
+                c.BeginUIBox(.{ .size = c.V2(50, 50) });
+                container = c.GetCurrentUIBox();
                 c.EndUIBox();
             }
             c.EndUIBox();
             c.EndUILayer();
             c.EndUIFrame();
 
-            const container = c.GetUIBox(key);
             try expectBoxRelPos(container, c.V2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
             try expectBoxSize(container, c.V2(50, 50));
         }
@@ -193,17 +195,19 @@ test "Layout, padding" {
 
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
+            var container: [*c]c.UIBox = undefined;
+
             c.BeginUIFrame();
             c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-            const key = c.PushUIKeyF("key");
             c.BeginUIBox(.{
                 .main_axis_align = main_axis_option.@"align",
                 .cross_axis_align = cross_axis_option.@"align",
                 .padding = padding,
             });
             {
-                c.BeginUIBox(.{ .key = key });
+                c.BeginUIBox(.{});
                 {
+                    container = c.GetCurrentUIBox();
                     c.BeginUIBox(.{ .size = c.V2(50, 50) });
                     c.EndUIBox();
                 }
@@ -213,7 +217,6 @@ test "Layout, padding" {
             c.EndUILayer();
             c.EndUIFrame();
 
-            const container = c.GetUIBox(key);
             try expectBoxRelPos(container, c.V2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
             try expectBoxSize(container, c.V2(50, 50));
         }
@@ -224,19 +227,20 @@ test "Layout, no children, no fixed size, as small as possible" {
     c.InitUI();
     defer c.QuitUI();
 
+    var container: [*c]c.UIBox = undefined;
+
     c.BeginUIFrame();
     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    const key = c.PushUIKeyF("key");
     c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .key = key });
+        c.BeginUIBox(.{});
+        container = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUILayer();
     c.EndUIFrame();
 
-    const container = c.GetUIBox(key);
     try expectBoxSize(container, c.V2(0, 0));
 }
 
@@ -244,19 +248,20 @@ test "Layout, no children, no fixed size, flex, main axis is as big as possible"
     c.InitUI();
     defer c.QuitUI();
 
+    var container: [*c]c.UIBox = undefined;
+
     c.BeginUIFrame();
     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    const key = c.PushUIKeyF("key");
     c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .key = key, .flex = 1 });
+        c.BeginUIBox(.{ .flex = 1 });
+        container = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUILayer();
     c.EndUIFrame();
 
-    const container = c.GetUIBox(key);
     try expectBoxSize(container, c.V2(100, 0));
 }
 
@@ -264,14 +269,16 @@ test "Layout, with one child, size around it" {
     c.InitUI();
     defer c.QuitUI();
 
+    var container: [*c]c.UIBox = undefined;
+
     c.BeginUIFrame();
-    const key = c.PushUIKeyF("key");
     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{});
         {
-            c.BeginUIBox(.{ .key = key, .size = c.V2(50, 50) });
+            c.BeginUIBox(.{ .size = c.V2(50, 50) });
+            container = c.GetCurrentUIBox();
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -280,7 +287,6 @@ test "Layout, with one child, size around it" {
     c.EndUILayer();
     c.EndUIFrame();
 
-    const container = c.GetUIBox(key);
     try expectBoxSize(container, c.V2(50, 50));
 }
 
@@ -288,15 +294,18 @@ test "Layout, with fixed size" {
     c.InitUI();
     defer c.QuitUI();
 
+    var container: [*c]c.UIBox = undefined;
+    var child: [*c]c.UIBox = undefined;
+
     c.BeginUIFrame();
     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    const container_key = c.PushUIKeyF("container");
-    const child_key = c.PushUIKeyF("child");
     c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .key = container_key, .size = c.V2(30, 20) });
+        c.BeginUIBox(.{ .size = c.V2(30, 20) });
         {
-            c.BeginUIBox(.{ .key = child_key, .size = c.V2(50, 40) });
+            container = c.GetCurrentUIBox();
+            c.BeginUIBox(.{ .size = c.V2(50, 40) });
+            child = c.GetCurrentUIBox();
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -305,8 +314,6 @@ test "Layout, with fixed size" {
     c.EndUILayer();
     c.EndUIFrame();
 
-    const container = c.GetUIBox(container_key);
-    const child = c.GetUIBox(child_key);
     try expectBoxSize(container, c.V2(30, 20));
     try expectBoxSize(child, c.V2(30, 20));
 }
@@ -315,15 +322,18 @@ test "Layout, with fixed size, negative" {
     c.InitUI();
     defer c.QuitUI();
 
+    var container: [*c]c.UIBox = undefined;
+    var child: [*c]c.UIBox = undefined;
+
     c.BeginUIFrame();
     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    const container_key = c.PushUIKeyF("container");
-    const child_key = c.PushUIKeyF("child");
     c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .key = container_key, .size = c.V2(30, -20) });
+        c.BeginUIBox(.{ .size = c.V2(30, -20) });
         {
-            c.BeginUIBox(.{ .key = child_key, .size = c.V2(50, 50) });
+            container = c.GetCurrentUIBox();
+            c.BeginUIBox(.{ .size = c.V2(50, 50) });
+            child = c.GetCurrentUIBox();
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -332,8 +342,6 @@ test "Layout, with fixed size, negative" {
     c.EndUILayer();
     c.EndUIFrame();
 
-    const container = c.GetUIBox(container_key);
-    const child = c.GetUIBox(child_key);
     try expectBoxSize(container, c.V2(30, 0));
     try expectBoxSize(child, c.V2(30, 0));
 }
@@ -348,13 +356,15 @@ test "Layout, main axis size, child has different main axis than parent" {
     };
 
     for (main_axis_sizes) |main_axis_size| {
+        var row: [*c]c.UIBox = undefined;
+
         c.BeginUIFrame();
         c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-        const key = c.PushUIKeyF("key");
         c.BeginUIBox(.{ .main_axis = c.kAxis2Y });
         {
-            c.BeginUIBox(.{ .key = key, .main_axis_size = main_axis_size });
+            c.BeginUIBox(.{ .main_axis_size = main_axis_size });
             {
+                row = c.GetCurrentUIBox();
                 c.BeginUIBox(.{ .size = c.V2(30, 20) });
                 c.EndUIBox();
             }
@@ -364,7 +374,6 @@ test "Layout, main axis size, child has different main axis than parent" {
         c.EndUILayer();
         c.EndUIFrame();
 
-        const row = c.GetUIBox(key);
         if (main_axis_size == c.kUIMainAxisSizeMin) {
             try expectBoxSize(row, c.V2(30, 20));
         } else {
@@ -383,13 +392,15 @@ test "Layout, main axis size, child has same main axis as parent" {
     };
 
     for (main_axis_sizes) |main_axis_size| {
+        var row: [*c]c.UIBox = undefined;
+
         c.BeginUIFrame();
         c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-        const key = c.PushUIKeyF("key");
         c.BeginUIBox(.{});
         {
-            c.BeginUIBox(.{ .key = key, .main_axis_size = main_axis_size });
+            c.BeginUIBox(.{ .main_axis_size = main_axis_size });
             {
+                row = c.GetCurrentUIBox();
                 c.BeginUIBox(.{ .size = c.V2(20, 20) });
                 c.EndUIBox();
             }
@@ -399,7 +410,6 @@ test "Layout, main axis size, child has same main axis as parent" {
         c.EndUILayer();
         c.EndUIFrame();
 
-        const row = c.GetUIBox(key);
         if (main_axis_size == c.kUIMainAxisSizeMin) {
             try expectBoxSize(row, c.V2(20, 20));
         } else {
@@ -414,19 +424,20 @@ test "Layout, no fixed size, size around text" {
     c.InitUI();
     defer c.QuitUI();
 
+    var text: [*c]c.UIBox = undefined;
+
     c.BeginUIFrame();
     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    const key = c.PushUIKeyF("key");
     c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .key = key, .text = c.PushUITextF("text") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("text") });
+        text = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUILayer();
     c.EndUIFrame();
 
-    const text = c.GetUIBox(key);
     const text_metrics = c.GetTextMetricsStr8(c.STR8_LIT("Text"), c.kUIFontSizeDefault);
     try expectBoxSize(text, text_metrics.size);
 }
@@ -435,19 +446,20 @@ test "Layout, fixed size, truncate text" {
     c.InitUI();
     defer c.QuitUI();
 
+    var text: [*c]c.UIBox = undefined;
+
     c.BeginUIFrame();
     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    const key = c.PushUIKeyF("key");
     c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .key = key, .size = c.V2(2, 2), .text = c.PushUITextF("Text") });
+        c.BeginUIBox(.{ .size = c.V2(2, 2), .text = c.PushUIStr8F("Text") });
+        text = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUILayer();
     c.EndUIFrame();
 
-    const text = c.GetUIBox(key);
     try expectBoxSize(text, c.V2(2, 2));
 }
 
@@ -455,24 +467,25 @@ test "Layout, row, no constraints on children" {
     c.InitUI();
     defer c.QuitUI();
 
+    var c0: [*c]c.UIBox = undefined;
+    var c1: [*c]c.UIBox = undefined;
+
     c.BeginUIFrame();
     c.BeginUILayer(.{ .max = c.V2(1000, 100) }, "Layer");
-    const key0 = c.PushUIKeyF("key0");
-    const key1 = c.PushUIKeyF("key1");
     c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .key = key0, .text = c.PushUITextF("Hello!") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
+        c0 = c.GetCurrentUIBox();
         c.EndUIBox();
 
-        c.BeginUIBox(.{ .key = key1, .text = c.PushUITextF("Goodbye!") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
+        c1 = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUILayer();
     c.EndUIFrame();
 
-    const c0 = c.GetUIBox(key0);
-    const c1 = c.GetUIBox(key1);
     const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.kUIFontSizeDefault).size;
     const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.kUIFontSizeDefault).size;
 
@@ -487,24 +500,25 @@ test "Layout, row, no constraints on children, but truncate" {
     c.InitUI();
     defer c.QuitUI();
 
+    var c0: [*c]c.UIBox = undefined;
+    var c1: [*c]c.UIBox = undefined;
+
     c.BeginUIFrame();
     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    const key0 = c.PushUIKeyF("key0");
-    const key1 = c.PushUIKeyF("key1");
     c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .key = key0, .text = c.PushUITextF("Hello!") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
+        c0 = c.GetCurrentUIBox();
         c.EndUIBox();
 
-        c.BeginUIBox(.{ .key = key1, .text = c.PushUITextF("Goodbye!") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
+        c1 = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUILayer();
     c.EndUIFrame();
 
-    const c0 = c.GetUIBox(key0);
-    const c1 = c.GetUIBox(key1);
     const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.kUIFontSizeDefault).size;
     const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.kUIFontSizeDefault).size;
 
@@ -519,28 +533,28 @@ test "Layout, row, constraint flex" {
     c.InitUI();
     defer c.QuitUI();
 
+    var c0: [*c]c.UIBox = undefined;
+    var c1: [*c]c.UIBox = undefined;
+
     c.BeginUIFrame();
     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    const key0 = c.PushUIKeyF("key0");
-    const key1 = c.PushUIKeyF("key1");
     c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{
-            .key = key0,
             .flex = 1,
-            .text = c.PushUITextF("A very long text that doesn't fit in one line!"),
+            .text = c.PushUIStr8F("A very long text that doesn't fit in one line!"),
         });
+        c0 = c.GetCurrentUIBox();
         c.EndUIBox();
 
-        c.BeginUIBox(.{ .key = key1, .text = c.PushUITextF("Goodbye!") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
+        c1 = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
     c.EndUILayer();
     c.EndUIFrame();
 
-    const c0 = c.GetUIBox(key0);
-    const c1 = c.GetUIBox(key1);
     const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("A very long text that doesn't fit in one line!"), c.kUIFontSizeDefault).size;
     const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.kUIFontSizeDefault).size;
 
@@ -555,16 +569,19 @@ test "Layout, main axis unbounded" {
     c.InitUI();
     defer c.QuitUI();
 
+    var container: [*c]c.UIBox = undefined;
+    var child: [*c]c.UIBox = undefined;
+
     c.BeginUIFrame();
     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    const container_key = c.PushUIKeyF("container");
-    const child_key = c.PushUIKeyF("child");
     c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .key = container_key, .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
+        c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
         {
-            c.BeginUIBox(.{ .key = child_key });
+            container = c.GetCurrentUIBox();
+            c.BeginUIBox(.{});
             {
+                child = c.GetCurrentUIBox();
                 c.BeginUIBox(.{ .size = c.V2(100000, 10) });
                 c.EndUIBox();
 
@@ -579,8 +596,6 @@ test "Layout, main axis unbounded" {
     c.EndUILayer();
     c.EndUIFrame();
 
-    const container = c.GetUIBox(container_key);
-    const child = c.GetUIBox(child_key);
     try expectBoxSize(container, c.V2(100, 20));
     try expectBoxSize(child, c.V2(200000, 20));
 }

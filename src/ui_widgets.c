@@ -186,7 +186,7 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 *index,
         .main_axis_size = kUIMainAxisSizeMax,
     });
     b32 has_key = !IsEmptyStr8(box->props.key);
-    UITextF((UIProps){0}, "%s%s%s", box->computed.tag, has_key ? "#" : "",
+    UITextF((UIProps){0}, "%s%s%s", box->tag, has_key ? "#" : "",
             has_key ? (char *)box->props.key.ptr : "");
     EndUIBox();
   }
