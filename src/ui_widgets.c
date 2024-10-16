@@ -206,7 +206,8 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 *index,
 
 static void UIDebugLayerInternal(UIDebugLayerState *state) {
   UIState *ui_state = GetUIState();
-  UILayer *current_layer = ui_state->current_layer;
+  UIFrame *frame = ui_state->frames + ((ui_state->frame_index - 1) %
+                                       ARRAY_COUNT(ui_state->frames));
 
   state->hovered_clip_rect = Rect2Zero();
 
@@ -214,8 +215,8 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
   BeginUIColumn((UIProps){
       .padding = UIEdgeInsetsSymmetric(6, 3),
   });
-  for (UILayer *layer = ui_state->first_layer; layer; layer = layer->next) {
-    if (current_layer != layer && layer != state->debug_overlay) {
+  for (UILayer *layer = frame->first_layer; layer; layer = layer->next) {
+    if (strstr((char *)layer->key.str.ptr, "Debug") == 0) {
       BeginUIRow((UIProps){0});
       UITextF((UIProps){0}, "%s", layer->key.str.ptr);
       EndUIRow();
@@ -246,7 +247,7 @@ void UIDebugLayer(UIDebugLayerState *state) {
               .max = state->hovered_clip_rect.max,
           },
           "DebugOverlay@%p", state);
-      state->debug_overlay = GetUIState()->current_layer;
+      // state->debug_overlay = GetUIState()->current_layer;
       BeginUIBox((UIProps){
           .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255, 64),
       });
@@ -261,7 +262,7 @@ void UIDebugLayer(UIDebugLayerState *state) {
             .min = state->min,
             .max = state->max,
         },
-        "%p", state);
+        "Debug%p", state);
     UIKey frame_key = PushUIKeyF("Frame");
     if (IsUIMouseButtonPressed(frame_key, kUIMouseButtonLeft)) {
       state->pressed_min = state->min;

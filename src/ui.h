@@ -169,7 +169,7 @@ struct UIBox {
   UIBox *parent;
 
   // generation
-  u64 last_touched_build_index;
+  u64 last_touched_frame_index;
 
   // per-frame info provided by builders
   UIProps props;
@@ -220,14 +220,9 @@ struct BoxHashSlot {
 
 typedef struct UIBoxCache {
   u32 total_box_count;
-  // Free list for boxes
-  UIBox *first_free_box;
   // Hash slots for box hash table
   u32 box_hash_slots_count;
   BoxHashSlot *box_hash_slots;
-  // Linked list for non-empty box hash slots
-  BoxHashSlot *first_hash_slot;
-  BoxHashSlot *last_hash_slot;
 } UIBoxCache;
 
 typedef struct UIMouseButtonState {
@@ -240,12 +235,12 @@ typedef struct UIMouseInput {
   Vec2 wheel;
   UIMouseButtonState buttons[kUIMouseButtonCount];
 
-  UIBox *hovering;
-  UIBox *pressed[kUIMouseButtonCount];
+  UIKey hovering;
+  UIKey pressed[kUIMouseButtonCount];
   Vec2 pressed_pos[kUIMouseButtonCount];
-  UIBox *holding[kUIMouseButtonCount];
-  UIBox *clicked[kUIMouseButtonCount];
-  UIBox *scrolling;
+  UIKey holding[kUIMouseButtonCount];
+  UIKey clicked[kUIMouseButtonCount];
+  UIKey scrolling;
   Vec2 scroll_delta;
 } UIMouseInput;
 
@@ -254,22 +249,24 @@ typedef struct UIInput {
   UIMouseInput mouse;
 } UIInput;
 
-typedef struct UIState {
+// Per-frame info
+typedef struct UIFrame {
   Arena arena;
-
   UIBoxCache cache;
-  UIInput input;
 
-  Arena build_arena[2];
-  u64 build_index;
-
-  // per-frame info
   UILayer *first_layer;
   UILayer *last_layer;
   UILayer *current_layer;
 
   UIBuildError *first_error;
   UIBuildError *last_error;
+} UIFrame;
+
+typedef struct UIState {
+  b32 init;
+  UIInput input;
+  u64 frame_index;
+  UIFrame frames[2];
 } UIState;
 
 UIState *GetUIState(void);

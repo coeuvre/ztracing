@@ -11,28 +11,9 @@
 #include "src/string.h"
 #include "src/types.h"
 
-static void InitUIBoxCache(UIBoxCache *cache, Arena *arena) {
-  cache->box_hash_slots_count = 4096;
-  cache->box_hash_slots =
-      PushArray(arena, BoxHashSlot, cache->box_hash_slots_count);
-}
-
-static UIBox *GetOrPushBox(UIBoxCache *cache, Arena *arena) {
-  UIBox *result;
-  if (cache->first_free_box) {
-    result = cache->first_free_box;
-    cache->first_free_box = result->next;
-    ZeroMemory(result, sizeof(*result));
-  } else {
-    result = PushArray(arena, UIBox, 1);
-    ++cache->total_box_count;
-  }
-  return result;
-}
-
 static UIBox *GetBoxByKey(UIBoxCache *cache, UIKey key) {
   UIBox *result = 0;
-  if (!IsZeroUIKey(key)) {
+  if (!IsZeroUIKey(key) && cache->box_hash_slots) {
     BoxHashSlot *slot =
         &cache->box_hash_slots[key.hash % cache->box_hash_slots_count];
     for (UIBox *box = slot->first; box; box = box->hash_next) {
@@ -45,74 +26,52 @@ static UIBox *GetBoxByKey(UIBoxCache *cache, UIKey key) {
   return result;
 }
 
-static UIBox *GetOrPushBoxByKey(UIBoxCache *cache, Arena *arena, UIKey key) {
-  UIBox *box = GetBoxByKey(cache, key);
-  if (!box) {
-    box = GetOrPushBox(cache, arena);
+static UIBox *PushUIBox(UIBoxCache *cache, Arena *arena, UIKey key) {
+  UIBox *result = PushArray(arena, UIBox, 1);
+  ++cache->total_box_count;
+
+  if (!IsZeroUIKey(key)) {
     BoxHashSlot *slot =
         &cache->box_hash_slots[key.hash % cache->box_hash_slots_count];
-    if (!slot->first) {
-      APPEND_DOUBLY_LINKED_LIST(cache->first_hash_slot, cache->last_hash_slot,
-                                slot, prev, next);
-    }
-    APPEND_DOUBLY_LINKED_LIST(slot->first, slot->last, box, hash_prev,
+    APPEND_DOUBLY_LINKED_LIST(slot->first, slot->last, result, hash_prev,
                               hash_next);
   }
-  return box;
-}
 
-static void GarbageCollectBoxes(UIBoxCache *cache, u64 build_index) {
-  // Garbage collect boxes that were not touched by last frame or don't have
-  // key.
-  for (BoxHashSlot *slot = cache->first_hash_slot; slot;) {
-    BoxHashSlot *next_slot = slot->next;
-
-    for (UIBox *box = slot->first; box;) {
-      UIBox *next = box->hash_next;
-      if (IsZeroUIKey(box->props.key) ||
-          box->last_touched_build_index < build_index) {
-        REMOVE_DOUBLY_LINKED_LIST(slot->first, slot->last, box, hash_prev,
-                                  hash_next);
-
-        box->next = cache->first_free_box;
-        cache->first_free_box = box;
-      }
-      box = next;
-    }
-
-    if (!slot->first) {
-      REMOVE_DOUBLY_LINKED_LIST(cache->first_hash_slot, cache->last_hash_slot,
-                                slot, prev, next);
-    }
-
-    slot = next_slot;
-  }
+  return result;
 }
 
 thread_local UIState t_ui_state;
 
 UIState *GetUIState(void) {
   UIState *state = &t_ui_state;
-  ASSERTF(state->arena.current_block, "InitUI is not called");
+  ASSERTF(state->init, "InitUI is not called");
   return state;
 }
 
-static Arena *GetBuildArena(UIState *state) {
-  Arena *arena = state->build_arena +
-                 (state->build_index % ARRAY_COUNT(state->build_arena));
-  return arena;
+static UIFrame *GetCurrentUIFrame(UIState *state) {
+  UIFrame *result =
+      state->frames + (state->frame_index % ARRAY_COUNT(state->frames));
+  return result;
 }
 
-static void PushUIBuildErrorF(UIState *state, const char *fmt, ...) {
-  Arena *arena = GetBuildArena(state);
-  UIBuildError *error = PushArray(arena, UIBuildError, 1);
+static UIFrame *GetLastUIFrame(UIState *state) {
+  UIFrame *result = 0;
+  if (state->frame_index > 1) {
+    result =
+        state->frames + ((state->frame_index - 1) % ARRAY_COUNT(state->frames));
+  }
+  return result;
+}
+
+static void PushUIBuildErrorF(UIFrame *frame, const char *fmt, ...) {
+  UIBuildError *error = PushArray(&frame->arena, UIBuildError, 1);
 
   va_list ap;
   va_start(ap, fmt);
-  error->message = PushStr8FV(arena, fmt, ap);
+  error->message = PushStr8FV(&frame->arena, fmt, ap);
   va_end(ap);
 
-  APPEND_DOUBLY_LINKED_LIST(state->first_error, state->last_error, error, prev,
+  APPEND_DOUBLY_LINKED_LIST(frame->first_error, frame->last_error, error, prev,
                             next);
 }
 
@@ -132,18 +91,17 @@ static inline b32 IsMouseButtonClicked(UIState *state, UIMouseButton button) {
 
 void InitUI(void) {
   UIState *state = &t_ui_state;
-  ASSERTF(!state->arena.current_block, "InitUI called more than once");
-  InitUIBoxCache(&state->cache, &state->arena);
+  ASSERTF(!state->init, "InitUI called more than once");
 
+  state->init = 1;
   state->input.dt = 1.0f / 60.0f;  // Assume 60 FPS by default.
   state->input.mouse.pos = V2(-1, -1);
 }
 
 void QuitUI(void) {
   UIState *state = GetUIState();
-  FreeArena(&state->build_arena[0]);
-  FreeArena(&state->build_arena[1]);
-  FreeArena(&state->arena);
+  FreeArena(&state->frames[0].arena);
+  FreeArena(&state->frames[1].arena);
   *state = (UIState){0};
 }
 
@@ -195,16 +153,22 @@ f32 GetUIDeltaTime(void) {
   return result;
 }
 
+static void SetupUIFrame(UIFrame *frame) {
+  ResetArena(&frame->arena);
+
+  frame->cache = (UIBoxCache){0};
+  frame->cache.box_hash_slots_count = 4096;
+  frame->cache.box_hash_slots =
+      PushArray(&frame->arena, BoxHashSlot, frame->cache.box_hash_slots_count);
+
+  frame->first_layer = frame->last_layer = frame->current_layer = 0;
+  frame->first_error = frame->last_error = 0;
+}
+
 void BeginUIFrame(void) {
   UIState *state = GetUIState();
-
-  GarbageCollectBoxes(&state->cache, state->build_index);
-
-  state->build_index += 1;
-  state->first_layer = state->last_layer = state->current_layer = 0;
-  state->first_error = state->last_error = 0;
-
-  ResetArena(GetBuildArena(state));
+  state->frame_index += 1;
+  SetupUIFrame(GetCurrentUIFrame(state));
 }
 
 static inline f32 GetEdgeInsetsSize(UIEdgeInsets edge_insets, Axis2 axis) {
@@ -435,9 +399,9 @@ static Vec2 LayoutText(UIBox *box, Vec2 max_size, Axis2 main_axis,
   return children_size;
 }
 
-static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size, Vec2 max_size);
+static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size, Vec2 max_size);
 
-static Vec2 LayoutChild(UIState *state, UIBox *child, Vec2 min_size,
+static Vec2 LayoutChild(UIFrame *frame, UIBox *child, Vec2 min_size,
                         Vec2 max_size, Axis2 main_axis) {
   // Leave space for margin
   f32 margin_x = child->props.margin.start + child->props.margin.end;
@@ -445,7 +409,7 @@ static Vec2 LayoutChild(UIState *state, UIBox *child, Vec2 min_size,
   max_size.x = MaxF32(max_size.x - margin_x, 0);
   max_size.y = MaxF32(max_size.y - margin_y, 0);
 
-  LayoutBox(state, child, min_size, max_size);
+  LayoutBox(frame, child, min_size, max_size);
 
   // Add margin back
   Vec2 child_size;
@@ -455,13 +419,13 @@ static Vec2 LayoutChild(UIState *state, UIBox *child, Vec2 min_size,
   if (GetItemVec2(child_size, main_axis) == kUISizeInfinity &&
       GetItemVec2(max_size, main_axis) == kUISizeInfinity) {
     PushUIBuildErrorF(
-        state, "Cannot have unbounded content within unbounded constraint");
+        frame, "Cannot have unbounded content within unbounded constraint");
   }
 
   return child_size;
 }
 
-static Vec2 LayoutChildrenFlex(UIState *state, UIBox *box, Vec2 max_size,
+static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
                                Axis2 main_axis, Axis2 cross_axis) {
   f32 max_main_axis_size = GetItemVec2(max_size, main_axis);
   f32 max_cross_axis_size = GetItemVec2(max_size, cross_axis);
@@ -486,7 +450,7 @@ static Vec2 LayoutChildrenFlex(UIState *state, UIBox *box, Vec2 max_size,
                     GetItemVec2(this_child_max_size, cross_axis));
       }
 
-      Vec2 this_child_size = LayoutChild(state, child, this_child_min_size,
+      Vec2 this_child_size = LayoutChild(frame, child, this_child_min_size,
                                          this_child_max_size, main_axis);
 
       child_main_axis_size += GetItemVec2(this_child_size, main_axis);
@@ -505,7 +469,7 @@ static Vec2 LayoutChildrenFlex(UIState *state, UIBox *box, Vec2 max_size,
   for (UIBox *child = box->first; child; child = child->next) {
     if (child->props.flex) {
       if (max_main_axis_size == kUISizeInfinity) {
-        PushUIBuildErrorF(state, "Unbounded constraint doesn't work with flex");
+        PushUIBuildErrorF(frame, "Unbounded constraint doesn't work with flex");
       }
 
       f32 this_child_max_main_axis_size;
@@ -532,7 +496,7 @@ static Vec2 LayoutChildrenFlex(UIState *state, UIBox *box, Vec2 max_size,
         SetItemVec2(&this_child_min_size, cross_axis, 0.0f);
       }
 
-      Vec2 this_child_size = LayoutChild(state, child, this_child_min_size,
+      Vec2 this_child_size = LayoutChild(frame, child, this_child_min_size,
                                          this_child_max_size, main_axis);
 
       child_main_axis_size += GetItemVec2(this_child_size, main_axis);
@@ -547,7 +511,7 @@ static Vec2 LayoutChildrenFlex(UIState *state, UIBox *box, Vec2 max_size,
   return children_size;
 }
 
-static Vec2 LayoutChildrenStack(UIState *state, UIBox *box, Vec2 max_size,
+static Vec2 LayoutChildrenStack(UIFrame *frame, UIBox *box, Vec2 max_size,
                                 Axis2 main_axis, Axis2 cross_axis) {
   f32 max_main_axis_size = GetItemVec2(max_size, main_axis);
   f32 max_cross_axis_size = GetItemVec2(max_size, cross_axis);
@@ -565,7 +529,7 @@ static Vec2 LayoutChildrenStack(UIState *state, UIBox *box, Vec2 max_size,
                   GetItemVec2(this_child_max_size, cross_axis));
     }
 
-    Vec2 this_child_size = LayoutChild(state, child, this_child_min_size,
+    Vec2 this_child_size = LayoutChild(frame, child, this_child_min_size,
                                        this_child_max_size, main_axis);
 
     child_main_axis_size =
@@ -580,17 +544,17 @@ static Vec2 LayoutChildrenStack(UIState *state, UIBox *box, Vec2 max_size,
   return children_size;
 }
 
-static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
+static Vec2 LayoutChildren(UIFrame *frame, UIBox *box, Vec2 max_size,
                            Axis2 main_axis, Axis2 cross_axis) {
   ASSERT(box->first);
 
   Vec2 result;
   switch (box->props.layout) {
     case kUILayoutFlex: {
-      result = LayoutChildrenFlex(state, box, max_size, main_axis, cross_axis);
+      result = LayoutChildrenFlex(frame, box, max_size, main_axis, cross_axis);
     } break;
     case kUILayoutStack: {
-      result = LayoutChildrenStack(state, box, max_size, main_axis, cross_axis);
+      result = LayoutChildrenStack(frame, box, max_size, main_axis, cross_axis);
     } break;
     default: {
       UNREACHABLE;
@@ -599,7 +563,7 @@ static Vec2 LayoutChildren(UIState *state, UIBox *box, Vec2 max_size,
   return result;
 }
 
-static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
+static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
                       Vec2 max_size) {
   ASSERTF(ContainsVec2IncludingEnd(min_size, V2(0, 0), max_size),
           "min_size=(%.2f, %.2f), max_size=(%.2f, %.2f)", min_size.x,
@@ -645,12 +609,12 @@ static void LayoutBox(UIState *state, UIBox *box, Vec2 min_size,
   Vec2 children_size = V2(0, 0);
   if (box->first) {
     if (!IsEmptyStr8(box->props.text)) {
-      PushUIBuildErrorF(state,
+      PushUIBuildErrorF(frame,
                         "%s: text content is ignored because box has children",
                         box->props.key.str.ptr);
     }
     children_size =
-        LayoutChildren(state, box, children_max_size, main_axis, cross_axis);
+        LayoutChildren(frame, box, children_max_size, main_axis, cross_axis);
   } else if (!IsEmptyStr8(box->props.text)) {
     children_size = LayoutText(box, children_max_size, main_axis, cross_axis);
   }
@@ -778,7 +742,7 @@ static void DebugPrintUIR(UIBox *box, u32 level) {
 }
 
 static void DebugPrintUI(UIState *state) {
-  if (state->build_index > 1) {
+  if (state->frame_index > 1) {
     for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
       INFO("Layer: %s", layer->key.str.ptr);
       if (layer->root) {
@@ -798,58 +762,60 @@ static void ProcessInputR(UIState *state, UIBox *box) {
   }
 
   // Mouse input
-  if (!state->input.mouse.hovering && box->props.hoverable &&
+  if (IsZeroUIKey(state->input.mouse.hovering) && box->props.hoverable &&
       ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
                    box->computed.clip_rect.max)) {
-    state->input.mouse.hovering = box;
+    state->input.mouse.hovering = box->props.key;
   }
 
   for (int button = 0; button < kUIMouseButtonCount; ++button) {
-    if (!state->input.mouse.pressed[button] && box->props.clickable[button] &&
+    if (IsZeroUIKey(state->input.mouse.pressed[button]) &&
+        box->props.clickable[button] &&
         ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
                      box->computed.clip_rect.max) &&
         IsMouseButtonPressed(state, button)) {
-      state->input.mouse.pressed[button] = box;
+      state->input.mouse.pressed[button] = box->props.key;
       state->input.mouse.pressed_pos[button] = state->input.mouse.pos;
     }
   }
 
-  if (!state->input.mouse.scrolling && box->props.scrollable &&
+  if (IsZeroUIKey(state->input.mouse.scrolling) && box->props.scrollable &&
       !IsZeroVec2(state->input.mouse.wheel) &&
       ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
                    box->computed.clip_rect.max)) {
-    state->input.mouse.scrolling = box;
+    state->input.mouse.scrolling = box->props.key;
     state->input.mouse.scroll_delta = state->input.mouse.wheel;
   }
 }
 
-static void ProcessInput(UIState *state) {
-  state->input.mouse.hovering = 0;
-  state->input.mouse.scrolling = 0;
+static void ProcessInput(UIState *state, UIFrame *frame) {
+  state->input.mouse.hovering = UIKeyZero();
+  state->input.mouse.scrolling = UIKeyZero();
   for (int button = 0; button < kUIMouseButtonCount; ++button) {
-    state->input.mouse.pressed[button] = 0;
-    state->input.mouse.clicked[button] = 0;
+    state->input.mouse.pressed[button] = UIKeyZero();
+    state->input.mouse.clicked[button] = UIKeyZero();
   }
 
-  for (UILayer *layer = state->last_layer; layer; layer = layer->prev) {
+  for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
     if (layer->root) {
       ProcessInputR(state, layer->root);
     }
   }
 
   for (int button = 0; button < kUIMouseButtonCount; ++button) {
-    if (state->input.mouse.pressed[button]) {
+    if (!IsZeroUIKey(state->input.mouse.pressed[button])) {
       state->input.mouse.holding[button] = state->input.mouse.pressed[button];
     }
 
     if (IsMouseButtonClicked(state, button)) {
-      UIBox *box = state->input.mouse.holding[button];
+      UIKey key = state->input.mouse.holding[button];
+      UIBox *box = GetBoxByKey(&frame->cache, key);
       if (box &&
           ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
                        box->computed.clip_rect.max)) {
-        state->input.mouse.clicked[button] = box;
+        state->input.mouse.clicked[button] = key;
       }
-      state->input.mouse.holding[button] = 0;
+      state->input.mouse.holding[button] = UIKeyZero();
     }
 
     state->input.mouse.buttons[button].transition_count = 0;
@@ -870,17 +836,31 @@ static void PositionBox(UIBox *box, Vec2 parent_pos, Rect2 parent_clip_rect) {
 
 void EndUIFrame(void) {
   UIState *state = GetUIState();
-  ASSERTF(!state->current_layer, "Mismatched BeginLayer/EndLayer calls");
-  ProcessInput(state);
+  UIFrame *frame = GetCurrentUIFrame(state);
+  ASSERTF(!frame->current_layer, "Mismatched BeginLayer/EndLayer calls");
+
+  for (UILayer *layer = frame->first_layer; layer; layer = layer->next) {
+    if (layer->root) {
+      Vec2 size = SubVec2(layer->props.max, layer->props.min);
+      LayoutBox(frame, layer->root, size, size);
+      layer->root->computed.rel_pos = V2(0, 0);
+
+      PositionBox(layer->root, layer->props.min,
+                  R2(layer->props.min, layer->props.max));
+    }
+  }
+
+  ProcessInput(state, frame);
   DebugPrintUI(state);
 }
 
 void RenderUI(void) {
   UIState *state = GetUIState();
+  UIFrame *frame = GetCurrentUIFrame(state);
 
-  ASSERTF(!state->first_error, "%s", state->first_error->message.ptr);
+  ASSERTF(!frame->first_error, "%s", frame->first_error->message.ptr);
 
-  for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
+  for (UILayer *layer = frame->first_layer; layer; layer = layer->next) {
     if (layer->root) {
       PushClipRect(layer->props.min, layer->props.max);
       RenderBox(state, layer->root);
@@ -904,8 +884,8 @@ static UIKey UIKeyFromStr8(UIKey seed, Str8 str) {
   return result;
 }
 
-static void BeginUIKeyStack(UIState *state, UIKey key) {
-  UILayer *layer = state->current_layer;
+static void BeginUIKeyStack(UIFrame *frame, UIKey key) {
+  UILayer *layer = frame->current_layer;
   ASSERT(layer);
 
   if (!IsZeroUIKey(key)) {
@@ -914,8 +894,7 @@ static void BeginUIKeyStack(UIState *state, UIKey key) {
       node = layer->first_free_key;
       layer->first_free_key = layer->first_free_key->next;
     } else {
-      Arena *arena = GetBuildArena(state);
-      node = PushArray(arena, UIKeyNode, 1);
+      node = PushArray(&frame->arena, UIKeyNode, 1);
     }
     node->key = key;
     APPEND_DOUBLY_LINKED_LIST(layer->first_key, layer->last_key, node, prev,
@@ -923,8 +902,8 @@ static void BeginUIKeyStack(UIState *state, UIKey key) {
   }
 }
 
-static void EndUIKeyStack(UIState *state, UIKey key) {
-  UILayer *layer = state->current_layer;
+static void EndUIKeyStack(UIFrame *frame, UIKey key) {
+  UILayer *layer = frame->current_layer;
   ASSERT(layer);
   if (!IsZeroUIKey(key)) {
     UIKeyNode *node = layer->last_key;
@@ -938,49 +917,41 @@ static void EndUIKeyStack(UIState *state, UIKey key) {
 
 void BeginUILayer(UILayerProps props, const char *fmt, ...) {
   UIState *state = GetUIState();
-  Arena *arena = GetBuildArena(state);
+  UIFrame *frame = GetCurrentUIFrame(state);
 
-  UILayer *layer = PushArray(arena, UILayer, 1);
-  INSERT_DOUBLY_LINKED_LIST(state->first_layer, state->last_layer,
-                            state->current_layer, layer, prev, next);
-  layer->parent = state->current_layer;
-  state->current_layer = layer;
+  UILayer *layer = PushArray(&frame->arena, UILayer, 1);
+  INSERT_DOUBLY_LINKED_LIST(frame->first_layer, frame->last_layer,
+                            frame->current_layer, layer, prev, next);
+  layer->parent = frame->current_layer;
+  frame->current_layer = layer;
 
   va_list ap;
   va_start(ap, fmt);
-  Str8 key_str = PushStr8FV(arena, fmt, ap);
+  Str8 key_str = PushStr8FV(&frame->arena, fmt, ap);
   va_end(ap);
 
   layer->key = UIKeyFromStr8(UIKeyZero(), key_str);
   props.max = MaxVec2(props.min, props.max);
   layer->props = props;
 
-  BeginUIKeyStack(state, layer->key);
+  BeginUIKeyStack(frame, layer->key);
 }
 
 void EndUILayer(void) {
   UIState *state = GetUIState();
-  ASSERTF(state->current_layer, "Mismatched BeginLayer/EndLayer calls");
-  ASSERTF(!state->current_layer->current,
+  UIFrame *frame = GetCurrentUIFrame(state);
+  ASSERTF(frame->current_layer, "Mismatched BeginLayer/EndLayer calls");
+  ASSERTF(!frame->current_layer->current,
           "Mismatched BeginUIBox/EndUIBox calls");
 
-  UILayer *layer = state->current_layer;
-  if (layer->root) {
-    Vec2 size = SubVec2(layer->props.max, layer->props.min);
-    LayoutBox(state, layer->root, size, size);
-    layer->root->computed.rel_pos = V2(0, 0);
-
-    PositionBox(layer->root, layer->props.min,
-                R2(layer->props.min, layer->props.max));
-  }
-
-  EndUIKeyStack(state, state->current_layer->key);
-  state->current_layer = state->current_layer->parent;
+  EndUIKeyStack(frame, frame->current_layer->key);
+  frame->current_layer = frame->current_layer->parent;
 }
 
 UIBuildError *GetFirstUIBuildError(void) {
   UIState *state = GetUIState();
-  UIBuildError *result = state->first_error;
+  UIFrame *frame = GetCurrentUIFrame(state);
+  UIBuildError *result = frame->first_error;
   return result;
 }
 
@@ -989,27 +960,26 @@ b32 IsEqualUIKey(UIKey a, UIKey b) {
   return result;
 }
 
-static UIKey GetFirstNonZeroUIKey(UIState *state) {
+static UIKey GetFirstNonZeroUIKey(UIFrame *frame) {
   UIKey result = UIKeyZero();
-  if (state->current_layer && state->current_layer->last_key) {
-    result = state->current_layer->last_key->key;
+  if (frame->current_layer && frame->current_layer->last_key) {
+    result = frame->current_layer->last_key->key;
     ASSERT(!IsZeroUIKey(result));
   }
   return result;
 }
 
-static UIKey PushUIKeyWithStrFromBuildArena(Str8 key_str) {
-  UIState *state = GetUIState();
-  UIKey seed = GetFirstNonZeroUIKey(state);
+static UIKey PushUIKeyWithStrFromFrameArena(UIFrame *frame, Str8 key_str) {
+  UIKey seed = GetFirstNonZeroUIKey(frame);
   UIKey result = UIKeyFromStr8(seed, key_str);
   return result;
 }
 
 UIKey PushUIKey(Str8 key_str) {
   UIState *state = GetUIState();
-  Arena *arena = GetBuildArena(state);
-  Str8 key_str_copy = PushStr8(arena, key_str);
-  UIKey result = PushUIKeyWithStrFromBuildArena(key_str_copy);
+  UIFrame *frame = GetCurrentUIFrame(state);
+  Str8 key_str_copy = PushStr8(&frame->arena, key_str);
+  UIKey result = PushUIKeyWithStrFromFrameArena(frame, key_str_copy);
   return result;
 }
 
@@ -1023,16 +993,16 @@ UIKey PushUIKeyF(const char *fmt, ...) {
 
 UIKey PushUIKeyFV(const char *fmt, va_list ap) {
   UIState *state = GetUIState();
-  Arena *arena = GetBuildArena(state);
-  Str8 key_str = PushStr8FV(arena, fmt, ap);
-  UIKey result = PushUIKeyWithStrFromBuildArena(key_str);
+  UIFrame *frame = GetCurrentUIFrame(state);
+  Str8 key_str = PushStr8FV(&frame->arena, fmt, ap);
+  UIKey result = PushUIKeyWithStrFromFrameArena(frame, key_str);
   return result;
 }
 
 Str8 PushUIText(Str8 key_str) {
   UIState *state = GetUIState();
-  Arena *arena = GetBuildArena(state);
-  Str8 result = PushStr8(arena, key_str);
+  UIFrame *frame = GetCurrentUIFrame(state);
+  Str8 result = PushStr8(&frame->arena, key_str);
   return result;
 }
 
@@ -1046,23 +1016,33 @@ Str8 PushUITextF(const char *fmt, ...) {
 
 Str8 PushUITextFV(const char *fmt, va_list ap) {
   UIState *state = GetUIState();
-  Arena *arena = GetBuildArena(state);
-  Str8 result = PushStr8FV(arena, fmt, ap);
+  UIFrame *frame = GetCurrentUIFrame(state);
+  Str8 result = PushStr8FV(&frame->arena, fmt, ap);
   return result;
 }
 
 void BeginUIBoxWithTag(const char *tag, UIProps props) {
   UIState *state = GetUIState();
+  UIFrame *frame = GetCurrentUIFrame(state);
+  UIFrame *last_frame = GetLastUIFrame(state);
 
-  UILayer *layer = state->current_layer;
+  UILayer *layer = frame->current_layer;
   ASSERTF(layer, "No active UILayer");
 
   UIBox *parent = layer->current;
   UIKey key = props.key;
-  UIBox *box = GetOrPushBoxByKey(&state->cache, &state->arena, key);
-  ASSERTF(box->last_touched_build_index < state->build_index,
-          "%s is built more than once",
-          IsEmptyStr8(key.str) ? "<unknown>" : (char *)key.str.ptr);
+  ASSERTF(!GetBoxByKey(&frame->cache, key), "%s is built more than once",
+          key.str.ptr);
+  UIBox *box = PushUIBox(&frame->cache, &frame->arena, key);
+
+  // Copy state from last frame, if any
+  if (last_frame) {
+    UIBox *last_box = GetBoxByKey(&last_frame->cache, key);
+    if (last_box) {
+      box->computed = last_box->computed;
+      box->persistent = last_box->persistent;
+    }
+  }
 
   if (parent) {
     APPEND_DOUBLY_LINKED_LIST(parent->first, parent->last, box, prev, next);
@@ -1071,21 +1051,22 @@ void BeginUIBoxWithTag(const char *tag, UIProps props) {
     layer->root = box;
   }
   box->parent = parent;
-  box->last_touched_build_index = state->build_index;
+  box->last_touched_frame_index = state->frame_index;
 
   // Clear per frame state
   box->first = box->last = 0;
   box->props = props;
   box->computed.tag = tag;
 
-  BeginUIKeyStack(state, box->props.key);
+  BeginUIKeyStack(frame, box->props.key);
 
   layer->current = box;
 }
 
 void EndUIBoxWithExpectedTag(const char *tag) {
   UIState *state = GetUIState();
-  UILayer *layer = state->current_layer;
+  UIFrame *frame = GetCurrentUIFrame(state);
+  UILayer *layer = frame->current_layer;
   ASSERTF(layer, "No active UILayer");
 
   ASSERT(layer->current);
@@ -1093,25 +1074,27 @@ void EndUIBoxWithExpectedTag(const char *tag) {
           "Mismatched Begin/End calls. Begin with %s, end with %s",
           layer->current->computed.tag, tag);
 
-  EndUIKeyStack(state, layer->current->props.key);
+  EndUIKeyStack(frame, layer->current->props.key);
 
   layer->current = layer->current->parent;
 }
 
-static inline UIBox *GetUIBoxByKeyInternal(UIState *state, UIKey key) {
-  UIBox *result = GetBoxByKey(&state->cache, key);
+static inline UIBox *GetUIBoxByKeyInternal(UIFrame *frame, UIKey key) {
+  UIBox *result = GetBoxByKey(&frame->cache, key);
   return result;
 }
 
 UIBox *GetUIBox(UIKey key) {
   UIState *state = GetUIState();
-  UIBox *result = GetUIBoxByKeyInternal(state, key);
+  UIFrame *frame = GetCurrentUIFrame(state);
+  UIBox *result = GetUIBoxByKeyInternal(frame, key);
   return result;
 }
 
 UIComputed GetUIComputed(UIKey key) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByKeyInternal(state, key);
+  UIFrame *frame = GetCurrentUIFrame(state);
+  UIBox *box = GetUIBoxByKeyInternal(frame, key);
   ASSERTF(box, "No box associated with this UIKey");
   UIComputed result = box->computed;
   return result;
@@ -1119,7 +1102,8 @@ UIComputed GetUIComputed(UIKey key) {
 
 UIPersistent *GetUIPersistent(UIKey key) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByKeyInternal(state, key);
+  UIFrame *frame = GetCurrentUIFrame(state);
+  UIBox *box = GetUIBoxByKeyInternal(frame, key);
   ASSERTF(box, "No box associated with this UIKey");
   UIPersistent *result = &box->persistent;
   return result;
@@ -1127,7 +1111,8 @@ UIPersistent *GetUIPersistent(UIKey key) {
 
 Vec2 GetUIMouseRelPos(UIKey key) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBoxByKeyInternal(state, key);
+  UIFrame *frame = GetCurrentUIFrame(state);
+  UIBox *box = GetUIBoxByKeyInternal(frame, key);
   Vec2 result = V2(0, 0);
   if (box) {
     result = SubVec2(state->input.mouse.pos, box->computed.screen_rect.min);
@@ -1141,10 +1126,10 @@ Vec2 GetUIMousePos(void) {
   return result;
 }
 
-static inline b32 IsEqualUIKeyAndNonZero(UIBox *box, UIKey key) {
+static inline b32 IsEqualUIKeyAndNonZero(UIKey a, UIKey b) {
   b32 result = 0;
-  if (box && !IsZeroUIKey(key)) {
-    result = IsEqualUIKey(box->props.key, key);
+  if (!IsZeroUIKey(a) && !IsZeroUIKey(b)) {
+    result = IsEqualUIKey(a, b);
   }
   return result;
 }
