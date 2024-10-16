@@ -18,6 +18,13 @@ typedef struct Str8 {
 
 #define STR8_LIT(s) (Str8){(u8 *)(s), sizeof(s) - 1}
 
+static inline Str8 Str8FromCStr(const char *str) {
+  Str8 result;
+  result.ptr = (u8 *)str;
+  result.len = strlen(str);
+  return result;
+}
+
 static inline Str8 Str8Zero(void) {
   Str8 result = {0};
   return result;

@@ -10,19 +10,19 @@ static inline void BeginUIRow(UIProps props) {
   props.main_axis = kAxis2X;
   props.main_axis_size = kUIMainAxisSizeMax;
   props.cross_axis_align = kUICrossAxisAlignCenter;
-  BeginUIBoxWithTag("Row", props);
+  BeginUITag("Row", props);
 }
 
-static inline void EndUIRow() { EndUIBoxWithExpectedTag("Row"); }
+static inline void EndUIRow() { EndUITag("Row"); }
 
 static inline void BeginUIColumn(UIProps props) {
   props.main_axis = kAxis2Y;
   props.main_axis_size = kUIMainAxisSizeMax;
   props.cross_axis_align = kUICrossAxisAlignCenter;
-  BeginUIBoxWithTag("Column", props);
+  BeginUITag("Column", props);
 }
 
-static inline void EndUIColumn() { EndUIBoxWithExpectedTag("Column"); }
+static inline void EndUIColumn() { EndUITag("Column"); }
 
 void UITextF(UIProps props, const char *fmt, ...);
 
@@ -41,7 +41,7 @@ typedef struct UIScrollableState {
   f32 control_size;
 } UIScrollableState;
 
-void BeginUIScrollable(UIProps props, UIScrollableState *state);
+void BeginUIScrollable(UIScrollableState *state);
 void EndUIScrollable(UIScrollableState *state);
 f32 GetUIScrollableScroll(UIScrollableState *state);
 void SetUIScrollableScroll(UIScrollableState *state, f32 scroll);
@@ -55,7 +55,6 @@ typedef struct UIDebugLayerState {
   Vec2 pressed_min;
   Vec2 pressed_max;
 
-  UILayer *debug_overlay;
   Rect2 hovered_clip_rect;
 } UIDebugLayerState;
 

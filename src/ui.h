@@ -11,7 +11,6 @@
 
 typedef struct UIKey {
   u64 hash;
-  Str8 str;
 } UIKey;
 
 typedef enum UILayout {
@@ -102,8 +101,9 @@ typedef enum UIMouseButton {
   kUIMouseButtonCount,
 } UIMouseButton;
 
+// per-frame info provided by builders
 typedef struct UIProps {
-  UIKey key;
+  Str8 key;
 
   ColorU32 background_color;
   // The size of the box, including border and padding.
@@ -127,6 +127,7 @@ typedef struct UIProps {
   b8 scrollable;
 } UIProps;
 
+// Data that is computed every frame
 typedef struct UIComputed {
   const char *tag;
 
@@ -143,13 +144,6 @@ typedef struct UIComputed {
   b8 clip;
 } UIComputed;
 
-typedef struct UIBuildError UIBuildError;
-struct UIBuildError {
-  UIBuildError *prev;
-  UIBuildError *next;
-  Str8 message;
-};
-
 // General data that is persistent across frames until the box is GCed.
 typedef struct UIPersistent {
   b8 enabled;
@@ -157,6 +151,8 @@ typedef struct UIPersistent {
 
 typedef struct UIBox UIBox;
 struct UIBox {
+  UIKey key;
+
   // hash links
   UIBox *hash_prev;
   UIBox *hash_next;
@@ -167,25 +163,11 @@ struct UIBox {
   UIBox *prev;
   UIBox *next;
   UIBox *parent;
+  u32 children_count;
 
-  // generation
-  u64 last_touched_frame_index;
-
-  // per-frame info provided by builders
   UIProps props;
-
-  // computed every frame
   UIComputed computed;
-
-  // persistent data for the life time of the box
   UIPersistent persistent;
-};
-
-typedef struct UIKeyNode UIKeyNode;
-struct UIKeyNode {
-  UIKeyNode *prev;
-  UIKeyNode *next;
-  UIKey key;
 };
 
 typedef struct UILayerProps {
@@ -200,20 +182,17 @@ struct UILayer {
   UILayer *parent;
 
   UIKey key;
+  Str8 debug_key;
   UILayerProps props;
-
-  UIKeyNode *first_key;
-  UIKeyNode *last_key;
-  UIKeyNode *first_free_key;
 
   UIBox *root;
   UIBox *current;
 };
 
-typedef struct BoxHashSlot BoxHashSlot;
-struct BoxHashSlot {
-  BoxHashSlot *prev;
-  BoxHashSlot *next;
+typedef struct UIBoxHashSlot UIBoxHashSlot;
+struct UIBoxHashSlot {
+  UIBoxHashSlot *prev;
+  UIBoxHashSlot *next;
   UIBox *first;
   UIBox *last;
 };
@@ -222,7 +201,7 @@ typedef struct UIBoxCache {
   u32 total_box_count;
   // Hash slots for box hash table
   u32 box_hash_slots_count;
-  BoxHashSlot *box_hash_slots;
+  UIBoxHashSlot *box_hash_slots;
 } UIBoxCache;
 
 typedef struct UIMouseButtonState {
@@ -244,15 +223,19 @@ typedef struct UIMouseInput {
   Vec2 scroll_delta;
 } UIMouseInput;
 
-typedef struct UIInput {
-  f32 dt;
-  UIMouseInput mouse;
-} UIInput;
+typedef struct UIBuildError UIBuildError;
+struct UIBuildError {
+  UIBuildError *prev;
+  UIBuildError *next;
+  Str8 message;
+};
 
 // Per-frame info
 typedef struct UIFrame {
   Arena arena;
   UIBoxCache cache;
+
+  u64 frame_index;
 
   UILayer *first_layer;
   UILayer *last_layer;
@@ -261,6 +244,11 @@ typedef struct UIFrame {
   UIBuildError *first_error;
   UIBuildError *last_error;
 } UIFrame;
+
+typedef struct UIInput {
+  f32 dt;
+  UIMouseInput mouse;
+} UIInput;
 
 typedef struct UIState {
   b32 init;
@@ -304,35 +292,29 @@ static inline b32 IsZeroUIKey(UIKey a) {
   return result;
 }
 
-UIKey PushUIKey(Str8 key_str);
-UIKey PushUIKeyF(const char *fmt, ...);
-UIKey PushUIKeyFV(const char *fmt, va_list ap);
+Str8 PushUIStr8(Str8 str);
+Str8 PushUIStr8F(const char *fmt, ...);
+Str8 PushUIStr8FV(const char *fmt, va_list ap);
 
-Str8 PushUIText(Str8 key_str);
-Str8 PushUITextF(const char *fmt, ...);
-Str8 PushUITextFV(const char *fmt, va_list ap);
+void BeginUITag(const char *tag, UIProps props);
+void EndUITag(const char *tag);
 
-void BeginUIBoxWithTag(const char *tag, UIProps props);
-void EndUIBoxWithExpectedTag(const char *tag);
-
-static inline void BeginUIBox(UIProps props) {
-  BeginUIBoxWithTag("Box", props);
-}
-static inline void EndUIBox(void) { EndUIBoxWithExpectedTag("Box"); }
+static inline void BeginUIBox(UIProps props) { BeginUITag("Box", props); }
+static inline void EndUIBox(void) { EndUITag("Box"); }
 
 UIBox *GetUIBox(UIKey key);
 
-UIComputed GetUIComputed(UIKey key);
-UIPersistent *GetUIPersistent(UIKey key);
+UIComputed GetUIComputed(void);
+UIPersistent *GetUIPersistent(void);
 
-Vec2 GetUIMouseRelPos(UIKey key);
+Vec2 GetUIMouseRelPos(void);
 Vec2 GetUIMousePos(void);
 
-b32 IsUIMouseHovering(UIKey key);
-b32 IsUIMouseButtonPressed(UIKey key, UIMouseButton button);
-b32 IsUIMouseButtonDown(UIKey key, UIMouseButton button);
-b32 IsUIMouseButtonClicked(UIKey key, UIMouseButton button);
-b32 IsUIMouseButtonDragging(UIKey key, UIMouseButton button, Vec2 *delta);
-b32 IsUIMouseScrolling(UIKey key, Vec2 *delta);
+b32 IsUIMouseHovering(void);
+b32 IsUIMouseButtonPressed(UIMouseButton button);
+b32 IsUIMouseButtonDown(UIMouseButton button);
+b32 IsUIMouseButtonClicked(UIMouseButton button);
+b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta);
+b32 IsUIMouseScrolling(Vec2 *delta);
 
 #endif  // ZTRACING_SRC_UI_H_

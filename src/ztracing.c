@@ -11,32 +11,33 @@
 #include "src/ui_widgets.h"
 
 static b32 UIButton(Str8 label) {
-  UIKey key = PushUIKey(label);
-  ColorU32 color = ColorU32Zero();
-  if (IsUIMouseButtonClicked(key, kUIMouseButtonLeft)) {
-    color = ColorU32FromHex(0x0000FF);
-  } else if (IsUIMouseButtonDown(key, kUIMouseButtonLeft)) {
-    color = ColorU32FromHex(0x00FF00);
-  } else if (IsUIMouseHovering(key)) {
-    color = ColorU32FromHex(0xFF0000);
-  } else {
-    // color = ColorU32FromHex(0x5EAC57);
-  }
-  b32 result = IsUIMouseButtonClicked(key, kUIMouseButtonLeft);
-  BeginUIBox((UIProps){
-      .key = key,
-      .padding = UIEdgeInsetsSymmetric(6, 4),
-      .hoverable = 1,
-      .clickable[kUIMouseButtonLeft] = 1,
-      .background_color = color,
-  });
+  b32 result;
+  BeginUITag("Button", (UIProps){
+                           .key = PushUIStr8(label),
+                           .hoverable = 1,
+                           .clickable[kUIMouseButtonLeft] = 1,
+                       });
   {
+    ColorU32 background_color = ColorU32Zero();
+    if (IsUIMouseButtonClicked(kUIMouseButtonLeft)) {
+      background_color = ColorU32FromHex(0x0000FF);
+    } else if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
+      background_color = ColorU32FromHex(0x00FF00);
+    } else if (IsUIMouseHovering()) {
+      background_color = ColorU32FromHex(0xFF0000);
+    } else {
+      // color = ColorU32FromHex(0x5EAC57);
+    }
+    result = IsUIMouseButtonClicked(kUIMouseButtonLeft);
+
     BeginUIBox((UIProps){
-        .text = PushUIText(label),
+        .background_color = background_color,
+        .padding = UIEdgeInsetsSymmetric(6, 4),
+        .text = PushUIStr8(label),
     });
     EndUIBox();
   }
-  EndUIBox();
+  EndUITag("Button");
   return result;
 }
 
@@ -73,7 +74,8 @@ static void BuildUI(f32 dt, f32 frame_time) {
     static UIScrollableState state;
     static f32 scroll_drag_started;
 
-    BeginUIScrollable((UIProps){.flex = 1}, &state);
+    BeginUIBox((UIProps){.flex = 1});
+    BeginUIScrollable(&state);
     {
       f32 item_size = 20.0f;
       u32 item_count = 510;
@@ -82,26 +84,29 @@ static void BuildUI(f32 dt, f32 frame_time) {
       // f32 offset = item_index * item_size - state->scroll;
       // for (; item_index < item_count && offset < state->scroll_area_size;
       //      ++item_index, offset += item_size)
-      UIKey key = PushUIKeyF("Content");
-      if (IsUIMouseButtonPressed(key, kUIMouseButtonLeft)) {
-        scroll_drag_started = GetUIScrollableScroll(&state);
-      }
-      Vec2 drag_delta;
-      if (IsUIMouseButtonDragging(key, kUIMouseButtonLeft, &drag_delta)) {
-        SetUIScrollableScroll(&state, scroll_drag_started - drag_delta.y);
-      }
-      BeginUIColumn((UIProps){.key = key, .clickable = 1});
-      for (u32 item_index = 0; item_index < item_count; ++item_index) {
-        BeginUIRow((UIProps){
-            .size = V2(kUISizeUndefined, item_size),
-            .background_color =
-                ColorU32FromSRGBNotPremultiplied(0, 0, item_index % 256, 255),
-        });
-        EndUIRow();
+      BeginUIColumn((UIProps){.clickable = 1});
+      {
+        if (IsUIMouseButtonPressed(kUIMouseButtonLeft)) {
+          scroll_drag_started = GetUIScrollableScroll(&state);
+        }
+        Vec2 drag_delta;
+        if (IsUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta)) {
+          SetUIScrollableScroll(&state, scroll_drag_started - drag_delta.y);
+        }
+
+        for (u32 item_index = 0; item_index < item_count; ++item_index) {
+          BeginUIRow((UIProps){
+              .size = V2(kUISizeUndefined, item_size),
+              .background_color =
+                  ColorU32FromSRGBNotPremultiplied(0, 0, item_index % 256, 255),
+          });
+          EndUIRow();
+        }
       }
       EndUIColumn();
     }
     EndUIScrollable(&state);
+    EndUIBox();
   }
   EndUIColumn();
   EndUILayer();
