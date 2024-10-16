@@ -28,6 +28,11 @@ typedef ptrdiff_t isize;
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
 
+static inline usize MaxI32(i32 a, i32 b) {
+  usize result = MAX(a, b);
+  return result;
+}
+
 static inline usize MaxUSize(usize a, usize b) {
   usize result = MAX(a, b);
   return result;

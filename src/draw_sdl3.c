@@ -39,6 +39,7 @@ struct PackedFont {
   i32 width;
   i32 height;
   stbtt_pack_range range;
+  i32 *kern_cache;
 };
 
 typedef struct SDL3DrawState {
@@ -82,6 +83,8 @@ static PackedFont PackFont(Arena *arena, stbtt_fontinfo *info, f32 font_size) {
                                                rects) == 1);
   }
   stbtt_PackEnd(&spc);
+  result.kern_cache =
+      PushArray(arena, i32, result.range.num_chars * result.range.num_chars);
   EndScratch(scratch);
   return result;
 }
@@ -197,17 +200,38 @@ static stbtt_fontinfo *GetFontInfo(void) {
   return &g_font;
 }
 
-static stbtt_aligned_quad GetPackedQuadAndAdvancePos(PackedFont *packed_font,
-                                                     u32 ch, f32 *pos_x,
-                                                     f32 *baseline) {
-  int char_index =
+static inline i32 GetCharIndex(PackedFont *packed_font, u32 ch) {
+  i32 result =
       ClampI32(ch - packed_font->range.first_unicode_codepoint_in_range, 0,
                packed_font->range.num_chars - 1);
+  return result;
+}
+
+static stbtt_aligned_quad inline GetPackedQuadAndAdvancePos(
+    PackedFont *packed_font, u32 ch, f32 *pos_x, f32 *baseline) {
+  i32 char_index = GetCharIndex(packed_font, ch);
   stbtt_aligned_quad quad;
   stbtt_GetPackedQuad(packed_font->range.chardata_for_range, packed_font->width,
                       packed_font->height, char_index, pos_x, baseline, &quad,
                       0);
   return quad;
+}
+
+static i32 GetKernAdvance(PackedFont *packed_font, u32 a, u32 b) {
+  i32 char_index_a = GetCharIndex(packed_font, a);
+  i32 char_index_b = GetCharIndex(packed_font, b);
+  i32 *kern_ptr = packed_font->kern_cache +
+                  (char_index_a * packed_font->range.num_chars + char_index_b);
+  if (*kern_ptr == 0) {
+    i32 kern = stbtt_GetCodepointKernAdvance(packed_font->font, a, b);
+    if (kern) {
+      *kern_ptr = kern;
+    } else {
+      *kern_ptr = -1;
+    }
+  }
+  i32 result = MaxI32(*kern_ptr, 0);
+  return result;
 }
 
 TextMetrics GetTextMetricsStr8(Str8 text, f32 height) {
@@ -231,7 +255,7 @@ TextMetrics GetTextMetricsStr8(Str8 text, f32 height) {
     u32 ch = text32.ptr[i];
     GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
     if (i + 1 < text32.len) {
-      i32 kern = stbtt_GetCodepointKernAdvance(font, ch, text32.ptr[i + 1]);
+      i32 kern = GetKernAdvance(packed_font, ch, text32.ptr[i + 1]);
       pos_x += scale * kern;
     }
   }
@@ -319,7 +343,7 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
                         &dst_rect);
     }
     if (i + 1 < text32.len) {
-      i32 kern = stbtt_GetCodepointKernAdvance(font, ch, text32.ptr[i + 1]);
+      i32 kern = GetKernAdvance(packed_font, ch, text32.ptr[i + 1]);
       pos_x += scale * kern;
     }
   }
