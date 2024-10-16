@@ -25,6 +25,7 @@ static inline void BeginUIColumn(UIProps props) {
 static inline void EndUIColumn() { EndUITag("Column"); }
 
 void UITextF(UIProps props, const char *fmt, ...);
+void UIText(UIProps props, Str8 text);
 
 typedef struct UIScrollableState {
   // persistent info

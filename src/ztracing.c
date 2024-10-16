@@ -13,7 +13,6 @@
 static b32 UIButton(Str8 label) {
   b32 result;
   BeginUITag("Button", (UIProps){
-                           .key = PushUIStr8(label),
                            .hoverable = 1,
                            .clickable[kUIMouseButtonLeft] = 1,
                        });
@@ -30,12 +29,12 @@ static b32 UIButton(Str8 label) {
     }
     result = IsUIMouseButtonClicked(kUIMouseButtonLeft);
 
-    BeginUIBox((UIProps){
-        .background_color = background_color,
-        .padding = UIEdgeInsetsSymmetric(6, 4),
-        .text = PushUIStr8(label),
-    });
-    EndUIBox();
+    UIText(
+        (UIProps){
+            .background_color = background_color,
+            .padding = UIEdgeInsetsSymmetric(6, 3),
+        },
+        label);
   }
   EndUITag("Button");
   return result;
@@ -64,7 +63,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
       BeginUIBox((UIProps){.flex = 1});
       EndUIBox();
 
-      UITextF((UIProps){.padding = UIEdgeInsetsSymmetric(6, 4)},
+      UITextF((UIProps){.padding = UIEdgeInsetsSymmetric(6, 3)},
               "%.0f %.1fMB %.1fms", 1.0f / dt,
               (f32)((f64)GetAllocatedBytes() / 1024.0 / 1024.0),
               frame_time * 1000.0f);

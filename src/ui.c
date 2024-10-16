@@ -770,7 +770,7 @@ static void ProcessInputR(UIState *state, UIBox *box) {
     state->input.mouse.hovering = box->key;
   }
 
-  for (int button = 0; button < kUIMouseButtonCount; ++button) {
+  for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
     if (IsZeroUIKey(state->input.mouse.pressed[button]) &&
         box->props.clickable[button] &&
         ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
@@ -793,7 +793,7 @@ static void ProcessInputR(UIState *state, UIBox *box) {
 static void ProcessInput(UIState *state, UIFrame *frame) {
   state->input.mouse.hovering = UIKeyZero();
   state->input.mouse.scrolling = UIKeyZero();
-  for (int button = 0; button < kUIMouseButtonCount; ++button) {
+  for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
     state->input.mouse.pressed[button] = UIKeyZero();
     state->input.mouse.clicked[button] = UIKeyZero();
   }
@@ -804,7 +804,7 @@ static void ProcessInput(UIState *state, UIFrame *frame) {
     }
   }
 
-  for (int button = 0; button < kUIMouseButtonCount; ++button) {
+  for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
     if (!IsZeroUIKey(state->input.mouse.pressed[button])) {
       state->input.mouse.holding[button] = state->input.mouse.pressed[button];
     }

@@ -18,6 +18,12 @@ void UITextF(UIProps props, const char *fmt, ...) {
   EndUITag("Text");
 }
 
+void UIText(UIProps props, Str8 text) {
+  props.text = PushUIStr8(text);
+  BeginUITag("Text", props);
+  EndUITag("Text");
+}
+
 void BeginUIScrollable(UIScrollableState *state) {
   BeginUITag("Scrollable", (UIProps){
                                .main_axis = kAxis2X,
