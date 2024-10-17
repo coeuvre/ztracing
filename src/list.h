@@ -4,14 +4,27 @@
 #define APPEND_DOUBLY_LINKED_LIST(first, last, node, prev, next) \
   do {                                                           \
     if (last) {                                                  \
-      (last)->next = (node);                                     \
       (node)->prev = (last);                                     \
       (node)->next = 0;                                          \
+      (last)->next = (node);                                     \
       (last) = (node);                                           \
     } else {                                                     \
       (first) = (last) = (node);                                 \
       (node)->prev = (node)->next = 0;                           \
     }                                                            \
+  } while (0)
+
+#define PREPEND_DOUBLY_LINKED_LIST(first, last, node, prev, next) \
+  do {                                                            \
+    if (first) {                                                  \
+      (node)->prev = 0;                                           \
+      (node)->next = (first);                                     \
+      (first)->prev = (node);                                     \
+      (first) = (node);                                           \
+    } else {                                                      \
+      (first) = (last) = (node);                                  \
+      (node)->prev = (node)->next = 0;                            \
+    }                                                             \
   } while (0)
 
 // Insert node after node `after`. If `after` is NULL, append to the end of the

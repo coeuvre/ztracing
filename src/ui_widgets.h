@@ -38,10 +38,9 @@ typedef struct UIDebugLayerState {
   Vec2 max;
   Vec2 pressed_min;
   Vec2 pressed_max;
-
-  Rect2 hovered_clip_rect;
 } UIDebugLayerState;
 
+#define kUIDebugLayerZIndex 1000
 void UIDebugLayer(UIDebugLayerState *state);
 
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_

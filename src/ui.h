@@ -173,8 +173,8 @@ struct UIBox {
 };
 
 typedef struct UILayerProps {
-  Vec2 min;
-  Vec2 max;
+  Str8 key;
+  i32 z_index;
 } UILayerProps;
 
 typedef struct UILayer UILayer;
@@ -184,7 +184,6 @@ struct UILayer {
   UILayer *parent;
 
   UIKey key;
-  Str8 debug_key;
   UILayerProps props;
 
   UIBox *root;
@@ -249,6 +248,7 @@ typedef struct UIFrame {
 
 typedef struct UIInput {
   f32 dt;
+  Vec2 canvas_size;
   UIMouseInput mouse;
 } UIInput;
 
@@ -273,11 +273,13 @@ void OnUIMouseWheel(Vec2 delta);
 void SetUIDeltaTime(f32 dt);
 f32 GetUIDeltaTime(void);
 
+void SetUICanvasSize(Vec2 size);
+
 void BeginUIFrame(void);
 void EndUIFrame(void);
 void RenderUI(void);
 
-void BeginUILayer(UILayerProps props, const char *fmt, ...);
+void BeginUILayer(UILayerProps props);
 void EndUILayer(void);
 
 UIBuildError *GetFirstUIBuildError(void);

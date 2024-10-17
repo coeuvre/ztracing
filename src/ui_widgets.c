@@ -193,8 +193,7 @@ void SetUIScrollableScroll(UIKey key, f32 scroll) {
   state->scroll = ClampF32(scroll, 0, state->scroll_max);
 }
 
-static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 *index,
-                             u32 level) {
+static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
   UIKey row = BeginUIRow((UIProps){
       .hoverable = 1,
   });
@@ -202,7 +201,22 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 *index,
     ColorU32 background_color = ColorU32Zero();
     if (IsUIMouseHovering(row)) {
       background_color = ColorU32FromSRGBNotPremultiplied(53, 119, 197, 255);
-      state->hovered_clip_rect = box->computed.clip_rect;
+
+      Rect2 hovered_clip_rect = box->computed.clip_rect;
+      BeginUILayer((UILayerProps){
+          .key = STR8_LIT("__UIDebug__Overlay"),
+          .z_index = kUIDebugLayerZIndex - 1,
+      });
+      BeginUIBox((UIProps){0});
+      BeginUIBox((UIProps){
+          .margin = UIEdgeInsetsFromSTEB(hovered_clip_rect.min.x,
+                                         hovered_clip_rect.min.y, 0, 0),
+          .size = SubVec2(hovered_clip_rect.max, hovered_clip_rect.min),
+          .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255, 64),
+      });
+      EndUIBox();
+      EndUIBox();
+      EndUILayer();
     }
     BeginUIBox((UIProps){
         .background_color = background_color,
@@ -216,7 +230,7 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 *index,
   }
   EndUIRow();
   for (UIBox *child = box->first; child; child = child->next) {
-    UIDebugLayerBoxR(state, child, index, level + 1);
+    UIDebugLayerBoxR(state, child, level + 1);
   }
 }
 
@@ -225,9 +239,6 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
   UIFrame *frame = ui_state->frames + ((ui_state->frame_index - 1) %
                                        ARRAY_COUNT(ui_state->frames));
 
-  state->hovered_clip_rect = Rect2Zero();
-
-  u32 index = 0;
   BeginUIColumn((UIProps){
       .padding = UIEdgeInsetsSymmetric(6, 3),
   });
@@ -244,12 +255,12 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
   EndUIBox();
 
   for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
-    if (strstr((char *)layer->debug_key.ptr, "Debug") == 0) {
+    if (strstr((char *)layer->props.key.ptr, "__UIDebug__") == 0) {
       BeginUIRow((UIProps){0});
-      UITextF((UIProps){0}, "Layer - %s", layer->debug_key.ptr);
+      UITextF((UIProps){0}, "Layer - %s", layer->props.key.ptr);
       EndUIRow();
       if (layer->root) {
-        UIDebugLayerBoxR(state, layer->root, &index, 1);
+        UIDebugLayerBoxR(state, layer->root, 1);
       }
     }
   }
@@ -268,26 +279,11 @@ void UIDebugLayer(UIDebugLayerState *state) {
   }
 
   if (state->open) {
-    if (GetRect2Area(state->hovered_clip_rect) > 0) {
-      BeginUILayer(
-          (UILayerProps){
-              .min = state->hovered_clip_rect.min,
-              .max = state->hovered_clip_rect.max,
-          },
-          "DebugOverlay@%p", state);
-      BeginUIBox((UIProps){
-          .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255, 64),
-      });
-      EndUIBox();
-      EndUILayer();
-    }
-
-    BeginUILayer(
-        (UILayerProps){
-            .min = state->min,
-            .max = state->max,
-        },
-        "Debug%p", state);
+    BeginUILayer((UILayerProps){
+        .key = STR8_LIT("__UIDebug__"),
+        .z_index = kUIDebugLayerZIndex,
+    });
+    BeginUIBox((UIProps){0});
     UIKey frame = BeginUIBox((UIProps){
         .layout = kUILayoutStack,
         .color = ColorU32FromHex(0x000000),
@@ -295,6 +291,8 @@ void UIDebugLayer(UIDebugLayerState *state) {
             .color = ColorU32FromHex(0xA8A8A8),
             .width = 1,
         }),
+        .margin = UIEdgeInsetsFromSTEB(state->min.x, state->min.y, 0, 0),
+        .size = SubVec2(state->max, state->min),
         .main_axis_align = kUIMainAxisAlignEnd,
         .cross_axis_align = kUICrossAxisAlignEnd,
         .hoverable = 1,
@@ -321,8 +319,7 @@ void UIDebugLayer(UIDebugLayerState *state) {
             .background_color = ColorU32FromHex(0xD1D1D1),
         });
         {
-          UITextF((UIProps){.padding = UIEdgeInsetsSymmetric(6, 3)},
-                  "UI Debug");
+          UITextF((UIProps){.padding = UIEdgeInsetsSymmetric(6, 3)}, "Debug");
 
           BeginUIBox((UIProps){.flex = 1});
           EndUIBox();
@@ -345,7 +342,6 @@ void UIDebugLayer(UIDebugLayerState *state) {
             }
 
             BeginUIBox((UIProps){
-
                 .padding = UIEdgeInsetsSymmetric(6, 3),
                 .background_color = background_color,
                 .text = PushUIStr8F("X"),
@@ -394,6 +390,7 @@ void UIDebugLayer(UIDebugLayerState *state) {
       }
       EndUIBox();
     }
+    EndUIBox();
     EndUIBox();
     EndUILayer();
   }

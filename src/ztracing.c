@@ -43,12 +43,7 @@ static b32 UIButton(Str8 label) {
 static void BuildUI(f32 dt, f32 frame_time) {
   static UIDebugLayerState debug_layer_state = {0};
 
-  BeginUILayer(
-      (UILayerProps){
-          .min = V2(0, 0),
-          .max = GetScreenSize(),
-      },
-      "Base");
+  BeginUILayer((UILayerProps){.key = STR8_LIT("Base")});
   BeginUIColumn((UIProps){
       .color = ColorU32FromSRGBNotPremultiplied(255, 255, 255, 255),
   });
@@ -127,6 +122,7 @@ void DoFrame(void) {
   ClearDraw();
 
   SetUIDeltaTime(dt);
+  SetUICanvasSize(GetScreenSize());
   BeginUIFrame();
   BuildUI(dt, last_frame_time);
   EndUIFrame();

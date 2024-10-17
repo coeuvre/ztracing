@@ -156,6 +156,11 @@ f32 GetUIDeltaTime(void) {
   return result;
 }
 
+void SetUICanvasSize(Vec2 size) {
+  UIState *state = GetUIState();
+  state->input.canvas_size = size;
+}
+
 void BeginUIFrame(void) {
   UIState *state = GetUIState();
   state->frame_index += 1;
@@ -844,12 +849,11 @@ void EndUIFrame(void) {
 
   for (UILayer *layer = frame->first_layer; layer; layer = layer->next) {
     if (layer->root) {
-      Vec2 size = SubVec2(layer->props.max, layer->props.min);
+      Vec2 size = state->input.canvas_size;
       LayoutBox(frame, layer->root, size, size);
       layer->root->computed.rel_pos = V2(0, 0);
 
-      PositionBox(layer->root, layer->props.min,
-                  R2(layer->props.min, layer->props.max));
+      PositionBox(layer->root, V2(0, 0), R2(V2(0, 0), size));
     }
   }
 
@@ -865,9 +869,7 @@ void RenderUI(void) {
 
   for (UILayer *layer = frame->first_layer; layer; layer = layer->next) {
     if (layer->root) {
-      PushClipRect(layer->props.min, layer->props.max);
       RenderBox(state, layer->root);
-      PopClipRect();
     }
   }
 }
@@ -892,23 +894,34 @@ static UIKey UIKeyFromU8(UIKey seed, u8 ch) {
   return result;
 }
 
-void BeginUILayer(UILayerProps props, const char *fmt, ...) {
+void BeginUILayer(UILayerProps props) {
+  ASSERTF(!IsEmptyStr8(props.key), "key of a UILayer cannot be empty");
+
   UIState *state = GetUIState();
   UIFrame *frame = GetCurrentUIFrame(state);
 
   UILayer *layer = PushArray(&frame->arena, UILayer, 1);
-  INSERT_DOUBLY_LINKED_LIST(frame->first_layer, frame->last_layer,
-                            frame->current_layer, layer, prev, next);
+
+  {
+    UILayer *after;
+    for (after = frame->last_layer; after; after = after->prev) {
+      if (after->props.z_index <= props.z_index) {
+        break;
+      }
+    }
+    if (after) {
+      INSERT_DOUBLY_LINKED_LIST(frame->first_layer, frame->last_layer, after,
+                                layer, prev, next);
+    } else {
+      PREPEND_DOUBLY_LINKED_LIST(frame->first_layer, frame->last_layer, layer,
+                                 prev, next);
+    }
+  }
+
   layer->parent = frame->current_layer;
   frame->current_layer = layer;
 
-  va_list ap;
-  va_start(ap, fmt);
-  layer->debug_key = PushStr8FV(&frame->arena, fmt, ap);
-  va_end(ap);
-
-  layer->key = UIKeyFromStr8(UIKeyZero(), layer->debug_key);
-  props.max = MaxVec2(props.min, props.max);
+  layer->key = UIKeyFromStr8(UIKeyZero(), props.key);
   layer->props = props;
 }
 
