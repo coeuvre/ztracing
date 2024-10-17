@@ -65,48 +65,166 @@ fn expectBoxRelPos(key: c.UIKey, expected_rel_pos: c.Vec2) !void {
     try expectEqualVec2(expected_rel_pos, box.*.computed.rel_pos);
 }
 
-// TODO: assert on box state, instead of pointer address.
-// test "Key, return the same box across frame" {
-//     c.InitUI();
-//     defer c.QuitUI();
-//
-//     var box1: [*c]c.UIBox = null;
-//     var box2: [*c]c.UIBox = null;
-//
-//     c.BeginUIFrame();
-//     c.SetUICanvasSize(c.V2(100, 100)); c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
-//     _ = c.BeginUIBox(.{});
-//     {
-//         _ = c.BeginUIBox(.{});
-//         c.EndUIBox();
-//
-//         const key = c.PushUIKeyF("KEY");
-//         _ = c.BeginUIBox(.{ .key = key });
-//         box1 = c.GetUIBox(key);
-//         c.EndUIBox();
-//     }
-//     c.EndUIBox();
-//     c.EndUILayer();
-//     c.EndUIFrame();
-//
-//     c.BeginUIFrame();
-//     c.SetUICanvasSize(c.V2(100, 100)); c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
-//     _ = c.BeginUIBox(.{});
-//     {
-//         const key = c.PushUIKeyF("KEY");
-//         _ = c.BeginUIBox(.{ .key = key });
-//         box2 = c.GetUIBox(key);
-//         c.EndUIBox();
-//
-//         _ = c.BeginUIBox(.{});
-//         c.EndUIBox();
-//     }
-//     c.EndUIBox();
-//     c.EndUILayer();
-//     c.EndUIFrame();
-//
-//     try testing.expectEqual(box1, box2);
-// }
+const State = extern struct {
+    value: u32,
+};
+
+fn pushBoxState(key: c.UIKey) [*c]State {
+    return @ptrCast(@alignCast(c.PushUIBoxState(key, "State", @sizeOf(State))));
+}
+
+test "State, return the same state across frame" {
+    c.InitUI();
+    defer c.QuitUI();
+
+    c.BeginUIFrame();
+    c.SetUICanvasSize(c.V2(100, 100));
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
+    {
+        const box0 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box0);
+            state.*.value = 10;
+        }
+        c.EndUIBox();
+
+        const box1 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box1);
+            state.*.value = 11;
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUILayer();
+    c.EndUIFrame();
+
+    c.BeginUIFrame();
+    c.SetUICanvasSize(c.V2(100, 100));
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
+    {
+        const box0 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box0);
+            try testing.expectEqual(10, state.*.value);
+        }
+        c.EndUIBox();
+
+        const box1 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box1);
+            try testing.expectEqual(11, state.*.value);
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUILayer();
+    c.EndUIFrame();
+}
+
+test "State, reset state if key is different" {
+    c.InitUI();
+    defer c.QuitUI();
+
+    c.BeginUIFrame();
+    c.SetUICanvasSize(c.V2(100, 100));
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
+    {
+        const box0 = c.BeginUIBox(.{ .key = c.STR8_LIT("Key0") });
+        {
+            const state = pushBoxState(box0);
+            state.*.value = 10;
+        }
+        c.EndUIBox();
+
+        const box1 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box1);
+            state.*.value = 11;
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUILayer();
+    c.EndUIFrame();
+
+    c.BeginUIFrame();
+    c.SetUICanvasSize(c.V2(100, 100));
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
+    {
+        const box0 = c.BeginUIBox(.{ .key = c.STR8_LIT("Key1") });
+        {
+            const state = pushBoxState(box0);
+            try testing.expectEqual(0, state.*.value);
+        }
+        c.EndUIBox();
+
+        const box1 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box1);
+            try testing.expectEqual(11, state.*.value);
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUILayer();
+    c.EndUIFrame();
+}
+
+test "State, reset state if tag is different" {
+    c.InitUI();
+    defer c.QuitUI();
+
+    c.BeginUIFrame();
+    c.SetUICanvasSize(c.V2(100, 100));
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
+    {
+        const box0 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box0);
+            state.*.value = 10;
+        }
+        c.EndUIBox();
+
+        const box1 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box1);
+            state.*.value = 11;
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUILayer();
+    c.EndUIFrame();
+
+    c.BeginUIFrame();
+    c.SetUICanvasSize(c.V2(100, 100));
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
+    {
+        const box0 = c.BeginUITag("Tag", .{});
+        {
+            const state = pushBoxState(box0);
+            try testing.expectEqual(0, state.*.value);
+        }
+        c.EndUITag("Tag");
+
+        const box1 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box1);
+            try testing.expectEqual(11, state.*.value);
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUILayer();
+    c.EndUIFrame();
+}
 
 test "Layout, root has the same size as the screen" {
     c.InitUI();
