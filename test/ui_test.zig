@@ -55,16 +55,14 @@ fn expectBoxKey(box: [*c]c.UIBox, expected_key: []const u8) !void {
     try testing.expectEqualStrings(expected_key, sliceFromStr8(box.*.build.key_str));
 }
 
-fn expectBoxSize(box: [*c]c.UIBox, expected_size: c.Vec2) !void {
+fn expectBoxSize(key: c.UIKey, expected_size: c.Vec2) !void {
+    const box = c.GetUIBox(key);
     try expectEqualVec2(expected_size, box.*.computed.size);
 }
 
-fn expectBoxRelPos(box: [*c]c.UIBox, expected_rel_pos: c.Vec2) !void {
+fn expectBoxRelPos(key: c.UIKey, expected_rel_pos: c.Vec2) !void {
+    const box = c.GetUIBox(key);
     try expectEqualVec2(expected_rel_pos, box.*.computed.rel_pos);
-}
-
-fn expectBoxText(box: [*c]c.UIBox, expected_text: []const u8) !void {
-    try testing.expectEqualStrings(expected_text, sliceFromStr8(box.*.build.text));
 }
 
 // TODO: assert on box state, instead of pointer address.
@@ -76,14 +74,14 @@ fn expectBoxText(box: [*c]c.UIBox, expected_text: []const u8) !void {
 //     var box2: [*c]c.UIBox = null;
 //
 //     c.BeginUIFrame();
-//     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-//     c.BeginUIBox(.{});
+//     c.SetUICanvasSize(c.V2(100, 100)); c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+//     _ = c.BeginUIBox(.{});
 //     {
-//         c.BeginUIBox(.{});
+//         _ = c.BeginUIBox(.{});
 //         c.EndUIBox();
 //
 //         const key = c.PushUIKeyF("KEY");
-//         c.BeginUIBox(.{ .key = key });
+//         _ = c.BeginUIBox(.{ .key = key });
 //         box1 = c.GetUIBox(key);
 //         c.EndUIBox();
 //     }
@@ -92,15 +90,15 @@ fn expectBoxText(box: [*c]c.UIBox, expected_text: []const u8) !void {
 //     c.EndUIFrame();
 //
 //     c.BeginUIFrame();
-//     c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-//     c.BeginUIBox(.{});
+//     c.SetUICanvasSize(c.V2(100, 100)); c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+//     _ = c.BeginUIBox(.{});
 //     {
 //         const key = c.PushUIKeyF("KEY");
-//         c.BeginUIBox(.{ .key = key });
+//         _ = c.BeginUIBox(.{ .key = key });
 //         box2 = c.GetUIBox(key);
 //         c.EndUIBox();
 //
-//         c.BeginUIBox(.{});
+//         _ = c.BeginUIBox(.{});
 //         c.EndUIBox();
 //     }
 //     c.EndUIBox();
@@ -123,12 +121,10 @@ test "Layout, root has the same size as the screen" {
     };
 
     for (sizes) |size| {
-        var root: [*c]c.UIBox = undefined;
-
+        c.SetUICanvasSize(c.V2(100, 100));
         c.BeginUIFrame();
-        c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-        c.BeginUIBox(.{ .size = size });
-        root = c.GetCurrentUIBox();
+        c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+        const root = c.BeginUIBox(.{ .size = size });
         c.EndUIBox();
         c.EndUILayer();
         c.EndUIFrame();
@@ -152,19 +148,19 @@ test "Layout, aligns" {
         .{ .@"align" = c.kUICrossAxisAlignEnd, .rel_pos = 50 },
     };
 
+    c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
-            var container: [*c]c.UIBox = undefined;
+            var container: c.UIKey = undefined;
 
             c.BeginUIFrame();
-            c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-            c.BeginUIBox(.{
+            c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+            _ = c.BeginUIBox(.{
                 .main_axis_align = main_axis_option.@"align",
                 .cross_axis_align = cross_axis_option.@"align",
             });
             {
-                c.BeginUIBox(.{ .size = c.V2(50, 50) });
-                container = c.GetCurrentUIBox();
+                container = c.BeginUIBox(.{ .size = c.V2(50, 50) });
                 c.EndUIBox();
             }
             c.EndUIBox();
@@ -193,22 +189,22 @@ test "Layout, padding" {
         .{ .@"align" = c.kUICrossAxisAlignEnd, .rel_pos = 46 },
     };
 
+    c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
-            var container: [*c]c.UIBox = undefined;
+            var container: c.UIKey = undefined;
 
             c.BeginUIFrame();
-            c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-            c.BeginUIBox(.{
+            c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+            _ = c.BeginUIBox(.{
                 .main_axis_align = main_axis_option.@"align",
                 .cross_axis_align = cross_axis_option.@"align",
                 .padding = padding,
             });
             {
-                c.BeginUIBox(.{});
+                container = c.BeginUIBox(.{});
                 {
-                    container = c.GetCurrentUIBox();
-                    c.BeginUIBox(.{ .size = c.V2(50, 50) });
+                    _ = c.BeginUIBox(.{ .size = c.V2(50, 50) });
                     c.EndUIBox();
                 }
                 c.EndUIBox();
@@ -227,14 +223,14 @@ test "Layout, no children, no fixed size, as small as possible" {
     c.InitUI();
     defer c.QuitUI();
 
-    var container: [*c]c.UIBox = undefined;
+    var container: c.UIKey = undefined;
 
+    c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{});
-        container = c.GetCurrentUIBox();
+        container = c.BeginUIBox(.{});
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -248,14 +244,14 @@ test "Layout, no children, no fixed size, flex, main axis is as big as possible"
     c.InitUI();
     defer c.QuitUI();
 
-    var container: [*c]c.UIBox = undefined;
+    var container: c.UIKey = undefined;
 
+    c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .flex = 1 });
-        container = c.GetCurrentUIBox();
+        container = c.BeginUIBox(.{ .flex = 1 });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -269,16 +265,16 @@ test "Layout, with one child, size around it" {
     c.InitUI();
     defer c.QuitUI();
 
-    var container: [*c]c.UIBox = undefined;
+    var container: c.UIKey = undefined;
 
+    c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{});
+        _ = c.BeginUIBox(.{});
         {
-            c.BeginUIBox(.{ .size = c.V2(50, 50) });
-            container = c.GetCurrentUIBox();
+            container = c.BeginUIBox(.{ .size = c.V2(50, 50) });
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -294,18 +290,17 @@ test "Layout, with fixed size" {
     c.InitUI();
     defer c.QuitUI();
 
-    var container: [*c]c.UIBox = undefined;
-    var child: [*c]c.UIBox = undefined;
+    var container: c.UIKey = undefined;
+    var child: c.UIKey = undefined;
 
+    c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .size = c.V2(30, 20) });
+        container = c.BeginUIBox(.{ .size = c.V2(30, 20) });
         {
-            container = c.GetCurrentUIBox();
-            c.BeginUIBox(.{ .size = c.V2(50, 40) });
-            child = c.GetCurrentUIBox();
+            child = c.BeginUIBox(.{ .size = c.V2(50, 40) });
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -322,18 +317,17 @@ test "Layout, with fixed size, negative" {
     c.InitUI();
     defer c.QuitUI();
 
-    var container: [*c]c.UIBox = undefined;
-    var child: [*c]c.UIBox = undefined;
+    var container: c.UIKey = undefined;
+    var child: c.UIKey = undefined;
 
+    c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .size = c.V2(30, -20) });
+        container = c.BeginUIBox(.{ .size = c.V2(30, -20) });
         {
-            container = c.GetCurrentUIBox();
-            c.BeginUIBox(.{ .size = c.V2(50, 50) });
-            child = c.GetCurrentUIBox();
+            child = c.BeginUIBox(.{ .size = c.V2(50, 50) });
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -355,17 +349,17 @@ test "Layout, main axis size, child has different main axis than parent" {
         c.kUIMainAxisSizeMax,
     };
 
+    c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_sizes) |main_axis_size| {
-        var row: [*c]c.UIBox = undefined;
+        var row: c.UIKey = undefined;
 
         c.BeginUIFrame();
-        c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-        c.BeginUIBox(.{ .main_axis = c.kAxis2Y });
+        c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+        _ = c.BeginUIBox(.{ .main_axis = c.kAxis2Y });
         {
-            c.BeginUIBox(.{ .main_axis_size = main_axis_size });
+            row = c.BeginUIBox(.{ .main_axis_size = main_axis_size });
             {
-                row = c.GetCurrentUIBox();
-                c.BeginUIBox(.{ .size = c.V2(30, 20) });
+                _ = c.BeginUIBox(.{ .size = c.V2(30, 20) });
                 c.EndUIBox();
             }
             c.EndUIBox();
@@ -391,17 +385,17 @@ test "Layout, main axis size, child has same main axis as parent" {
         c.kUIMainAxisSizeMax,
     };
 
+    c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_sizes) |main_axis_size| {
-        var row: [*c]c.UIBox = undefined;
+        var row: c.UIKey = undefined;
 
         c.BeginUIFrame();
-        c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-        c.BeginUIBox(.{});
+        c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+        _ = c.BeginUIBox(.{});
         {
-            c.BeginUIBox(.{ .main_axis_size = main_axis_size });
+            row = c.BeginUIBox(.{ .main_axis_size = main_axis_size });
             {
-                row = c.GetCurrentUIBox();
-                c.BeginUIBox(.{ .size = c.V2(20, 20) });
+                _ = c.BeginUIBox(.{ .size = c.V2(20, 20) });
                 c.EndUIBox();
             }
             c.EndUIBox();
@@ -424,14 +418,14 @@ test "Layout, no fixed size, size around text" {
     c.InitUI();
     defer c.QuitUI();
 
-    var text: [*c]c.UIBox = undefined;
+    var text: c.UIKey = undefined;
 
+    c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("text") });
-        text = c.GetCurrentUIBox();
+        text = c.BeginUIBox(.{ .text = c.PushUIStr8F("text") });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -446,14 +440,14 @@ test "Layout, fixed size, truncate text" {
     c.InitUI();
     defer c.QuitUI();
 
-    var text: [*c]c.UIBox = undefined;
+    var text: c.UIKey = undefined;
 
+    c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .size = c.V2(2, 2), .text = c.PushUIStr8F("Text") });
-        text = c.GetCurrentUIBox();
+        text = c.BeginUIBox(.{ .size = c.V2(2, 2), .text = c.PushUIStr8F("Text") });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -467,19 +461,18 @@ test "Layout, row, no constraints on children" {
     c.InitUI();
     defer c.QuitUI();
 
-    var c0: [*c]c.UIBox = undefined;
-    var c1: [*c]c.UIBox = undefined;
+    var c0: c.UIKey = undefined;
+    var c1: c.UIKey = undefined;
 
+    c.SetUICanvasSize(c.V2(1000, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(1000, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
-        c0 = c.GetCurrentUIBox();
+        c0 = c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
         c.EndUIBox();
 
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
-        c1 = c.GetCurrentUIBox();
+        c1 = c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -500,19 +493,18 @@ test "Layout, row, no constraints on children, but truncate" {
     c.InitUI();
     defer c.QuitUI();
 
-    var c0: [*c]c.UIBox = undefined;
-    var c1: [*c]c.UIBox = undefined;
+    var c0: c.UIKey = undefined;
+    var c1: c.UIKey = undefined;
 
+    c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
-        c0 = c.GetCurrentUIBox();
+        c0 = c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
         c.EndUIBox();
 
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
-        c1 = c.GetCurrentUIBox();
+        c1 = c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -533,22 +525,21 @@ test "Layout, row, constraint flex" {
     c.InitUI();
     defer c.QuitUI();
 
-    var c0: [*c]c.UIBox = undefined;
-    var c1: [*c]c.UIBox = undefined;
+    var c0: c.UIKey = undefined;
+    var c1: c.UIKey = undefined;
 
+    c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{
+        c0 = c.BeginUIBox(.{
             .flex = 1,
             .text = c.PushUIStr8F("A very long text that doesn't fit in one line!"),
         });
-        c0 = c.GetCurrentUIBox();
         c.EndUIBox();
 
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
-        c1 = c.GetCurrentUIBox();
+        c1 = c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -569,23 +560,22 @@ test "Layout, main axis unbounded" {
     c.InitUI();
     defer c.QuitUI();
 
-    var container: [*c]c.UIBox = undefined;
-    var child: [*c]c.UIBox = undefined;
+    var container: c.UIKey = undefined;
+    var child: c.UIKey = undefined;
 
+    c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
+        container = c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
         {
-            container = c.GetCurrentUIBox();
-            c.BeginUIBox(.{});
+            child = c.BeginUIBox(.{});
             {
-                child = c.GetCurrentUIBox();
-                c.BeginUIBox(.{ .size = c.V2(100000, 10) });
+                _ = c.BeginUIBox(.{ .size = c.V2(100000, 10) });
                 c.EndUIBox();
 
-                c.BeginUIBox(.{ .size = c.V2(100000, 20) });
+                _ = c.BeginUIBox(.{ .size = c.V2(100000, 20) });
                 c.EndUIBox();
             }
             c.EndUIBox();
@@ -604,13 +594,14 @@ test "Layout, main axis unbounded, with unbounded content" {
     c.InitUI();
     defer c.QuitUI();
 
+    c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
-    c.BeginUILayer(.{ .max = c.V2(100, 100) }, "Layer");
-    c.BeginUIBox(.{});
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
     {
-        c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
+        _ = c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
         {
-            c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
+            _ = c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
             c.EndUIBox();
         }
         c.EndUIBox();
