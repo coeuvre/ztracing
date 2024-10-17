@@ -32,15 +32,8 @@ void EndUIScrollable(void);
 f32 GetUIScrollableScroll(UIKey key);
 void SetUIScrollableScroll(UIKey key, f32 scroll);
 
-typedef struct UIDebugLayerState {
-  b8 open;
-  Vec2 min;
-  Vec2 max;
-  Vec2 pressed_min;
-  Vec2 pressed_max;
-} UIDebugLayerState;
-
 #define kUIDebugLayerZIndex 1000
-void UIDebugLayer(UIDebugLayerState *state);
+UIKey UIDebugLayer(void);
+void OpenUIDebugLayer(UIKey key);
 
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_

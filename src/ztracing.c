@@ -41,7 +41,7 @@ static b32 UIButton(Str8 label) {
 }
 
 static void BuildUI(f32 dt, f32 frame_time) {
-  static UIDebugLayerState debug_layer_state = {0};
+  UIKey debug_layer = UIDebugLayer();
 
   BeginUILayer((UILayerProps){.key = STR8_LIT("Base")});
   BeginUIColumn((UIProps){
@@ -52,7 +52,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
     {
       UIButton(STR8_LIT("Load"));
       if (UIButton(STR8_LIT("Debug"))) {
-        debug_layer_state.open = 1;
+        OpenUIDebugLayer(debug_layer);
       }
 
       BeginUIBox((UIProps){.flex = 1});
@@ -103,8 +103,6 @@ static void BuildUI(f32 dt, f32 frame_time) {
   }
   EndUIColumn();
   EndUILayer();
-
-  UIDebugLayer(&debug_layer_state);
 }
 
 void DoFrame(void) {

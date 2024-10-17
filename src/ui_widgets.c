@@ -193,6 +193,14 @@ void SetUIScrollableScroll(UIKey key, f32 scroll) {
   state->scroll = ClampF32(scroll, 0, state->scroll_max);
 }
 
+typedef struct UIDebugLayerState {
+  b8 open;
+  Vec2 min;
+  Vec2 max;
+  Vec2 pressed_min;
+  Vec2 pressed_max;
+} UIDebugLayerState;
+
 static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
   UIKey row = BeginUIRow((UIProps){
       .hoverable = 1,
@@ -267,23 +275,23 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
   EndUIColumn();
 }
 
-void UIDebugLayer(UIDebugLayerState *state) {
+UIKey UIDebugLayer(void) {
   f32 resize_handle_size = 16;
   Vec2 default_frame_size = V2(400, 500);
   Vec2 min_frame_size = V2(resize_handle_size * 2, resize_handle_size * 2);
 
+  BeginUILayer((UILayerProps){
+      .key = STR8_LIT("__UIDebug__"),
+      .z_index = kUIDebugLayerZIndex,
+  });
+  UIKey debug_layer = BeginUIBox((UIProps){0});
+  UIDebugLayerState *state = PushUIBoxStruct(debug_layer, UIDebugLayerState);
   if (IsZeroVec2(SubVec2(state->max, state->min))) {
     state->max =
         AddVec2(state->min, V2(default_frame_size.x + resize_handle_size,
                                default_frame_size.y + resize_handle_size));
   }
-
   if (state->open) {
-    BeginUILayer((UILayerProps){
-        .key = STR8_LIT("__UIDebug__"),
-        .z_index = kUIDebugLayerZIndex,
-    });
-    BeginUIBox((UIProps){0});
     UIKey frame = BeginUIBox((UIProps){
         .layout = kUILayoutStack,
         .color = ColorU32FromHex(0x000000),
@@ -391,7 +399,13 @@ void UIDebugLayer(UIDebugLayerState *state) {
       EndUIBox();
     }
     EndUIBox();
-    EndUIBox();
-    EndUILayer();
   }
+  EndUIBox();
+  EndUILayer();
+  return debug_layer;
+}
+
+void OpenUIDebugLayer(UIKey key) {
+  UIDebugLayerState *state = GetUIBoxStruct(key, UIDebugLayerState);
+  state->open = 1;
 }
