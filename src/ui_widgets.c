@@ -270,16 +270,16 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
   if (IsUIMouseHovering(hoverable)) {
     background_color = ColorU32FromSRGBNotPremultiplied(53, 119, 197, 255);
 
-    Rect2 hovered_clip_rect = box->computed.clip_rect;
+    Rect2 hovered_rect = box->computed.screen_rect;
     BeginUILayer((UILayerProps){
         .key = STR8_LIT("__UIDebug__Overlay"),
         .z_index = kUIDebugLayerZIndex - 1,
     });
     BeginUIBox((UIProps){0});
     BeginUIBox((UIProps){
-        .margin = UIEdgeInsetsFromLTRB(hovered_clip_rect.min.x,
-                                       hovered_clip_rect.min.y, 0, 0),
-        .size = SubVec2(hovered_clip_rect.max, hovered_clip_rect.min),
+        .margin =
+            UIEdgeInsetsFromLTRB(hovered_rect.min.x, hovered_rect.min.y, 0, 0),
+        .size = SubVec2(hovered_rect.max, hovered_rect.min),
         .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255, 64),
     });
     EndUIBox();
