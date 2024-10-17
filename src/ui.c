@@ -11,8 +11,9 @@
 #include "src/string.h"
 #include "src/types.h"
 
-static UIBox *GetBoxByKey(UIBoxCache *cache, UIKey key) {
+static UIBox *GetUIBoxFromFrame(UIFrame *frame, UIKey key) {
   UIBox *result = 0;
+  UIBoxCache *cache = &frame->cache;
   if (!IsZeroUIKey(key) && cache->box_hash_slots) {
     UIBoxHashSlot *slot =
         &cache->box_hash_slots[key.hash % cache->box_hash_slots_count];
@@ -811,7 +812,7 @@ static void ProcessInput(UIState *state, UIFrame *frame) {
 
     if (IsMouseButtonClicked(state, button)) {
       UIKey key = state->input.mouse.holding[button];
-      UIBox *box = GetBoxByKey(&frame->cache, key);
+      UIBox *box = GetUIBoxFromFrame(frame, key);
       if (box &&
           ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
                        box->computed.clip_rect.max)) {
@@ -970,7 +971,16 @@ static UIKey UIKeyForBox(UIKey seed, u32 seq, const char *tag, Str8 key_str) {
   return key;
 }
 
-void BeginUITag(const char *tag, UIProps props) {
+static UIBox *GetUIBoxFromLastFrame(UIState *state, UIKey key) {
+  UIBox *result = 0;
+  UIFrame *last_frame = GetLastUIFrame(state);
+  if (last_frame) {
+    result = GetUIBoxFromFrame(last_frame, key);
+  }
+  return result;
+}
+
+UIKey BeginUITag(const char *tag, UIProps props) {
   UIState *state = GetUIState();
   UIFrame *frame = GetCurrentUIFrame(state);
 
@@ -1004,16 +1014,14 @@ void BeginUITag(const char *tag, UIProps props) {
   box->props = props;
 
   // Copy state from last frame, if any
-  UIFrame *last_frame = GetLastUIFrame(state);
-  if (last_frame) {
-    UIBox *last_box = GetBoxByKey(&last_frame->cache, key);
-    if (last_box) {
-      box->computed = last_box->computed;
-      box->persistent = last_box->persistent;
-    }
+  UIBox *last_box = GetUIBoxFromLastFrame(state, key);
+  if (last_box) {
+    box->computed = last_box->computed;
   }
 
   layer->current = box;
+
+  return key;
 }
 
 void EndUITag(const char *tag) {
@@ -1030,23 +1038,65 @@ void EndUITag(const char *tag) {
   layer->current = layer->current->parent;
 }
 
-UIBox *GetCurrentUIBox(void) {
+UIKey GetCurrentUIBoxKey(void) {
   UIState *state = GetUIState();
   UIFrame *frame = GetCurrentUIFrame(state);
   ASSERT(frame->current_layer && frame->current_layer->current);
-  UIBox *result = frame->current_layer->current;
-  return result;
+  UIBox *box = frame->current_layer->current;
+  return box->key;
 }
 
-UIComputed GetUIComputed(void) {
-  UIBox *box = GetCurrentUIBox();
-  UIComputed result = box->computed;
-  return result;
-}
-
-Vec2 GetUIMouseRelPos(void) {
+UIBox *GetUIBox(UIKey key) {
   UIState *state = GetUIState();
-  UIBox *box = GetCurrentUIBox();
+  UIFrame *frame = GetCurrentUIFrame(state);
+  UIBox *result = GetUIBoxFromFrame(frame, key);
+  return result;
+}
+
+void *PushUIBoxState(UIKey key, const char *type_name, usize size) {
+  UIState *state = GetUIState();
+  UIFrame *frame = GetCurrentUIFrame(state);
+  UIBox *box = GetUIBoxFromFrame(frame, key);
+  ASSERTF(box, "UIBox not found for UIKey");
+  ASSERTF(!box->state.ptr, "Can only push once to the UIBox");
+  box->state.type_name = type_name;
+  box->state.size = size;
+
+  UIBox *last_box = GetUIBoxFromLastFrame(state, key);
+  if (last_box && last_box->state.ptr) {
+    ASSERTF(last_box->state.size == box->state.size &&
+                strcmp(last_box->state.type_name, type_name) == 0,
+            "The type pushed to this box (%s) is not the same as the last "
+            "frame (%s)",
+            type_name, last_box->state.type_name);
+    box->state.ptr = PushArena(&frame->arena, size, kPushArenaNoZero);
+    // Copy state from last frame
+    memcpy(box->state.ptr, last_box->state.ptr, size);
+  } else {
+    box->state.ptr = PushArena(&frame->arena, size, 0);
+  }
+
+  return box->state.ptr;
+}
+
+void *GetUIBoxState(UIKey key, const char *type_name, usize size) {
+  UIState *state = GetUIState();
+  UIFrame *frame = GetCurrentUIFrame(state);
+  UIBox *box = GetUIBoxFromFrame(frame, key);
+  ASSERTF(box, "UIBox not found for UIKey");
+  ASSERTF(box->state.ptr, "UIBox doesn't have state");
+  ASSERTF(
+      box->state.size == size && strcmp(box->state.type_name, type_name) == 0,
+      "The type currently requested (%s) is not the same as the one pushed "
+      "(%s)",
+      type_name, box->state.type_name);
+  void *result = box->state.ptr;
+  return result;
+}
+
+Vec2 GetUIMouseRelPos(UIKey key) {
+  UIState *state = GetUIState();
+  UIBox *box = GetUIBox(key);
   Vec2 result = V2(0, 0);
   if (box) {
     result = SubVec2(state->input.mouse.pos, box->computed.screen_rect.min);
@@ -1060,38 +1110,33 @@ Vec2 GetUIMousePos(void) {
   return result;
 }
 
-b32 IsUIMouseHovering(void) {
+b32 IsUIMouseHovering(UIKey key) {
   UIState *state = GetUIState();
-  b32 result =
-      IsEqualUIKey(state->input.mouse.hovering, GetCurrentUIBox()->key);
+  b32 result = IsEqualUIKey(state->input.mouse.hovering, key);
   return result;
 }
 
-b32 IsUIMouseButtonPressed(UIMouseButton button) {
+b32 IsUIMouseButtonPressed(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result =
-      IsEqualUIKey(state->input.mouse.pressed[button], GetCurrentUIBox()->key);
+  b32 result = IsEqualUIKey(state->input.mouse.pressed[button], key);
   return result;
 }
 
-b32 IsUIMouseButtonDown(UIMouseButton button) {
+b32 IsUIMouseButtonDown(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result =
-      IsEqualUIKey(state->input.mouse.holding[button], GetCurrentUIBox()->key);
+  b32 result = IsEqualUIKey(state->input.mouse.holding[button], key);
   return result;
 }
 
-b32 IsUIMouseButtonClicked(UIMouseButton button) {
+b32 IsUIMouseButtonClicked(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result =
-      IsEqualUIKey(state->input.mouse.clicked[button], GetCurrentUIBox()->key);
+  b32 result = IsEqualUIKey(state->input.mouse.clicked[button], key);
   return result;
 }
 
-b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
+b32 IsUIMouseButtonDragging(UIKey key, UIMouseButton button, Vec2 *delta) {
   UIState *state = GetUIState();
-  f32 result =
-      IsEqualUIKey(state->input.mouse.holding[button], GetCurrentUIBox()->key);
+  f32 result = IsEqualUIKey(state->input.mouse.holding[button], key);
   if (result && delta) {
     *delta =
         SubVec2(state->input.mouse.pos, state->input.mouse.pressed_pos[button]);
@@ -1099,10 +1144,9 @@ b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
   return result;
 }
 
-b32 IsUIMouseScrolling(Vec2 *delta) {
+b32 IsUIMouseScrolling(UIKey key, Vec2 *delta) {
   UIState *state = GetUIState();
-  f32 result =
-      IsEqualUIKey(state->input.mouse.scrolling, GetCurrentUIBox()->key);
+  f32 result = IsEqualUIKey(state->input.mouse.scrolling, key);
   if (result && delta) {
     *delta = state->input.mouse.scroll_delta;
   }

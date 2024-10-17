@@ -55,7 +55,6 @@ pub fn build(b: *std.Build) void {
     test_binary.linkLibC();
     test_binary.linkSystemLibrary("SDL3");
     const install_test = b.addInstallArtifact(test_binary, .{});
-    b.getInstallStep().dependOn(&install_test.step);
 
     const run_test = b.addRunArtifact(install_test.artifact);
     const test_step = b.step("test", "Run tests");

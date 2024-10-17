@@ -142,10 +142,11 @@ typedef struct UIComputed {
   b8 clip;
 } UIComputed;
 
-// General data that is persistent across frames until the box is GCed.
-typedef struct UIPersistent {
-  b8 enabled;
-} UIPersistent;
+typedef struct UIBoxState {
+  const char *type_name;
+  void *ptr;
+  usize size;
+} UIBoxState;
 
 typedef struct UIBox UIBox;
 struct UIBox {
@@ -166,7 +167,8 @@ struct UIBox {
 
   UIProps props;
   UIComputed computed;
-  UIPersistent persistent;
+
+  UIBoxState state;
 };
 
 typedef struct UILayerProps {
@@ -295,25 +297,41 @@ Str8 PushUIStr8(Str8 str);
 Str8 PushUIStr8F(const char *fmt, ...);
 Str8 PushUIStr8FV(const char *fmt, va_list ap);
 
-void BeginUITag(const char *tag, UIProps props);
+UIKey BeginUITag(const char *tag, UIProps props);
 void EndUITag(const char *tag);
 
-static inline void BeginUIBox(UIProps props) { BeginUITag("Box", props); }
+static inline UIKey BeginUIBox(UIProps props) {
+  return BeginUITag("Box", props);
+}
+
 static inline void EndUIBox(void) { EndUITag("Box"); }
 
-UIBox *GetCurrentUIBox(void);
+UIKey GetCurrentUIBoxKey(void);
+UIBox *GetUIBox(UIKey key);
 
-UIComputed GetUIComputed(void);
-UIPersistent *GetUIPersistent(void);
+void *PushUIBoxState(UIKey key, const char *type_name, usize size);
+void *GetUIBoxState(UIKey key, const char *type_name, usize size);
 
-Vec2 GetUIMouseRelPos(void);
+#define PushUIBoxStruct(key, Type) \
+  (Type *)PushUIBoxState(key, #Type, sizeof(Type))
+
+#define GetUIBoxStruct(key, Type) \
+  (Type *)GetUIBoxState(key, #Type, sizeof(Type))
+
+static inline UIComputed GetUIComputed(UIKey key) {
+  UIBox *box = GetUIBox(key);
+  UIComputed result = box->computed;
+  return result;
+}
+
+Vec2 GetUIMouseRelPos(UIKey key);
 Vec2 GetUIMousePos(void);
 
-b32 IsUIMouseHovering(void);
-b32 IsUIMouseButtonPressed(UIMouseButton button);
-b32 IsUIMouseButtonDown(UIMouseButton button);
-b32 IsUIMouseButtonClicked(UIMouseButton button);
-b32 IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta);
-b32 IsUIMouseScrolling(Vec2 *delta);
+b32 IsUIMouseHovering(UIKey key);
+b32 IsUIMouseButtonPressed(UIKey key, UIMouseButton button);
+b32 IsUIMouseButtonDown(UIKey key, UIMouseButton button);
+b32 IsUIMouseButtonClicked(UIKey key, UIMouseButton button);
+b32 IsUIMouseButtonDragging(UIKey key, UIMouseButton button, Vec2 *delta);
+b32 IsUIMouseScrolling(UIKey key, Vec2 *delta);
 
 #endif  // ZTRACING_SRC_UI_H_
