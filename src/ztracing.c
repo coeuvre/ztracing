@@ -49,8 +49,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
   });
   BeginUIColumn((UIColumnProps){0});
   {
-    BeginUIBox((UIProps){.background_color = ColorU32FromHex(0xE6573F)});
-    BeginUIStack((UIStackProps){0});
+    BeginUIStack((UIStackProps){.background_color = ColorU32FromHex(0xE6573F)});
     BeginUIRow((UIRowProps){0});
     {
       UIButton(STR8_LIT("Load"));
@@ -72,7 +71,6 @@ static void BuildUI(f32 dt, f32 frame_time) {
     UITextF((UIProps){0}, "Some File");
     EndUIRow();
     EndUIStack();
-    EndUIBox();
 
     static f32 scroll_drag_started;
 
@@ -97,14 +95,12 @@ static void BuildUI(f32 dt, f32 frame_time) {
       BeginUIColumn((UIColumnProps){0});
       {
         for (u32 item_index = 0; item_index < item_count; ++item_index) {
-          BeginUIBox((UIProps){
+          BeginUIRow((UIRowProps){
               .size = V2(kUISizeUndefined, item_size),
               .background_color =
                   ColorU32FromSRGBNotPremultiplied(0, 0, item_index % 256, 255),
           });
-          BeginUIRow((UIRowProps){0});
           EndUIRow();
-          EndUIBox();
         }
       }
       EndUIColumn();

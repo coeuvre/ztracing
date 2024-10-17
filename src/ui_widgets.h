@@ -8,6 +8,10 @@
 
 typedef struct UIRowProps {
   Str8 key;
+  Vec2 size;
+  UIEdgeInsets padding;
+  UIEdgeInsets margin;
+  ColorU32 background_color;
   UIMainAxisAlign main_axis_align;
   UICrossAxisAlign cross_axis_align;
 } UIRowProps;
@@ -17,6 +21,10 @@ static inline void EndUIRow(void) { EndUITag("Row"); }
 
 typedef struct UIColumnProps {
   Str8 key;
+  Vec2 size;
+  UIEdgeInsets padding;
+  UIEdgeInsets margin;
+  ColorU32 background_color;
   UIMainAxisAlign main_axis_align;
   UICrossAxisAlign cross_axis_align;
 } UIColumnProps;
@@ -26,6 +34,12 @@ static inline void EndUIColumn(void) { EndUITag("Column"); }
 
 typedef struct UIStackProps {
   Str8 key;
+  Vec2 size;
+  UIEdgeInsets padding;
+  UIEdgeInsets margin;
+  ColorU32 background_color;
+  UIMainAxisAlign main_axis_align;
+  UICrossAxisAlign cross_axis_align;
 } UIStackProps;
 
 UIKey BeginUIStack(UIStackProps props);

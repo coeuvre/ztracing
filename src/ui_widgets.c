@@ -14,6 +14,10 @@ UIKey BeginUIRow(UIRowProps props) {
       "Row",
       (UIProps){
           .key = props.key,
+          .size = props.size,
+          .padding = props.padding,
+          .margin = props.margin,
+          .background_color = props.background_color,
           .main_axis = kAxis2X,
           .main_axis_size = kUIMainAxisSizeMax,
           .main_axis_align = props.main_axis_align == kUIMainAxisAlignUnknown
@@ -30,6 +34,10 @@ UIKey BeginUIColumn(UIColumnProps props) {
       "Column",
       (UIProps){
           .key = props.key,
+          .size = props.size,
+          .padding = props.padding,
+          .margin = props.margin,
+          .background_color = props.background_color,
           .main_axis = kAxis2Y,
           .main_axis_align = props.main_axis_align == kUIMainAxisAlignUnknown
                                  ? kUIMainAxisAlignStart
@@ -42,10 +50,22 @@ UIKey BeginUIColumn(UIColumnProps props) {
 }
 
 UIKey BeginUIStack(UIStackProps props) {
-  return BeginUITag("Stack", (UIProps){
-                                 .key = props.key,
-                                 .layout = kUILayoutStack,
-                             });
+  return BeginUITag(
+      "Stack",
+      (UIProps){
+          .key = props.key,
+          .layout = kUILayoutStack,
+          .size = props.size,
+          .padding = props.padding,
+          .margin = props.margin,
+          .background_color = props.background_color,
+          .main_axis_align = props.main_axis_align == kUIMainAxisAlignUnknown
+                                 ? kUIMainAxisAlignStart
+                                 : props.main_axis_align,
+          .cross_axis_align = props.cross_axis_align == kUICrossAxisAlignUnknown
+                                  ? kUICrossAxisAlignCenter
+                                  : props.cross_axis_align,
+      });
 }
 
 void UITextF(UIProps props, const char *fmt, ...) {
@@ -266,17 +286,14 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
     EndUIBox();
     EndUILayer();
   }
-  BeginUIRow((UIRowProps){0});
+  BeginUIRow((UIRowProps){
+      .background_color = background_color,
+      .padding = UIEdgeInsetsFromLTRB(level * 20, 0, 0, 0),
+  });
   {
-    BeginUIBox((UIProps){
-        .background_color = background_color,
-        .padding = UIEdgeInsetsFromLTRB(level * 20, 0, 0, 0),
-        .main_axis_size = kUIMainAxisSizeMax,
-    });
     Str8 seq_str = PushUIStr8F("%u", box->seq);
     UITextF((UIProps){0}, "%s%s%s", box->tag, "#",
             IsEmptyStr8(box->props.key) ? seq_str.ptr : box->props.key.ptr);
-    EndUIBox();
   }
   EndUIRow();
   EndUIBox();
