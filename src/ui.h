@@ -24,12 +24,14 @@ typedef enum UIMainAxisSize {
 } UIMainAxisSize;
 
 typedef enum UIMainAxisAlign {
+  kUIMainAxisAlignUnknown,
   kUIMainAxisAlignStart,
   kUIMainAxisAlignCenter,
   kUIMainAxisAlignEnd,
 } UIMainAxisAlign;
 
 typedef enum UICrossAxisAlign {
+  kUICrossAxisAlignUnknown,
   kUICrossAxisAlignStart,
   kUICrossAxisAlignCenter,
   kUICrossAxisAlignEnd,

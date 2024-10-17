@@ -44,11 +44,14 @@ static void BuildUI(f32 dt, f32 frame_time) {
   UIKey debug_layer = UIDebugLayer();
 
   BeginUILayer((UILayerProps){.key = STR8_LIT("Base")});
-  BeginUIColumn((UIProps){
+  BeginUIBox((UIProps){
       .color = ColorU32FromSRGBNotPremultiplied(255, 255, 255, 255),
   });
+  BeginUIColumn((UIColumnProps){0});
   {
-    BeginUIRow((UIProps){.background_color = ColorU32FromHex(0xE6573F)});
+    BeginUIBox((UIProps){.background_color = ColorU32FromHex(0xE6573F)});
+    BeginUIStack((UIStackProps){0});
+    BeginUIRow((UIRowProps){0});
     {
       UIButton(STR8_LIT("Load"));
       if (UIButton(STR8_LIT("Debug"))) {
@@ -65,9 +68,14 @@ static void BuildUI(f32 dt, f32 frame_time) {
     }
     EndUIRow();
 
+    BeginUIRow((UIRowProps){.main_axis_align = kUIMainAxisAlignCenter});
+    UITextF((UIProps){0}, "Some File");
+    EndUIRow();
+    EndUIStack();
+    EndUIBox();
+
     static f32 scroll_drag_started;
 
-    BeginUIBox((UIProps){.flex = 1});
     UIKey scrollable = BeginUIScrollable();
     {
       f32 item_size = 20.0f;
@@ -77,31 +85,35 @@ static void BuildUI(f32 dt, f32 frame_time) {
       // f32 offset = item_index * item_size - state->scroll;
       // for (; item_index < item_count && offset < state->scroll_area_size;
       //      ++item_index, offset += item_size)
-      UIKey content = BeginUIColumn((UIProps){.clickable = 1});
-      {
-        if (IsUIMouseButtonPressed(content, kUIMouseButtonLeft)) {
-          scroll_drag_started = GetUIScrollableScroll(scrollable);
-        }
-        Vec2 drag_delta;
-        if (IsUIMouseButtonDragging(content, kUIMouseButtonLeft, &drag_delta)) {
-          SetUIScrollableScroll(scrollable, scroll_drag_started - drag_delta.y);
-        }
+      UIKey content = BeginUIBox((UIProps){.clickable = 1});
+      if (IsUIMouseButtonPressed(content, kUIMouseButtonLeft)) {
+        scroll_drag_started = GetUIScrollableScroll(scrollable);
+      }
+      Vec2 drag_delta;
+      if (IsUIMouseButtonDragging(content, kUIMouseButtonLeft, &drag_delta)) {
+        SetUIScrollableScroll(scrollable, scroll_drag_started - drag_delta.y);
+      }
 
+      BeginUIColumn((UIColumnProps){0});
+      {
         for (u32 item_index = 0; item_index < item_count; ++item_index) {
-          BeginUIRow((UIProps){
+          BeginUIBox((UIProps){
               .size = V2(kUISizeUndefined, item_size),
               .background_color =
                   ColorU32FromSRGBNotPremultiplied(0, 0, item_index % 256, 255),
           });
+          BeginUIRow((UIRowProps){0});
           EndUIRow();
+          EndUIBox();
         }
       }
       EndUIColumn();
+      EndUIBox();
     }
     EndUIScrollable();
-    EndUIBox();
   }
   EndUIColumn();
+  EndUIBox();
   EndUILayer();
 }
 

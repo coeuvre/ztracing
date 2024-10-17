@@ -662,9 +662,17 @@ static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
           box->computed.size.x, box->computed.size.y, min_size.x, min_size.y,
           max_size.x, max_size.y);
 
-  AlignMainAxis(box, main_axis, box->props.main_axis_align,
+  UIMainAxisAlign main_axis_align = box->props.main_axis_align;
+  if (main_axis_align == kUIMainAxisAlignUnknown) {
+    main_axis_align = kUIMainAxisAlignStart;
+  }
+  AlignMainAxis(box, main_axis, main_axis_align,
                 GetItemVec2(children_size, main_axis));
-  AlignCrossAxis(box, cross_axis, box->props.cross_axis_align);
+  UICrossAxisAlign cross_axis_align = box->props.cross_axis_align;
+  if (cross_axis_align == kUICrossAxisAlignUnknown) {
+    cross_axis_align = kUICrossAxisAlignStart;
+  }
+  AlignCrossAxis(box, cross_axis, cross_axis_align);
   // Clip if content size exceeds self size.
   box->computed.clip =
       box->computed.clip ||
@@ -737,9 +745,9 @@ static void RenderBox(UIState *state, UIBox *box) {
 #include "src/log.h"
 static void DebugPrintUIR(UIBox *box, u32 level) {
   INFO(
-      "%*s%s[id=%s, min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), "
+      "%*s%s[seq=%u, key=%s, min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), "
       "build_size=(%.2f, %.2f), size=(%.2f, %.2f), rel_pos=(%.2f, %.2f)]",
-      level * 4, "", box->computed.tag, box->props.key.str.ptr,
+      level * 4, "", box->tag, box->seq, box->props.key.ptr,
       box->computed.min_size.x, box->computed.min_size.y,
       box->computed.max_size.x, box->computed.max_size.y, box->props.size.x,
       box->props.size.y, box->computed.size.x, box->computed.size.y,
@@ -751,8 +759,9 @@ static void DebugPrintUIR(UIBox *box, u32 level) {
 
 static void DebugPrintUI(UIState *state) {
   if (state->frame_index > 1) {
-    for (UILayer *layer = state->first_layer; layer; layer = layer->next) {
-      INFO("Layer: %s", layer->key.str.ptr);
+    UIFrame *frame = GetCurrentUIFrame(state);
+    for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
+      INFO("Layer - %s", layer->props.key.ptr);
       if (layer->root) {
         DebugPrintUIR(layer->root, 0);
       }

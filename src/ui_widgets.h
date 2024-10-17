@@ -6,23 +6,30 @@
 #include "src/string.h"
 #include "src/ui.h"
 
-static inline UIKey BeginUIRow(UIProps props) {
-  props.main_axis = kAxis2X;
-  props.main_axis_size = kUIMainAxisSizeMax;
-  props.cross_axis_align = kUICrossAxisAlignCenter;
-  return BeginUITag("Row", props);
-}
+typedef struct UIRowProps {
+  Str8 key;
+  UIMainAxisAlign main_axis_align;
+  UICrossAxisAlign cross_axis_align;
+} UIRowProps;
 
-static inline void EndUIRow() { EndUITag("Row"); }
+UIKey BeginUIRow(UIRowProps props);
+static inline void EndUIRow(void) { EndUITag("Row"); }
 
-static inline UIKey BeginUIColumn(UIProps props) {
-  props.main_axis = kAxis2Y;
-  props.main_axis_size = kUIMainAxisSizeMax;
-  props.cross_axis_align = kUICrossAxisAlignCenter;
-  return BeginUITag("Column", props);
-}
+typedef struct UIColumnProps {
+  Str8 key;
+  UIMainAxisAlign main_axis_align;
+  UICrossAxisAlign cross_axis_align;
+} UIColumnProps;
 
-static inline void EndUIColumn() { EndUITag("Column"); }
+UIKey BeginUIColumn(UIColumnProps props);
+static inline void EndUIColumn(void) { EndUITag("Column"); }
+
+typedef struct UIStackProps {
+  Str8 key;
+} UIStackProps;
+
+UIKey BeginUIStack(UIStackProps props);
+static inline void EndUIStack(void) { EndUITag("Stack"); }
 
 void UITextF(UIProps props, const char *fmt, ...);
 void UIText(UIProps props, Str8 text);
