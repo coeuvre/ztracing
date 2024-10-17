@@ -152,6 +152,7 @@ typedef struct UIBox UIBox;
 struct UIBox {
   const char *tag;
   UIKey key;
+  u32 seq;
 
   // hash links
   UIBox *hash_prev;

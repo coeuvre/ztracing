@@ -1,5 +1,6 @@
 #include "src/ui_widgets.h"
 
+#include <inttypes.h>
 #include <stdarg.h>
 #include <string.h>
 
@@ -195,7 +196,6 @@ void SetUIScrollableScroll(UIKey key, f32 scroll) {
 static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 *index,
                              u32 level) {
   UIKey row = BeginUIRow((UIProps){
-      .key = PushUIStr8F("%d", *index++),
       .hoverable = 1,
   });
   {
@@ -209,9 +209,9 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 *index,
         .padding = UIEdgeInsetsFromSTEB(level * 20, 0, 0, 0),
         .main_axis_size = kUIMainAxisSizeMax,
     });
-    b32 has_key = !IsEmptyStr8(box->props.key);
-    UITextF((UIProps){0}, "%s%s%s", box->tag, has_key ? "#" : "",
-            has_key ? (char *)box->props.key.ptr : "");
+    Str8 seq_str = PushUIStr8F("%u", box->seq);
+    UITextF((UIProps){0}, "%s%s%s", box->tag, "#",
+            IsEmptyStr8(box->props.key) ? seq_str.ptr : box->props.key.ptr);
     EndUIBox();
   }
   EndUIRow();
@@ -231,10 +231,22 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
   BeginUIColumn((UIProps){
       .padding = UIEdgeInsetsSymmetric(6, 3),
   });
-  for (UILayer *layer = frame->first_layer; layer; layer = layer->next) {
+  BeginUIBox((UIProps){0});
+  {
+    BeginUIColumn((UIProps){0});
+
+    BeginUIRow((UIProps){0});
+    UITextF((UIProps){0}, "Boxes: %" PRIu64, frame->cache.total_box_count);
+    EndUIRow();
+
+    EndUIColumn();
+  }
+  EndUIBox();
+
+  for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
     if (strstr((char *)layer->debug_key.ptr, "Debug") == 0) {
       BeginUIRow((UIProps){0});
-      UITextF((UIProps){0}, "%s", layer->debug_key.ptr);
+      UITextF((UIProps){0}, "Layer - %s", layer->debug_key.ptr);
       EndUIRow();
       if (layer->root) {
         UIDebugLayerBoxR(state, layer->root, &index, 1);

@@ -917,7 +917,7 @@ void EndUILayer(void) {
   UIFrame *frame = GetCurrentUIFrame(state);
   ASSERTF(frame->current_layer, "Mismatched BeginLayer/EndLayer calls");
   ASSERTF(!frame->current_layer->current,
-          "Mismatched BeginUIBox/EndUIBox calls");
+          "Mismatched BeginUITag/EndUITag calls");
 
   frame->current_layer = frame->current_layer->parent;
 }
@@ -957,17 +957,18 @@ Str8 PushUIStr8FV(const char *fmt, va_list ap) {
 }
 
 static UIKey UIKeyForBox(UIKey seed, u32 seq, const char *tag, Str8 key_str) {
-  // key = seed + seq + tag + props.key
+  // key = seed + tag + (props.key || seq)
   UIKey key = seed;
-  {
+  key = UIKeyFromStr8(key, Str8FromCStr(tag));
+  if (!IsEmptyStr8(key_str)) {
+    key = UIKeyFromStr8(key, key_str);
+  } else {
     u32 s = seq;
     while (s > 0) {
       key = UIKeyFromU8(key, (u8)(s & 0xFF));
       s = s >> 8;
     }
   }
-  key = UIKeyFromStr8(key, Str8FromCStr(tag));
-  key = UIKeyFromStr8(key, key_str);
   return key;
 }
 
@@ -1002,6 +1003,7 @@ UIKey BeginUITag(const char *tag, UIProps props) {
   UIKey key = UIKeyForBox(seed, seq, tag, props.key);
   UIBox *box = PushUIBox(&frame->cache, &frame->arena, key);
   box->tag = tag;
+  box->seq = seq;
 
   if (parent) {
     APPEND_DOUBLY_LINKED_LIST(parent->first, parent->last, box, prev, next);
