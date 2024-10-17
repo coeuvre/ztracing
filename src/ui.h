@@ -123,10 +123,6 @@ typedef struct UIProps {
   Str8 text;
   ColorU32 color;
   f32 font_size;
-
-  b8 hoverable;
-  b8 clickable[kUIMouseButtonCount];
-  b8 scrollable;
 } UIProps;
 
 // Data that is computed every frame
@@ -167,6 +163,10 @@ struct UIBox {
   UIBox *next;
   UIBox *parent;
   u32 children_count;
+
+  b8 hoverable;
+  b8 clickable[kUIMouseButtonCount];
+  b8 scrollable;
 
   UIProps props;
   UIComputed computed;
@@ -332,6 +332,7 @@ static inline UIComputed GetUIComputed(UIKey key) {
 Vec2 GetUIMouseRelPos(UIKey key);
 Vec2 GetUIMousePos(void);
 
+void SetUIBoxBlockMouseInput(UIKey key);
 b32 IsUIMouseHovering(UIKey key);
 b32 IsUIMouseButtonPressed(UIKey key, UIMouseButton button);
 b32 IsUIMouseButtonDown(UIKey key, UIMouseButton button);

@@ -84,6 +84,49 @@ void UIText(UIProps props, Str8 text) {
   EndUITag("Text");
 }
 
+typedef struct UICollapsingHeaderState {
+  b32 init;
+  b32 open;
+} UICollapsingHeaderState;
+
+b32 UICollapsingHeader(UICollapsingHeaderProps props) {
+  UIKey key = BeginUITag("Collapse", (UIProps){0});
+  UICollapsingHeaderState *state =
+      PushUIBoxStruct(key, UICollapsingHeaderState);
+  if (!state->init) {
+    state->open = props.default_open;
+    state->init = 1;
+  }
+
+  if (IsUIMouseButtonClicked(key, kUIMouseButtonLeft)) {
+    state->open = !state->open;
+  }
+
+  ColorU32 background_color;
+  if (IsUIMouseHovering(key)) {
+    background_color = ColorU32FromHex(0x4B7DB8);
+  } else {
+    background_color = ColorU32FromHex(0xB9D3F3);
+  }
+
+  BeginUIRow((UIRowProps){
+      .background_color = background_color,
+  });
+  BeginUIBox(
+      (UIProps){.text = state->open ? STR8_LIT(" - ") : STR8_LIT(" + ")});
+  EndUIBox();
+
+  BeginUIBox((UIProps){
+      .text = props.text,
+  });
+  EndUIBox();
+  EndUIRow();
+
+  EndUITag("Collapse");
+
+  return state->open;
+}
+
 typedef struct UIScrollableState {
   // persistent info
   f32 scroll;
@@ -102,7 +145,6 @@ typedef struct UIScrollableState {
 UIKey BeginUIScrollable(void) {
   UIKey scrollable = BeginUITag("Scrollable", (UIProps){
                                                   .main_axis = kAxis2X,
-                                                  .scrollable = 1,
                                               });
   {
     UIScrollableState *state = PushUIBoxStruct(scrollable, UIScrollableState);
@@ -167,9 +209,7 @@ void EndUIScrollable(void) {
     UIScrollableState *state =
         GetUIBoxStruct(GetCurrentUIBoxKey(), UIScrollableState);
     if (state->scroll_max > 0) {
-      UIKey scroll_bar = BeginUIBox((UIProps){
-          .clickable[kUIMouseButtonLeft] = 1,
-      });
+      UIKey scroll_bar = BeginUIBox((UIProps){0});
       BeginUIColumn((UIColumnProps){0});
       {
         Vec2 mouse_pos = GetUIMouseRelPos(scroll_bar);
@@ -195,10 +235,7 @@ void EndUIScrollable(void) {
         });
         EndUIBox();
 
-        UIKey scroll_control = BeginUIBox((UIProps){
-            .hoverable = 1,
-            .clickable[kUIMouseButtonLeft] = 1,
-        });
+        UIKey scroll_control = BeginUIBox((UIProps){0});
         {
           ColorU32 control_background_color =
               ColorU32FromSRGBNotPremultiplied(192, 192, 192, 255);
@@ -263,9 +300,7 @@ typedef struct UIDebugLayerState {
 } UIDebugLayerState;
 
 static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
-  UIKey hoverable = BeginUIBox((UIProps){
-      .hoverable = 1,
-  });
+  UIKey hoverable = BeginUIBox((UIProps){0});
   ColorU32 background_color = ColorU32Zero();
   if (IsUIMouseHovering(hoverable)) {
     background_color = ColorU32FromSRGBNotPremultiplied(53, 119, 197, 255);
@@ -327,11 +362,12 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
 
   for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
     if (strstr((char *)layer->props.key.ptr, "__UIDebug__") == 0) {
-      BeginUIRow((UIRowProps){0});
-      UITextF((UIProps){0}, "Layer - %s", layer->props.key.ptr);
-      EndUIRow();
-      if (layer->root) {
-        UIDebugLayerBoxR(state, layer->root, 1);
+      if (UICollapsingHeader((UICollapsingHeaderProps){
+              .text = layer->props.key,
+          })) {
+        if (layer->root) {
+          UIDebugLayerBoxR(state, layer->root, 1);
+        }
       }
     }
   }
@@ -367,11 +403,10 @@ UIKey UIDebugLayer(void) {
         .size = SubVec2(state->max, state->min),
         .main_axis_align = kUIMainAxisAlignEnd,
         .cross_axis_align = kUICrossAxisAlignEnd,
-        .hoverable = 1,
-        .clickable = {1},
-        .scrollable = 1,
     });
     {
+      SetUIBoxBlockMouseInput(frame);
+
       if (IsUIMouseButtonPressed(frame, kUIMouseButtonLeft)) {
         state->pressed_min = state->min;
         state->pressed_max = state->max;
@@ -398,10 +433,7 @@ UIKey UIDebugLayer(void) {
           BeginUIBox((UIProps){.flex = 1});
           EndUIBox();
 
-          UIKey close = BeginUIBox((UIProps){
-              .hoverable = 1,
-              .clickable[kUIMouseButtonLeft] = 1,
-          });
+          UIKey close = BeginUIBox((UIProps){0});
           {
             ColorU32 background_color = ColorU32Zero();
             if (IsUIMouseButtonDown(close, kUIMouseButtonLeft)) {
@@ -434,10 +466,7 @@ UIKey UIDebugLayer(void) {
       EndUIColumn();
       EndUIBox();
 
-      UIKey resize_handle = BeginUIBox((UIProps){
-          .hoverable = 1,
-          .clickable[kUIMouseButtonLeft] = 1,
-      });
+      UIKey resize_handle = BeginUIBox((UIProps){0});
       {
         ColorU32 resize_handle_color;
         if (IsUIMouseButtonDown(resize_handle, kUIMouseButtonLeft)) {

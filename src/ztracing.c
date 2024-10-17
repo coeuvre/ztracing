@@ -12,10 +12,7 @@
 
 static b32 UIButton(Str8 label) {
   b32 result;
-  UIKey button = BeginUITag("Button", (UIProps){
-                                          .hoverable = 1,
-                                          .clickable[kUIMouseButtonLeft] = 1,
-                                      });
+  UIKey button = BeginUITag("Button", (UIProps){0});
   {
     ColorU32 background_color = ColorU32Zero();
     if (IsUIMouseButtonClicked(button, kUIMouseButtonLeft)) {
@@ -83,7 +80,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
       // f32 offset = item_index * item_size - state->scroll;
       // for (; item_index < item_count && offset < state->scroll_area_size;
       //      ++item_index, offset += item_size)
-      UIKey content = BeginUIBox((UIProps){.clickable = 1});
+      UIKey content = BeginUIBox((UIProps){0});
       if (IsUIMouseButtonPressed(content, kUIMouseButtonLeft)) {
         scroll_drag_started = GetUIScrollableScroll(scrollable);
       }

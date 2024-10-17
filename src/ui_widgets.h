@@ -48,6 +48,13 @@ static inline void EndUIStack(void) { EndUITag("Stack"); }
 void UITextF(UIProps props, const char *fmt, ...);
 void UIText(UIProps props, Str8 text);
 
+typedef struct UICollapsingHeaderProps {
+  b32 default_open;
+  Str8 text;
+} UICollapsingHeaderProps;
+
+b32 UICollapsingHeader(UICollapsingHeaderProps props);
+
 UIKey BeginUIScrollable(void);
 void EndUIScrollable(void);
 f32 GetUIScrollableScroll(UIKey key);

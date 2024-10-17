@@ -779,7 +779,7 @@ static void ProcessInputR(UIState *state, UIBox *box) {
   }
 
   // Mouse input
-  if (IsZeroUIKey(state->input.mouse.hovering) && box->props.hoverable &&
+  if (IsZeroUIKey(state->input.mouse.hovering) && box->hoverable &&
       ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
                    box->computed.clip_rect.max)) {
     state->input.mouse.hovering = box->key;
@@ -787,7 +787,7 @@ static void ProcessInputR(UIState *state, UIBox *box) {
 
   for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
     if (IsZeroUIKey(state->input.mouse.pressed[button]) &&
-        box->props.clickable[button] &&
+        box->clickable[button] &&
         ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
                      box->computed.clip_rect.max) &&
         IsMouseButtonPressed(state, button)) {
@@ -796,7 +796,7 @@ static void ProcessInputR(UIState *state, UIBox *box) {
     }
   }
 
-  if (IsZeroUIKey(state->input.mouse.scrolling) && box->props.scrollable &&
+  if (IsZeroUIKey(state->input.mouse.scrolling) && box->scrollable &&
       !IsZeroVec2(state->input.mouse.wheel) &&
       ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
                    box->computed.clip_rect.max)) {
@@ -1134,45 +1134,86 @@ Vec2 GetUIMousePos(void) {
   return result;
 }
 
+void SetUIBoxBlockMouseInput(UIKey key) {
+  UIBox *box = GetUIBox(key);
+  if (box) {
+    box->hoverable = 1;
+    for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
+      box->clickable[button] = 1;
+    }
+    box->scrollable = 1;
+  }
+}
+
 b32 IsUIMouseHovering(UIKey key) {
   UIState *state = GetUIState();
-  b32 result = IsEqualUIKey(state->input.mouse.hovering, key);
+  UIBox *box = GetUIBox(key);
+  b32 result = 0;
+  if (box) {
+    box->hoverable = 1;
+    result = IsEqualUIKey(state->input.mouse.hovering, key);
+  }
   return result;
 }
 
 b32 IsUIMouseButtonPressed(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result = IsEqualUIKey(state->input.mouse.pressed[button], key);
+  UIBox *box = GetUIBox(key);
+  b32 result = 0;
+  if (box) {
+    box->clickable[button] = 1;
+    result = IsEqualUIKey(state->input.mouse.pressed[button], key);
+  }
   return result;
 }
 
 b32 IsUIMouseButtonDown(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result = IsEqualUIKey(state->input.mouse.holding[button], key);
+  UIBox *box = GetUIBox(key);
+  b32 result = 0;
+  if (box) {
+    box->clickable[button] = 1;
+    result = IsEqualUIKey(state->input.mouse.holding[button], key);
+  }
   return result;
 }
 
 b32 IsUIMouseButtonClicked(UIKey key, UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result = IsEqualUIKey(state->input.mouse.clicked[button], key);
+  UIBox *box = GetUIBox(key);
+  b32 result = 0;
+  if (box) {
+    box->clickable[button] = 1;
+    result = IsEqualUIKey(state->input.mouse.clicked[button], key);
+  }
   return result;
 }
 
 b32 IsUIMouseButtonDragging(UIKey key, UIMouseButton button, Vec2 *delta) {
   UIState *state = GetUIState();
-  f32 result = IsEqualUIKey(state->input.mouse.holding[button], key);
-  if (result && delta) {
-    *delta =
-        SubVec2(state->input.mouse.pos, state->input.mouse.pressed_pos[button]);
+  UIBox *box = GetUIBox(key);
+  b32 result = 0;
+  if (box) {
+    box->clickable[button] = 1;
+    result = IsEqualUIKey(state->input.mouse.holding[button], key);
+    if (result && delta) {
+      *delta = SubVec2(state->input.mouse.pos,
+                       state->input.mouse.pressed_pos[button]);
+    }
   }
   return result;
 }
 
 b32 IsUIMouseScrolling(UIKey key, Vec2 *delta) {
   UIState *state = GetUIState();
-  f32 result = IsEqualUIKey(state->input.mouse.scrolling, key);
-  if (result && delta) {
-    *delta = state->input.mouse.scroll_delta;
+  UIBox *box = GetUIBox(key);
+  b32 result = 0;
+  if (box) {
+    box->scrollable = 1;
+    result = IsEqualUIKey(state->input.mouse.scrolling, key);
+    if (result && delta) {
+      *delta = state->input.mouse.scroll_delta;
+    }
   }
   return result;
 }
