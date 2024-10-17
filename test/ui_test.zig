@@ -226,6 +226,118 @@ test "State, reset state if tag is different" {
     c.EndUIFrame();
 }
 
+test "State, reset state if box is not build from last frame" {
+    c.InitUI();
+    defer c.QuitUI();
+
+    c.BeginUIFrame();
+    c.SetUICanvasSize(c.V2(100, 100));
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
+    {
+        const box0 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box0);
+            state.*.value = 10;
+        }
+        c.EndUIBox();
+
+        const box1 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box1);
+            state.*.value = 11;
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUILayer();
+    c.EndUIFrame();
+
+    c.BeginUIFrame();
+    c.SetUICanvasSize(c.V2(100, 100));
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
+    {
+        const box0 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box0);
+            try testing.expectEqual(10, state.*.value);
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUILayer();
+    c.EndUIFrame();
+
+    c.BeginUIFrame();
+    c.SetUICanvasSize(c.V2(100, 100));
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
+    {
+        const box0 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box0);
+            try testing.expectEqual(10, state.*.value);
+        }
+        c.EndUIBox();
+
+        const box1 = c.BeginUIBox(.{});
+        {
+            const state = pushBoxState(box1);
+            try testing.expectEqual(0, state.*.value);
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUILayer();
+    c.EndUIFrame();
+}
+
+test "State, reset state if parent is different" {
+    c.InitUI();
+    defer c.QuitUI();
+
+    c.BeginUIFrame();
+    c.SetUICanvasSize(c.V2(100, 100));
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
+    {
+        _ = c.BeginUIBox(.{});
+        {
+            const box1 = c.BeginUIBox(.{});
+            {
+                const state = pushBoxState(box1);
+                state.*.value = 11;
+            }
+            c.EndUIBox();
+        }
+        c.EndUIBox();
+    }
+    c.EndUIBox();
+    c.EndUILayer();
+    c.EndUIFrame();
+
+    c.BeginUIFrame();
+    c.SetUICanvasSize(c.V2(100, 100));
+    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    _ = c.BeginUIBox(.{});
+    {
+        _ = c.BeginUITag("Tag", .{});
+        {
+            const box1 = c.BeginUIBox(.{});
+            {
+                const state = pushBoxState(box1);
+                try testing.expectEqual(0, state.*.value);
+            }
+            c.EndUIBox();
+        }
+        c.EndUITag("Tag");
+    }
+    c.EndUIBox();
+    c.EndUILayer();
+    c.EndUIFrame();
+}
+
 test "Layout, root has the same size as the screen" {
     c.InitUI();
     defer c.QuitUI();
