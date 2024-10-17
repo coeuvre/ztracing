@@ -37,30 +37,30 @@ typedef enum UICrossAxisAlign {
 } UICrossAxisAlign;
 
 typedef struct UIEdgeInsets {
-  f32 start;
-  f32 end;
+  f32 left;
+  f32 right;
   f32 top;
   f32 bottom;
 } UIEdgeInsets;
 
 static inline UIEdgeInsets UIEdgeInsetsAll(f32 val) {
   UIEdgeInsets result;
-  result.start = result.end = result.top = result.bottom = val;
+  result.left = result.right = result.top = result.bottom = val;
   return result;
 }
 
 static inline UIEdgeInsets UIEdgeInsetsSymmetric(f32 x, f32 y) {
   UIEdgeInsets result;
-  result.start = result.end = x;
+  result.left = result.right = x;
   result.top = result.bottom = y;
   return result;
 }
 
-static inline UIEdgeInsets UIEdgeInsetsFromSTEB(f32 start, f32 top, f32 end,
+static inline UIEdgeInsets UIEdgeInsetsFromLTRB(f32 left, f32 top, f32 right,
                                                 f32 bottom) {
   UIEdgeInsets result;
-  result.start = start;
-  result.end = end;
+  result.left = left;
+  result.right = right;
   result.top = top;
   result.bottom = bottom;
   return result;

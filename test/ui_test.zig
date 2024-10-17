@@ -181,7 +181,7 @@ test "Layout, padding" {
     c.InitUI();
     defer c.QuitUI();
 
-    const padding = c.UIEdgeInsetsFromSTEB(1, 2, 3, 4);
+    const padding = c.UIEdgeInsetsFromLTRB(1, 2, 3, 4);
     const main_axis_options: []const MainAxisOption = &.{
         .{ .@"align" = c.kUIMainAxisAlignStart, .rel_pos = 1 },
         .{ .@"align" = c.kUIMainAxisAlignCenter, .rel_pos = 24 },

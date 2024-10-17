@@ -63,7 +63,7 @@ UIKey BeginUIScrollable(void) {
       UIKey scroll_content = BeginUITag(
           "ScrollContent",
           (UIProps){
-              .margin = UIEdgeInsetsFromSTEB(0, -state->scroll, 0, 0),
+              .margin = UIEdgeInsetsFromLTRB(0, -state->scroll, 0, 0),
           });
       f32 total_item_size = GetUIComputed(scroll_content).size.y;
 
@@ -209,7 +209,7 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
       });
       BeginUIBox((UIProps){0});
       BeginUIBox((UIProps){
-          .margin = UIEdgeInsetsFromSTEB(hovered_clip_rect.min.x,
+          .margin = UIEdgeInsetsFromLTRB(hovered_clip_rect.min.x,
                                          hovered_clip_rect.min.y, 0, 0),
           .size = SubVec2(hovered_clip_rect.max, hovered_clip_rect.min),
           .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255, 64),
@@ -220,7 +220,7 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
     }
     BeginUIBox((UIProps){
         .background_color = background_color,
-        .padding = UIEdgeInsetsFromSTEB(level * 20, 0, 0, 0),
+        .padding = UIEdgeInsetsFromLTRB(level * 20, 0, 0, 0),
         .main_axis_size = kUIMainAxisSizeMax,
     });
     Str8 seq_str = PushUIStr8F("%u", box->seq);
@@ -291,7 +291,7 @@ void UIDebugLayer(UIDebugLayerState *state) {
             .color = ColorU32FromHex(0xA8A8A8),
             .width = 1,
         }),
-        .margin = UIEdgeInsetsFromSTEB(state->min.x, state->min.y, 0, 0),
+        .margin = UIEdgeInsetsFromLTRB(state->min.x, state->min.y, 0, 0),
         .size = SubVec2(state->max, state->min),
         .main_axis_align = kUIMainAxisAlignEnd,
         .cross_axis_align = kUICrossAxisAlignEnd,

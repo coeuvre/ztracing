@@ -184,7 +184,7 @@ static inline f32 GetEdgeInsetsSize(UIEdgeInsets edge_insets, Axis2 axis) {
   // TODO: Handle text direction.
   f32 result;
   if (axis == kAxis2X) {
-    result = edge_insets.start + edge_insets.end;
+    result = edge_insets.left + edge_insets.right;
   } else {
     result = edge_insets.top + edge_insets.bottom;
   }
@@ -195,7 +195,7 @@ static inline f32 GetEdgeInsetsStart(UIEdgeInsets edge_insets, Axis2 axis) {
   // TODO: Handle text direction.
   f32 result;
   if (axis == kAxis2X) {
-    result = edge_insets.start;
+    result = edge_insets.left;
   } else {
     result = edge_insets.top;
   }
@@ -206,7 +206,7 @@ static inline f32 GetEdgeInsetsEnd(UIEdgeInsets edge_insets, Axis2 axis) {
   // TODO: Handle text direction.
   f32 result;
   if (axis == kAxis2X) {
-    result = edge_insets.end;
+    result = edge_insets.right;
   } else {
     result = edge_insets.bottom;
   }
@@ -413,7 +413,7 @@ static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size, Vec2 max_size);
 static Vec2 LayoutChild(UIFrame *frame, UIBox *child, Vec2 min_size,
                         Vec2 max_size, Axis2 main_axis) {
   // Leave space for margin
-  f32 margin_x = child->props.margin.start + child->props.margin.end;
+  f32 margin_x = child->props.margin.left + child->props.margin.right;
   f32 margin_y = child->props.margin.top + child->props.margin.bottom;
   max_size.x = MaxF32(max_size.x - margin_x, 0);
   max_size.y = MaxF32(max_size.y - margin_y, 0);
@@ -605,7 +605,7 @@ static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
   children_max_size.x = MaxF32(
       children_max_size.x -
           (box->props.border.left.width + box->props.border.right.width) -
-          (box->props.padding.start + box->props.padding.end),
+          (box->props.padding.left + box->props.padding.right),
       0);
   children_max_size.y = MaxF32(
       children_max_size.y -
@@ -668,7 +668,7 @@ static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
   // Clip if content size exceeds self size.
   box->computed.clip =
       box->computed.clip ||
-      children_size.x + box->props.padding.start + box->props.padding.end >
+      children_size.x + box->props.padding.left + box->props.padding.right >
           box->computed.size.x ||
       children_size.y + box->props.padding.top + box->props.padding.bottom >
           box->computed.size.y;
@@ -720,7 +720,7 @@ static void RenderBox(UIState *state, UIBox *box) {
       }
     } else if (!IsEmptyStr8(box->props.text)) {
       DrawTextStr8(
-          V2(min.x + box->props.border.left.width + box->props.padding.start,
+          V2(min.x + box->props.border.left.width + box->props.padding.left,
              min.y + box->props.border.top.width + box->props.padding.top),
           box->props.text, box->computed.font_size, GetFirstNonZeroColor(box));
     }
