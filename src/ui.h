@@ -281,18 +281,15 @@ static inline f32 GetUIDeltaTime(void) {
   return state->input.dt;
 }
 
-static inline f32 GetUIAnimationFastRate(void) {
-  UIState *state = GetUIState();
-  return state->fast_rate;
-}
-
 static inline f32 AnimateF32UIFast(f32 value, f32 target) {
+  UIState *state = GetUIState();
   f32 result;
   f32 diff = (target - value);
   if (AbsF32(diff) < 0.0001f) {
     result = target;
+    // TODO: Trigger re-draw.
   } else {
-    result = value + diff * GetUIAnimationFastRate();
+    result = value + diff * state->fast_rate;
   }
   return result;
 }
