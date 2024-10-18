@@ -14,6 +14,11 @@ static inline f32 PowF32(f32 a, f32 b) {
   return result;
 }
 
+static inline f32 ExpF32(f32 a) {
+  f32 result = expf(a);
+  return result;
+}
+
 static inline f32 MaxF32(f32 a, f32 b) {
   f32 result = MAX(a, b);
   return result;
@@ -31,6 +36,18 @@ static inline b32 ContainsF32(f32 val, f32 begin, f32 end) {
 
 static inline f32 RoundF32(f32 value) {
   f32 result = roundf(value);
+  return result;
+}
+
+static inline f32 LerpF32(f32 a, f32 b, f32 t) {
+  f32 result = a * (1.0f - t) + b * t;
+  return result;
+}
+
+// Exponential Smoothing
+// https://lisyarus.github.io/blog/posts/exponential-smoothing.html
+static inline f32 AnimateF32(f32 a, f32 b, f32 dt, f32 rate) {
+  f32 result = a + (b - a) * (1.0f - ExpF32(-rate * dt));
   return result;
 }
 

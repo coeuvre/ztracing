@@ -259,6 +259,8 @@ typedef struct UIState {
   UIInput input;
   u64 frame_index;
   UIFrame frames[2];
+
+  f32 fast_rate;
 } UIState;
 
 UIState *GetUIState(void);
@@ -273,7 +275,21 @@ void OnUIMouseButtonDown(Vec2 pos, UIMouseButton button);
 void OnUIMouseWheel(Vec2 delta);
 
 void SetUIDeltaTime(f32 dt);
-f32 GetUIDeltaTime(void);
+
+static inline f32 GetUIDeltaTime(void) {
+  UIState *state = GetUIState();
+  return state->input.dt;
+}
+
+static inline f32 GetUIAnimationFastRate(void) {
+  UIState *state = GetUIState();
+  return state->fast_rate;
+}
+
+static inline f32 AnimateF32UIFastRate(f32 a, f32 b) {
+  f32 result = a + (b - a) * GetUIAnimationFastRate();
+  return result;
+}
 
 void SetUICanvasSize(Vec2 size);
 

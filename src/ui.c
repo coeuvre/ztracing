@@ -148,12 +148,7 @@ void SetUIDeltaTime(f32 dt) {
   UIState *state = GetUIState();
 
   state->input.dt = dt;
-}
-
-f32 GetUIDeltaTime(void) {
-  UIState *state = GetUIState();
-  f32 result = state->input.dt;
-  return result;
+  state->fast_rate = 1.0f - ExpF32(-50.f * dt);
 }
 
 void SetUICanvasSize(Vec2 size) {

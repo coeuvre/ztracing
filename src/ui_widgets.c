@@ -155,6 +155,7 @@ UIBox *GetUICollapsingHeader(UIBox *box) {
 typedef struct UIScrollableState {
   // persistent info
   f32 scroll;
+  f32 target_scroll;
   f32 control_offset_drag_start;
 
   // per-frame info
@@ -166,6 +167,11 @@ typedef struct UIScrollableState {
   f32 control_offset;
   f32 control_size;
 } UIScrollableState;
+
+static inline void SetUIScrollableScrollInternal(UIScrollableState *state,
+                                                 f32 scroll) {
+  state->target_scroll = ClampF32(scroll, 0, state->scroll_max);
+}
 
 UIBox *BeginUIScrollable(void) {
   UIBox *scrollable = BeginUITag("Scrollable", (UIProps){
@@ -196,6 +202,8 @@ UIBox *BeginUIScrollable(void) {
       state->head_size = V2(10, 0);
       state->scroll_max = MaxF32(total_item_size - state->scroll_area_size, 0);
       state->scroll = ClampF32(state->scroll, 0, state->scroll_max);
+      state->target_scroll =
+          ClampF32(state->target_scroll, 0, state->scroll_max);
 
       f32 min_control_size = 4;
       f32 free_size =
@@ -205,16 +213,14 @@ UIBox *BeginUIScrollable(void) {
                         min_control_size),
                  free_size);
 
-      state->scroll_step = 0.2f * state->scroll_area_size / GetUIDeltaTime();
+      state->scroll_step = 0.2f * state->scroll_area_size;
 
       state->control_max = free_size - state->control_size;
       state->control_offset =
           (state->scroll / state->scroll_max) * state->control_max;
       if (scrolling) {
-        state->scroll =
-            ClampF32(state->scroll +
-                         wheel_delta.y * state->scroll_step * GetUIDeltaTime(),
-                     0, state->scroll_max);
+        SetUIScrollableScrollInternal(
+            state, state->target_scroll + wheel_delta.y * state->scroll_step);
       }
 
       // ...
@@ -242,12 +248,11 @@ void EndUIScrollable(void) {
           if (ContainsF32(mouse_pos.x, 0, state->head_size.x)) {
             f32 offset = mouse_pos.y - state->head_size.y;
             if (offset < state->control_offset) {
-              state->scroll = MaxF32(
-                  state->scroll - state->scroll_step * GetUIDeltaTime(), 0);
+              SetUIScrollableScrollInternal(
+                  state, state->target_scroll - state->scroll_step);
             } else if (offset > state->control_offset + state->control_size) {
-              state->scroll =
-                  MinF32(state->scroll + state->scroll_step * GetUIDeltaTime(),
-                         state->scroll_max);
+              SetUIScrollableScrollInternal(state,
+                                            state->scroll + state->scroll_step);
             }
           }
         }
@@ -275,9 +280,8 @@ void EndUIScrollable(void) {
           if (IsUIMouseButtonDragging(scroll_control, kUIMouseButtonLeft,
                                       &drag_delta)) {
             f32 offset = state->control_offset_drag_start + drag_delta.y;
-            state->scroll =
-                ClampF32(offset / state->control_max * state->scroll_max, 0,
-                         state->scroll_max);
+            SetUIScrollableScrollInternal(
+                state, offset / state->control_max * state->scroll_max);
 
             control_background_color =
                 ColorU32FromSRGBNotPremultiplied(255, 255, 255, 255);
@@ -301,19 +305,21 @@ void EndUIScrollable(void) {
       EndUIColumn();
       EndUITag("ScrollBar");
     }
+
+    state->scroll = AnimateF32UIFastRate(state->scroll, state->target_scroll);
   }
   EndUITag("Scrollable");
 }
 
 f32 GetUIScrollableScroll(UIBox *box) {
   UIScrollableState *state = GetUIBoxStruct(box, UIScrollableState);
-  f32 result = state->scroll;
+  f32 result = state->target_scroll;
   return result;
 }
 
 void SetUIScrollableScroll(UIBox *box, f32 scroll) {
   UIScrollableState *state = GetUIBoxStruct(box, UIScrollableState);
-  state->scroll = ClampF32(scroll, 0, state->scroll_max);
+  SetUIScrollableScrollInternal(state, scroll);
 }
 
 typedef struct UIDebugLayerState {
