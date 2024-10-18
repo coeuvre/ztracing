@@ -286,8 +286,14 @@ static inline f32 GetUIAnimationFastRate(void) {
   return state->fast_rate;
 }
 
-static inline f32 AnimateF32UIFastRate(f32 a, f32 b) {
-  f32 result = a + (b - a) * GetUIAnimationFastRate();
+static inline f32 AnimateF32UIFast(f32 value, f32 target) {
+  f32 result;
+  f32 diff = (target - value);
+  if (AbsF32(diff) < 0.0001f) {
+    result = target;
+  } else {
+    result = value + diff * GetUIAnimationFastRate();
+  }
   return result;
 }
 

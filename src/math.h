@@ -19,6 +19,11 @@ static inline f32 ExpF32(f32 a) {
   return result;
 }
 
+static inline f32 AbsF32(f32 a) {
+  f32 result = fabs(a);
+  return result;
+}
+
 static inline f32 MaxF32(f32 a, f32 b) {
   f32 result = MAX(a, b);
   return result;

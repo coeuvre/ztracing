@@ -85,6 +85,7 @@ void DoUIText(Str8 text) {
 typedef struct UICollapsingState {
   b32 init;
   b32 open;
+  f32 open_t;
   UIBox *header;
 } UICollapsingState;
 
@@ -93,6 +94,7 @@ UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
   UICollapsingState *state = PushUIBoxStruct(collapsing, UICollapsingState);
   if (!state->init) {
     state->open = props.default_open;
+    state->open_t = state->open;
     state->init = 1;
   }
   state->open = !props.disabled && state->open;
@@ -126,25 +128,30 @@ UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
     }
     EndUIRow();
 
+    // Clip box
     BeginUIBox((UIProps){0});
+
+    UIBox *content = BeginUIBox((UIProps){0});
+    content->props.margin = UIEdgeInsetsFromLTRB(
+        0, (1.0f - state->open_t) * -content->computed.size.y, 0, 0);
   }
 
+  state->open_t = AnimateF32UIFast(state->open_t, !!state->open);
+
   if (out_open) {
-    *out_open = state->open;
+    *out_open = state->open_t != 0.0f;
   }
 
   return collapsing;
 }
 
 void EndUICollapsing(void) {
-  { EndUIBox(); }
+  {
+    EndUIBox();
+    EndUIBox();
+  }
   EndUIColumn();
   EndUITag("Collapse");
-}
-
-b32 IsUICollapsingHeaderOpen(UIBox *box) {
-  UICollapsingState *state = GetUIBoxStruct(box, UICollapsingState);
-  return state->open;
 }
 
 UIBox *GetUICollapsingHeader(UIBox *box) {
@@ -306,7 +313,7 @@ void EndUIScrollable(void) {
       EndUITag("ScrollBar");
     }
 
-    state->scroll = AnimateF32UIFastRate(state->scroll, state->target_scroll);
+    state->scroll = AnimateF32UIFast(state->scroll, state->target_scroll);
   }
   EndUITag("Scrollable");
 }

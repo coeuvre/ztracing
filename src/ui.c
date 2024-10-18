@@ -266,12 +266,13 @@ static void AlignMainAxisFlex(UIBox *box, Axis2 axis, f32 border_start,
 static void AlignMainAxisStack(UIBox *box, Axis2 axis, f32 border_start,
                                f32 border_end, f32 padding_start,
                                f32 padding_end, UIMainAxisAlign align) {
-  f32 size = GetItemVec2(box->computed.size, axis);
+  f32 self_size = GetItemVec2(box->computed.size, axis);
   for (UIBox *child = box->first; child; child = child->next) {
     f32 pos = 0;
     f32 child_size = GetItemVec2(child->computed.size, axis);
-    f32 free = size - child_size - border_start - border_end - padding_start -
-               padding_end - GetEdgeInsetsSize(child->props.margin, axis);
+    f32 free = self_size - child_size - border_start - border_end -
+               padding_start - padding_end -
+               GetEdgeInsetsSize(child->props.margin, axis);
     f32 margin_start = GetEdgeInsetsStart(child->props.margin, axis);
     switch (align) {
       case kUIMainAxisAlignStart: {
@@ -294,7 +295,7 @@ static void AlignMainAxisStack(UIBox *box, Axis2 axis, f32 border_start,
     SetItemVec2(&child->computed.rel_pos, axis, pos);
 
     box->computed.clip =
-        box->computed.clip || (pos < 0 || pos + child_size > size);
+        box->computed.clip || (pos < 0 || pos + child_size > self_size);
   }
 }
 
@@ -328,10 +329,11 @@ static void AlignCrossAxis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
   f32 padding_start = GetEdgeInsetsStart(box->props.padding, axis);
   f32 padding_end = GetEdgeInsetsEnd(box->props.padding, axis);
 
+  f32 self_size = GetItemVec2(box->computed.size, axis);
   for (UIBox *child = box->first; child; child = child->next) {
-    f32 free = GetItemVec2(box->computed.size, axis) -
-               GetItemVec2(child->computed.size, axis) - border_start -
-               border_end - padding_start - padding_end -
+    f32 child_size = GetItemVec2(child->computed.size, axis);
+    f32 free = self_size - child_size - border_start - border_end -
+               padding_start - padding_end -
                GetEdgeInsetsSize(child->props.margin, axis);
     f32 margin_start = GetEdgeInsetsStart(child->props.margin, axis);
     f32 pos = 0;
@@ -355,6 +357,8 @@ static void AlignCrossAxis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
     }
 
     SetItemVec2(&child->computed.rel_pos, axis, pos);
+    box->computed.clip =
+        box->computed.clip || (pos < 0 || pos + child_size > self_size);
   }
 }
 
@@ -464,9 +468,6 @@ static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
       last_flex = child;
     }
   }
-
-  ASSERT(ContainsF32IncludingEnd(child_main_axis_size, 0, max_main_axis_size) ||
-         child_main_axis_size == kUISizeInfinity);
 
   // Second pass: layout flex children
   f32 child_main_axis_flex = max_main_axis_size - child_main_axis_size;
