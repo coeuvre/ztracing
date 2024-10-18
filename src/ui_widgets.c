@@ -84,47 +84,81 @@ void UIText(UIProps props, Str8 text) {
   EndUITag("Text");
 }
 
-typedef struct UICollapsingHeaderState {
+typedef struct UICollapsingState {
   b32 init;
   b32 open;
-} UICollapsingHeaderState;
+  UIKey header;
+} UICollapsingState;
 
-b32 UICollapsingHeader(UICollapsingHeaderProps props) {
-  UIKey key = BeginUITag("Collapse", (UIProps){0});
-  UICollapsingHeaderState *state =
-      PushUIBoxStruct(key, UICollapsingHeaderState);
+UIKey BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
+  UIKey collapsing = BeginUITag("Collapse", (UIProps){0});
+  UICollapsingState *state = PushUIBoxStruct(collapsing, UICollapsingState);
   if (!state->init) {
     state->open = props.default_open;
     state->init = 1;
   }
+  state->open = !props.disabled && state->open;
 
-  if (IsUIMouseButtonClicked(key, kUIMouseButtonLeft)) {
-    state->open = !state->open;
+  BeginUIColumn((UIColumnProps){0});
+  {
+    state->header = BeginUIBox((UIProps){0});
+    {
+      if (!props.disabled &&
+          IsUIMouseButtonClicked(state->header, kUIMouseButtonLeft)) {
+        state->open = !state->open;
+      }
+
+      ColorU32 background_color = ColorU32Zero();
+      if (IsUIMouseHovering(state->header)) {
+        background_color = ColorU32FromHex(0x4B7DB8);
+      } else if (props.default_background_color) {
+        background_color = ColorU32FromHex(0xB9D3F3);
+      }
+
+      BeginUIRow((UIRowProps){
+          .background_color = background_color,
+          .padding = props.header.padding,
+      });
+
+      Str8 prefix = STR8_LIT(" ");
+      if (!props.disabled) {
+        prefix = state->open ? STR8_LIT(" - ") : STR8_LIT(" + ");
+      }
+
+      BeginUIBox((UIProps){
+          .text = PushUIStr8F("%s%s", prefix.ptr, props.header.text.ptr),
+      });
+      EndUIBox();
+      EndUIRow();
+    }
+    EndUIBox();
+
+    BeginUIBox((UIProps){0});
   }
 
-  ColorU32 background_color;
-  if (IsUIMouseHovering(key)) {
-    background_color = ColorU32FromHex(0x4B7DB8);
-  } else {
-    background_color = ColorU32FromHex(0xB9D3F3);
+  if (out_open) {
+    *out_open = state->open;
   }
 
-  BeginUIRow((UIRowProps){
-      .background_color = background_color,
-  });
-  BeginUIBox(
-      (UIProps){.text = state->open ? STR8_LIT(" - ") : STR8_LIT(" + ")});
-  EndUIBox();
+  return collapsing;
+}
 
-  BeginUIBox((UIProps){
-      .text = props.text,
-  });
-  EndUIBox();
-  EndUIRow();
-
+void EndUICollapsing(void) {
+  {
+    EndUIBox();
+  }
+  EndUIColumn();
   EndUITag("Collapse");
+}
 
+b32 IsUICollapsingHeaderOpen(UIKey key) {
+  UICollapsingState *state = GetUIBoxStruct(key, UICollapsingState);
   return state->open;
+}
+
+UIKey GetUICollapsingHeader(UIKey key) {
+  UICollapsingState *state = GetUIBoxStruct(key, UICollapsingState);
+  return state->header;
 }
 
 typedef struct UIScrollableState {
@@ -209,7 +243,7 @@ void EndUIScrollable(void) {
     UIScrollableState *state =
         GetUIBoxStruct(GetCurrentUIBoxKey(), UIScrollableState);
     if (state->scroll_max > 0) {
-      UIKey scroll_bar = BeginUIBox((UIProps){0});
+      UIKey scroll_bar = BeginUITag("ScrollBar", (UIProps){0});
       BeginUIColumn((UIColumnProps){0});
       {
         Vec2 mouse_pos = GetUIMouseRelPos(scroll_bar);
@@ -274,7 +308,7 @@ void EndUIScrollable(void) {
         EndUIBox();
       }
       EndUIColumn();
-      EndUIBox();
+      EndUITag("ScrollBar");
     }
   }
   EndUITag("Scrollable");
@@ -300,12 +334,37 @@ typedef struct UIDebugLayerState {
 } UIDebugLayerState;
 
 static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
-  UIKey hoverable = BeginUIBox((UIProps){0});
-  ColorU32 background_color = ColorU32Zero();
-  if (IsUIMouseHovering(hoverable)) {
-    background_color = ColorU32FromSRGBNotPremultiplied(53, 119, 197, 255);
+  Str8 seq_str = PushUIStr8F("%u", box->seq);
+  Str8 text = PushUIStr8F(
+      "%s%s%s", box->tag, "#",
+      IsEmptyStr8(box->props.key) ? seq_str.ptr : box->props.key.ptr);
 
+  b32 open;
+  UIKey collapsing = BeginUICollapsing(
+      (UICollapsingProps){
+          .disabled = !box->first,
+          .header =
+              (UICollapsingHeaderProps){
+                  .text = text,
+                  .padding = UIEdgeInsetsFromLTRB(level * 15, 0, 0, 0),
+
+              },
+      },
+      &open);
+  if (IsUIMouseHovering(GetUICollapsingHeader(collapsing))) {
     Rect2 hovered_rect = box->computed.screen_rect;
+    {
+      Vec2 size = SubVec2(hovered_rect.max, hovered_rect.min);
+      // Make zero area box visible.
+      if (size.x == 0 && size.y != 0) {
+        hovered_rect.max.x = hovered_rect.min.x + 1;
+        hovered_rect.min.x -= 1;
+      } else if (size.y == 0 && size.x != 0) {
+        hovered_rect.max.y = hovered_rect.min.y + 1;
+        hovered_rect.min.y -= 1;
+      }
+    }
+
     BeginUILayer((UILayerProps){
         .key = STR8_LIT("__UIDebug__Overlay"),
         .z_index = kUIDebugLayerZIndex - 1,
@@ -321,21 +380,14 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
     EndUIBox();
     EndUILayer();
   }
-  BeginUIRow((UIRowProps){
-      .background_color = background_color,
-      .padding = UIEdgeInsetsFromLTRB(level * 20, 0, 0, 0),
-  });
-  {
-    Str8 seq_str = PushUIStr8F("%u", box->seq);
-    UITextF((UIProps){0}, "%s%s%s", box->tag, "#",
-            IsEmptyStr8(box->props.key) ? seq_str.ptr : box->props.key.ptr);
+  if (open) {
+    BeginUIColumn((UIColumnProps){0});
+    for (UIBox *child = box->first; child; child = child->next) {
+      UIDebugLayerBoxR(state, child, level + 1);
+    }
+    EndUIColumn();
   }
-  EndUIRow();
-  EndUIBox();
-
-  for (UIBox *child = box->first; child; child = child->next) {
-    UIDebugLayerBoxR(state, child, level + 1);
-  }
+  EndUICollapsing();
 }
 
 static void UIDebugLayerInternal(UIDebugLayerState *state) {
@@ -362,13 +414,22 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
 
   for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
     if (strstr((char *)layer->props.key.ptr, "__UIDebug__") == 0) {
-      if (UICollapsingHeader((UICollapsingHeaderProps){
-              .text = layer->props.key,
-          })) {
+      b32 open;
+      BeginUICollapsing(
+          (UICollapsingProps){
+              .default_background_color = 1,
+              .header =
+                  (UICollapsingHeaderProps){
+                      .text = layer->props.key,
+                  },
+          },
+          &open);
+      if (open) {
         if (layer->root) {
           UIDebugLayerBoxR(state, layer->root, 1);
         }
       }
+      EndUICollapsing();
     }
   }
   EndUIColumn();

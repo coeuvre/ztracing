@@ -49,11 +49,20 @@ void UITextF(UIProps props, const char *fmt, ...);
 void UIText(UIProps props, Str8 text);
 
 typedef struct UICollapsingHeaderProps {
-  b32 default_open;
   Str8 text;
+  UIEdgeInsets padding;
 } UICollapsingHeaderProps;
 
-b32 UICollapsingHeader(UICollapsingHeaderProps props);
+typedef struct UICollapsingProps {
+  b8 default_open;
+  b8 default_background_color;
+  b8 disabled;
+  UICollapsingHeaderProps header;
+} UICollapsingProps;
+
+UIKey BeginUICollapsing(UICollapsingProps props, b32 *out_open);
+void EndUICollapsing(void);
+b32 IsUICollapsingOpen(UIKey key);
 
 UIKey BeginUIScrollable(void);
 void EndUIScrollable(void);
