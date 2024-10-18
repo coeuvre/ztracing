@@ -302,41 +302,34 @@ Str8 PushUIStr8(Str8 str);
 Str8 PushUIStr8F(const char *fmt, ...);
 Str8 PushUIStr8FV(const char *fmt, va_list ap);
 
-UIID BeginUITag(const char *tag, UIProps props);
+UIBox *BeginUITag(const char *tag, UIProps props);
 void EndUITag(const char *tag);
 
-static inline UIID BeginUIBox(UIProps props) {
+static inline UIBox *BeginUIBox(UIProps props) {
   return BeginUITag("Box", props);
 }
 
 static inline void EndUIBox(void) { EndUITag("Box"); }
 
-UIID GetCurrentUIID(void);
-UIBox *GetUIBox(UIID id);
+UIBox *GetCurrentUIBox(void);
 
-void *PushUIBoxState(UIID id, const char *type_name, usize size);
-void *GetUIBoxState(UIID id, const char *type_name, usize size);
+void *PushUIBoxState(UIBox *box, const char *type_name, usize size);
+void *GetUIBoxState(UIBox *box, const char *type_name, usize size);
 
 #define PushUIBoxStruct(id, Type) \
   (Type *)PushUIBoxState(id, #Type, sizeof(Type))
 
 #define GetUIBoxStruct(id, Type) (Type *)GetUIBoxState(id, #Type, sizeof(Type))
 
-static inline UIComputed GetUIComputed(UIID id) {
-  UIBox *box = GetUIBox(id);
-  UIComputed result = box->computed;
-  return result;
-}
-
-Vec2 GetUIMouseRelPos(UIID id);
+Vec2 GetUIMouseRelPos(UIBox *box);
 Vec2 GetUIMousePos(void);
 
-void SetUIBoxBlockMouseInput(UIID id);
-b32 IsUIMouseHovering(UIID id);
-b32 IsUIMouseButtonPressed(UIID id, UIMouseButton button);
-b32 IsUIMouseButtonDown(UIID id, UIMouseButton button);
-b32 IsUIMouseButtonClicked(UIID id, UIMouseButton button);
-b32 IsUIMouseButtonDragging(UIID id, UIMouseButton button, Vec2 *delta);
-b32 IsUIMouseScrolling(UIID id, Vec2 *delta);
+void SetUIBoxBlockMouseInput(UIBox *box);
+b32 IsUIMouseHovering(UIBox *box);
+b32 IsUIMouseButtonPressed(UIBox *box, UIMouseButton button);
+b32 IsUIMouseButtonDown(UIBox *box, UIMouseButton button);
+b32 IsUIMouseButtonClicked(UIBox *box, UIMouseButton button);
+b32 IsUIMouseButtonDragging(UIBox *box, UIMouseButton button, Vec2 *delta);
+b32 IsUIMouseScrolling(UIBox *box, Vec2 *delta);
 
 #endif  // ZTRACING_SRC_UI_H_

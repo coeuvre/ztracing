@@ -55,13 +55,11 @@ fn expectBoxKey(box: [*c]c.UIBox, expected_key: []const u8) !void {
     try testing.expectEqualStrings(expected_key, sliceFromStr8(box.*.build.key_str));
 }
 
-fn expectBoxSize(key: c.UIID, expected_size: c.Vec2) !void {
-    const box = c.GetUIBox(key);
+fn expectBoxSize(box: [*c]c.UIBox, expected_size: c.Vec2) !void {
     try expectEqualVec2(expected_size, box.*.computed.size);
 }
 
-fn expectBoxRelPos(key: c.UIID, expected_rel_pos: c.Vec2) !void {
-    const box = c.GetUIBox(key);
+fn expectBoxRelPos(box: [*c]c.UIBox, expected_rel_pos: c.Vec2) !void {
     try expectEqualVec2(expected_rel_pos, box.*.computed.rel_pos);
 }
 
@@ -69,8 +67,8 @@ const State = extern struct {
     value: u32,
 };
 
-fn pushBoxState(key: c.UIID) [*c]State {
-    return @ptrCast(@alignCast(c.PushUIBoxState(key, "State", @sizeOf(State))));
+fn pushBoxState(box: [*c]c.UIBox) [*c]State {
+    return @ptrCast(@alignCast(c.PushUIBoxState(box, "State", @sizeOf(State))));
 }
 
 test "State, return the same state across frame" {
@@ -381,7 +379,7 @@ test "Layout, aligns" {
     c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
-            var container: c.UIID = undefined;
+            var container: [*c]c.UIBox = undefined;
 
             c.BeginUIFrame();
             c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
@@ -422,7 +420,7 @@ test "Layout, padding" {
     c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
-            var container: c.UIID = undefined;
+            var container: [*c]c.UIBox = undefined;
 
             c.BeginUIFrame();
             c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
@@ -453,7 +451,7 @@ test "Layout, no children, no fixed size, as small as possible" {
     c.InitUI();
     defer c.QuitUI();
 
-    var container: c.UIID = undefined;
+    var container: [*c]c.UIBox = undefined;
 
     c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
@@ -474,7 +472,7 @@ test "Layout, no children, no fixed size, flex, main axis is as big as possible"
     c.InitUI();
     defer c.QuitUI();
 
-    var container: c.UIID = undefined;
+    var container: [*c]c.UIBox = undefined;
 
     c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
@@ -495,7 +493,7 @@ test "Layout, with one child, size around it" {
     c.InitUI();
     defer c.QuitUI();
 
-    var container: c.UIID = undefined;
+    var container: [*c]c.UIBox = undefined;
 
     c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
@@ -520,8 +518,8 @@ test "Layout, with fixed size" {
     c.InitUI();
     defer c.QuitUI();
 
-    var container: c.UIID = undefined;
-    var child: c.UIID = undefined;
+    var container: [*c]c.UIBox = undefined;
+    var child: [*c]c.UIBox = undefined;
 
     c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
@@ -547,8 +545,8 @@ test "Layout, with fixed size, negative" {
     c.InitUI();
     defer c.QuitUI();
 
-    var container: c.UIID = undefined;
-    var child: c.UIID = undefined;
+    var container: [*c]c.UIBox = undefined;
+    var child: [*c]c.UIBox = undefined;
 
     c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
@@ -581,7 +579,7 @@ test "Layout, main axis size, child has different main axis than parent" {
 
     c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_sizes) |main_axis_size| {
-        var row: c.UIID = undefined;
+        var row: [*c]c.UIBox = undefined;
 
         c.BeginUIFrame();
         c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
@@ -617,7 +615,7 @@ test "Layout, main axis size, child has same main axis as parent" {
 
     c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_sizes) |main_axis_size| {
-        var row: c.UIID = undefined;
+        var row: [*c]c.UIBox = undefined;
 
         c.BeginUIFrame();
         c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
@@ -648,7 +646,7 @@ test "Layout, no fixed size, size around text" {
     c.InitUI();
     defer c.QuitUI();
 
-    var text: c.UIID = undefined;
+    var text: [*c]c.UIBox = undefined;
 
     c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
@@ -670,7 +668,7 @@ test "Layout, fixed size, truncate text" {
     c.InitUI();
     defer c.QuitUI();
 
-    var text: c.UIID = undefined;
+    var text: [*c]c.UIBox = undefined;
 
     c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
@@ -691,8 +689,8 @@ test "Layout, row, no constraints on children" {
     c.InitUI();
     defer c.QuitUI();
 
-    var c0: c.UIID = undefined;
-    var c1: c.UIID = undefined;
+    var c0: [*c]c.UIBox = undefined;
+    var c1: [*c]c.UIBox = undefined;
 
     c.SetUICanvasSize(c.V2(1000, 100));
     c.BeginUIFrame();
@@ -723,8 +721,8 @@ test "Layout, row, no constraints on children, but truncate" {
     c.InitUI();
     defer c.QuitUI();
 
-    var c0: c.UIID = undefined;
-    var c1: c.UIID = undefined;
+    var c0: [*c]c.UIBox = undefined;
+    var c1: [*c]c.UIBox = undefined;
 
     c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
@@ -755,8 +753,8 @@ test "Layout, row, constraint flex" {
     c.InitUI();
     defer c.QuitUI();
 
-    var c0: c.UIID = undefined;
-    var c1: c.UIID = undefined;
+    var c0: [*c]c.UIBox = undefined;
+    var c1: [*c]c.UIBox = undefined;
 
     c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();
@@ -790,8 +788,8 @@ test "Layout, main axis unbounded" {
     c.InitUI();
     defer c.QuitUI();
 
-    var container: c.UIID = undefined;
-    var child: c.UIID = undefined;
+    var container: [*c]c.UIBox = undefined;
+    var child: [*c]c.UIBox = undefined;
 
     c.SetUICanvasSize(c.V2(100, 100));
     c.BeginUIFrame();

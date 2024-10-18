@@ -9,7 +9,7 @@
 #include "src/types.h"
 #include "src/ui.h"
 
-UIID BeginUIRow(UIRowProps props) {
+UIBox *BeginUIRow(UIRowProps props) {
   return BeginUITag(
       "Row",
       (UIProps){
@@ -29,7 +29,7 @@ UIID BeginUIRow(UIRowProps props) {
       });
 }
 
-UIID BeginUIColumn(UIColumnProps props) {
+UIBox *BeginUIColumn(UIColumnProps props) {
   return BeginUITag(
       "Column",
       (UIProps){
@@ -49,7 +49,7 @@ UIID BeginUIColumn(UIColumnProps props) {
       });
 }
 
-UIID BeginUIStack(UIStackProps props) {
+UIBox *BeginUIStack(UIStackProps props) {
   return BeginUITag(
       "Stack",
       (UIProps){
@@ -68,30 +68,28 @@ UIID BeginUIStack(UIStackProps props) {
       });
 }
 
-void UITextF(UIProps props, const char *fmt, ...) {
+void DoUITextF(const char *fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  props.text = PushUIStr8FV(fmt, ap);
+  Str8 text = PushUIStr8FV(fmt, ap);
   va_end(ap);
 
-  BeginUITag("Text", props);
-  EndUITag("Text");
+  DoUIText(text);
 }
 
-void UIText(UIProps props, Str8 text) {
-  props.text = PushUIStr8(text);
-  BeginUITag("Text", props);
+void DoUIText(Str8 text) {
+  BeginUITag("Text", (UIProps){.text = text});
   EndUITag("Text");
 }
 
 typedef struct UICollapsingState {
   b32 init;
   b32 open;
-  UIID header;
+  UIBox *header;
 } UICollapsingState;
 
-UIID BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
-  UIID collapsing = BeginUITag("Collapse", (UIProps){0});
+UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
+  UIBox *collapsing = BeginUITag("Collapse", (UIProps){0});
   UICollapsingState *state = PushUIBoxStruct(collapsing, UICollapsingState);
   if (!state->init) {
     state->open = props.default_open;
@@ -101,24 +99,20 @@ UIID BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
 
   BeginUIColumn((UIColumnProps){0});
   {
-    state->header = BeginUIBox((UIProps){0});
+    state->header = BeginUIRow((UIRowProps){
+        .padding = props.header.padding,
+    });
     {
       if (!props.disabled &&
           IsUIMouseButtonClicked(state->header, kUIMouseButtonLeft)) {
         state->open = !state->open;
       }
 
-      ColorU32 background_color = ColorU32Zero();
       if (IsUIMouseHovering(state->header)) {
-        background_color = ColorU32FromHex(0x4B7DB8);
+        state->header->props.background_color = ColorU32FromHex(0x4B7DB8);
       } else if (props.default_background_color) {
-        background_color = ColorU32FromHex(0xB9D3F3);
+        state->header->props.background_color = ColorU32FromHex(0xB9D3F3);
       }
-
-      BeginUIRow((UIRowProps){
-          .background_color = background_color,
-          .padding = props.header.padding,
-      });
 
       Str8 prefix = STR8_LIT(" ");
       if (!props.disabled) {
@@ -129,9 +123,8 @@ UIID BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
           .text = PushUIStr8F("%s%s", prefix.ptr, props.header.text.ptr),
       });
       EndUIBox();
-      EndUIRow();
     }
-    EndUIBox();
+    EndUIRow();
 
     BeginUIBox((UIProps){0});
   }
@@ -144,20 +137,18 @@ UIID BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
 }
 
 void EndUICollapsing(void) {
-  {
-    EndUIBox();
-  }
+  { EndUIBox(); }
   EndUIColumn();
   EndUITag("Collapse");
 }
 
-b32 IsUICollapsingHeaderOpen(UIID id) {
-  UICollapsingState *state = GetUIBoxStruct(id, UICollapsingState);
+b32 IsUICollapsingHeaderOpen(UIBox *box) {
+  UICollapsingState *state = GetUIBoxStruct(box, UICollapsingState);
   return state->open;
 }
 
-UIID GetUICollapsingHeader(UIID id) {
-  UICollapsingState *state = GetUIBoxStruct(id, UICollapsingState);
+UIBox *GetUICollapsingHeader(UIBox *box) {
+  UICollapsingState *state = GetUIBoxStruct(box, UICollapsingState);
   return state->header;
 }
 
@@ -176,31 +167,31 @@ typedef struct UIScrollableState {
   f32 control_size;
 } UIScrollableState;
 
-UIID BeginUIScrollable(void) {
-  UIID scrollable = BeginUITag("Scrollable", (UIProps){
-                                                 .main_axis = kAxis2X,
-                                             });
+UIBox *BeginUIScrollable(void) {
+  UIBox *scrollable = BeginUITag("Scrollable", (UIProps){
+                                                   .main_axis = kAxis2X,
+                                               });
   {
     UIScrollableState *state = PushUIBoxStruct(scrollable, UIScrollableState);
 
     Vec2 wheel_delta;
     b32 scrolling = IsUIMouseScrolling(scrollable, &wheel_delta);
 
-    UIID scroll_area = BeginUITag(
+    UIBox *scroll_area = BeginUITag(
         "ScrollArea", (UIProps){
                           .flex = 1,
                           .main_axis = kAxis2Y,
                           .size = V2(kUISizeUndefined, kUISizeInfinity),
                       });
     {
-      state->scroll_area_size = GetUIComputed(scroll_area).size.y;
+      state->scroll_area_size = scroll_area->computed.size.y;
 
-      UIID scroll_content = BeginUITag(
+      UIBox *scroll_content = BeginUITag(
           "ScrollContent",
           (UIProps){
               .margin = UIEdgeInsetsFromLTRB(0, -state->scroll, 0, 0),
           });
-      f32 total_item_size = GetUIComputed(scroll_content).size.y;
+      f32 total_item_size = scroll_content->computed.size.y;
 
       state->head_size = V2(10, 0);
       state->scroll_max = MaxF32(total_item_size - state->scroll_area_size, 0);
@@ -241,9 +232,9 @@ void EndUIScrollable(void) {
     EndUITag("ScrollArea");
 
     UIScrollableState *state =
-        GetUIBoxStruct(GetCurrentUIID(), UIScrollableState);
+        GetUIBoxStruct(GetCurrentUIBox(), UIScrollableState);
     if (state->scroll_max > 0) {
-      UIID scroll_bar = BeginUITag("ScrollBar", (UIProps){0});
+      UIBox *scroll_bar = BeginUITag("ScrollBar", (UIProps){0});
       BeginUIColumn((UIColumnProps){0});
       {
         Vec2 mouse_pos = GetUIMouseRelPos(scroll_bar);
@@ -269,7 +260,7 @@ void EndUIScrollable(void) {
         });
         EndUIBox();
 
-        UIID scroll_control = BeginUIBox((UIProps){0});
+        UIBox *scroll_control = BeginUIBox((UIProps){0});
         {
           ColorU32 control_background_color =
               ColorU32FromSRGBNotPremultiplied(192, 192, 192, 255);
@@ -314,18 +305,19 @@ void EndUIScrollable(void) {
   EndUITag("Scrollable");
 }
 
-f32 GetUIScrollableScroll(UIID id) {
-  UIScrollableState *state = GetUIBoxStruct(id, UIScrollableState);
+f32 GetUIScrollableScroll(UIBox *box) {
+  UIScrollableState *state = GetUIBoxStruct(box, UIScrollableState);
   f32 result = state->scroll;
   return result;
 }
 
-void SetUIScrollableScroll(UIID id, f32 scroll) {
-  UIScrollableState *state = GetUIBoxStruct(id, UIScrollableState);
+void SetUIScrollableScroll(UIBox *box, f32 scroll) {
+  UIScrollableState *state = GetUIBoxStruct(box, UIScrollableState);
   state->scroll = ClampF32(scroll, 0, state->scroll_max);
 }
 
 typedef struct UIDebugLayerState {
+  b8 init;
   b8 open;
   Vec2 min;
   Vec2 max;
@@ -340,7 +332,7 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
       IsEmptyStr8(box->props.key) ? seq_str.ptr : box->props.key.ptr);
 
   b32 open;
-  UIID collapsing = BeginUICollapsing(
+  UIBox *collapsing = BeginUICollapsing(
       (UICollapsingProps){
           .disabled = !box->first,
           .header =
@@ -404,8 +396,8 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
     BeginUIColumn((UIColumnProps){0});
 
     BeginUIRow((UIRowProps){0});
-    UITextF((UIProps){0}, "Boxes: %" PRIu64 " / %" PRIu64,
-            frame->cache.total_box_count, frame->cache.box_hash_slots_count);
+    DoUITextF("Boxes: %" PRIu64 " / %" PRIu64, frame->cache.total_box_count,
+              frame->cache.box_hash_slots_count);
     EndUIRow();
 
     EndUIColumn();
@@ -436,7 +428,7 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
   EndUIBox();
 }
 
-UIID UIDebugLayer(void) {
+UIBox *UIDebugLayer(void) {
   f32 resize_handle_size = 16;
   Vec2 default_frame_size = V2(400, 500);
   Vec2 min_frame_size = V2(resize_handle_size * 2, resize_handle_size * 2);
@@ -445,15 +437,19 @@ UIID UIDebugLayer(void) {
       .key = STR8_LIT("__UIDebug__"),
       .z_index = kUIDebugLayerZIndex,
   });
-  UIID debug_layer = BeginUIBox((UIProps){0});
+  UIBox *debug_layer = BeginUIBox((UIProps){0});
   UIDebugLayerState *state = PushUIBoxStruct(debug_layer, UIDebugLayerState);
-  if (IsZeroVec2(SubVec2(state->max, state->min))) {
-    state->max =
-        AddVec2(state->min, V2(default_frame_size.x + resize_handle_size,
-                               default_frame_size.y + resize_handle_size));
+  if (!state->init) {
+    if (IsZeroVec2(SubVec2(state->max, state->min))) {
+      state->max =
+          AddVec2(state->min, V2(default_frame_size.x + resize_handle_size,
+                                 default_frame_size.y + resize_handle_size));
+    }
+    state->init = 1;
   }
+
   if (state->open) {
-    UIID frame = BeginUIBox((UIProps){
+    UIBox *frame = BeginUIBox((UIProps){
         .layout = kUILayoutStack,
         .color = ColorU32FromHex(0x000000),
         .border = UIBorderFromBorderSide((UIBorderSide){
@@ -489,31 +485,28 @@ UIID UIDebugLayer(void) {
         });
         BeginUIRow((UIRowProps){0});
         {
-          UITextF((UIProps){.padding = UIEdgeInsetsSymmetric(6, 3)}, "Debug");
+          BeginUIBox((UIProps){.padding = UIEdgeInsetsSymmetric(6, 3)});
+          DoUITextF("Debug");
+          EndUIBox();
 
           BeginUIBox((UIProps){.flex = 1});
           EndUIBox();
 
-          UIID close = BeginUIBox((UIProps){0});
+          UIBox *close = BeginUIBox((UIProps){
+              .padding = UIEdgeInsetsSymmetric(6, 3),
+              .text = PushUIStr8F("X"),
+          });
           {
-            ColorU32 background_color = ColorU32Zero();
             if (IsUIMouseButtonDown(close, kUIMouseButtonLeft)) {
-              background_color = ColorU32FromHex(0x2D69AE);
+              close->props.background_color = ColorU32FromHex(0x2D69AE);
             } else if (IsUIMouseHovering(close)) {
-              background_color =
+              close->props.background_color =
                   ColorU32FromSRGBNotPremultiplied(53, 119, 197, 255);
             }
 
             if (IsUIMouseButtonClicked(close, kUIMouseButtonLeft)) {
               state->open = 0;
             }
-
-            BeginUIBox((UIProps){
-                .padding = UIEdgeInsetsSymmetric(6, 3),
-                .background_color = background_color,
-                .text = PushUIStr8F("X"),
-            });
-            EndUIBox();
           }
           EndUIBox();
         }
@@ -527,15 +520,15 @@ UIID UIDebugLayer(void) {
       EndUIColumn();
       EndUIBox();
 
-      UIID resize_handle = BeginUIBox((UIProps){0});
+      UIBox *resize_handle = BeginUIBox((UIProps){
+          .size = V2(resize_handle_size, resize_handle_size),
+          .background_color = ColorU32FromHex(0xD1D1D1),
+      });
       {
-        ColorU32 resize_handle_color;
         if (IsUIMouseButtonDown(resize_handle, kUIMouseButtonLeft)) {
-          resize_handle_color = ColorU32FromHex(0x4B6F9E);
+          resize_handle->props.background_color = ColorU32FromHex(0x4B6F9E);
         } else if (IsUIMouseHovering(resize_handle)) {
-          resize_handle_color = ColorU32FromHex(0x618FC5);
-        } else {
-          resize_handle_color = ColorU32FromHex(0xD1D1D1);
+          resize_handle->props.background_color = ColorU32FromHex(0x618FC5);
         }
         if (IsUIMouseButtonPressed(resize_handle, kUIMouseButtonLeft)) {
           state->pressed_min = state->min;
@@ -547,12 +540,6 @@ UIID UIDebugLayer(void) {
           state->max = RoundVec2(AddVec2(state->pressed_max, drag_delta));
           state->max = MaxVec2(state->max, AddVec2(state->min, min_frame_size));
         }
-
-        BeginUIBox((UIProps){
-            .size = V2(resize_handle_size, resize_handle_size),
-            .background_color = resize_handle_color,
-        });
-        EndUIBox();
       }
       EndUIBox();
     }
@@ -563,7 +550,7 @@ UIID UIDebugLayer(void) {
   return debug_layer;
 }
 
-void OpenUIDebugLayer(UIID id) {
-  UIDebugLayerState *state = GetUIBoxStruct(id, UIDebugLayerState);
+void OpenUIDebugLayer(UIBox *box) {
+  UIDebugLayerState *state = GetUIBoxStruct(box, UIDebugLayerState);
   state->open = 1;
 }

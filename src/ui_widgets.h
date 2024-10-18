@@ -16,7 +16,7 @@ typedef struct UIRowProps {
   UICrossAxisAlign cross_axis_align;
 } UIRowProps;
 
-UIID BeginUIRow(UIRowProps props);
+UIBox *BeginUIRow(UIRowProps props);
 static inline void EndUIRow(void) { EndUITag("Row"); }
 
 typedef struct UIColumnProps {
@@ -29,7 +29,7 @@ typedef struct UIColumnProps {
   UICrossAxisAlign cross_axis_align;
 } UIColumnProps;
 
-UIID BeginUIColumn(UIColumnProps props);
+UIBox *BeginUIColumn(UIColumnProps props);
 static inline void EndUIColumn(void) { EndUITag("Column"); }
 
 typedef struct UIStackProps {
@@ -42,11 +42,11 @@ typedef struct UIStackProps {
   UICrossAxisAlign cross_axis_align;
 } UIStackProps;
 
-UIID BeginUIStack(UIStackProps props);
+UIBox *BeginUIStack(UIStackProps props);
 static inline void EndUIStack(void) { EndUITag("Stack"); }
 
-void UITextF(UIProps props, const char *fmt, ...);
-void UIText(UIProps props, Str8 text);
+void DoUITextF(const char *fmt, ...);
+void DoUIText(Str8 text);
 
 typedef struct UICollapsingHeaderProps {
   Str8 text;
@@ -60,17 +60,17 @@ typedef struct UICollapsingProps {
   UICollapsingHeaderProps header;
 } UICollapsingProps;
 
-UIID BeginUICollapsing(UICollapsingProps props, b32 *out_open);
+UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open);
 void EndUICollapsing(void);
-b32 IsUICollapsingOpen(UIID id);
+b32 IsUICollapsingOpen(UIBox *box);
 
-UIID BeginUIScrollable(void);
+UIBox *BeginUIScrollable(void);
 void EndUIScrollable(void);
-f32 GetUIScrollableScroll(UIID id);
-void SetUIScrollableScroll(UIID id, f32 scroll);
+f32 GetUIScrollableScroll(UIBox *scrollable);
+void SetUIScrollableScroll(UIBox *scrollable, f32 scroll);
 
 #define kUIDebugLayerZIndex 1000
-UIID UIDebugLayer(void);
-void OpenUIDebugLayer(UIID id);
+UIBox *UIDebugLayer(void);
+void OpenUIDebugLayer(UIBox *box);
 
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_

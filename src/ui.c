@@ -1003,7 +1003,7 @@ static UIBox *GetUIBoxFromLastFrame(UIState *state, UIID id) {
   return result;
 }
 
-UIID BeginUITag(const char *tag, UIProps props) {
+UIBox *BeginUITag(const char *tag, UIProps props) {
   UIState *state = GetUIState();
   UIFrame *frame = GetCurrentUIFrame(state);
 
@@ -1045,7 +1045,7 @@ UIID BeginUITag(const char *tag, UIProps props) {
 
   layer->current = box;
 
-  return id;
+  return box;
 }
 
 void EndUITag(const char *tag) {
@@ -1062,31 +1062,24 @@ void EndUITag(const char *tag) {
   layer->current = layer->current->parent;
 }
 
-UIID GetCurrentUIID(void) {
+UIBox *GetCurrentUIBox(void) {
   UIState *state = GetUIState();
   UIFrame *frame = GetCurrentUIFrame(state);
   ASSERT(frame->current_layer && frame->current_layer->current);
   UIBox *box = frame->current_layer->current;
-  return box->id;
+  return box;
 }
 
-UIBox *GetUIBox(UIID id) {
+void *PushUIBoxState(UIBox *box, const char *type_name, usize size) {
   UIState *state = GetUIState();
   UIFrame *frame = GetCurrentUIFrame(state);
-  UIBox *result = GetUIBoxFromFrame(frame, id);
-  return result;
-}
-
-void *PushUIBoxState(UIID id, const char *type_name, usize size) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
-  UIBox *box = GetUIBoxFromFrame(frame, id);
-  ASSERTF(box, "UIBox not found for UIID");
   ASSERTF(!box->state.ptr, "Can only push once to the UIBox");
+
+  DEBUG_ASSERT(GetUIBoxFromFrame(frame, box->id) == box);
   box->state.type_name = type_name;
   box->state.size = size;
 
-  UIBox *last_box = GetUIBoxFromLastFrame(state, id);
+  UIBox *last_box = GetUIBoxFromLastFrame(state, box->id);
   if (last_box && last_box->state.ptr) {
     ASSERTF(last_box->state.size == box->state.size &&
                 strcmp(last_box->state.type_name, type_name) == 0,
@@ -1103,11 +1096,7 @@ void *PushUIBoxState(UIID id, const char *type_name, usize size) {
   return box->state.ptr;
 }
 
-void *GetUIBoxState(UIID id, const char *type_name, usize size) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
-  UIBox *box = GetUIBoxFromFrame(frame, id);
-  ASSERTF(box, "UIBox not found for UIID");
+void *GetUIBoxState(UIBox *box, const char *type_name, usize size) {
   ASSERTF(box->state.ptr, "UIBox doesn't have state");
   ASSERTF(
       box->state.size == size && strcmp(box->state.type_name, type_name) == 0,
@@ -1118,9 +1107,8 @@ void *GetUIBoxState(UIID id, const char *type_name, usize size) {
   return result;
 }
 
-Vec2 GetUIMouseRelPos(UIID id) {
+Vec2 GetUIMouseRelPos(UIBox *box) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBox(id);
   Vec2 result = V2(0, 0);
   if (box) {
     result = SubVec2(state->input.mouse.pos, box->computed.screen_rect.min);
@@ -1134,68 +1122,60 @@ Vec2 GetUIMousePos(void) {
   return result;
 }
 
-void SetUIBoxBlockMouseInput(UIID id) {
-  UIBox *box = GetUIBox(id);
-  if (box) {
-    box->hoverable = 1;
-    for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
-      box->clickable[button] = 1;
-    }
-    box->scrollable = 1;
+void SetUIBoxBlockMouseInput(UIBox *box) {
+  box->hoverable = 1;
+  for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
+    box->clickable[button] = 1;
   }
+  box->scrollable = 1;
 }
 
-b32 IsUIMouseHovering(UIID id) {
+b32 IsUIMouseHovering(UIBox *box) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBox(id);
   b32 result = 0;
   if (box) {
     box->hoverable = 1;
-    result = IsEqualUIID(state->input.mouse.hovering, id);
+    result = IsEqualUIID(state->input.mouse.hovering, box->id);
   }
   return result;
 }
 
-b32 IsUIMouseButtonPressed(UIID id, UIMouseButton button) {
+b32 IsUIMouseButtonPressed(UIBox *box, UIMouseButton button) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBox(id);
   b32 result = 0;
   if (box) {
     box->clickable[button] = 1;
-    result = IsEqualUIID(state->input.mouse.pressed[button], id);
+    result = IsEqualUIID(state->input.mouse.pressed[button], box->id);
   }
   return result;
 }
 
-b32 IsUIMouseButtonDown(UIID id, UIMouseButton button) {
+b32 IsUIMouseButtonDown(UIBox *box, UIMouseButton button) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBox(id);
   b32 result = 0;
   if (box) {
     box->clickable[button] = 1;
-    result = IsEqualUIID(state->input.mouse.holding[button], id);
+    result = IsEqualUIID(state->input.mouse.holding[button], box->id);
   }
   return result;
 }
 
-b32 IsUIMouseButtonClicked(UIID id, UIMouseButton button) {
+b32 IsUIMouseButtonClicked(UIBox *box, UIMouseButton button) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBox(id);
   b32 result = 0;
   if (box) {
     box->clickable[button] = 1;
-    result = IsEqualUIID(state->input.mouse.clicked[button], id);
+    result = IsEqualUIID(state->input.mouse.clicked[button], box->id);
   }
   return result;
 }
 
-b32 IsUIMouseButtonDragging(UIID id, UIMouseButton button, Vec2 *delta) {
+b32 IsUIMouseButtonDragging(UIBox *box, UIMouseButton button, Vec2 *delta) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBox(id);
   b32 result = 0;
   if (box) {
     box->clickable[button] = 1;
-    result = IsEqualUIID(state->input.mouse.holding[button], id);
+    result = IsEqualUIID(state->input.mouse.holding[button], box->id);
     if (result && delta) {
       *delta = SubVec2(state->input.mouse.pos,
                        state->input.mouse.pressed_pos[button]);
@@ -1204,13 +1184,12 @@ b32 IsUIMouseButtonDragging(UIID id, UIMouseButton button, Vec2 *delta) {
   return result;
 }
 
-b32 IsUIMouseScrolling(UIID id, Vec2 *delta) {
+b32 IsUIMouseScrolling(UIBox *box, Vec2 *delta) {
   UIState *state = GetUIState();
-  UIBox *box = GetUIBox(id);
   b32 result = 0;
   if (box) {
     box->scrollable = 1;
-    result = IsEqualUIID(state->input.mouse.scrolling, id);
+    result = IsEqualUIID(state->input.mouse.scrolling, box->id);
     if (result && delta) {
       *delta = state->input.mouse.scroll_delta;
     }

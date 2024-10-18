@@ -10,35 +10,30 @@
 #include "src/ui.h"
 #include "src/ui_widgets.h"
 
-static b32 UIButton(Str8 label) {
+static b32 DoUIButton(Str8 label) {
   b32 result;
-  UIID button = BeginUITag("Button", (UIProps){0});
+  UIBox *button =
+      BeginUITag("Button", (UIProps){
+                               .padding = UIEdgeInsetsSymmetric(6, 3),
+                           });
   {
-    ColorU32 background_color = ColorU32Zero();
     if (IsUIMouseButtonClicked(button, kUIMouseButtonLeft)) {
-      background_color = ColorU32FromHex(0x0000FF);
+      button->props.background_color = ColorU32FromHex(0x0000FF);
     } else if (IsUIMouseButtonDown(button, kUIMouseButtonLeft)) {
-      background_color = ColorU32FromHex(0x00FF00);
+      button->props.background_color = ColorU32FromHex(0x00FF00);
     } else if (IsUIMouseHovering(button)) {
-      background_color = ColorU32FromHex(0xFF0000);
-    } else {
-      // color = ColorU32FromHex(0x5EAC57);
+      button->props.background_color = ColorU32FromHex(0xFF0000);
     }
     result = IsUIMouseButtonClicked(button, kUIMouseButtonLeft);
 
-    UIText(
-        (UIProps){
-            .background_color = background_color,
-            .padding = UIEdgeInsetsSymmetric(6, 3),
-        },
-        label);
+    DoUIText(label);
   }
   EndUITag("Button");
   return result;
 }
 
 static void BuildUI(f32 dt, f32 frame_time) {
-  UIID debug_layer = UIDebugLayer();
+  UIBox *debug_layer = UIDebugLayer();
 
   BeginUILayer((UILayerProps){.key = STR8_LIT("Base")});
   BeginUIBox((UIProps){
@@ -49,29 +44,32 @@ static void BuildUI(f32 dt, f32 frame_time) {
     BeginUIStack((UIStackProps){.background_color = ColorU32FromHex(0xE6573F)});
     BeginUIRow((UIRowProps){0});
     {
-      UIButton(STR8_LIT("Load"));
-      if (UIButton(STR8_LIT("Debug"))) {
+      DoUIButton(STR8_LIT("Load"));
+      if (DoUIButton(STR8_LIT("Debug"))) {
         OpenUIDebugLayer(debug_layer);
       }
 
       BeginUIBox((UIProps){.flex = 1});
       EndUIBox();
 
-      UITextF((UIProps){.padding = UIEdgeInsetsSymmetric(6, 3)},
-              "%.0f %.1fMB %.1fms", 1.0f / dt,
-              (f32)((f64)GetAllocatedBytes() / 1024.0 / 1024.0),
-              frame_time * 1000.0f);
+      BeginUIBox((UIProps){
+          .padding = UIEdgeInsetsSymmetric(6, 3),
+      });
+      DoUITextF("%.0f %.1fMB %.1fms", 1.0f / dt,
+                (f32)((f64)GetAllocatedBytes() / 1024.0 / 1024.0),
+                frame_time * 1000.0f);
+      EndUIBox();
     }
     EndUIRow();
 
     BeginUIRow((UIRowProps){.main_axis_align = kUIMainAxisAlignCenter});
-    UITextF((UIProps){0}, "Some File");
+    DoUITextF("Some File");
     EndUIRow();
     EndUIStack();
 
     static f32 scroll_drag_started;
 
-    UIID scrollable = BeginUIScrollable();
+    UIBox *scrollable = BeginUIScrollable();
     {
       f32 item_size = 20.0f;
       u32 item_count = 510;
@@ -80,7 +78,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
       // f32 offset = item_index * item_size - state->scroll;
       // for (; item_index < item_count && offset < state->scroll_area_size;
       //      ++item_index, offset += item_size)
-      UIID content = BeginUIBox((UIProps){0});
+      UIBox *content = BeginUIBox((UIProps){0});
       if (IsUIMouseButtonPressed(content, kUIMouseButtonLeft)) {
         scroll_drag_started = GetUIScrollableScroll(scrollable);
       }
