@@ -9,9 +9,9 @@
 #define kUISizeInfinity F32_INFINITY
 #define kUIFontSizeDefault 16.0f
 
-typedef struct UIKey {
+typedef struct UIID {
   u64 hash;
-} UIKey;
+} UIID;
 
 typedef enum UILayout {
   kUILayoutFlex,
@@ -148,8 +148,8 @@ typedef struct UIBoxState {
 
 typedef struct UIBox UIBox;
 struct UIBox {
+  UIID id;
   const char *tag;
-  UIKey key;
   u32 seq;
 
   // hash links
@@ -185,7 +185,7 @@ struct UILayer {
   UILayer *next;
   UILayer *parent;
 
-  UIKey key;
+  UIID id;
   UILayerProps props;
 
   UIBox *root;
@@ -217,12 +217,12 @@ typedef struct UIMouseInput {
   Vec2 wheel;
   UIMouseButtonState buttons[kUIMouseButtonCount];
 
-  UIKey hovering;
-  UIKey pressed[kUIMouseButtonCount];
+  UIID hovering;
+  UIID pressed[kUIMouseButtonCount];
   Vec2 pressed_pos[kUIMouseButtonCount];
-  UIKey holding[kUIMouseButtonCount];
-  UIKey clicked[kUIMouseButtonCount];
-  UIKey scrolling;
+  UIID holding[kUIMouseButtonCount];
+  UIID clicked[kUIMouseButtonCount];
+  UIID scrolling;
   Vec2 scroll_delta;
 } UIMouseInput;
 
@@ -286,15 +286,15 @@ void EndUILayer(void);
 
 UIBuildError *GetFirstUIBuildError(void);
 
-static inline UIKey UIKeyZero(void) {
-  UIKey result = {0};
+static inline UIID UIIDZero(void) {
+  UIID result = {0};
   return result;
 }
 
-b32 IsEqualUIKey(UIKey a, UIKey b);
+b32 IsEqualUIID(UIID a, UIID b);
 
-static inline b32 IsZeroUIKey(UIKey a) {
-  b32 result = IsEqualUIKey(a, UIKeyZero());
+static inline b32 IsZeroUIID(UIID a) {
+  b32 result = IsEqualUIID(a, UIIDZero());
   return result;
 }
 
@@ -302,42 +302,41 @@ Str8 PushUIStr8(Str8 str);
 Str8 PushUIStr8F(const char *fmt, ...);
 Str8 PushUIStr8FV(const char *fmt, va_list ap);
 
-UIKey BeginUITag(const char *tag, UIProps props);
+UIID BeginUITag(const char *tag, UIProps props);
 void EndUITag(const char *tag);
 
-static inline UIKey BeginUIBox(UIProps props) {
+static inline UIID BeginUIBox(UIProps props) {
   return BeginUITag("Box", props);
 }
 
 static inline void EndUIBox(void) { EndUITag("Box"); }
 
-UIKey GetCurrentUIBoxKey(void);
-UIBox *GetUIBox(UIKey key);
+UIID GetCurrentUIID(void);
+UIBox *GetUIBox(UIID id);
 
-void *PushUIBoxState(UIKey key, const char *type_name, usize size);
-void *GetUIBoxState(UIKey key, const char *type_name, usize size);
+void *PushUIBoxState(UIID id, const char *type_name, usize size);
+void *GetUIBoxState(UIID id, const char *type_name, usize size);
 
-#define PushUIBoxStruct(key, Type) \
-  (Type *)PushUIBoxState(key, #Type, sizeof(Type))
+#define PushUIBoxStruct(id, Type) \
+  (Type *)PushUIBoxState(id, #Type, sizeof(Type))
 
-#define GetUIBoxStruct(key, Type) \
-  (Type *)GetUIBoxState(key, #Type, sizeof(Type))
+#define GetUIBoxStruct(id, Type) (Type *)GetUIBoxState(id, #Type, sizeof(Type))
 
-static inline UIComputed GetUIComputed(UIKey key) {
-  UIBox *box = GetUIBox(key);
+static inline UIComputed GetUIComputed(UIID id) {
+  UIBox *box = GetUIBox(id);
   UIComputed result = box->computed;
   return result;
 }
 
-Vec2 GetUIMouseRelPos(UIKey key);
+Vec2 GetUIMouseRelPos(UIID id);
 Vec2 GetUIMousePos(void);
 
-void SetUIBoxBlockMouseInput(UIKey key);
-b32 IsUIMouseHovering(UIKey key);
-b32 IsUIMouseButtonPressed(UIKey key, UIMouseButton button);
-b32 IsUIMouseButtonDown(UIKey key, UIMouseButton button);
-b32 IsUIMouseButtonClicked(UIKey key, UIMouseButton button);
-b32 IsUIMouseButtonDragging(UIKey key, UIMouseButton button, Vec2 *delta);
-b32 IsUIMouseScrolling(UIKey key, Vec2 *delta);
+void SetUIBoxBlockMouseInput(UIID id);
+b32 IsUIMouseHovering(UIID id);
+b32 IsUIMouseButtonPressed(UIID id, UIMouseButton button);
+b32 IsUIMouseButtonDown(UIID id, UIMouseButton button);
+b32 IsUIMouseButtonClicked(UIID id, UIMouseButton button);
+b32 IsUIMouseButtonDragging(UIID id, UIMouseButton button, Vec2 *delta);
+b32 IsUIMouseScrolling(UIID id, Vec2 *delta);
 
 #endif  // ZTRACING_SRC_UI_H_
