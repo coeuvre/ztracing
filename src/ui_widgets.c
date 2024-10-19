@@ -179,8 +179,14 @@ UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
     BeginUIBox((UIProps){0});
 
     UIBox *content = BeginUIBox((UIProps){0});
-    content->props.margin = UIEdgeInsetsFromLTRB(
-        0, (1.0f - state->open_t) * -content->computed.size.y, 0, 0);
+    if (state->open && content->computed.size.y == 0) {
+      // For the first frame, the content size is unknown. Make margin -INF
+      // effectively make it invisible.
+      content->props.margin = UIEdgeInsetsFromLTRB(0, -kUISizeInfinity, 0, 0);
+    } else {
+      content->props.margin = UIEdgeInsetsFromLTRB(
+          0, (1.0f - state->open_t) * -content->computed.size.y, 0, 0);
+    }
   }
 
   state->open_t = AnimateUIFastF32(state->open_t, !!state->open);
