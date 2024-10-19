@@ -281,7 +281,7 @@ static inline f32 GetUIDeltaTime(void) {
   return state->input.dt;
 }
 
-static inline f32 AnimateF32UIFast(f32 value, f32 target) {
+static inline f32 AnimateUIFastF32(f32 value, f32 target) {
   UIState *state = GetUIState();
   f32 result;
   f32 diff = (target - value);
@@ -291,6 +291,15 @@ static inline f32 AnimateF32UIFast(f32 value, f32 target) {
   } else {
     result = value + diff * state->fast_rate;
   }
+  return result;
+}
+
+static inline ColorU32 AnimateUIFastColorU32(ColorU32 value, ColorU32 target) {
+  ColorU32 result;
+  result.r = AnimateUIFastF32(value.r, target.r);
+  result.g = AnimateUIFastF32(value.g, target.g);
+  result.b = AnimateUIFastF32(value.b, target.b);
+  result.a = AnimateUIFastF32(value.a, target.a);
   return result;
 }
 

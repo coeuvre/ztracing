@@ -48,6 +48,8 @@ static inline void EndUIStack(void) { EndUITag("Stack"); }
 void DoUITextF(const char *fmt, ...);
 void DoUIText(Str8 text);
 
+b32 DoUIButton(Str8 label);
+
 typedef struct UICollapsingHeaderProps {
   Str8 text;
   UIEdgeInsets padding;

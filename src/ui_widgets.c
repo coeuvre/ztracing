@@ -82,11 +82,50 @@ void DoUIText(Str8 text) {
   EndUITag("Text");
 }
 
+typedef struct UIButtonState {
+  ColorU32 background_color;
+  ColorU32 target_background_color;
+} UIButtonState;
+
+b32 DoUIButton(Str8 label) {
+  b32 result;
+  UIBox *button =
+      BeginUITag("Button", (UIProps){
+                               .padding = UIEdgeInsetsSymmetric(6, 3),
+                           });
+  {
+    UIButtonState *state = PushUIBoxStruct(button, UIButtonState);
+
+    if (IsUIMouseButtonClicked(button, kUIMouseButtonLeft)) {
+      state->target_background_color = ColorU32FromHex(0x0000FF);
+    } else if (IsUIMouseButtonDown(button, kUIMouseButtonLeft)) {
+      state->target_background_color = ColorU32FromHex(0x00FF00);
+    } else if (IsUIMouseHovering(button)) {
+      state->target_background_color = ColorU32FromHex(0xFF0000);
+    } else {
+      state->target_background_color = ColorU32Zero();
+    }
+
+    result = IsUIMouseButtonClicked(button, kUIMouseButtonLeft);
+
+    state->background_color = AnimateUIFastColorU32(
+        state->background_color, state->target_background_color);
+
+    button->props.background_color = state->background_color;
+
+    DoUIText(label);
+  }
+  EndUITag("Button");
+  return result;
+}
+
 typedef struct UICollapsingState {
   b32 init;
   b32 open;
   f32 open_t;
   UIBox *header;
+  ColorU32 header_background_color;
+  ColorU32 header_target_background_color;
 } UICollapsingState;
 
 UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
@@ -111,10 +150,18 @@ UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
       }
 
       if (IsUIMouseHovering(state->header)) {
-        state->header->props.background_color = ColorU32FromHex(0x4B7DB8);
+        state->header_target_background_color = ColorU32FromHex(0x4B7DB8);
       } else if (props.default_background_color) {
-        state->header->props.background_color = ColorU32FromHex(0xB9D3F3);
+        state->header_target_background_color = ColorU32FromHex(0xB9D3F3);
+      } else {
+        state->header_target_background_color = ColorU32Zero();
       }
+
+      state->header_background_color =
+          AnimateUIFastColorU32(state->header_background_color,
+                                state->header_target_background_color);
+
+      state->header->props.background_color = state->header_background_color;
 
       Str8 prefix = STR8_LIT(" ");
       if (!props.disabled) {
@@ -136,7 +183,7 @@ UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
         0, (1.0f - state->open_t) * -content->computed.size.y, 0, 0);
   }
 
-  state->open_t = AnimateF32UIFast(state->open_t, !!state->open);
+  state->open_t = AnimateUIFastF32(state->open_t, !!state->open);
 
   if (out_open) {
     *out_open = state->open_t != 0.0f;
@@ -313,7 +360,7 @@ void EndUIScrollable(void) {
       EndUITag("ScrollBar");
     }
 
-    state->scroll = AnimateF32UIFast(state->scroll, state->target_scroll);
+    state->scroll = AnimateUIFastF32(state->scroll, state->target_scroll);
   }
   EndUITag("Scrollable");
 }

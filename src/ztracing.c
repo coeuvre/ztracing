@@ -10,28 +10,6 @@
 #include "src/ui.h"
 #include "src/ui_widgets.h"
 
-static b32 DoUIButton(Str8 label) {
-  b32 result;
-  UIBox *button =
-      BeginUITag("Button", (UIProps){
-                               .padding = UIEdgeInsetsSymmetric(6, 3),
-                           });
-  {
-    if (IsUIMouseButtonClicked(button, kUIMouseButtonLeft)) {
-      button->props.background_color = ColorU32FromHex(0x0000FF);
-    } else if (IsUIMouseButtonDown(button, kUIMouseButtonLeft)) {
-      button->props.background_color = ColorU32FromHex(0x00FF00);
-    } else if (IsUIMouseHovering(button)) {
-      button->props.background_color = ColorU32FromHex(0xFF0000);
-    }
-    result = IsUIMouseButtonClicked(button, kUIMouseButtonLeft);
-
-    DoUIText(label);
-  }
-  EndUITag("Button");
-  return result;
-}
-
 static void BuildUI(f32 dt, f32 frame_time) {
   UIBox *debug_layer = UIDebugLayer();
 
