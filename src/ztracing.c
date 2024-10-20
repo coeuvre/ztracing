@@ -46,8 +46,9 @@ static void BuildUI(f32 dt, f32 frame_time) {
     EndUIStack();
 
     static f32 scroll_drag_started;
+    static f32 scroll;
 
-    UIBox *scrollable = BeginUIScrollable();
+    BeginUIScrollable((UIScrollableProps){.scroll = &scroll});
     {
       f32 item_size = 20.0f;
       u32 item_count = 510;
@@ -58,11 +59,11 @@ static void BuildUI(f32 dt, f32 frame_time) {
       //      ++item_index, offset += item_size)
       UIBox *content = BeginUIBox((UIProps){0});
       if (IsUIMouseButtonPressed(content, kUIMouseButtonLeft)) {
-        scroll_drag_started = GetUIScrollableScroll(scrollable);
+        scroll_drag_started = scroll;
       }
       Vec2 drag_delta;
       if (IsUIMouseButtonDragging(content, kUIMouseButtonLeft, &drag_delta)) {
-        SetUIScrollableScroll(scrollable, scroll_drag_started - drag_delta.y);
+        scroll = scroll_drag_started - drag_delta.y;
       }
 
       BeginUIColumn((UIColumnProps){0});

@@ -213,9 +213,12 @@ UIBox *GetUICollapsingHeader(UIBox *box) {
 }
 
 typedef struct UIScrollableState {
+  b32 init;
+
   // persistent info
   f32 scroll;
   f32 target_scroll;
+  f32 *target_scroll_ptr;
   f32 control_offset_drag_start;
 
   // per-frame info
@@ -230,15 +233,23 @@ typedef struct UIScrollableState {
 
 static inline void SetUIScrollableScrollInternal(UIScrollableState *state,
                                                  f32 scroll) {
-  state->target_scroll = ClampF32(scroll, 0, state->scroll_max);
+  *state->target_scroll_ptr = ClampF32(scroll, 0, state->scroll_max);
 }
 
-UIBox *BeginUIScrollable(void) {
+UIBox *BeginUIScrollable(UIScrollableProps props) {
   UIBox *scrollable = BeginUITag("Scrollable", (UIProps){
                                                    .main_axis = kAxis2X,
                                                });
   {
     UIScrollableState *state = PushUIBoxStruct(scrollable, UIScrollableState);
+    if (props.scroll) {
+      if (!state->target_scroll_ptr) {
+        state->scroll = *props.scroll;
+      }
+      state->target_scroll_ptr = props.scroll;
+    } else {
+      state->target_scroll_ptr = &state->target_scroll;
+    }
 
     Vec2 wheel_delta;
     b32 scrolling = IsUIMouseScrolling(scrollable, &wheel_delta);
@@ -261,9 +272,11 @@ UIBox *BeginUIScrollable(void) {
 
       state->head_size = V2(10, 0);
       state->scroll_max = MaxF32(total_item_size - state->scroll_area_size, 0);
-      state->scroll = ClampF32(state->scroll, 0, state->scroll_max);
-      state->target_scroll =
-          ClampF32(state->target_scroll, 0, state->scroll_max);
+      if (state->scroll_max) {
+        state->scroll = ClampF32(state->scroll, 0, state->scroll_max);
+        *state->target_scroll_ptr =
+            ClampF32(*state->target_scroll_ptr, 0, state->scroll_max);
+      }
 
       f32 min_control_size = 4;
       f32 free_size =
@@ -280,7 +293,8 @@ UIBox *BeginUIScrollable(void) {
           (state->scroll / state->scroll_max) * state->control_max;
       if (scrolling) {
         SetUIScrollableScrollInternal(
-            state, state->target_scroll + wheel_delta.y * state->scroll_step);
+            state,
+            *state->target_scroll_ptr + wheel_delta.y * state->scroll_step);
       }
 
       // ...
@@ -309,10 +323,10 @@ void EndUIScrollable(void) {
             f32 offset = mouse_pos.y - state->head_size.y;
             if (offset < state->control_offset) {
               SetUIScrollableScrollInternal(
-                  state, state->target_scroll - state->scroll_step);
+                  state, *state->target_scroll_ptr - 0.2f * state->scroll_step);
             } else if (offset > state->control_offset + state->control_size) {
-              SetUIScrollableScrollInternal(state,
-                                            state->scroll + state->scroll_step);
+              SetUIScrollableScrollInternal(
+                  state, *state->target_scroll_ptr + 0.2f * state->scroll_step);
             }
           }
         }
@@ -366,20 +380,9 @@ void EndUIScrollable(void) {
       EndUITag("ScrollBar");
     }
 
-    state->scroll = AnimateUIFastF32(state->scroll, state->target_scroll);
+    state->scroll = AnimateUIFastF32(state->scroll, *state->target_scroll_ptr);
   }
   EndUITag("Scrollable");
-}
-
-f32 GetUIScrollableScroll(UIBox *box) {
-  UIScrollableState *state = GetUIBoxStruct(box, UIScrollableState);
-  f32 result = state->target_scroll;
-  return result;
-}
-
-void SetUIScrollableScroll(UIBox *box, f32 scroll) {
-  UIScrollableState *state = GetUIBoxStruct(box, UIScrollableState);
-  SetUIScrollableScrollInternal(state, scroll);
 }
 
 typedef struct UIDebugLayerState {
@@ -389,6 +392,7 @@ typedef struct UIDebugLayerState {
   Vec2 max;
   Vec2 pressed_min;
   Vec2 pressed_max;
+  f32 scroll;
 } UIDebugLayerState;
 
 static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
@@ -401,6 +405,7 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
   UIBox *collapsing = BeginUICollapsing(
       (UICollapsingProps){
           .disabled = !box->first,
+          .default_open = 1,
           .header =
               (UICollapsingHeaderProps){
                   .text = text,
@@ -476,6 +481,7 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
       BeginUICollapsing(
           (UICollapsingProps){
               .default_background_color = 1,
+              .default_open = 1,
               .header =
                   (UICollapsingHeaderProps){
                       .text = layer->props.key,
@@ -579,7 +585,7 @@ UIBox *UIDebugLayer(void) {
         EndUIRow();
         EndUIBox();
 
-        BeginUIScrollable();
+        BeginUIScrollable((UIScrollableProps){.scroll = &state->scroll});
         UIDebugLayerInternal(state);
         EndUIScrollable();
       }

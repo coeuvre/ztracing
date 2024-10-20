@@ -66,10 +66,13 @@ UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open);
 void EndUICollapsing(void);
 b32 IsUICollapsingOpen(UIBox *box);
 
-UIBox *BeginUIScrollable(void);
+typedef struct UIScrollableProps {
+  // Scroll position, optional
+  f32 *scroll;
+} UIScrollableProps;
+
+UIBox *BeginUIScrollable(UIScrollableProps props);
 void EndUIScrollable(void);
-f32 GetUIScrollableScroll(UIBox *scrollable);
-void SetUIScrollableScroll(UIBox *scrollable, f32 scroll);
 
 #define kUIDebugLayerZIndex 1000
 UIBox *UIDebugLayer(void);
