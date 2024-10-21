@@ -17,6 +17,8 @@ UIBox *BeginUIRow(UIRowProps props) {
           .size = props.size,
           .padding = props.padding,
           .margin = props.margin,
+          .border = props.border,
+          .color = props.color,
           .background_color = props.background_color,
           .main_axis = kAxis2X,
           .main_axis_size = kUIMainAxisSizeMax,
@@ -37,6 +39,8 @@ UIBox *BeginUIColumn(UIColumnProps props) {
           .size = props.size,
           .padding = props.padding,
           .margin = props.margin,
+          .border = props.border,
+          .color = props.color,
           .background_color = props.background_color,
           .main_axis = kAxis2Y,
           .main_axis_align = props.main_axis_align == kUIMainAxisAlignUnknown

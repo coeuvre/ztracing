@@ -11,6 +11,8 @@ typedef struct UIRowProps {
   Vec2 size;
   UIEdgeInsets padding;
   UIEdgeInsets margin;
+  UIBorder border;
+  ColorU32 color;
   ColorU32 background_color;
   UIMainAxisAlign main_axis_align;
   UICrossAxisAlign cross_axis_align;
@@ -24,6 +26,8 @@ typedef struct UIColumnProps {
   Vec2 size;
   UIEdgeInsets padding;
   UIEdgeInsets margin;
+  UIBorder border;
+  ColorU32 color;
   ColorU32 background_color;
   UIMainAxisAlign main_axis_align;
   UICrossAxisAlign cross_axis_align;
