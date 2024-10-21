@@ -48,7 +48,15 @@ static inline void EndUIStack(void) { EndUITag("Stack"); }
 void DoUITextF(const char *fmt, ...);
 void DoUIText(Str8 text);
 
-b32 DoUIButton(Str8 label);
+typedef struct UIButtonProps {
+  Vec2 size;
+  b8 default_background_color;
+
+  UIEdgeInsets *padding;
+} UIButtonProps;
+
+UIBox *BeginUIButton(UIButtonProps props, b32 *out_clicked);
+void EndUIButton(void);
 
 typedef struct UICollapsingHeaderProps {
   Str8 text;

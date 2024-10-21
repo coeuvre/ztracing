@@ -15,16 +15,27 @@ static void BuildUI(f32 dt, f32 frame_time) {
 
   BeginUILayer((UILayerProps){.key = STR8_LIT("Base")});
   BeginUIBox((UIProps){
-      .color = ColorU32FromSRGBNotPremultiplied(255, 255, 255, 255),
+      .color = ColorU32FromSRGBNotPremultiplied(0, 0, 0, 255),
   });
   BeginUIColumn((UIColumnProps){0});
   {
-    BeginUIStack((UIStackProps){.background_color = ColorU32FromHex(0xE6573F)});
+    BeginUIStack((UIStackProps){.background_color = ColorU32FromHex(0xDBDBDB)});
     BeginUIRow((UIRowProps){0});
     {
-      DoUIButton(STR8_LIT("Load"));
-      if (DoUIButton(STR8_LIT("Debug"))) {
-        OpenUIDebugLayer(debug_layer);
+      {
+        BeginUIButton((UIButtonProps){.default_background_color = 1}, 0);
+        DoUIText(STR8_LIT("Load"));
+        EndUIButton();
+      }
+
+      {
+        b32 clicked;
+        BeginUIButton((UIButtonProps){0}, &clicked);
+        DoUIText(STR8_LIT("Debug"));
+        EndUIButton();
+        if (clicked) {
+          OpenUIDebugLayer(debug_layer);
+        }
       }
 
       BeginUIBox((UIProps){.flex = 1});

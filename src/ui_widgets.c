@@ -87,45 +87,51 @@ typedef struct UIButtonState {
   ColorU32 target_background_color;
 } UIButtonState;
 
-b32 DoUIButton(Str8 label) {
-  b32 result;
-  UIBox *button =
-      BeginUITag("Button", (UIProps){
-                               .padding = UIEdgeInsetsSymmetric(6, 3),
-                           });
+UIBox *BeginUIButton(UIButtonProps props, b32 *out_clicked) {
+  UIEdgeInsets padding;
+  if (props.padding) {
+    padding = *props.padding;
+  } else {
+    padding = UIEdgeInsetsSymmetric(6, 3);
+  }
+  UIBox *button = BeginUITag("Button", (UIProps){
+                                           .size = props.size,
+                                           .padding = padding,
+                                       });
   {
     UIButtonState *state = PushUIBoxStruct(button, UIButtonState);
 
-    if (IsUIMouseButtonClicked(button, kUIMouseButtonLeft)) {
-      state->target_background_color = ColorU32FromHex(0x0000FF);
-    } else if (IsUIMouseButtonDown(button, kUIMouseButtonLeft)) {
-      state->target_background_color = ColorU32FromHex(0x00FF00);
+    if (IsUIMouseButtonDown(button, kUIMouseButtonLeft)) {
+      state->target_background_color = ColorU32FromHex(0x4B6F9E);
     } else if (IsUIMouseHovering(button)) {
-      state->target_background_color = ColorU32FromHex(0xFF0000);
+      state->target_background_color = ColorU32FromHex(0x4B7DB8);
+    } else if (props.default_background_color) {
+      state->target_background_color = ColorU32FromHex(0xB9D3F3);
     } else {
       state->target_background_color = ColorU32Zero();
     }
 
-    result = IsUIMouseButtonClicked(button, kUIMouseButtonLeft);
+    b32 clicked = IsUIMouseButtonClicked(button, kUIMouseButtonLeft);
+    if (out_clicked) {
+      *out_clicked = clicked;
+    }
 
     state->background_color = AnimateUIFastColorU32(
         state->background_color, state->target_background_color);
 
     button->props.background_color = state->background_color;
-
-    DoUIText(label);
   }
-  EndUITag("Button");
-  return result;
+
+  return button;
 }
+
+void EndUIButton(void) { EndUITag("Button"); }
 
 typedef struct UICollapsingState {
   b32 init;
   b32 open;
   f32 open_t;
   UIBox *header;
-  ColorU32 header_background_color;
-  ColorU32 header_target_background_color;
 } UICollapsingState;
 
 UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
@@ -140,40 +146,35 @@ UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
 
   BeginUIColumn((UIColumnProps){0});
   {
-    state->header = BeginUIRow((UIRowProps){
-        .padding = props.header.padding,
-    });
+    b32 clicked;
+    UIEdgeInsets padding = UIEdgeInsetsAll(0);
+    state->header =
+        BeginUIButton((UIButtonProps){.default_background_color =
+                                          props.default_background_color,
+                                      .padding = &padding},
+                      &clicked);
     {
-      if (!props.disabled &&
-          IsUIMouseButtonClicked(state->header, kUIMouseButtonLeft)) {
-        state->open = !state->open;
-      }
-
-      if (IsUIMouseHovering(state->header)) {
-        state->header_target_background_color = ColorU32FromHex(0x4B7DB8);
-      } else if (props.default_background_color) {
-        state->header_target_background_color = ColorU32FromHex(0xB9D3F3);
-      } else {
-        state->header_target_background_color = ColorU32Zero();
-      }
-
-      state->header_background_color =
-          AnimateUIFastColorU32(state->header_background_color,
-                                state->header_target_background_color);
-
-      state->header->props.background_color = state->header_background_color;
-
-      Str8 prefix = STR8_LIT(" ");
-      if (!props.disabled) {
-        prefix = state->open ? STR8_LIT(" - ") : STR8_LIT(" + ");
-      }
-
-      BeginUIBox((UIProps){
-          .text = PushUIStr8F("%s%s", prefix.ptr, props.header.text.ptr),
+      BeginUIRow((UIRowProps){
+          .padding = props.header.padding,
       });
-      EndUIBox();
+      {
+        if (!props.disabled && clicked) {
+          state->open = !state->open;
+        }
+
+        Str8 prefix = STR8_LIT("   ");
+        if (!props.disabled) {
+          prefix = state->open ? STR8_LIT(" - ") : STR8_LIT(" + ");
+        }
+
+        BeginUIBox((UIProps){
+            .text = PushUIStr8F("%s%s", prefix.ptr, props.header.text.ptr),
+        });
+        EndUIBox();
+      }
+      EndUIRow();
     }
-    EndUIRow();
+    EndUIButton();
 
     // Clip box
     BeginUIBox((UIProps){0});
@@ -592,16 +593,13 @@ UIBox *UIDebugLayer(void) {
       EndUIColumn();
       EndUIBox();
 
-      UIBox *resize_handle = BeginUIBox((UIProps){
-          .size = V2(resize_handle_size, resize_handle_size),
-          .background_color = ColorU32FromHex(0xD1D1D1),
-      });
+      UIBox *resize_handle = BeginUIButton(
+          (UIButtonProps){
+              .default_background_color = 1,
+              .size = V2(resize_handle_size, resize_handle_size),
+          },
+          0);
       {
-        if (IsUIMouseButtonDown(resize_handle, kUIMouseButtonLeft)) {
-          resize_handle->props.background_color = ColorU32FromHex(0x4B6F9E);
-        } else if (IsUIMouseHovering(resize_handle)) {
-          resize_handle->props.background_color = ColorU32FromHex(0x618FC5);
-        }
         if (IsUIMouseButtonPressed(resize_handle, kUIMouseButtonLeft)) {
           state->pressed_min = state->min;
           state->pressed_max = state->max;
@@ -613,7 +611,7 @@ UIBox *UIDebugLayer(void) {
           state->max = MaxVec2(state->max, AddVec2(state->min, min_frame_size));
         }
       }
-      EndUIBox();
+      EndUIButton();
     }
     EndUIBox();
   }

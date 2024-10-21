@@ -807,6 +807,9 @@ static void ProcessInput(UIState *state, UIFrame *frame) {
   for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
     state->input.mouse.pressed[button] = UIIDZero();
     state->input.mouse.clicked[button] = UIIDZero();
+    if (!IsZeroUIID(state->input.mouse.holding[button])) {
+      state->input.mouse.hovering = state->input.mouse.holding[button];
+    }
   }
 
   for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
