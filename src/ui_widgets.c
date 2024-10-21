@@ -304,6 +304,69 @@ UIBox *BeginUIScrollable(UIScrollableProps props) {
   return scrollable;
 }
 
+static void DoUIScrollableScrollBar(UIScrollableState *state) {
+  UIBox *scroll_bar = BeginUITag("ScrollBar", (UIProps){0});
+  BeginUIColumn((UIColumnProps){0});
+  {
+    Vec2 mouse_pos = GetUIMouseRelPos(scroll_bar);
+    if (IsUIMouseButtonDown(scroll_bar, kUIMouseButtonLeft)) {
+      if (ContainsF32(mouse_pos.x, 0, state->head_size.x)) {
+        f32 offset = mouse_pos.y - state->head_size.y;
+        if (offset < state->control_offset) {
+          SetUIScrollableScrollInternal(
+              state, *state->target_scroll_ptr - 0.2f * state->scroll_step);
+        } else if (offset > state->control_offset + state->control_size) {
+          SetUIScrollableScrollInternal(
+              state, *state->target_scroll_ptr + 0.2f * state->scroll_step);
+        }
+      }
+    }
+    ColorU32 background_color = ColorU32FromHex(0xF5F5F5);
+
+    BeginUIBox((UIProps){
+        .size = V2(state->head_size.x, state->control_offset),
+        .background_color = background_color,
+    });
+    EndUIBox();
+
+    UIBox *scroll_control = BeginUIBox((UIProps){0});
+    {
+      ColorU32 control_background_color = ColorU32FromHex(0xBEBEBE);
+      if (IsUIMouseHovering(scroll_control)) {
+        control_background_color = ColorU32FromHex(0x959595);
+      }
+      if (IsUIMouseButtonPressed(scroll_control, kUIMouseButtonLeft)) {
+        state->control_offset_drag_start = state->control_offset;
+      }
+      Vec2 drag_delta;
+      if (IsUIMouseButtonDragging(scroll_control, kUIMouseButtonLeft,
+                                  &drag_delta)) {
+        f32 offset = state->control_offset_drag_start + drag_delta.y;
+        SetUIScrollableScrollInternal(
+            state, offset / state->control_max * state->scroll_max);
+
+        control_background_color = ColorU32FromHex(0x7D7D7D);
+      }
+
+      BeginUIBox((UIProps){
+          .size = V2(state->head_size.x, state->control_size),
+          .background_color = control_background_color,
+      });
+      EndUIBox();
+    }
+    EndUIBox();
+
+    BeginUIBox((UIProps){
+        .size = V2(state->head_size.x, kUISizeUndefined),
+        .flex = 1,
+        .background_color = background_color,
+    });
+    EndUIBox();
+  }
+  EndUIColumn();
+  EndUITag("ScrollBar");
+}
+
 void EndUIScrollable(void) {
   {
     {
@@ -315,70 +378,7 @@ void EndUIScrollable(void) {
     UIScrollableState *state =
         GetUIBoxStruct(GetCurrentUIBox(), UIScrollableState);
     if (state->scroll_max > 0) {
-      UIBox *scroll_bar = BeginUITag("ScrollBar", (UIProps){0});
-      BeginUIColumn((UIColumnProps){0});
-      {
-        Vec2 mouse_pos = GetUIMouseRelPos(scroll_bar);
-        if (IsUIMouseButtonDown(scroll_bar, kUIMouseButtonLeft)) {
-          if (ContainsF32(mouse_pos.x, 0, state->head_size.x)) {
-            f32 offset = mouse_pos.y - state->head_size.y;
-            if (offset < state->control_offset) {
-              SetUIScrollableScrollInternal(
-                  state, *state->target_scroll_ptr - 0.2f * state->scroll_step);
-            } else if (offset > state->control_offset + state->control_size) {
-              SetUIScrollableScrollInternal(
-                  state, *state->target_scroll_ptr + 0.2f * state->scroll_step);
-            }
-          }
-        }
-        ColorU32 background_color =
-            ColorU32FromSRGBNotPremultiplied(128, 128, 128, 255);
-
-        BeginUIBox((UIProps){
-            .size = V2(state->head_size.x, state->control_offset),
-            .background_color = background_color,
-        });
-        EndUIBox();
-
-        UIBox *scroll_control = BeginUIBox((UIProps){0});
-        {
-          ColorU32 control_background_color =
-              ColorU32FromSRGBNotPremultiplied(192, 192, 192, 255);
-          if (IsUIMouseHovering(scroll_control)) {
-            control_background_color =
-                ColorU32FromSRGBNotPremultiplied(224, 224, 224, 255);
-          }
-          if (IsUIMouseButtonPressed(scroll_control, kUIMouseButtonLeft)) {
-            state->control_offset_drag_start = state->control_offset;
-          }
-          Vec2 drag_delta;
-          if (IsUIMouseButtonDragging(scroll_control, kUIMouseButtonLeft,
-                                      &drag_delta)) {
-            f32 offset = state->control_offset_drag_start + drag_delta.y;
-            SetUIScrollableScrollInternal(
-                state, offset / state->control_max * state->scroll_max);
-
-            control_background_color =
-                ColorU32FromSRGBNotPremultiplied(255, 255, 255, 255);
-          }
-
-          BeginUIBox((UIProps){
-              .size = V2(state->head_size.x, state->control_size),
-              .background_color = control_background_color,
-          });
-          EndUIBox();
-        }
-        EndUIBox();
-
-        BeginUIBox((UIProps){
-            .size = V2(state->head_size.x, kUISizeUndefined),
-            .flex = 1,
-            .background_color = background_color,
-        });
-        EndUIBox();
-      }
-      EndUIColumn();
-      EndUITag("ScrollBar");
+      DoUIScrollableScrollBar(state);
     }
 
     state->scroll = AnimateUIFastF32(state->scroll, *state->target_scroll_ptr);
@@ -558,30 +558,26 @@ UIBox *UIDebugLayer(void) {
         });
         BeginUIRow((UIRowProps){0});
         {
-          BeginUIBox((UIProps){.padding = UIEdgeInsetsSymmetric(6, 3)});
+          UIEdgeInsets padding = UIEdgeInsetsSymmetric(6, 3);
+          BeginUIBox((UIProps){.padding = padding});
           DoUITextF("Debug");
           EndUIBox();
 
           BeginUIBox((UIProps){.flex = 1});
           EndUIBox();
 
-          UIBox *close = BeginUIBox((UIProps){
-              .padding = UIEdgeInsetsSymmetric(6, 3),
-              .text = PushUIStr8F("X"),
-          });
-          {
-            if (IsUIMouseButtonDown(close, kUIMouseButtonLeft)) {
-              close->props.background_color = ColorU32FromHex(0x2D69AE);
-            } else if (IsUIMouseHovering(close)) {
-              close->props.background_color =
-                  ColorU32FromSRGBNotPremultiplied(53, 119, 197, 255);
-            }
+          b32 clicked;
+          BeginUIButton(
+              (UIButtonProps){
+                  .padding = &padding,
+              },
+              &clicked);
+          DoUIText(STR8_LIT("X"));
+          EndUIButton();
 
-            if (IsUIMouseButtonClicked(close, kUIMouseButtonLeft)) {
-              state->open = 0;
-            }
+          if (clicked) {
+            state->open = 0;
           }
-          EndUIBox();
         }
         EndUIRow();
         EndUIBox();

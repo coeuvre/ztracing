@@ -701,22 +701,21 @@ static void RenderBox(UIState *state, UIBox *box) {
 
     if (box->props.border.top.width > 0) {
       DrawRect(min, V2(max.x, min.y + box->props.border.top.width),
-               box->props.border.left.color);
+               box->props.border.top.color);
     }
 
     if (box->props.border.right.width > 0) {
       DrawRect(V2(max.x - box->props.border.right.width, min.y), max,
-               box->props.border.left.color);
+               box->props.border.right.color);
     }
 
     if (box->props.border.bottom.width > 0) {
       DrawRect(V2(min.x, max.y - box->props.border.bottom.width), max,
-               box->props.border.left.color);
+               box->props.border.bottom.color);
     }
 
     // Debug outline
-    // DrawRectLine(min_in_pixel, max_in_pixel,
-    // ColorU32FromHex(0xFF00FF), 1.0f);
+    // DrawRectLine(min, max, ColorU32FromHex(0xFF00FF), 1.0f);
 
     if (box->first) {
       for (UIBox *child = box->first; child; child = child->next) {
