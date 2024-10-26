@@ -67,8 +67,8 @@ const State = extern struct {
     value: u32,
 };
 
-fn pushBoxState(box: [*c]c.UIBox) [*c]State {
-    return @ptrCast(@alignCast(c.PushUIBoxState(box, "State", @sizeOf(State))));
+fn pushBoxState() [*c]State {
+    return @ptrCast(@alignCast(c.PushUIBoxState("State", @sizeOf(State))));
 }
 
 test "State, return the same state across frame" {
@@ -80,16 +80,16 @@ test "State, return the same state across frame" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        const box0 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box0);
+            const state = pushBoxState();
             state.*.value = 10;
         }
         c.EndUIBox();
 
-        const box1 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box1);
+            const state = pushBoxState();
             state.*.value = 11;
         }
         c.EndUIBox();
@@ -103,16 +103,16 @@ test "State, return the same state across frame" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        const box0 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box0);
+            const state = pushBoxState();
             try testing.expectEqual(10, state.*.value);
         }
         c.EndUIBox();
 
-        const box1 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box1);
+            const state = pushBoxState();
             try testing.expectEqual(11, state.*.value);
         }
         c.EndUIBox();
@@ -131,16 +131,16 @@ test "State, reset state if key is different" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        const box0 = c.BeginUIBox(.{ .key = c.STR8_LIT("Key0") });
+        c.BeginUIBox(.{ .key = c.STR8_LIT("Key0") });
         {
-            const state = pushBoxState(box0);
+            const state = pushBoxState();
             state.*.value = 10;
         }
         c.EndUIBox();
 
-        const box1 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box1);
+            const state = pushBoxState();
             state.*.value = 11;
         }
         c.EndUIBox();
@@ -154,16 +154,16 @@ test "State, reset state if key is different" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        const box0 = c.BeginUIBox(.{ .key = c.STR8_LIT("Key1") });
+        c.BeginUIBox(.{ .key = c.STR8_LIT("Key1") });
         {
-            const state = pushBoxState(box0);
+            const state = pushBoxState();
             try testing.expectEqual(0, state.*.value);
         }
         c.EndUIBox();
 
-        const box1 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box1);
+            const state = pushBoxState();
             try testing.expectEqual(11, state.*.value);
         }
         c.EndUIBox();
@@ -182,16 +182,16 @@ test "State, reset state if tag is different" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        const box0 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box0);
+            const state = pushBoxState();
             state.*.value = 10;
         }
         c.EndUIBox();
 
-        const box1 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box1);
+            const state = pushBoxState();
             state.*.value = 11;
         }
         c.EndUIBox();
@@ -205,16 +205,16 @@ test "State, reset state if tag is different" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        const box0 = c.BeginUITag("Tag", .{});
+        c.BeginUITag("Tag", .{});
         {
-            const state = pushBoxState(box0);
+            const state = pushBoxState();
             try testing.expectEqual(0, state.*.value);
         }
         c.EndUITag("Tag");
 
-        const box1 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box1);
+            const state = pushBoxState();
             try testing.expectEqual(11, state.*.value);
         }
         c.EndUIBox();
@@ -233,16 +233,16 @@ test "State, reset state if box is not build from last frame" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        const box0 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box0);
+            const state = pushBoxState();
             state.*.value = 10;
         }
         c.EndUIBox();
 
-        const box1 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box1);
+            const state = pushBoxState();
             state.*.value = 11;
         }
         c.EndUIBox();
@@ -256,9 +256,9 @@ test "State, reset state if box is not build from last frame" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        const box0 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box0);
+            const state = pushBoxState();
             try testing.expectEqual(10, state.*.value);
         }
         c.EndUIBox();
@@ -272,16 +272,16 @@ test "State, reset state if box is not build from last frame" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        const box0 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box0);
+            const state = pushBoxState();
             try testing.expectEqual(10, state.*.value);
         }
         c.EndUIBox();
 
-        const box1 = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
         {
-            const state = pushBoxState(box1);
+            const state = pushBoxState();
             try testing.expectEqual(0, state.*.value);
         }
         c.EndUIBox();
@@ -302,9 +302,9 @@ test "State, reset state if parent is different" {
     {
         _ = c.BeginUIBox(.{});
         {
-            const box1 = c.BeginUIBox(.{});
+            c.BeginUIBox(.{});
             {
-                const state = pushBoxState(box1);
+                const state = pushBoxState();
                 state.*.value = 11;
             }
             c.EndUIBox();
@@ -322,9 +322,9 @@ test "State, reset state if parent is different" {
     {
         _ = c.BeginUITag("Tag", .{});
         {
-            const box1 = c.BeginUIBox(.{});
+            c.BeginUIBox(.{});
             {
-                const state = pushBoxState(box1);
+                const state = pushBoxState();
                 try testing.expectEqual(0, state.*.value);
             }
             c.EndUIBox();
@@ -352,7 +352,8 @@ test "Layout, root has the same size as the screen" {
         c.SetUICanvasSize(c.V2(100, 100));
         c.BeginUIFrame();
         c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
-        const root = c.BeginUIBox(.{ .size = size });
+        c.BeginUIBox(.{ .size = size });
+        const root = c.GetCurrentUIBox();
         c.EndUIBox();
         c.EndUILayer();
         c.EndUIFrame();
@@ -388,7 +389,8 @@ test "Layout, aligns" {
                 .cross_axis_align = cross_axis_option.@"align",
             });
             {
-                container = c.BeginUIBox(.{ .size = c.V2(50, 50) });
+                c.BeginUIBox(.{ .size = c.V2(50, 50) });
+                container = c.GetCurrentUIBox();
                 c.EndUIBox();
             }
             c.EndUIBox();
@@ -430,8 +432,9 @@ test "Layout, padding" {
                 .padding = padding,
             });
             {
-                container = c.BeginUIBox(.{});
+                c.BeginUIBox(.{});
                 {
+                    container = c.GetCurrentUIBox();
                     _ = c.BeginUIBox(.{ .size = c.V2(50, 50) });
                     c.EndUIBox();
                 }
@@ -458,7 +461,8 @@ test "Layout, no children, no fixed size, as small as possible" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        container = c.BeginUIBox(.{});
+        c.BeginUIBox(.{});
+        container = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -479,7 +483,8 @@ test "Layout, no children, no fixed size, flex, main axis is as big as possible"
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        container = c.BeginUIBox(.{ .flex = 1 });
+        c.BeginUIBox(.{ .flex = 1 });
+        container = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -502,7 +507,8 @@ test "Layout, with one child, size around it" {
     {
         _ = c.BeginUIBox(.{});
         {
-            container = c.BeginUIBox(.{ .size = c.V2(50, 50) });
+            c.BeginUIBox(.{ .size = c.V2(50, 50) });
+            container = c.GetCurrentUIBox();
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -526,9 +532,11 @@ test "Layout, with fixed size" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        container = c.BeginUIBox(.{ .size = c.V2(30, 20) });
+        c.BeginUIBox(.{ .size = c.V2(30, 20) });
         {
-            child = c.BeginUIBox(.{ .size = c.V2(50, 40) });
+            container = c.GetCurrentUIBox();
+            c.BeginUIBox(.{ .size = c.V2(50, 40) });
+            child = c.GetCurrentUIBox();
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -553,9 +561,11 @@ test "Layout, with fixed size, negative" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        container = c.BeginUIBox(.{ .size = c.V2(30, -20) });
+        c.BeginUIBox(.{ .size = c.V2(30, -20) });
         {
-            child = c.BeginUIBox(.{ .size = c.V2(50, 50) });
+            container = c.GetCurrentUIBox();
+            c.BeginUIBox(.{ .size = c.V2(50, 50) });
+            child = c.GetCurrentUIBox();
             c.EndUIBox();
         }
         c.EndUIBox();
@@ -585,8 +595,9 @@ test "Layout, main axis size, child has different main axis than parent" {
         c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
         _ = c.BeginUIBox(.{ .main_axis = c.kAxis2Y });
         {
-            row = c.BeginUIBox(.{ .main_axis_size = main_axis_size });
+            c.BeginUIBox(.{ .main_axis_size = main_axis_size });
             {
+                row = c.GetCurrentUIBox();
                 _ = c.BeginUIBox(.{ .size = c.V2(30, 20) });
                 c.EndUIBox();
             }
@@ -621,8 +632,9 @@ test "Layout, main axis size, child has same main axis as parent" {
         c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
         _ = c.BeginUIBox(.{});
         {
-            row = c.BeginUIBox(.{ .main_axis_size = main_axis_size });
+            c.BeginUIBox(.{ .main_axis_size = main_axis_size });
             {
+                row = c.GetCurrentUIBox();
                 _ = c.BeginUIBox(.{ .size = c.V2(20, 20) });
                 c.EndUIBox();
             }
@@ -653,7 +665,8 @@ test "Layout, no fixed size, size around text" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        text = c.BeginUIBox(.{ .text = c.PushUIStr8F("text") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("text") });
+        text = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -675,7 +688,8 @@ test "Layout, fixed size, truncate text" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        text = c.BeginUIBox(.{ .size = c.V2(2, 2), .text = c.PushUIStr8F("Text") });
+        c.BeginUIBox(.{ .size = c.V2(2, 2), .text = c.PushUIStr8F("Text") });
+        text = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -697,10 +711,12 @@ test "Layout, row, no constraints on children" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        c0 = c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
+        c0 = c.GetCurrentUIBox();
         c.EndUIBox();
 
-        c1 = c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
+        c1 = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -729,10 +745,12 @@ test "Layout, row, no constraints on children, but truncate" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        c0 = c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
+        c0 = c.GetCurrentUIBox();
         c.EndUIBox();
 
-        c1 = c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
+        c1 = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -761,13 +779,15 @@ test "Layout, row, constraint flex" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        c0 = c.BeginUIBox(.{
+        c.BeginUIBox(.{
             .flex = 1,
             .text = c.PushUIStr8F("A very long text that doesn't fit in one line!"),
         });
+        c0 = c.GetCurrentUIBox();
         c.EndUIBox();
 
-        c1 = c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
+        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
+        c1 = c.GetCurrentUIBox();
         c.EndUIBox();
     }
     c.EndUIBox();
@@ -796,10 +816,12 @@ test "Layout, main axis unbounded" {
     c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
     _ = c.BeginUIBox(.{});
     {
-        container = c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
+        c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
         {
-            child = c.BeginUIBox(.{});
+            container = c.GetCurrentUIBox();
+            c.BeginUIBox(.{});
             {
+                child = c.GetCurrentUIBox();
                 _ = c.BeginUIBox(.{ .size = c.V2(100000, 10) });
                 c.EndUIBox();
 
