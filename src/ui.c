@@ -11,6 +11,8 @@
 #include "src/string.h"
 #include "src/types.h"
 
+thread_local UIState t_ui_state;
+
 static UIBox *GetUIBoxFromFrame(UIFrame *frame, UIID id) {
   UIBox *result = 0;
   UIBoxCache *cache = &frame->cache;
@@ -38,31 +40,6 @@ static UIBox *PushUIBox(UIBoxCache *cache, Arena *arena, UIID id) {
                             hash_next);
   ++cache->total_box_count;
 
-  return result;
-}
-
-thread_local UIState t_ui_state;
-
-UIState *GetUIState(void) {
-  UIState *state = &t_ui_state;
-  ASSERTF(state->init, "InitUI is not called");
-  return state;
-}
-
-static UIFrame *GetCurrentUIFrame(UIState *state) {
-  UIFrame *result =
-      state->frames + (state->frame_index % ARRAY_COUNT(state->frames));
-  ASSERT(result->frame_index == state->frame_index);
-  return result;
-}
-
-static UIFrame *GetLastUIFrame(UIState *state) {
-  UIFrame *result = 0;
-  if (state->frame_index > 1) {
-    result =
-        state->frames + ((state->frame_index - 1) % ARRAY_COUNT(state->frames));
-    ASSERT(result->frame_index == state->frame_index - 1);
-  }
   return result;
 }
 
@@ -159,9 +136,12 @@ void SetUICanvasSize(Vec2 size) {
 void BeginUIFrame(void) {
   UIState *state = GetUIState();
   state->frame_index += 1;
-
-  UIFrame *frame =
+  state->current_frame =
       state->frames + (state->frame_index % ARRAY_COUNT(state->frames));
+  state->last_frame =
+      state->frames + ((state->frame_index - 1) % ARRAY_COUNT(state->frames));
+
+  UIFrame *frame = state->current_frame;
 
   ResetArena(&frame->arena);
 
@@ -851,7 +831,7 @@ static void PositionBox(UIBox *box, Vec2 parent_pos, Rect2 parent_clip_rect) {
 
 void EndUIFrame(void) {
   UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
+  UIFrame *frame = GetCurrentUIFrame();
   ASSERTF(!frame->current_layer, "Mismatched BeginLayer/EndLayer calls");
 
   for (UILayer *layer = frame->first_layer; layer; layer = layer->next) {
@@ -870,7 +850,7 @@ void EndUIFrame(void) {
 
 void RenderUI(void) {
   UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
+  UIFrame *frame = GetCurrentUIFrame();
 
   ASSERTF(!frame->first_error, "%s", frame->first_error->message.ptr);
 
@@ -904,8 +884,7 @@ static UIID UIIDFromU8(UIID seed, u8 ch) {
 void BeginUILayer(UILayerProps props) {
   ASSERTF(!IsEmptyStr8(props.key), "key of a UILayer cannot be empty");
 
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
+  UIFrame *frame = GetCurrentUIFrame();
 
   UILayer *layer = PushArray(&frame->arena, UILayer, 1);
 
@@ -933,8 +912,7 @@ void BeginUILayer(UILayerProps props) {
 }
 
 void EndUILayer(void) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
+  UIFrame *frame = GetCurrentUIFrame();
   ASSERTF(frame->current_layer, "Mismatched BeginLayer/EndLayer calls");
   ASSERTF(!frame->current_layer->current,
           "Mismatched BeginUITag/EndUITag calls");
@@ -943,20 +921,18 @@ void EndUILayer(void) {
 }
 
 UIBuildError *GetFirstUIBuildError(void) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
+  UIFrame *frame = GetCurrentUIFrame();
   UIBuildError *result = frame->first_error;
   return result;
 }
 
-b32 IsEqualUIID(UIID a, UIID b) {
-  b32 result = a.hash == b.hash;
+bool IsEqualUIID(UIID a, UIID b) {
+  bool result = a.hash == b.hash;
   return result;
 }
 
 Str8 PushUIStr8(Str8 str) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
+  UIFrame *frame = GetCurrentUIFrame();
   Str8 result = PushStr8(&frame->arena, str);
   return result;
 }
@@ -970,8 +946,7 @@ Str8 PushUIStr8F(const char *fmt, ...) {
 }
 
 Str8 PushUIStr8FV(const char *fmt, va_list ap) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
+  UIFrame *frame = GetCurrentUIFrame();
   Str8 result = PushStr8FV(&frame->arena, fmt, ap);
   return result;
 }
@@ -992,18 +967,17 @@ static UIID UIIDForBox(UIID seed, u32 seq, const char *tag, Str8 key) {
   return id;
 }
 
-static UIBox *GetUIBoxFromLastFrame(UIState *state, UIID id) {
+static UIBox *GetUIBoxFromLastFrame(UIID id) {
   UIBox *result = 0;
-  UIFrame *last_frame = GetLastUIFrame(state);
+  UIFrame *last_frame = GetLastUIFrame();
   if (last_frame) {
     result = GetUIBoxFromFrame(last_frame, id);
   }
   return result;
 }
 
-UIBox *BeginUITag(const char *tag, UIProps props) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
+void BeginUITag(const char *tag, UIProps props) {
+  UIFrame *frame = GetCurrentUIFrame();
 
   UILayer *layer = frame->current_layer;
   ASSERTF(layer, "No active UILayer");
@@ -1035,20 +1009,17 @@ UIBox *BeginUITag(const char *tag, UIProps props) {
   box->parent = parent;
   box->props = props;
 
-  // Copy state from last frame, if any
-  UIBox *last_box = GetUIBoxFromLastFrame(state, id);
+  // Copy computed state from last frame, if any
+  UIBox *last_box = GetUIBoxFromLastFrame(id);
   if (last_box) {
     box->computed = last_box->computed;
   }
 
   layer->current = box;
-
-  return box;
 }
 
 void EndUITag(const char *tag) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
+  UIFrame *frame = GetCurrentUIFrame();
   UILayer *layer = frame->current_layer;
   ASSERTF(layer, "No active UILayer");
 
@@ -1060,24 +1031,16 @@ void EndUITag(const char *tag) {
   layer->current = layer->current->parent;
 }
 
-UIBox *GetCurrentUIBox(void) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
-  ASSERT(frame->current_layer && frame->current_layer->current);
-  UIBox *box = frame->current_layer->current;
-  return box;
-}
-
-void *PushUIBoxState(UIBox *box, const char *type_name, usize size) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame(state);
+void *PushUIBoxState(const char *type_name, usize size) {
+  UIFrame *frame = GetCurrentUIFrame();
+  UIBox *box = GetCurrentUIBox();
   ASSERTF(!box->state.ptr, "Can only push once to the UIBox");
 
   DEBUG_ASSERT(GetUIBoxFromFrame(frame, box->id) == box);
   box->state.type_name = type_name;
   box->state.size = size;
 
-  UIBox *last_box = GetUIBoxFromLastFrame(state, box->id);
+  UIBox *last_box = GetUIBoxFromLastFrame(box->id);
   if (last_box && last_box->state.ptr) {
     ASSERTF(last_box->state.size == box->state.size &&
                 strcmp(last_box->state.type_name, type_name) == 0,
@@ -1094,7 +1057,8 @@ void *PushUIBoxState(UIBox *box, const char *type_name, usize size) {
   return box->state.ptr;
 }
 
-void *GetUIBoxState(UIBox *box, const char *type_name, usize size) {
+void *GetUIBoxState(const char *type_name, usize size) {
+  UIBox *box = GetCurrentUIBox();
   ASSERTF(box->state.ptr, "UIBox doesn't have state");
   ASSERTF(
       box->state.size == size && strcmp(box->state.type_name, type_name) == 0,
@@ -1105,8 +1069,9 @@ void *GetUIBoxState(UIBox *box, const char *type_name, usize size) {
   return result;
 }
 
-Vec2 GetUIMouseRelPos(UIBox *box) {
+Vec2 GetUIMouseRelPos(void) {
   UIState *state = GetUIState();
+  UIBox *box = GetCurrentUIBox();
   Vec2 result = V2(0, 0);
   if (box) {
     result = SubVec2(state->input.mouse.pos, box->computed.screen_rect.min);
@@ -1120,59 +1085,65 @@ Vec2 GetUIMousePos(void) {
   return result;
 }
 
-void SetUIBoxBlockMouseInput(UIBox *box) {
-  box->hoverable = 1;
+void SetUIBoxBlockMouseInput(void) {
+  UIBox *box = GetCurrentUIBox();
+  box->hoverable = true;
   for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
-    box->clickable[button] = 1;
+    box->clickable[button] = true;
   }
-  box->scrollable = 1;
+  box->scrollable = true;
 }
 
-b32 IsUIMouseHovering(UIBox *box) {
+bool IsUIMouseHovering(void) {
   UIState *state = GetUIState();
-  b32 result = 0;
+  UIBox *box = GetCurrentUIBox();
+  bool result = false;
   if (box) {
-    box->hoverable = 1;
+    box->hoverable = true;
     result = IsEqualUIID(state->input.mouse.hovering, box->id);
   }
   return result;
 }
 
-b32 IsUIMouseButtonPressed(UIBox *box, UIMouseButton button) {
+bool IsUIMouseButtonPressed(UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result = 0;
+  UIBox *box = GetCurrentUIBox();
+  bool result = false;
   if (box) {
-    box->clickable[button] = 1;
+    box->clickable[button] = true;
     result = IsEqualUIID(state->input.mouse.pressed[button], box->id);
   }
   return result;
 }
 
-b32 IsUIMouseButtonDown(UIBox *box, UIMouseButton button) {
+bool IsUIMouseButtonDown(UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result = 0;
+  UIBox *box = GetCurrentUIBox();
+  bool result = false;
   if (box) {
-    box->clickable[button] = 1;
+    box->clickable[button] = true;
     result = IsEqualUIID(state->input.mouse.holding[button], box->id);
   }
   return result;
 }
 
-b32 IsUIMouseButtonClicked(UIBox *box, UIMouseButton button) {
+bool IsUIMouseButtonClicked(UIMouseButton button) {
   UIState *state = GetUIState();
-  b32 result = 0;
+  UIBox *box = GetCurrentUIBox();
+  bool result = false;
   if (box) {
-    box->clickable[button] = 1;
+    box->clickable[button] = true;
     result = IsEqualUIID(state->input.mouse.clicked[button], box->id);
   }
   return result;
 }
 
-b32 IsUIMouseButtonDragging(UIBox *box, UIMouseButton button, Vec2 *delta) {
+bool IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
   UIState *state = GetUIState();
-  b32 result = 0;
+  UIBox *box = GetCurrentUIBox();
+  bool result = false;
   if (box) {
-    box->clickable[button] = 1;
+    box->clickable[button] = true;
     result = IsEqualUIID(state->input.mouse.holding[button], box->id);
     if (result && delta) {
       *delta = SubVec2(state->input.mouse.pos,
@@ -1182,11 +1153,12 @@ b32 IsUIMouseButtonDragging(UIBox *box, UIMouseButton button, Vec2 *delta) {
   return result;
 }
 
-b32 IsUIMouseScrolling(UIBox *box, Vec2 *delta) {
+bool IsUIMouseScrolling(Vec2 *delta) {
   UIState *state = GetUIState();
-  b32 result = 0;
+  UIBox *box = GetCurrentUIBox();
+  bool result = false;
   if (box) {
-    box->scrollable = 1;
+    box->scrollable = true;
     result = IsEqualUIID(state->input.mouse.scrolling, box->id);
     if (result && delta) {
       *delta = state->input.mouse.scroll_delta;

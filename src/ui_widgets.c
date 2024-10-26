@@ -9,80 +9,70 @@
 #include "src/types.h"
 #include "src/ui.h"
 
-UIBox *BeginUIRow(UIRowProps props) {
-  return BeginUITag(
-      "Row",
-      (UIProps){
-          .key = props.key,
-          .size = props.size,
-          .padding = props.padding,
-          .margin = props.margin,
-          .border = props.border,
-          .color = props.color,
-          .background_color = props.background_color,
-          .main_axis = kAxis2X,
-          .main_axis_size = kUIMainAxisSizeMax,
-          .main_axis_align = props.main_axis_align == kUIMainAxisAlignUnknown
-                                 ? kUIMainAxisAlignStart
-                                 : props.main_axis_align,
-          .cross_axis_align = props.cross_axis_align == kUICrossAxisAlignUnknown
-                                  ? kUICrossAxisAlignCenter
-                                  : props.cross_axis_align,
-      });
+void BeginUIRow(UIRowProps props) {
+  BeginUITag("Row", (UIProps){
+                        .key = props.key,
+                        .size = props.size,
+                        .padding = props.padding,
+                        .margin = props.margin,
+                        .border = props.border,
+                        .color = props.color,
+                        .background_color = props.background_color,
+                        .main_axis_align = props.main_axis_align,
+                        .main_axis = kAxis2X,
+                        .main_axis_size = kUIMainAxisSizeMax,
+                        .cross_axis_align =
+                            props.cross_axis_align != kUICrossAxisAlignUnknown
+                                ? props.cross_axis_align
+                                : kUICrossAxisAlignCenter,
+                    });
 }
 
-UIBox *BeginUIColumn(UIColumnProps props) {
-  return BeginUITag(
-      "Column",
-      (UIProps){
-          .key = props.key,
-          .size = props.size,
-          .padding = props.padding,
-          .margin = props.margin,
-          .border = props.border,
-          .color = props.color,
-          .background_color = props.background_color,
-          .main_axis = kAxis2Y,
-          .main_axis_align = props.main_axis_align == kUIMainAxisAlignUnknown
-                                 ? kUIMainAxisAlignStart
-                                 : props.main_axis_align,
-          .main_axis_size = kUIMainAxisSizeMax,
-          .cross_axis_align = props.cross_axis_align == kUICrossAxisAlignUnknown
-                                  ? kUICrossAxisAlignCenter
-                                  : props.cross_axis_align,
-      });
+void BeginUIColumn(UIColumnProps props) {
+  BeginUITag("Column", (UIProps){
+                           .key = props.key,
+                           .size = props.size,
+                           .padding = props.padding,
+                           .margin = props.margin,
+                           .border = props.border,
+                           .color = props.color,
+                           .background_color = props.background_color,
+                           .main_axis_align = props.main_axis_align,
+                           .main_axis = kAxis2Y,
+                           .main_axis_size = kUIMainAxisSizeMax,
+                           .cross_axis_align = props.cross_axis_align !=
+                                                       kUICrossAxisAlignUnknown
+                                                   ? props.cross_axis_align
+                                                   : kUICrossAxisAlignCenter,
+                       });
 }
 
-UIBox *BeginUIStack(UIStackProps props) {
-  return BeginUITag(
-      "Stack",
-      (UIProps){
-          .key = props.key,
-          .layout = kUILayoutStack,
-          .size = props.size,
-          .padding = props.padding,
-          .margin = props.margin,
-          .background_color = props.background_color,
-          .main_axis_align = props.main_axis_align == kUIMainAxisAlignUnknown
-                                 ? kUIMainAxisAlignStart
-                                 : props.main_axis_align,
-          .cross_axis_align = props.cross_axis_align == kUICrossAxisAlignUnknown
-                                  ? kUICrossAxisAlignCenter
-                                  : props.cross_axis_align,
-      });
+void BeginUIStack(UIStackProps props) {
+  BeginUITag("Stack", (UIProps){
+                          .key = props.key,
+                          .size = props.size,
+                          .layout = kUILayoutStack,
+                          .padding = props.padding,
+                          .margin = props.margin,
+                          .border = props.border,
+                          .color = props.color,
+                          .background_color = props.background_color,
+                          .main_axis_align = props.main_axis_align,
+                          .cross_axis_align = props.cross_axis_align,
+                      });
 }
 
-void DoUITextF(const char *fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  Str8 text = PushUIStr8FV(fmt, ap);
-  va_end(ap);
-
-  DoUIText(text);
-}
-
-void DoUIText(Str8 text) {
-  BeginUITag("Text", (UIProps){.text = text});
+void DoUIText(UITextProps props) {
+  BeginUITag("Text", (UIProps){
+                         .key = props.key,
+                         .size = props.size,
+                         .text = props.text,
+                         .padding = props.padding,
+                         .margin = props.margin,
+                         .border = props.border,
+                         .color = props.color,
+                         .background_color = props.background_color,
+                     });
   EndUITag("Text");
 }
 
@@ -91,23 +81,25 @@ typedef struct UIButtonState {
   ColorU32 target_background_color;
 } UIButtonState;
 
-UIBox *BeginUIButton(UIButtonProps props, b32 *out_clicked) {
-  UIEdgeInsets padding;
-  if (props.padding) {
-    padding = *props.padding;
-  } else {
+bool BeginUIButton(UIButtonProps props) {
+  UIEdgeInsets padding = props.padding;
+  if (!padding.set) {
+    // TODO: Use theme
     padding = UIEdgeInsetsSymmetric(6, 3);
   }
-  UIBox *button = BeginUITag("Button", (UIProps){
-                                           .size = props.size,
-                                           .padding = padding,
-                                       });
-  {
-    UIButtonState *state = PushUIBoxStruct(button, UIButtonState);
 
-    if (IsUIMouseButtonDown(button, kUIMouseButtonLeft)) {
+  bool clicked;
+  BeginUITag("Button", (UIProps){
+                           .size = props.size,
+                           .text = props.text,
+                           .padding = padding,
+                       });
+  {
+    UIButtonState *state = PushUIBoxStruct(UIButtonState);
+
+    if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
       state->target_background_color = ColorU32FromHex(0x4B6F9E);
-    } else if (IsUIMouseHovering(button)) {
+    } else if (IsUIMouseHovering()) {
       state->target_background_color = ColorU32FromHex(0x4B7DB8);
     } else if (props.default_background_color) {
       state->target_background_color = ColorU32FromHex(0xB9D3F3);
@@ -115,48 +107,48 @@ UIBox *BeginUIButton(UIButtonProps props, b32 *out_clicked) {
       state->target_background_color = ColorU32Zero();
     }
 
-    b32 clicked = IsUIMouseButtonClicked(button, kUIMouseButtonLeft);
-    if (out_clicked) {
-      *out_clicked = clicked;
+    if (props.hoverred) {
+      *props.hoverred = IsUIMouseHovering();
     }
+
+    clicked = IsUIMouseButtonClicked(kUIMouseButtonLeft);
 
     state->background_color = AnimateUIFastColorU32(
         state->background_color, state->target_background_color);
 
-    button->props.background_color = state->background_color;
+    GetCurrentUIBox()->props.background_color = state->background_color;
   }
 
-  return button;
+  return clicked;
 }
 
 void EndUIButton(void) { EndUITag("Button"); }
 
 typedef struct UICollapsingState {
-  b32 init;
-  b32 open;
+  bool init;
+  bool open;
   f32 open_t;
   UIBox *header;
 } UICollapsingState;
 
-UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
-  UIBox *collapsing = BeginUITag("Collapse", (UIProps){0});
-  UICollapsingState *state = PushUIBoxStruct(collapsing, UICollapsingState);
+bool BeginUICollapsing(UICollapsingProps props) {
+  BeginUITag("Collapse", (UIProps){0});
+  UICollapsingState *state = PushUIBoxStruct(UICollapsingState);
   if (!state->init) {
     state->open = props.default_open;
     state->open_t = state->open;
-    state->init = 1;
+    state->init = true;
   }
   state->open = !props.disabled && state->open;
 
   BeginUIColumn((UIColumnProps){0});
   {
-    b32 clicked;
-    UIEdgeInsets padding = UIEdgeInsetsAll(0);
-    state->header =
-        BeginUIButton((UIButtonProps){.default_background_color =
-                                          props.default_background_color,
-                                      .padding = &padding},
-                      &clicked);
+    bool clicked = BeginUIButton((UIButtonProps){
+        .default_background_color = props.default_background_color,
+        .padding = UIEdgeInsetsAll(0),
+        .hoverred = props.header.hoverred,
+    });
+    state->header = GetCurrentUIBox();
     {
       BeginUIRow((UIRowProps){
           .padding = props.header.padding,
@@ -183,7 +175,8 @@ UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
     // Clip box
     BeginUIBox((UIProps){0});
 
-    UIBox *content = BeginUIBox((UIProps){0});
+    BeginUIBox((UIProps){0});
+    UIBox *content = GetCurrentUIBox();
     if (state->open && content->computed.size.y == 0) {
       // For the first frame, the content size is unknown. Make margin -INF
       // effectively make it invisible.
@@ -196,11 +189,8 @@ UIBox *BeginUICollapsing(UICollapsingProps props, b32 *out_open) {
 
   state->open_t = AnimateUIFastF32(state->open_t, !!state->open);
 
-  if (out_open) {
-    *out_open = state->open_t != 0.0f;
-  }
-
-  return collapsing;
+  bool result = state->open_t != 0.0f;
+  return result;
 }
 
 void EndUICollapsing(void) {
@@ -210,11 +200,6 @@ void EndUICollapsing(void) {
   }
   EndUIColumn();
   EndUITag("Collapse");
-}
-
-UIBox *GetUICollapsingHeader(UIBox *box) {
-  UICollapsingState *state = GetUIBoxStruct(box, UICollapsingState);
-  return state->header;
 }
 
 typedef struct UIScrollableState {
@@ -241,12 +226,12 @@ static inline void SetUIScrollableScrollInternal(UIScrollableState *state,
   *state->target_scroll_ptr = ClampF32(scroll, 0, state->scroll_max);
 }
 
-UIBox *BeginUIScrollable(UIScrollableProps props) {
-  UIBox *scrollable = BeginUITag("Scrollable", (UIProps){
-                                                   .main_axis = kAxis2X,
-                                               });
+void BeginUIScrollable(UIScrollableProps props) {
+  BeginUITag("Scrollable", (UIProps){
+                               .main_axis = kAxis2X,
+                           });
   {
-    UIScrollableState *state = PushUIBoxStruct(scrollable, UIScrollableState);
+    UIScrollableState *state = PushUIBoxStruct(UIScrollableState);
     if (props.scroll) {
       if (!state->target_scroll_ptr) {
         state->scroll = *props.scroll;
@@ -257,22 +242,22 @@ UIBox *BeginUIScrollable(UIScrollableProps props) {
     }
 
     Vec2 wheel_delta;
-    b32 scrolling = IsUIMouseScrolling(scrollable, &wheel_delta);
+    b32 scrolling = IsUIMouseScrolling(&wheel_delta);
 
-    UIBox *scroll_area = BeginUITag(
-        "ScrollArea", (UIProps){
-                          .flex = 1,
-                          .main_axis = kAxis2Y,
-                          .size = V2(kUISizeUndefined, kUISizeInfinity),
-                      });
+    BeginUITag("ScrollArea", (UIProps){
+                                 .flex = 1,
+                                 .main_axis = kAxis2Y,
+                                 .size = V2(kUISizeUndefined, kUISizeInfinity),
+                             });
     {
+      UIBox *scroll_area = GetCurrentUIBox();
       state->scroll_area_size = scroll_area->computed.size.y;
 
-      UIBox *scroll_content = BeginUITag(
-          "ScrollContent",
-          (UIProps){
-              .margin = UIEdgeInsetsFromLTRB(0, -state->scroll, 0, 0),
-          });
+      BeginUITag("ScrollContent",
+                 (UIProps){
+                     .margin = UIEdgeInsetsFromLTRB(0, -state->scroll, 0, 0),
+                 });
+      UIBox *scroll_content = GetCurrentUIBox();
       f32 total_item_size = scroll_content->computed.size.y;
 
       state->head_size = V2(10, 0);
@@ -305,15 +290,14 @@ UIBox *BeginUIScrollable(UIScrollableProps props) {
       // ...
     }
   }
-  return scrollable;
 }
 
 static void DoUIScrollableScrollBar(UIScrollableState *state) {
-  UIBox *scroll_bar = BeginUITag("ScrollBar", (UIProps){0});
+  BeginUITag("ScrollBar", (UIProps){0});
   BeginUIColumn((UIColumnProps){0});
   {
-    Vec2 mouse_pos = GetUIMouseRelPos(scroll_bar);
-    if (IsUIMouseButtonDown(scroll_bar, kUIMouseButtonLeft)) {
+    Vec2 mouse_pos = GetUIMouseRelPos();
+    if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
       if (ContainsF32(mouse_pos.x, 0, state->head_size.x)) {
         f32 offset = mouse_pos.y - state->head_size.y;
         if (offset < state->control_offset) {
@@ -333,18 +317,17 @@ static void DoUIScrollableScrollBar(UIScrollableState *state) {
     });
     EndUIBox();
 
-    UIBox *scroll_control = BeginUIBox((UIProps){0});
+    BeginUIBox((UIProps){0});
     {
       ColorU32 control_background_color = ColorU32FromHex(0xBEBEBE);
-      if (IsUIMouseHovering(scroll_control)) {
+      if (IsUIMouseHovering()) {
         control_background_color = ColorU32FromHex(0x959595);
       }
-      if (IsUIMouseButtonPressed(scroll_control, kUIMouseButtonLeft)) {
+      if (IsUIMouseButtonPressed(kUIMouseButtonLeft)) {
         state->control_offset_drag_start = state->control_offset;
       }
       Vec2 drag_delta;
-      if (IsUIMouseButtonDragging(scroll_control, kUIMouseButtonLeft,
-                                  &drag_delta)) {
+      if (IsUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta)) {
         f32 offset = state->control_offset_drag_start + drag_delta.y;
         SetUIScrollableScrollInternal(
             state, offset / state->control_max * state->scroll_max);
@@ -379,8 +362,7 @@ void EndUIScrollable(void) {
     }
     EndUITag("ScrollArea");
 
-    UIScrollableState *state =
-        GetUIBoxStruct(GetCurrentUIBox(), UIScrollableState);
+    UIScrollableState *state = GetUIBoxStruct(UIScrollableState);
     if (state->scroll_max > 0) {
       DoUIScrollableScrollBar(state);
     }
@@ -391,8 +373,8 @@ void EndUIScrollable(void) {
 }
 
 typedef struct UIDebugLayerState {
-  b8 init;
-  b8 open;
+  bool init;
+  bool open;
   Vec2 min;
   Vec2 max;
   Vec2 pressed_min;
@@ -406,20 +388,26 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
       "%s%s%s", box->tag, "#",
       IsEmptyStr8(box->props.key) ? seq_str.ptr : box->props.key.ptr);
 
-  b32 open;
-  UIBox *collapsing = BeginUICollapsing(
-      (UICollapsingProps){
+  bool header_hovered;
+  if (BeginUICollapsing((UICollapsingProps){
           .disabled = !box->first,
           .default_open = 1,
           .header =
               (UICollapsingHeaderProps){
                   .text = text,
                   .padding = UIEdgeInsetsFromLTRB(level * 15, 0, 0, 0),
-
+                  .hoverred = &header_hovered,
               },
-      },
-      &open);
-  if (IsUIMouseHovering(GetUICollapsingHeader(collapsing))) {
+      })) {
+    BeginUIColumn((UIColumnProps){0});
+    for (UIBox *child = box->first; child; child = child->next) {
+      UIDebugLayerBoxR(state, child, level + 1);
+    }
+    EndUIColumn();
+  }
+  EndUICollapsing();
+
+  if (header_hovered) {
     Rect2 hovered_rect = box->computed.screen_rect;
     {
       Vec2 size = SubVec2(hovered_rect.max, hovered_rect.min);
@@ -448,14 +436,6 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
     EndUIBox();
     EndUILayer();
   }
-  if (open) {
-    BeginUIColumn((UIColumnProps){0});
-    for (UIBox *child = box->first; child; child = child->next) {
-      UIDebugLayerBoxR(state, child, level + 1);
-    }
-    EndUIColumn();
-  }
-  EndUICollapsing();
 }
 
 static void UIDebugLayerInternal(UIDebugLayerState *state) {
@@ -472,8 +452,11 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
     BeginUIColumn((UIColumnProps){0});
 
     BeginUIRow((UIRowProps){0});
-    DoUITextF("Boxes: %" PRIu64 " / %" PRIu64, frame->cache.total_box_count,
-              frame->cache.box_hash_slots_count);
+    DoUIText((UITextProps){
+        .text = PushUIStr8F("Boxes: %" PRIu64 " / %" PRIu64,
+                            frame->cache.total_box_count,
+                            frame->cache.box_hash_slots_count),
+    });
     EndUIRow();
 
     EndUIColumn();
@@ -482,18 +465,14 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
 
   for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
     if (strstr((char *)layer->props.key.ptr, "__UIDebug__") == 0) {
-      b32 open;
-      BeginUICollapsing(
-          (UICollapsingProps){
+      if (BeginUICollapsing((UICollapsingProps){
               .default_background_color = 1,
               .default_open = 1,
               .header =
                   (UICollapsingHeaderProps){
                       .text = layer->props.key,
                   },
-          },
-          &open);
-      if (open) {
+          })) {
         if (layer->root) {
           UIDebugLayerBoxR(state, layer->root, 1);
         }
@@ -505,7 +484,7 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
   EndUIBox();
 }
 
-UIBox *UIDebugLayer(void) {
+void DoUIDebugLayer(UIDebugLayerProps props) {
   f32 resize_handle_size = 16;
   Vec2 default_frame_size = V2(400, 500);
   Vec2 min_frame_size = V2(resize_handle_size * 2, resize_handle_size * 2);
@@ -514,8 +493,8 @@ UIBox *UIDebugLayer(void) {
       .key = STR8_LIT("__UIDebug__"),
       .z_index = kUIDebugLayerZIndex,
   });
-  UIBox *debug_layer = BeginUIBox((UIProps){0});
-  UIDebugLayerState *state = PushUIBoxStruct(debug_layer, UIDebugLayerState);
+  BeginUIBox((UIProps){0});
+  UIDebugLayerState *state = PushUIBoxStruct(UIDebugLayerState);
   if (!state->init) {
     if (IsZeroVec2(SubVec2(state->max, state->min))) {
       state->max =
@@ -525,8 +504,12 @@ UIBox *UIDebugLayer(void) {
     state->init = 1;
   }
 
+  if (props.open) {
+    state->open = *props.open;
+  }
+
   if (state->open) {
-    UIBox *frame = BeginUIBox((UIProps){
+    BeginUIBox((UIProps){
         .layout = kUILayoutStack,
         .color = ColorU32FromHex(0x000000),
         .border = UIBorderFromBorderSide((UIBorderSide){
@@ -539,14 +522,14 @@ UIBox *UIDebugLayer(void) {
         .cross_axis_align = kUICrossAxisAlignEnd,
     });
     {
-      SetUIBoxBlockMouseInput(frame);
+      SetUIBoxBlockMouseInput();
 
-      if (IsUIMouseButtonPressed(frame, kUIMouseButtonLeft)) {
+      if (IsUIMouseButtonPressed(kUIMouseButtonLeft)) {
         state->pressed_min = state->min;
         state->pressed_max = state->max;
       }
       Vec2 drag_delta;
-      if (IsUIMouseButtonDragging(frame, kUIMouseButtonLeft, &drag_delta)) {
+      if (IsUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta)) {
         Vec2 size = SubVec2(state->max, state->min);
         state->min = RoundVec2(AddVec2(state->pressed_min, drag_delta));
         state->max = AddVec2(state->min, size);
@@ -563,24 +546,22 @@ UIBox *UIDebugLayer(void) {
         BeginUIRow((UIRowProps){0});
         {
           UIEdgeInsets padding = UIEdgeInsetsSymmetric(6, 3);
-          BeginUIBox((UIProps){.padding = padding});
-          DoUITextF("Debug");
-          EndUIBox();
+          DoUIButton((UIButtonProps){
+              .text = STR8_LIT("Debug"),
+              .padding = padding,
+          });
 
           BeginUIBox((UIProps){.flex = 1});
           EndUIBox();
 
-          b32 clicked;
-          BeginUIButton(
-              (UIButtonProps){
-                  .padding = &padding,
-              },
-              &clicked);
-          DoUIText(STR8_LIT("X"));
-          EndUIButton();
-
-          if (clicked) {
-            state->open = 0;
+          if (DoUIButton((UIButtonProps){
+                  .text = STR8_LIT("X"),
+                  .padding = padding,
+              })) {
+            state->open = false;
+            if (props.open) {
+              *props.open = false;
+            }
           }
         }
         EndUIRow();
@@ -593,20 +574,17 @@ UIBox *UIDebugLayer(void) {
       EndUIColumn();
       EndUIBox();
 
-      UIBox *resize_handle = BeginUIButton(
-          (UIButtonProps){
-              .default_background_color = 1,
-              .size = V2(resize_handle_size, resize_handle_size),
-          },
-          0);
+      BeginUIButton((UIButtonProps){
+          .default_background_color = 1,
+          .size = V2(resize_handle_size, resize_handle_size),
+      });
       {
-        if (IsUIMouseButtonPressed(resize_handle, kUIMouseButtonLeft)) {
+        if (IsUIMouseButtonPressed(kUIMouseButtonLeft)) {
           state->pressed_min = state->min;
           state->pressed_max = state->max;
         }
         Vec2 drag_delta;
-        if (IsUIMouseButtonDragging(resize_handle, kUIMouseButtonLeft,
-                                    &drag_delta)) {
+        if (IsUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta)) {
           state->max = RoundVec2(AddVec2(state->pressed_max, drag_delta));
           state->max = MaxVec2(state->max, AddVec2(state->min, min_frame_size));
         }
@@ -617,10 +595,4 @@ UIBox *UIDebugLayer(void) {
   }
   EndUIBox();
   EndUILayer();
-  return debug_layer;
-}
-
-void OpenUIDebugLayer(UIBox *box) {
-  UIDebugLayerState *state = GetUIBoxStruct(box, UIDebugLayerState);
-  state->open = 1;
 }

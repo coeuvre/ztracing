@@ -11,9 +11,11 @@
 #include "src/ui_widgets.h"
 
 static void BuildUI(f32 dt, f32 frame_time) {
-  UIBox *debug_layer = UIDebugLayer();
+  static bool open_debug_layer;
+  DoUIDebugLayer((UIDebugLayerProps){.open = &open_debug_layer});
 
   BeginUILayer((UILayerProps){.key = STR8_LIT("Base")});
+
   BeginUIColumn((UIColumnProps){
       .color = ColorU32FromSRGBNotPremultiplied(0, 0, 0, 255),
       .background_color = ColorU32FromHex(0xF0F0F0),
@@ -30,32 +32,26 @@ static void BuildUI(f32 dt, f32 frame_time) {
             },
     });
     {
-      {
-        BeginUIButton((UIButtonProps){.default_background_color = 1}, 0);
-        DoUIText(STR8_LIT("Load"));
-        EndUIButton();
-      }
+      DoUIButton((UIButtonProps){
+          .text = STR8_LIT("Load"),
+          .default_background_color = 1,
+      });
 
-      {
-        b32 clicked;
-        BeginUIButton((UIButtonProps){0}, &clicked);
-        DoUIText(STR8_LIT("Debug"));
-        EndUIButton();
-        if (clicked) {
-          OpenUIDebugLayer(debug_layer);
-        }
+      if (DoUIButton((UIButtonProps){
+              .text = STR8_LIT("Debug"),
+          })) {
+        open_debug_layer = true;
       }
 
       BeginUIBox((UIProps){.flex = 1});
       EndUIBox();
 
-      BeginUIBox((UIProps){
+      DoUIText((UITextProps){
+          .text = PushUIStr8F("%.0f %.1fMB %.1fms", 1.0f / dt,
+                              (f32)((f64)GetAllocatedBytes() / 1024.0 / 1024.0),
+                              frame_time * 1000.0f),
           .padding = UIEdgeInsetsSymmetric(6, 3),
       });
-      DoUITextF("%.0f %.1fMB %.1fms", 1.0f / dt,
-                (f32)((f64)GetAllocatedBytes() / 1024.0 / 1024.0),
-                frame_time * 1000.0f);
-      EndUIBox();
     }
     EndUIRow();
 
@@ -71,13 +67,13 @@ static void BuildUI(f32 dt, f32 frame_time) {
       // f32 offset = item_index * item_size - state->scroll;
       // for (; item_index < item_count && offset < state->scroll_area_size;
       //      ++item_index, offset += item_size)
-      UIBox *content = BeginUIColumn((UIColumnProps){0});
+      BeginUIColumn((UIColumnProps){0});
       {
-        if (IsUIMouseButtonPressed(content, kUIMouseButtonLeft)) {
+        if (IsUIMouseButtonPressed(kUIMouseButtonLeft)) {
           scroll_drag_started = scroll;
         }
         Vec2 drag_delta;
-        if (IsUIMouseButtonDragging(content, kUIMouseButtonLeft, &drag_delta)) {
+        if (IsUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta)) {
           scroll = scroll_drag_started - drag_delta.y;
         }
 

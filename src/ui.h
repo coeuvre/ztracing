@@ -39,6 +39,7 @@ typedef enum UICrossAxisAlign {
 } UICrossAxisAlign;
 
 typedef struct UIEdgeInsets {
+  bool set;
   f32 left;
   f32 right;
   f32 top;
@@ -47,12 +48,14 @@ typedef struct UIEdgeInsets {
 
 static inline UIEdgeInsets UIEdgeInsetsAll(f32 val) {
   UIEdgeInsets result;
+  result.set = true;
   result.left = result.right = result.top = result.bottom = val;
   return result;
 }
 
 static inline UIEdgeInsets UIEdgeInsetsSymmetric(f32 x, f32 y) {
   UIEdgeInsets result;
+  result.set = true;
   result.left = result.right = x;
   result.top = result.bottom = y;
   return result;
@@ -61,6 +64,7 @@ static inline UIEdgeInsets UIEdgeInsetsSymmetric(f32 x, f32 y) {
 static inline UIEdgeInsets UIEdgeInsetsFromLTRB(f32 left, f32 top, f32 right,
                                                 f32 bottom) {
   UIEdgeInsets result;
+  result.set = true;
   result.left = left;
   result.right = right;
   result.top = top;
@@ -121,6 +125,9 @@ typedef struct UIProps {
   UIBorder border;
 
   Str8 text;
+  // TODO: Add text_align.
+  // TODO: Extract into TextStyle which has font_family, font_size, font_weight
+  // and etc.
   ColorU32 color;
   f32 font_size;
 } UIProps;
@@ -164,9 +171,9 @@ struct UIBox {
   UIBox *parent;
   u32 children_count;
 
-  b8 hoverable;
-  b8 clickable[kUIMouseButtonCount];
-  b8 scrollable;
+  bool hoverable;
+  bool clickable[kUIMouseButtonCount];
+  bool scrollable;
 
   UIProps props;
   UIComputed computed;
@@ -259,11 +266,11 @@ typedef struct UIState {
   UIInput input;
   u64 frame_index;
   UIFrame frames[2];
+  UIFrame *current_frame;
+  UIFrame *last_frame;
 
   f32 fast_rate;
 } UIState;
-
-UIState *GetUIState(void);
 
 void InitUI(void);
 void QuitUI(void);
@@ -275,6 +282,26 @@ void OnUIMouseButtonDown(Vec2 pos, UIMouseButton button);
 void OnUIMouseWheel(Vec2 delta);
 
 void SetUIDeltaTime(f32 dt);
+
+extern thread_local UIState t_ui_state;
+
+static inline UIState *GetUIState(void) {
+  UIState *state = &t_ui_state;
+  DEBUG_ASSERT(state->init);
+  return state;
+}
+
+static inline UIFrame *GetCurrentUIFrame(void) {
+  UIState *state = GetUIState();
+  UIFrame *result = state->current_frame;
+  return result;
+}
+
+static inline UIFrame *GetLastUIFrame(void) {
+  UIState *state = GetUIState();
+  UIFrame *result = state->last_frame;
+  return result;
+}
 
 static inline f32 GetUIDeltaTime(void) {
   UIState *state = GetUIState();
@@ -319,10 +346,10 @@ static inline UIID UIIDZero(void) {
   return result;
 }
 
-b32 IsEqualUIID(UIID a, UIID b);
+bool IsEqualUIID(UIID a, UIID b);
 
-static inline b32 IsZeroUIID(UIID a) {
-  b32 result = IsEqualUIID(a, UIIDZero());
+static inline bool IsZeroUIID(UIID a) {
+  bool result = IsEqualUIID(a, UIIDZero());
   return result;
 }
 
@@ -330,34 +357,35 @@ Str8 PushUIStr8(Str8 str);
 Str8 PushUIStr8F(const char *fmt, ...);
 Str8 PushUIStr8FV(const char *fmt, va_list ap);
 
-UIBox *BeginUITag(const char *tag, UIProps props);
+void BeginUITag(const char *tag, UIProps props);
 void EndUITag(const char *tag);
 
-static inline UIBox *BeginUIBox(UIProps props) {
-  return BeginUITag("Box", props);
-}
+static inline void BeginUIBox(UIProps props) { BeginUITag("Box", props); }
 
 static inline void EndUIBox(void) { EndUITag("Box"); }
 
-UIBox *GetCurrentUIBox(void);
+static inline UIBox *GetCurrentUIBox(void) {
+  UIFrame *frame = GetCurrentUIFrame();
+  DEBUG_ASSERT(frame->current_layer && frame->current_layer->current);
+  UIBox *box = frame->current_layer->current;
+  return box;
+}
 
-void *PushUIBoxState(UIBox *box, const char *type_name, usize size);
-void *GetUIBoxState(UIBox *box, const char *type_name, usize size);
+void *PushUIBoxState(const char *type_name, usize size);
+void *GetUIBoxState(const char *type_name, usize size);
 
-#define PushUIBoxStruct(id, Type) \
-  (Type *)PushUIBoxState(id, #Type, sizeof(Type))
+#define PushUIBoxStruct(Type) (Type *)PushUIBoxState(#Type, sizeof(Type))
+#define GetUIBoxStruct(Type) (Type *)GetUIBoxState(#Type, sizeof(Type))
 
-#define GetUIBoxStruct(id, Type) (Type *)GetUIBoxState(id, #Type, sizeof(Type))
-
-Vec2 GetUIMouseRelPos(UIBox *box);
+Vec2 GetUIMouseRelPos(void);
 Vec2 GetUIMousePos(void);
 
-void SetUIBoxBlockMouseInput(UIBox *box);
-b32 IsUIMouseHovering(UIBox *box);
-b32 IsUIMouseButtonPressed(UIBox *box, UIMouseButton button);
-b32 IsUIMouseButtonDown(UIBox *box, UIMouseButton button);
-b32 IsUIMouseButtonClicked(UIBox *box, UIMouseButton button);
-b32 IsUIMouseButtonDragging(UIBox *box, UIMouseButton button, Vec2 *delta);
-b32 IsUIMouseScrolling(UIBox *box, Vec2 *delta);
+void SetUIBoxBlockMouseInput(void);
+bool IsUIMouseHovering(void);
+bool IsUIMouseButtonPressed(UIMouseButton button);
+bool IsUIMouseButtonDown(UIMouseButton button);
+bool IsUIMouseButtonClicked(UIMouseButton button);
+bool IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta);
+bool IsUIMouseScrolling(Vec2 *delta);
 
 #endif  // ZTRACING_SRC_UI_H_
