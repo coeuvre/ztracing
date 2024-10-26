@@ -11,8 +11,12 @@
 #include "src/ui_widgets.h"
 
 static void BuildUI(f32 dt, f32 frame_time) {
-  static bool open_debug_layer;
-  DoUIDebugLayer((UIDebugLayerProps){.open = &open_debug_layer});
+  static bool debug_layer_open;
+  static Arena debug_layer_arena;
+  DoUIDebugLayer((UIDebugLayerProps){
+      .arena = &debug_layer_arena,
+      .open = &debug_layer_open,
+  });
 
   BeginUILayer((UILayerProps){.key = STR8_LIT("Base")});
 
@@ -40,7 +44,7 @@ static void BuildUI(f32 dt, f32 frame_time) {
       if (DoUIButton((UIButtonProps){
               .text = STR8_LIT("Debug"),
           })) {
-        open_debug_layer = true;
+        debug_layer_open = true;
       }
 
       BeginUIBox((UIProps){.flex = 1});

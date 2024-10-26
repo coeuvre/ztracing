@@ -4,7 +4,9 @@
 #include <stdarg.h>
 #include <string.h>
 
+#include "src/assert.h"
 #include "src/math.h"
+#include "src/memory.h"
 #include "src/string.h"
 #include "src/types.h"
 #include "src/ui.h"
@@ -126,7 +128,6 @@ void EndUIButton(void) { EndUITag("Button"); }
 
 typedef struct UICollapsingState {
   bool init;
-  bool open;
   f32 open_t;
   UIBox *header;
 } UICollapsingState;
@@ -135,16 +136,16 @@ bool BeginUICollapsing(UICollapsingProps props) {
   BeginUITag("Collapse", (UIProps){0});
   UICollapsingState *state = PushUIBoxStruct(UICollapsingState);
   if (!state->init) {
-    state->open = props.default_open;
-    state->open_t = state->open;
+    if (props.open && *props.open) {
+      state->open_t = 1.0f;
+    }
     state->init = true;
   }
-  state->open = !props.disabled && state->open;
 
   BeginUIColumn((UIColumnProps){0});
   {
     bool clicked = BeginUIButton((UIButtonProps){
-        .default_background_color = props.default_background_color,
+        .default_background_color = props.header.default_background_color,
         .padding = UIEdgeInsetsAll(0),
         .hoverred = props.header.hoverred,
     });
@@ -154,13 +155,13 @@ bool BeginUICollapsing(UICollapsingProps props) {
           .padding = props.header.padding,
       });
       {
-        if (!props.disabled && clicked) {
-          state->open = !state->open;
+        if (props.open && clicked) {
+          *props.open = !*props.open;
         }
 
         Str8 prefix = STR8_LIT("   ");
-        if (!props.disabled) {
-          prefix = state->open ? STR8_LIT(" - ") : STR8_LIT(" + ");
+        if (props.open) {
+          prefix = *props.open ? STR8_LIT(" - ") : STR8_LIT(" + ");
         }
 
         BeginUIBox((UIProps){
@@ -177,7 +178,7 @@ bool BeginUICollapsing(UICollapsingProps props) {
 
     BeginUIBox((UIProps){0});
     UIBox *content = GetCurrentUIBox();
-    if (state->open && content->computed.size.y == 0) {
+    if (props.open && *props.open && content->computed.size.y == 0) {
       // For the first frame, the content size is unknown. Make margin -INF
       // effectively make it invisible.
       content->props.margin = UIEdgeInsetsFromLTRB(0, -kUISizeInfinity, 0, 0);
@@ -187,7 +188,8 @@ bool BeginUICollapsing(UICollapsingProps props) {
     }
   }
 
-  state->open_t = AnimateUIFastF32(state->open_t, !!state->open);
+  state->open_t = AnimateUIFastF32(state->open_t,
+                                   (props.open && *props.open) ? 1.0f : 0.0f);
 
   bool result = state->open_t != 0.0f;
   return result;
@@ -372,6 +374,14 @@ void EndUIScrollable(void) {
   EndUITag("Scrollable");
 }
 
+typedef struct UIBoxDebugState UIBoxDebugState;
+struct UIBoxDebugState {
+  UIBoxDebugState *child[4];
+  UIID id;
+
+  bool open;
+};
+
 typedef struct UIDebugLayerState {
   bool init;
   bool open;
@@ -380,9 +390,30 @@ typedef struct UIDebugLayerState {
   Vec2 pressed_min;
   Vec2 pressed_max;
   f32 scroll;
+
+  Arena *arena;
+  UIBoxDebugState *root;
 } UIDebugLayerState;
 
+static UIBoxDebugState *PushUIBoxDebugState(UIDebugLayerState *state, UIID id) {
+  UIBoxDebugState **node = &state->root;
+  for (u64 hash = id.hash; *node; hash <<= 2) {
+    if (IsZeroUIID(id) || IsEqualUIID(id, (*node)->id)) {
+      break;
+    }
+    node = &((*node)->child[hash >> 62]);
+  }
+  if (!*node) {
+    UIBoxDebugState *debug_state = PushArray(state->arena, UIBoxDebugState, 1);
+    debug_state->id = id;
+    (*node) = debug_state;
+  }
+  return *node;
+}
+
 static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
+  UIBoxDebugState *box_debug_state = PushUIBoxDebugState(state, box->id);
+
   Str8 seq_str = PushUIStr8F("%u", box->seq);
   Str8 text = PushUIStr8F(
       "%s%s%s", box->tag, "#",
@@ -390,8 +421,7 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
 
   bool header_hovered;
   if (BeginUICollapsing((UICollapsingProps){
-          .disabled = !box->first,
-          .default_open = 1,
+          .open = box->first ? &box_debug_state->open : 0,
           .header =
               (UICollapsingHeaderProps){
                   .text = text,
@@ -465,12 +495,13 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
 
   for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
     if (strstr((char *)layer->props.key.ptr, "__UIDebug__") == 0) {
+      bool open = true;
       if (BeginUICollapsing((UICollapsingProps){
-              .default_background_color = 1,
-              .default_open = 1,
+              .open = &open,
               .header =
                   (UICollapsingHeaderProps){
                       .text = layer->props.key,
+                      .default_background_color = 1,
                   },
           })) {
         if (layer->root) {
@@ -485,6 +516,8 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
 }
 
 void DoUIDebugLayer(UIDebugLayerProps props) {
+  ASSERTF(props.arena, "Must provide an arena");
+
   f32 resize_handle_size = 16;
   Vec2 default_frame_size = V2(400, 500);
   Vec2 min_frame_size = V2(resize_handle_size * 2, resize_handle_size * 2);
@@ -501,6 +534,7 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
           AddVec2(state->min, V2(default_frame_size.x + resize_handle_size,
                                  default_frame_size.y + resize_handle_size));
     }
+    state->arena = props.arena;
     state->init = 1;
   }
 

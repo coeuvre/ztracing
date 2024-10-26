@@ -87,13 +87,13 @@ typedef struct UICollapsingHeaderProps {
   Str8 text;
   UIEdgeInsets padding;
 
+  bool default_background_color;
   bool *hoverred;
 } UICollapsingHeaderProps;
 
 typedef struct UICollapsingProps {
-  bool default_open;
-  bool default_background_color;
-  bool disabled;
+  bool *open;
+
   UICollapsingHeaderProps header;
 } UICollapsingProps;
 
@@ -110,6 +110,7 @@ void EndUIScrollable(void);
 
 #define kUIDebugLayerZIndex 1000
 typedef struct UIDebugLayerProps {
+  Arena *arena;
   bool *open;
 } UIDebugLayerProps;
 void DoUIDebugLayer(UIDebugLayerProps props);
