@@ -423,7 +423,7 @@ static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
 
   // First pass: layout non-flex children
   for (UIBox *child = box->first; child; child = child->next) {
-    if (child->props.position.type == kUIPositionFixed) {
+    if (child->props.position == kUIPositionFixed) {
       continue;
     }
 
@@ -453,7 +453,7 @@ static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
   // Second pass: layout flex children
   f32 child_main_axis_flex = max_main_axis_size - child_main_axis_size;
   for (UIBox *child = box->first; child; child = child->next) {
-    if (child->props.position.type == kUIPositionFixed) {
+    if (child->props.position == kUIPositionFixed) {
       continue;
     }
 
@@ -552,7 +552,7 @@ static Vec2 LayoutChildren(UIFrame *frame, UIBox *box, Vec2 max_size,
   }
 
   for (UIBox *child = box->first; child; child = child->next) {
-    if (child->props.position.type != kUIPositionFixed) {
+    if (child->props.position != kUIPositionFixed) {
       continue;
     }
 
@@ -572,17 +572,17 @@ static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
   box->computed.max_size = max_size;
   box->computed.clip = 0;
 
-  if (box->props.position.type == kUIPositionFixed) {
-    if (IsUIPositionRightSet(box->props.position) &&
-        IsUIPositionLeftSet(box->props.position)) {
+  if (box->props.position == kUIPositionFixed) {
+    if (IsUIEdgeInsetsRightSet(box->props.offset) &&
+        IsUIEdgeInsetsLeftSet(box->props.offset)) {
       box->props.size.x =
-          MaxF32(box->props.position.right - box->props.position.left, 0);
+          MaxF32(box->props.offset.right - box->props.offset.left, 0);
     }
 
-    if (IsUIPositionBottomSet(box->props.position) &&
-        IsUIPositionTopSet(box->props.position)) {
+    if (IsUIEdgeInsetsBottomSet(box->props.offset) &&
+        IsUIEdgeInsetsTopSet(box->props.offset)) {
       box->props.size.y =
-          MaxF32(box->props.position.bottom - box->props.position.top, 0);
+          MaxF32(box->props.offset.bottom - box->props.offset.top, 0);
     }
   }
 
@@ -691,13 +691,12 @@ static void RenderBox(UIState *state, UIBox *box) {
   Vec2 max = box->computed.screen_rect.max;
 
   Rect2 clip_rect = box->computed.clip_rect;
-  f32 clip_area = GetRect2Area(clip_rect);
-  if (clip_area > 0) {
-    b32 need_clip = box->computed.clip;
-    if (need_clip) {
-      PushClipRect(clip_rect.min, clip_rect.max);
-    }
+  b32 need_clip = box->computed.clip;
+  if (need_clip) {
+    PushClipRect(clip_rect.min, clip_rect.max);
+  }
 
+  if (GetRect2Area(clip_rect) > 0) {
     if (box->props.background_color.a) {
       DrawRect(min, max, box->props.background_color);
     }
@@ -724,21 +723,21 @@ static void RenderBox(UIState *state, UIBox *box) {
 
     // Debug outline
     // DrawRectLine(min, max, ColorU32FromHex(0xFF00FF), 1.0f);
+  }
 
-    if (box->first) {
-      for (UIBox *child = box->first; child; child = child->next) {
-        RenderBox(state, child);
-      }
-    } else if (!IsEmptyStr8(box->props.text)) {
-      DrawTextStr8(
-          V2(min.x + box->props.border.left.width + box->props.padding.left,
-             min.y + box->props.border.top.width + box->props.padding.top),
-          box->props.text, box->computed.font_size, GetFirstNonZeroColor(box));
+  if (box->first) {
+    for (UIBox *child = box->first; child; child = child->next) {
+      RenderBox(state, child);
     }
+  } else if (!IsEmptyStr8(box->props.text)) {
+    DrawTextStr8(
+        V2(min.x + box->props.border.left.width + box->props.padding.left,
+           min.y + box->props.border.top.width + box->props.padding.top),
+        box->props.text, box->computed.font_size, GetFirstNonZeroColor(box));
+  }
 
-    if (need_clip) {
-      PopClipRect();
-    }
+  if (need_clip) {
+    PopClipRect();
   }
 }
 
@@ -849,37 +848,51 @@ static void ProcessInput(UIState *state, UIFrame *frame) {
 
 static void PositionBox(UIBox *box, Vec2 parent_pos, Rect2 parent_clip_rect) {
   Vec2 min, max;
-  if (box->props.position.type == kUIPositionStatic) {
-    min = AddVec2(parent_pos, box->computed.rel_pos);
-    max = AddVec2(min, box->computed.size);
-    box->computed.screen_rect = R2(min, max);
-    box->computed.clip_rect =
-        Rect2FromIntersection(parent_clip_rect, box->computed.screen_rect);
-  } else {
-    Vec2 size = box->computed.size;
+  Rect2 screen_rect, clip_rect;
+  switch (box->props.position) {
+    case kUIPositionStatic: {
+      min = AddVec2(parent_pos, box->computed.rel_pos);
+      max = AddVec2(min, box->computed.size);
+      screen_rect = R2(min, max);
+      clip_rect =
+          Rect2FromIntersection(parent_clip_rect, box->computed.screen_rect);
+    } break;
 
-    if (IsUIPositionLeftSet(box->props.position)) {
-      min.x = box->props.position.left;
-    } else if (IsUIPositionRightSet(box->props.position)) {
-      min.x = box->props.position.right - size.x;
-    } else {
-      min.x = 0;
-    }
-    max.x = min.x + size.x;
+    case kUIPositionFixed: {
+      Vec2 size = box->computed.size;
+      if (IsUIEdgeInsetsLeftSet(box->props.offset)) {
+        min.x = box->props.offset.left;
+      } else if (IsUIEdgeInsetsRightSet(box->props.offset)) {
+        min.x = box->props.offset.right - size.x;
+      } else {
+        min.x = 0;
+      }
+      max.x = min.x + size.x;
 
-    if (IsUIPositionTopSet(box->props.position)) {
-      min.y = box->props.position.top;
-    } else if (IsUIPositionBottomSet(box->props.position)) {
-      min.y = box->props.position.bottom - size.y;
-    } else {
-      min.y = 0;
-    }
-    max.y = min.y + size.y;
+      if (IsUIEdgeInsetsTopSet(box->props.offset)) {
+        min.y = box->props.offset.top;
+      } else if (IsUIEdgeInsetsBottomSet(box->props.offset)) {
+        min.y = box->props.offset.bottom - size.y;
+      } else {
+        min.y = 0;
+      }
+      max.y = min.y + size.y;
 
-    box->computed.screen_rect = R2(min, max);
-    box->computed.clip_rect = R2(min, max);
-    INFO("%f %f %f %f", min.x, min.y, max.x, max.y);
+      screen_rect = R2(min, max);
+      clip_rect = R2(min, max);
+      box->computed.clip =
+          box->computed.clip ||
+          (GetRect2Area(Rect2FromIntersection(parent_clip_rect, clip_rect)) <
+           GetRect2Area(clip_rect));
+    } break;
+
+    default: {
+      UNREACHABLE;
+    } break;
   }
+
+  box->computed.screen_rect = screen_rect;
+  box->computed.clip_rect = clip_rect;
 
   for (UIBox *child = box->first; child; child = child->next) {
     PositionBox(child, min, box->computed.clip_rect);
@@ -893,7 +906,7 @@ void EndUIFrame(void) {
 
   for (UIBox *box = frame->first_box; box; box = box->next) {
     Vec2 size = frame->viewport_size;
-    LayoutBox(frame, box, size, size);
+    LayoutBox(frame, box, V2(0, 0), size);
     box->computed.rel_pos = V2(0, 0);
 
     PositionBox(box, V2(0, 0), R2(V2(0, 0), size));
@@ -1004,11 +1017,13 @@ void BeginUITag(const char *tag, UIProps props) {
   if (parent) {
     seed = parent->id;
   } else {
-    seed = UIIDFromU32(UIIDZero(), frame->toplevel_box_count);
+    seed = UIIDZero();
   }
   u32 seq = 0;
   if (parent) {
     seq = parent->children_count;
+  } else {
+    seq = frame->toplevel_box_count;
   }
 
   UIID id = UIIDForBox(seed, seq, tag, props.key);

@@ -18,76 +18,10 @@ typedef enum UILayout {
   kUILayoutStack,
 } UILayout;
 
-typedef enum UIPositionType {
+typedef enum UIPosition {
   kUIPositionStatic,
   kUIPositionFixed,
-} UIPositionType;
-
-typedef struct UIPosition {
-  u8 type;
-  bool set[4];
-  f32 left;
-  f32 right;
-  f32 top;
-  f32 bottom;
 } UIPosition;
-
-static inline UIPosition UIPositionFixedFromLT(f32 left, f32 top) {
-  UIPosition result = {
-      .type = kUIPositionFixed,
-      .set = {true, false, true, false},
-      .left = left,
-      .right = 0,
-      .top = top,
-      .bottom = 0,
-  };
-  return result;
-}
-
-static inline UIPosition UIPositionFixedFromRB(f32 right, f32 bottom) {
-  UIPosition result = {
-      .type = kUIPositionFixed,
-      .set = {false, true, false, true},
-      .left = 0,
-      .right = right,
-      .top = 0,
-      .bottom = bottom,
-  };
-  return result;
-}
-
-static inline UIPosition UIPositionFixedFromLTRB(f32 left, f32 top, f32 right,
-                                                 f32 bottom) {
-  UIPosition result = {
-      .type = kUIPositionFixed,
-      .set = {true, true, true, true},
-      .left = left,
-      .right = right,
-      .top = top,
-      .bottom = bottom,
-  };
-  return result;
-}
-
-static inline bool IsUIPositionLeftSet(UIPosition pos) {
-  bool result = pos.set[0];
-  return result;
-}
-
-static inline bool IsUIPositionRightSet(UIPosition pos) {
-  bool result = pos.set[1];
-  return result;
-}
-
-static inline bool IsUIPositionTopSet(UIPosition pos) {
-  bool result = pos.set[2];
-  return result;
-}
-
-static inline bool IsUIPositionBottomSet(UIPosition pos) {
-  bool result = pos.set[3];
-  return result;
-}
 
 typedef enum UIMainAxisSize {
   kUIMainAxisSizeMin,
@@ -179,6 +113,26 @@ static inline bool IsUIEdgeInsetsSet(UIEdgeInsets edge_insets) {
   return result;
 }
 
+static inline bool IsUIEdgeInsetsLeftSet(UIEdgeInsets edge_insets) {
+  bool result = edge_insets.set[0];
+  return result;
+}
+
+static inline bool IsUIEdgeInsetsRightSet(UIEdgeInsets edge_insets) {
+  bool result = edge_insets.set[1];
+  return result;
+}
+
+static inline bool IsUIEdgeInsetsTopSet(UIEdgeInsets edge_insets) {
+  bool result = edge_insets.set[2];
+  return result;
+}
+
+static inline bool IsUIEdgeInsetsBottomSet(UIEdgeInsets edge_insets) {
+  bool result = edge_insets.set[3];
+  return result;
+}
+
 // A side of a border of a box.
 typedef struct UIBorderSide {
   // The color of this side of the border.
@@ -222,15 +176,17 @@ typedef struct UIProps {
   // The size of the box, including border and padding.
   Vec2 size;
   UILayout layout;
-  UIPosition position;
   Axis2 main_axis;
   f32 flex;
   UIMainAxisSize main_axis_size;
   UIMainAxisAlign main_axis_align;
   UICrossAxisAlign cross_axis_align;
-  UIEdgeInsets padding;
+
+  UIPosition position;
+  UIEdgeInsets offset;
   UIEdgeInsets margin;
   UIBorder border;
+  UIEdgeInsets padding;
 
   Str8 text;
   // TODO: Add text_align.

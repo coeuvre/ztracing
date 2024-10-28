@@ -389,6 +389,7 @@ typedef struct UIDebugLayerState {
   Vec2 pressed_min;
   Vec2 pressed_max;
   f32 scroll;
+  Rect2 hoverred_rect;
 
   Arena *arena;
   UIBoxDebugState *root;
@@ -436,39 +437,21 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
   }
   EndUICollapsing();
 
-#if 0
   if (header_hovered) {
-    Rect2 hovered_rect = box->computed.screen_rect;
+    Rect2 hoverred_rect = box->computed.screen_rect;
     {
-      Vec2 size = SubVec2(hovered_rect.max, hovered_rect.min);
+      Vec2 size = SubVec2(hoverred_rect.max, hoverred_rect.min);
       // Make zero area box visible.
       if (size.x == 0 && size.y != 0) {
-        hovered_rect.max.x = hovered_rect.min.x + 1;
-        hovered_rect.min.x -= 1;
+        hoverred_rect.max.x = hoverred_rect.min.x + 1;
+        hoverred_rect.min.x -= 1;
       } else if (size.y == 0 && size.x != 0) {
-        hovered_rect.max.y = hovered_rect.min.y + 1;
-        hovered_rect.min.y -= 1;
+        hoverred_rect.max.y = hoverred_rect.min.y + 1;
+        hoverred_rect.min.y -= 1;
       }
     }
-
-    BeginUILayer((UILayerProps){
-        .key = STR8_LIT("__UIDebug__Overlay"),
-        .z_index = kUIDebugLayerZIndex - 1,
-    });
-    BeginUIBox((UIProps){0});
-    BeginUIBox((UIProps){
-        .margin =
-            UIEdgeInsetsFromLTRB(hovered_rect.min.x, hovered_rect.min.y, 0,
-            0),
-        .size = SubVec2(hovered_rect.max, hovered_rect.min),
-        .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255,
-        64),
-    });
-    EndUIBox();
-    EndUIBox();
-    EndUILayer();
+    state->hoverred_rect = hoverred_rect;
   }
-#endif
 }
 
 static void UIDebugLayerInternal(UIDebugLayerState *state) {
@@ -510,7 +493,7 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
   Vec2 default_frame_size = V2(400, 500);
   Vec2 min_frame_size = V2(resize_handle_size * 2, resize_handle_size * 2);
 
-  BeginUIBox((UIProps){0});
+  BeginUITag("DebugLayer", (UIProps){0});
   UIDebugLayerState *state = PushUIBoxStruct(UIDebugLayerState);
   if (!state->init) {
     if (IsZeroVec2(SubVec2(state->max, state->min))) {
@@ -526,18 +509,20 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
     state->open = *props.open;
   }
 
+  state->hoverred_rect = Rect2Zero();
   if (state->open) {
     BeginUIBox((UIProps){
+        .size = SubVec2(state->max, state->min),
         .layout = kUILayoutStack,
         .color = ColorU32FromHex(0x000000),
+        .main_axis_align = kUIMainAxisAlignEnd,
+        .cross_axis_align = kUICrossAxisAlignEnd,
+        .position = kUIPositionFixed,
+        .offset = UIEdgeInsetsFromLT(state->min.x, state->min.y),
         .border = UIBorderFromBorderSide((UIBorderSide){
             .color = ColorU32FromHex(0xA8A8A8),
             .width = 1,
         }),
-        .margin = UIEdgeInsetsFromLTRB(state->min.x, state->min.y, 0, 0),
-        .size = SubVec2(state->max, state->min),
-        .main_axis_align = kUIMainAxisAlignEnd,
-        .cross_axis_align = kUICrossAxisAlignEnd,
     });
     {
       SetUIBoxBlockMouseInput();
@@ -610,6 +595,21 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
       EndUIButton();
     }
     EndUIBox();
+
+    BeginUIBox((UIProps){0});
+    if (GetRect2Area(state->hoverred_rect) > 0) {
+      Rect2 hoverred_rect = state->hoverred_rect;
+
+      BeginUIBox((UIProps){
+          .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255, 64),
+          .size = SubVec2(hoverred_rect.max, hoverred_rect.min),
+          .position = kUIPositionFixed,
+          .offset =
+              UIEdgeInsetsFromLT(hoverred_rect.min.x, hoverred_rect.min.y),
+      });
+      EndUIBox();
+    }
+    EndUIBox();
   }
-  EndUIBox();
+  EndUITag("DebugLayer");
 }

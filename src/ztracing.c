@@ -11,7 +11,7 @@
 #include "src/ui_widgets.h"
 
 static void BuildUI(f32 dt, f32 frame_time) {
-  static bool debug_layer_open;
+  static bool debug_layer_open = true;
   static Arena debug_layer_arena;
 
   BeginUIColumn((UIColumnProps){
