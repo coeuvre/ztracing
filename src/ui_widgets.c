@@ -2,7 +2,6 @@
 
 #include <inttypes.h>
 #include <stdarg.h>
-#include <string.h>
 
 #include "src/assert.h"
 #include "src/math.h"
@@ -85,7 +84,7 @@ typedef struct UIButtonState {
 
 bool BeginUIButton(UIButtonProps props) {
   UIEdgeInsets padding = props.padding;
-  if (!padding.set) {
+  if (!IsUIEdgeInsetsSet(padding)) {
     // TODO: Use theme
     padding = UIEdgeInsetsSymmetric(6, 3);
   }
@@ -437,6 +436,7 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
   }
   EndUICollapsing();
 
+#if 0
   if (header_hovered) {
     Rect2 hovered_rect = box->computed.screen_rect;
     {
@@ -458,14 +458,17 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
     BeginUIBox((UIProps){0});
     BeginUIBox((UIProps){
         .margin =
-            UIEdgeInsetsFromLTRB(hovered_rect.min.x, hovered_rect.min.y, 0, 0),
+            UIEdgeInsetsFromLTRB(hovered_rect.min.x, hovered_rect.min.y, 0,
+            0),
         .size = SubVec2(hovered_rect.max, hovered_rect.min),
-        .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255, 64),
+        .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255,
+        64),
     });
     EndUIBox();
     EndUIBox();
     EndUILayer();
   }
+#endif
 }
 
 static void UIDebugLayerInternal(UIDebugLayerState *state) {
@@ -493,23 +496,8 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
   }
   EndUIBox();
 
-  for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
-    if (strstr((char *)layer->props.key.ptr, "__UIDebug__") == 0) {
-      bool open = true;
-      if (BeginUICollapsing((UICollapsingProps){
-              .open = &open,
-              .header =
-                  (UICollapsingHeaderProps){
-                      .text = layer->props.key,
-                      .default_background_color = 1,
-                  },
-          })) {
-        if (layer->root) {
-          UIDebugLayerBoxR(state, layer->root, 1);
-        }
-      }
-      EndUICollapsing();
-    }
+  for (UIBox *box = frame->first_box; box; box = box->next) {
+    UIDebugLayerBoxR(state, box, 0);
   }
   EndUIColumn();
   EndUIBox();
@@ -522,10 +510,6 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
   Vec2 default_frame_size = V2(400, 500);
   Vec2 min_frame_size = V2(resize_handle_size * 2, resize_handle_size * 2);
 
-  BeginUILayer((UILayerProps){
-      .key = STR8_LIT("__UIDebug__"),
-      .z_index = kUIDebugLayerZIndex,
-  });
   BeginUIBox((UIProps){0});
   UIDebugLayerState *state = PushUIBoxStruct(UIDebugLayerState);
   if (!state->init) {
@@ -580,7 +564,7 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
         BeginUIRow((UIRowProps){0});
         {
           UIEdgeInsets padding = UIEdgeInsetsSymmetric(6, 3);
-          DoUIButton((UIButtonProps){
+          DoUIText((UITextProps){
               .text = STR8_LIT("Debug"),
               .padding = padding,
           });
@@ -628,5 +612,4 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
     EndUIBox();
   }
   EndUIBox();
-  EndUILayer();
 }

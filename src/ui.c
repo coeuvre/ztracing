@@ -128,12 +128,7 @@ void SetUIDeltaTime(f32 dt) {
   state->fast_rate = 1.0f - ExpF32(-50.f * dt);
 }
 
-void SetUICanvasSize(Vec2 size) {
-  UIState *state = GetUIState();
-  state->input.canvas_size = size;
-}
-
-void BeginUIFrame(void) {
+void BeginUIFrame(Vec2 viewport_size) {
   UIState *state = GetUIState();
   state->frame_index += 1;
   state->current_frame =
@@ -151,7 +146,9 @@ void BeginUIFrame(void) {
                                           frame->cache.box_hash_slots_count);
 
   frame->frame_index = state->frame_index;
-  frame->first_layer = frame->last_layer = frame->current_layer = 0;
+  frame->viewport_size = viewport_size;
+  frame->toplevel_box_count = 0;
+  frame->first_box = frame->last_box = frame->current_box = 0;
   frame->first_error = frame->last_error = 0;
 }
 
@@ -426,6 +423,10 @@ static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
 
   // First pass: layout non-flex children
   for (UIBox *child = box->first; child; child = child->next) {
+    if (child->props.position.type == kUIPositionFixed) {
+      continue;
+    }
+
     total_flex += child->props.flex;
     if (!child->props.flex) {
       Vec2 this_child_max_size;
@@ -452,6 +453,10 @@ static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
   // Second pass: layout flex children
   f32 child_main_axis_flex = max_main_axis_size - child_main_axis_size;
   for (UIBox *child = box->first; child; child = child->next) {
+    if (child->props.position.type == kUIPositionFixed) {
+      continue;
+    }
+
     if (child->props.flex) {
       if (max_main_axis_size == kUISizeInfinity) {
         PushUIBuildErrorF(frame, "Unbounded constraint doesn't work with flex");
@@ -545,6 +550,15 @@ static Vec2 LayoutChildren(UIFrame *frame, UIBox *box, Vec2 max_size,
       UNREACHABLE;
     } break;
   }
+
+  for (UIBox *child = box->first; child; child = child->next) {
+    if (child->props.position.type != kUIPositionFixed) {
+      continue;
+    }
+
+    LayoutBox(frame, child, V2(0, 0), frame->viewport_size);
+  }
+
   return result;
 }
 
@@ -557,6 +571,20 @@ static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
   box->computed.min_size = min_size;
   box->computed.max_size = max_size;
   box->computed.clip = 0;
+
+  if (box->props.position.type == kUIPositionFixed) {
+    if (IsUIPositionRightSet(box->props.position) &&
+        IsUIPositionLeftSet(box->props.position)) {
+      box->props.size.x =
+          MaxF32(box->props.position.right - box->props.position.left, 0);
+    }
+
+    if (IsUIPositionBottomSet(box->props.position) &&
+        IsUIPositionTopSet(box->props.position)) {
+      box->props.size.y =
+          MaxF32(box->props.position.bottom - box->props.position.top, 0);
+    }
+  }
 
   Vec2 children_max_size = max_size;
   for (int axis = 0; axis < kAxis2Count; ++axis) {
@@ -721,12 +749,18 @@ static void RenderBox(UIState *state, UIBox *box) {
 static void DebugPrintUIR(UIBox *box, u32 level) {
   INFO(
       "%*s%s[seq=%u, key=%s, min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), "
-      "build_size=(%.2f, %.2f), size=(%.2f, %.2f), rel_pos=(%.2f, %.2f)]",
+      "build_size=(%.2f, %.2f), size=(%.2f, %.2f), rel_pos=(%.2f, %.2f), "
+      "screen_rect=((%.2f, %.2f), (%.2f, %.2f))], clip_rect=((%.2f, %.2f), "
+      "(%.2f, %.2f))]",
       level * 4, "", box->tag, box->seq, box->props.key.ptr,
       box->computed.min_size.x, box->computed.min_size.y,
       box->computed.max_size.x, box->computed.max_size.y, box->props.size.x,
       box->props.size.y, box->computed.size.x, box->computed.size.y,
-      box->computed.rel_pos.x, box->computed.rel_pos.y);
+      box->computed.rel_pos.x, box->computed.rel_pos.y,
+      box->computed.screen_rect.min.x, box->computed.screen_rect.min.y,
+      box->computed.screen_rect.max.x, box->computed.screen_rect.max.y,
+      box->computed.clip_rect.min.x, box->computed.clip_rect.min.y,
+      box->computed.clip_rect.max.x, box->computed.clip_rect.max.y);
   for (UIBox *child = box->first; child; child = child->next) {
     DebugPrintUIR(child, level + 1);
   }
@@ -734,12 +768,9 @@ static void DebugPrintUIR(UIBox *box, u32 level) {
 
 static void DebugPrintUI(UIState *state) {
   if (state->frame_index > 1) {
-    UIFrame *frame = GetCurrentUIFrame(state);
-    for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
-      INFO("Layer - %s", layer->props.key.ptr);
-      if (layer->root) {
-        DebugPrintUIR(layer->root, 0);
-      }
+    UIFrame *frame = GetCurrentUIFrame();
+    for (UIBox *box = frame->first_box; box; box = box->next) {
+      DebugPrintUIR(box, 0);
     }
     exit(0);
   }
@@ -791,10 +822,8 @@ static void ProcessInput(UIState *state, UIFrame *frame) {
     }
   }
 
-  for (UILayer *layer = frame->last_layer; layer; layer = layer->prev) {
-    if (layer->root) {
-      ProcessInputR(state, layer->root);
-    }
+  for (UIBox *box = frame->last_box; box; box = box->prev) {
+    ProcessInputR(state, box);
   }
 
   for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
@@ -819,11 +848,39 @@ static void ProcessInput(UIState *state, UIFrame *frame) {
 }
 
 static void PositionBox(UIBox *box, Vec2 parent_pos, Rect2 parent_clip_rect) {
-  Vec2 min = AddVec2(parent_pos, box->computed.rel_pos);
-  Vec2 max = AddVec2(min, box->computed.size);
-  box->computed.screen_rect = R2(min, max);
-  box->computed.clip_rect =
-      Rect2FromIntersection(parent_clip_rect, box->computed.screen_rect);
+  Vec2 min, max;
+  if (box->props.position.type == kUIPositionStatic) {
+    min = AddVec2(parent_pos, box->computed.rel_pos);
+    max = AddVec2(min, box->computed.size);
+    box->computed.screen_rect = R2(min, max);
+    box->computed.clip_rect =
+        Rect2FromIntersection(parent_clip_rect, box->computed.screen_rect);
+  } else {
+    Vec2 size = box->computed.size;
+
+    if (IsUIPositionLeftSet(box->props.position)) {
+      min.x = box->props.position.left;
+    } else if (IsUIPositionRightSet(box->props.position)) {
+      min.x = box->props.position.right - size.x;
+    } else {
+      min.x = 0;
+    }
+    max.x = min.x + size.x;
+
+    if (IsUIPositionTopSet(box->props.position)) {
+      min.y = box->props.position.top;
+    } else if (IsUIPositionBottomSet(box->props.position)) {
+      min.y = box->props.position.bottom - size.y;
+    } else {
+      min.y = 0;
+    }
+    max.y = min.y + size.y;
+
+    box->computed.screen_rect = R2(min, max);
+    box->computed.clip_rect = R2(min, max);
+    INFO("%f %f %f %f", min.x, min.y, max.x, max.y);
+  }
+
   for (UIBox *child = box->first; child; child = child->next) {
     PositionBox(child, min, box->computed.clip_rect);
   }
@@ -832,16 +889,14 @@ static void PositionBox(UIBox *box, Vec2 parent_pos, Rect2 parent_clip_rect) {
 void EndUIFrame(void) {
   UIState *state = GetUIState();
   UIFrame *frame = GetCurrentUIFrame();
-  ASSERTF(!frame->current_layer, "Mismatched BeginLayer/EndLayer calls");
+  ASSERTF(!frame->current_box, "Mismatched BeginBox/EndBox calls");
 
-  for (UILayer *layer = frame->first_layer; layer; layer = layer->next) {
-    if (layer->root) {
-      Vec2 size = state->input.canvas_size;
-      LayoutBox(frame, layer->root, size, size);
-      layer->root->computed.rel_pos = V2(0, 0);
+  for (UIBox *box = frame->first_box; box; box = box->next) {
+    Vec2 size = frame->viewport_size;
+    LayoutBox(frame, box, size, size);
+    box->computed.rel_pos = V2(0, 0);
 
-      PositionBox(layer->root, V2(0, 0), R2(V2(0, 0), size));
-    }
+    PositionBox(box, V2(0, 0), R2(V2(0, 0), size));
   }
 
   ProcessInput(state, frame);
@@ -854,10 +909,8 @@ void RenderUI(void) {
 
   ASSERTF(!frame->first_error, "%s", frame->first_error->message.ptr);
 
-  for (UILayer *layer = frame->first_layer; layer; layer = layer->next) {
-    if (layer->root) {
-      RenderBox(state, layer->root);
-    }
+  for (UIBox *box = frame->first_box; box; box = box->next) {
+    RenderBox(state, box);
   }
 }
 
@@ -879,45 +932,6 @@ static UIID UIIDFromU8(UIID seed, u8 ch) {
   u8 str[2] = {ch, 0};
   UIID result = UIIDFromStr8(seed, (Str8){.ptr = str, .len = 1});
   return result;
-}
-
-void BeginUILayer(UILayerProps props) {
-  ASSERTF(!IsEmptyStr8(props.key), "key of a UILayer cannot be empty");
-
-  UIFrame *frame = GetCurrentUIFrame();
-
-  UILayer *layer = PushArray(&frame->arena, UILayer, 1);
-
-  {
-    UILayer *after;
-    for (after = frame->last_layer; after; after = after->prev) {
-      if (after->props.z_index <= props.z_index) {
-        break;
-      }
-    }
-    if (after) {
-      INSERT_DOUBLY_LINKED_LIST(frame->first_layer, frame->last_layer, after,
-                                layer, prev, next);
-    } else {
-      PREPEND_DOUBLY_LINKED_LIST(frame->first_layer, frame->last_layer, layer,
-                                 prev, next);
-    }
-  }
-
-  layer->parent = frame->current_layer;
-  frame->current_layer = layer;
-
-  layer->id = UIIDFromStr8(UIIDZero(), props.key);
-  layer->props = props;
-}
-
-void EndUILayer(void) {
-  UIFrame *frame = GetCurrentUIFrame();
-  ASSERTF(frame->current_layer, "Mismatched BeginLayer/EndLayer calls");
-  ASSERTF(!frame->current_layer->current,
-          "Mismatched BeginUITag/EndUITag calls");
-
-  frame->current_layer = frame->current_layer->parent;
 }
 
 UIBuildError *GetFirstUIBuildError(void) {
@@ -951,6 +965,16 @@ Str8 PushUIStr8FV(const char *fmt, va_list ap) {
   return result;
 }
 
+static UIID UIIDFromU32(UIID seed, u32 num) {
+  UIID id = seed;
+  u32 s = num;
+  while (s > 0) {
+    id = UIIDFromU8(id, (u8)(s & 0xFF));
+    s = s >> 8;
+  }
+  return id;
+}
+
 static UIID UIIDForBox(UIID seed, u32 seq, const char *tag, Str8 key) {
   // id = seed + tag + (key || seq)
   UIID id = seed;
@@ -958,11 +982,7 @@ static UIID UIIDForBox(UIID seed, u32 seq, const char *tag, Str8 key) {
   if (!IsEmptyStr8(key)) {
     id = UIIDFromStr8(id, key);
   } else {
-    u32 s = seq;
-    while (s > 0) {
-      id = UIIDFromU8(id, (u8)(s & 0xFF));
-      s = s >> 8;
-    }
+    id = UIIDFromU32(id, seq);
   }
   return id;
 }
@@ -979,15 +999,12 @@ static UIBox *GetUIBoxFromLastFrame(UIID id) {
 void BeginUITag(const char *tag, UIProps props) {
   UIFrame *frame = GetCurrentUIFrame();
 
-  UILayer *layer = frame->current_layer;
-  ASSERTF(layer, "No active UILayer");
-
-  UIBox *parent = layer->current;
+  UIBox *parent = frame->current_box;
   UIID seed;
   if (parent) {
     seed = parent->id;
   } else {
-    seed = layer->id;
+    seed = UIIDFromU32(UIIDZero(), frame->toplevel_box_count);
   }
   u32 seq = 0;
   if (parent) {
@@ -1003,8 +1020,9 @@ void BeginUITag(const char *tag, UIProps props) {
     APPEND_DOUBLY_LINKED_LIST(parent->first, parent->last, box, prev, next);
     ++parent->children_count;
   } else {
-    ASSERTF(!layer->root, "More than one root provided");
-    layer->root = box;
+    APPEND_DOUBLY_LINKED_LIST(frame->first_box, frame->last_box, box, prev,
+                              next);
+    ++frame->toplevel_box_count;
   }
   box->parent = parent;
   box->props = props;
@@ -1015,20 +1033,18 @@ void BeginUITag(const char *tag, UIProps props) {
     box->computed = last_box->computed;
   }
 
-  layer->current = box;
+  frame->current_box = box;
 }
 
 void EndUITag(const char *tag) {
   UIFrame *frame = GetCurrentUIFrame();
-  UILayer *layer = frame->current_layer;
-  ASSERTF(layer, "No active UILayer");
+  UIBox *box = frame->current_box;
+  ASSERT(box);
+  ASSERTF(strcmp(box->tag, tag) == 0,
+          "Mismatched Begin/End calls. Begin with %s, end with %s", box->tag,
+          tag);
 
-  ASSERT(layer->current);
-  ASSERTF(strcmp(layer->current->tag, tag) == 0,
-          "Mismatched Begin/End calls. Begin with %s, end with %s",
-          layer->current->tag, tag);
-
-  layer->current = layer->current->parent;
+  frame->current_box = box->parent;
 }
 
 void *PushUIBoxState(const char *type_name, usize size) {

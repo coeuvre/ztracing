@@ -18,6 +18,77 @@ typedef enum UILayout {
   kUILayoutStack,
 } UILayout;
 
+typedef enum UIPositionType {
+  kUIPositionStatic,
+  kUIPositionFixed,
+} UIPositionType;
+
+typedef struct UIPosition {
+  u8 type;
+  bool set[4];
+  f32 left;
+  f32 right;
+  f32 top;
+  f32 bottom;
+} UIPosition;
+
+static inline UIPosition UIPositionFixedFromLT(f32 left, f32 top) {
+  UIPosition result = {
+      .type = kUIPositionFixed,
+      .set = {true, false, true, false},
+      .left = left,
+      .right = 0,
+      .top = top,
+      .bottom = 0,
+  };
+  return result;
+}
+
+static inline UIPosition UIPositionFixedFromRB(f32 right, f32 bottom) {
+  UIPosition result = {
+      .type = kUIPositionFixed,
+      .set = {false, true, false, true},
+      .left = 0,
+      .right = right,
+      .top = 0,
+      .bottom = bottom,
+  };
+  return result;
+}
+
+static inline UIPosition UIPositionFixedFromLTRB(f32 left, f32 top, f32 right,
+                                                 f32 bottom) {
+  UIPosition result = {
+      .type = kUIPositionFixed,
+      .set = {true, true, true, true},
+      .left = left,
+      .right = right,
+      .top = top,
+      .bottom = bottom,
+  };
+  return result;
+}
+
+static inline bool IsUIPositionLeftSet(UIPosition pos) {
+  bool result = pos.set[0];
+  return result;
+}
+
+static inline bool IsUIPositionRightSet(UIPosition pos) {
+  bool result = pos.set[1];
+  return result;
+}
+
+static inline bool IsUIPositionTopSet(UIPosition pos) {
+  bool result = pos.set[2];
+  return result;
+}
+
+static inline bool IsUIPositionBottomSet(UIPosition pos) {
+  bool result = pos.set[3];
+  return result;
+}
+
 typedef enum UIMainAxisSize {
   kUIMainAxisSizeMin,
   kUIMainAxisSizeMax,
@@ -39,7 +110,7 @@ typedef enum UICrossAxisAlign {
 } UICrossAxisAlign;
 
 typedef struct UIEdgeInsets {
-  bool set;
+  bool set[4];
   f32 left;
   f32 right;
   f32 top;
@@ -47,28 +118,64 @@ typedef struct UIEdgeInsets {
 } UIEdgeInsets;
 
 static inline UIEdgeInsets UIEdgeInsetsAll(f32 val) {
-  UIEdgeInsets result;
-  result.set = true;
-  result.left = result.right = result.top = result.bottom = val;
+  UIEdgeInsets result = {
+      .set = {true, true, true, true},
+      .left = val,
+      .right = val,
+      .top = val,
+      .bottom = val,
+  };
   return result;
 }
 
 static inline UIEdgeInsets UIEdgeInsetsSymmetric(f32 x, f32 y) {
-  UIEdgeInsets result;
-  result.set = true;
-  result.left = result.right = x;
-  result.top = result.bottom = y;
+  UIEdgeInsets result = {
+      .set = {true, true, true, true},
+      .left = x,
+      .right = x,
+      .top = y,
+      .bottom = y,
+  };
   return result;
 }
 
 static inline UIEdgeInsets UIEdgeInsetsFromLTRB(f32 left, f32 top, f32 right,
                                                 f32 bottom) {
-  UIEdgeInsets result;
-  result.set = true;
-  result.left = left;
-  result.right = right;
-  result.top = top;
-  result.bottom = bottom;
+  UIEdgeInsets result = {
+      .set = {true, true, true, true},
+      .left = left,
+      .right = right,
+      .top = top,
+      .bottom = bottom,
+  };
+  return result;
+}
+
+static inline UIEdgeInsets UIEdgeInsetsFromLT(f32 left, f32 top) {
+  UIEdgeInsets result = {
+      .set = {true, false, true, false},
+      .left = left,
+      .right = 0,
+      .top = top,
+      .bottom = 0,
+  };
+  return result;
+}
+
+static inline UIEdgeInsets UIEdgeInsetsFromRB(f32 right, f32 bottom) {
+  UIEdgeInsets result = {
+      .set = {false, true, false, true},
+      .left = 0,
+      .right = right,
+      .top = 0,
+      .bottom = bottom,
+  };
+  return result;
+}
+
+static inline bool IsUIEdgeInsetsSet(UIEdgeInsets edge_insets) {
+  b32 result = edge_insets.set[0] || edge_insets.set[1] || edge_insets.set[2] ||
+               edge_insets.set[3];
   return result;
 }
 
@@ -115,6 +222,7 @@ typedef struct UIProps {
   // The size of the box, including border and padding.
   Vec2 size;
   UILayout layout;
+  UIPosition position;
   Axis2 main_axis;
   f32 flex;
   UIMainAxisSize main_axis_size;
@@ -181,24 +289,6 @@ struct UIBox {
   UIBoxState state;
 };
 
-typedef struct UILayerProps {
-  Str8 key;
-  i32 z_index;
-} UILayerProps;
-
-typedef struct UILayer UILayer;
-struct UILayer {
-  UILayer *prev;
-  UILayer *next;
-  UILayer *parent;
-
-  UIID id;
-  UILayerProps props;
-
-  UIBox *root;
-  UIBox *current;
-};
-
 typedef struct UIBoxHashSlot UIBoxHashSlot;
 struct UIBoxHashSlot {
   UIBoxHashSlot *prev;
@@ -246,10 +336,12 @@ typedef struct UIFrame {
   UIBoxCache cache;
 
   u64 frame_index;
+  Vec2 viewport_size;
 
-  UILayer *first_layer;
-  UILayer *last_layer;
-  UILayer *current_layer;
+  u32 toplevel_box_count;
+  UIBox *first_box;
+  UIBox *last_box;
+  UIBox *current_box;
 
   UIBuildError *first_error;
   UIBuildError *last_error;
@@ -257,7 +349,6 @@ typedef struct UIFrame {
 
 typedef struct UIInput {
   f32 dt;
-  Vec2 canvas_size;
   UIMouseInput mouse;
 } UIInput;
 
@@ -330,14 +421,9 @@ static inline ColorU32 AnimateUIFastColorU32(ColorU32 value, ColorU32 target) {
   return result;
 }
 
-void SetUICanvasSize(Vec2 size);
-
-void BeginUIFrame(void);
+void BeginUIFrame(Vec2 viewport_size);
 void EndUIFrame(void);
 void RenderUI(void);
-
-void BeginUILayer(UILayerProps props);
-void EndUILayer(void);
 
 UIBuildError *GetFirstUIBuildError(void);
 
@@ -366,8 +452,8 @@ static inline void EndUIBox(void) { EndUITag("Box"); }
 
 static inline UIBox *GetCurrentUIBox(void) {
   UIFrame *frame = GetCurrentUIFrame();
-  DEBUG_ASSERT(frame->current_layer && frame->current_layer->current);
-  UIBox *box = frame->current_layer->current;
+  DEBUG_ASSERT(frame->current_box);
+  UIBox *box = frame->current_box;
   return box;
 }
 

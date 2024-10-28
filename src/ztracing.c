@@ -13,12 +13,6 @@
 static void BuildUI(f32 dt, f32 frame_time) {
   static bool debug_layer_open;
   static Arena debug_layer_arena;
-  DoUIDebugLayer((UIDebugLayerProps){
-      .arena = &debug_layer_arena,
-      .open = &debug_layer_open,
-  });
-
-  BeginUILayer((UILayerProps){.key = STR8_LIT("Base")});
 
   BeginUIColumn((UIColumnProps){
       .color = ColorU32FromSRGBNotPremultiplied(0, 0, 0, 255),
@@ -93,7 +87,11 @@ static void BuildUI(f32 dt, f32 frame_time) {
     EndUIScrollable();
   }
   EndUIColumn();
-  EndUILayer();
+
+  DoUIDebugLayer((UIDebugLayerProps){
+      .arena = &debug_layer_arena,
+      .open = &debug_layer_open,
+  });
 }
 
 void DoFrame(void) {
@@ -111,8 +109,7 @@ void DoFrame(void) {
   ClearDraw();
 
   SetUIDeltaTime(dt);
-  SetUICanvasSize(GetScreenSize());
-  BeginUIFrame();
+  BeginUIFrame(GetScreenSize());
   BuildUI(dt, last_frame_time);
   EndUIFrame();
   RenderUI();
