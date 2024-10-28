@@ -75,9 +75,7 @@ test "State, return the same state across frame" {
     c.InitUI();
     defer c.QuitUI();
 
-    c.BeginUIFrame();
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{});
@@ -95,12 +93,9 @@ test "State, return the same state across frame" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
-    c.BeginUIFrame();
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{});
@@ -118,7 +113,6 @@ test "State, return the same state across frame" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 }
 
@@ -126,9 +120,7 @@ test "State, reset state if key is different" {
     c.InitUI();
     defer c.QuitUI();
 
-    c.BeginUIFrame();
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .key = c.STR8_LIT("Key0") });
@@ -146,12 +138,9 @@ test "State, reset state if key is different" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
-    c.BeginUIFrame();
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .key = c.STR8_LIT("Key1") });
@@ -169,7 +158,6 @@ test "State, reset state if key is different" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 }
 
@@ -177,9 +165,7 @@ test "State, reset state if tag is different" {
     c.InitUI();
     defer c.QuitUI();
 
-    c.BeginUIFrame();
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{});
@@ -197,12 +183,9 @@ test "State, reset state if tag is different" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
-    c.BeginUIFrame();
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUITag("Tag", .{});
@@ -220,7 +203,6 @@ test "State, reset state if tag is different" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 }
 
@@ -228,9 +210,7 @@ test "State, reset state if box is not build from last frame" {
     c.InitUI();
     defer c.QuitUI();
 
-    c.BeginUIFrame();
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{});
@@ -248,12 +228,9 @@ test "State, reset state if box is not build from last frame" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
-    c.BeginUIFrame();
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{});
@@ -264,12 +241,9 @@ test "State, reset state if box is not build from last frame" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
-    c.BeginUIFrame();
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{});
@@ -287,7 +261,6 @@ test "State, reset state if box is not build from last frame" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 }
 
@@ -295,9 +268,7 @@ test "State, reset state if parent is different" {
     c.InitUI();
     defer c.QuitUI();
 
-    c.BeginUIFrame();
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         _ = c.BeginUIBox(.{});
@@ -312,12 +283,9 @@ test "State, reset state if parent is different" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
-    c.BeginUIFrame();
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         _ = c.BeginUITag("Tag", .{});
@@ -332,35 +300,31 @@ test "State, reset state if parent is different" {
         c.EndUITag("Tag");
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 }
 
-test "Layout, root has the same size as the screen" {
-    c.InitUI();
-    defer c.QuitUI();
-
-    const sizes: []const c.Vec2 = &.{
-        c.V2(c.kUISizeUndefined, c.kUISizeUndefined),
-        c.V2(50, 50),
-        c.V2(50, 200),
-        c.V2(200, 50),
-        c.V2(200, 200),
-    };
-
-    for (sizes) |size| {
-        c.SetUICanvasSize(c.V2(100, 100));
-        c.BeginUIFrame();
-        c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
-        c.BeginUIBox(.{ .size = size });
-        const root = c.GetCurrentUIBox();
-        c.EndUIBox();
-        c.EndUILayer();
-        c.EndUIFrame();
-
-        try expectBoxSize(root, c.V2(100, 100));
-    }
-}
+// test "Layout, root has the same size as the screen" {
+//     c.InitUI();
+//     defer c.QuitUI();
+//
+//     const sizes: []const c.Vec2 = &.{
+//         c.V2(c.kUISizeUndefined, c.kUISizeUndefined),
+//         c.V2(50, 50),
+//         c.V2(50, 200),
+//         c.V2(200, 50),
+//         c.V2(200, 200),
+//     };
+//
+//     for (sizes) |size| {
+//         c.BeginUIFrame(c.V2(100, 100));
+//         c.BeginUIBox(.{ .size = size });
+//         const root = c.GetCurrentUIBox();
+//         c.EndUIBox();
+//         c.EndUIFrame();
+//
+//         try expectBoxSize(root, c.V2(100, 100));
+//     }
+// }
 
 test "Layout, aligns" {
     c.InitUI();
@@ -377,14 +341,13 @@ test "Layout, aligns" {
         .{ .@"align" = c.kUICrossAxisAlignEnd, .rel_pos = 50 },
     };
 
-    c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
             var container: [*c]c.UIBox = undefined;
 
-            c.BeginUIFrame();
-            c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+            c.BeginUIFrame(c.V2(100, 100));
             _ = c.BeginUIBox(.{
+                .size = c.V2(100, 100),
                 .main_axis_align = main_axis_option.@"align",
                 .cross_axis_align = cross_axis_option.@"align",
             });
@@ -394,7 +357,6 @@ test "Layout, aligns" {
                 c.EndUIBox();
             }
             c.EndUIBox();
-            c.EndUILayer();
             c.EndUIFrame();
 
             try expectBoxRelPos(container, c.V2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
@@ -419,14 +381,13 @@ test "Layout, padding" {
         .{ .@"align" = c.kUICrossAxisAlignEnd, .rel_pos = 46 },
     };
 
-    c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_options) |main_axis_option| {
         for (cross_axis_options) |cross_axis_option| {
             var container: [*c]c.UIBox = undefined;
 
-            c.BeginUIFrame();
-            c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+            c.BeginUIFrame(c.V2(100, 100));
             _ = c.BeginUIBox(.{
+                .size = c.V2(100, 100),
                 .main_axis_align = main_axis_option.@"align",
                 .cross_axis_align = cross_axis_option.@"align",
                 .padding = padding,
@@ -441,7 +402,6 @@ test "Layout, padding" {
                 c.EndUIBox();
             }
             c.EndUIBox();
-            c.EndUILayer();
             c.EndUIFrame();
 
             try expectBoxRelPos(container, c.V2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
@@ -456,9 +416,7 @@ test "Layout, no children, no fixed size, as small as possible" {
 
     var container: [*c]c.UIBox = undefined;
 
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{});
@@ -466,7 +424,6 @@ test "Layout, no children, no fixed size, as small as possible" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     try expectBoxSize(container, c.V2(0, 0));
@@ -478,9 +435,7 @@ test "Layout, no children, no fixed size, flex, main axis is as big as possible"
 
     var container: [*c]c.UIBox = undefined;
 
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .flex = 1 });
@@ -488,7 +443,6 @@ test "Layout, no children, no fixed size, flex, main axis is as big as possible"
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     try expectBoxSize(container, c.V2(100, 0));
@@ -500,9 +454,7 @@ test "Layout, with one child, size around it" {
 
     var container: [*c]c.UIBox = undefined;
 
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         _ = c.BeginUIBox(.{});
@@ -514,7 +466,6 @@ test "Layout, with one child, size around it" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     try expectBoxSize(container, c.V2(50, 50));
@@ -527,9 +478,7 @@ test "Layout, with fixed size" {
     var container: [*c]c.UIBox = undefined;
     var child: [*c]c.UIBox = undefined;
 
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .size = c.V2(30, 20) });
@@ -542,7 +491,6 @@ test "Layout, with fixed size" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     try expectBoxSize(container, c.V2(30, 20));
@@ -556,9 +504,7 @@ test "Layout, with fixed size, negative" {
     var container: [*c]c.UIBox = undefined;
     var child: [*c]c.UIBox = undefined;
 
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .size = c.V2(30, -20) });
@@ -571,7 +517,6 @@ test "Layout, with fixed size, negative" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     try expectBoxSize(container, c.V2(30, 0));
@@ -587,12 +532,10 @@ test "Layout, main axis size, child has different main axis than parent" {
         c.kUIMainAxisSizeMax,
     };
 
-    c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_sizes) |main_axis_size| {
         var row: [*c]c.UIBox = undefined;
 
-        c.BeginUIFrame();
-        c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+        c.BeginUIFrame(c.V2(100, 100));
         _ = c.BeginUIBox(.{ .main_axis = c.kAxis2Y });
         {
             c.BeginUIBox(.{ .main_axis_size = main_axis_size });
@@ -604,7 +547,6 @@ test "Layout, main axis size, child has different main axis than parent" {
             c.EndUIBox();
         }
         c.EndUIBox();
-        c.EndUILayer();
         c.EndUIFrame();
 
         if (main_axis_size == c.kUIMainAxisSizeMin) {
@@ -624,12 +566,10 @@ test "Layout, main axis size, child has same main axis as parent" {
         c.kUIMainAxisSizeMax,
     };
 
-    c.SetUICanvasSize(c.V2(100, 100));
     for (main_axis_sizes) |main_axis_size| {
         var row: [*c]c.UIBox = undefined;
 
-        c.BeginUIFrame();
-        c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+        c.BeginUIFrame(c.V2(100, 100));
         _ = c.BeginUIBox(.{});
         {
             c.BeginUIBox(.{ .main_axis_size = main_axis_size });
@@ -641,7 +581,6 @@ test "Layout, main axis size, child has same main axis as parent" {
             c.EndUIBox();
         }
         c.EndUIBox();
-        c.EndUILayer();
         c.EndUIFrame();
 
         if (main_axis_size == c.kUIMainAxisSizeMin) {
@@ -660,9 +599,7 @@ test "Layout, no fixed size, size around text" {
 
     var text: [*c]c.UIBox = undefined;
 
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .text = c.PushUIStr8F("text") });
@@ -670,7 +607,6 @@ test "Layout, no fixed size, size around text" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     const text_metrics = c.GetTextMetricsStr8(c.STR8_LIT("Text"), c.kUIFontSizeDefault);
@@ -683,9 +619,7 @@ test "Layout, fixed size, truncate text" {
 
     var text: [*c]c.UIBox = undefined;
 
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .size = c.V2(2, 2), .text = c.PushUIStr8F("Text") });
@@ -693,7 +627,6 @@ test "Layout, fixed size, truncate text" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     try expectBoxSize(text, c.V2(2, 2));
@@ -706,9 +639,7 @@ test "Layout, row, no constraints on children" {
     var c0: [*c]c.UIBox = undefined;
     var c1: [*c]c.UIBox = undefined;
 
-    c.SetUICanvasSize(c.V2(1000, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(1000, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
@@ -720,7 +651,6 @@ test "Layout, row, no constraints on children" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.kUIFontSizeDefault).size;
@@ -740,9 +670,7 @@ test "Layout, row, no constraints on children, but truncate" {
     var c0: [*c]c.UIBox = undefined;
     var c1: [*c]c.UIBox = undefined;
 
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
@@ -754,7 +682,6 @@ test "Layout, row, no constraints on children, but truncate" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.kUIFontSizeDefault).size;
@@ -774,9 +701,7 @@ test "Layout, row, constraint flex" {
     var c0: [*c]c.UIBox = undefined;
     var c1: [*c]c.UIBox = undefined;
 
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{
@@ -791,7 +716,6 @@ test "Layout, row, constraint flex" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("A very long text that doesn't fit in one line!"), c.kUIFontSizeDefault).size;
@@ -811,9 +735,7 @@ test "Layout, main axis unbounded" {
     var container: [*c]c.UIBox = undefined;
     var child: [*c]c.UIBox = undefined;
 
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
@@ -833,7 +755,6 @@ test "Layout, main axis unbounded" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     try expectBoxSize(container, c.V2(100, 20));
@@ -844,9 +765,7 @@ test "Layout, main axis unbounded, with unbounded content" {
     c.InitUI();
     defer c.QuitUI();
 
-    c.SetUICanvasSize(c.V2(100, 100));
-    c.BeginUIFrame();
-    c.BeginUILayer(.{ .key = c.STR8_LIT("Layer") });
+    c.BeginUIFrame(c.V2(100, 100));
     _ = c.BeginUIBox(.{});
     {
         _ = c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
@@ -857,7 +776,6 @@ test "Layout, main axis unbounded, with unbounded content" {
         c.EndUIBox();
     }
     c.EndUIBox();
-    c.EndUILayer();
     c.EndUIFrame();
 
     try expectUIBuildError("Cannot have unbounded content within unbounded constraint");
