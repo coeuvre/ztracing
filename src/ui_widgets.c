@@ -296,7 +296,8 @@ static void DoUIScrollableScrollBar(UIScrollableState *state) {
   {
     Vec2 mouse_pos = GetUIMouseRelPos();
     if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
-      if (ContainsF32(mouse_pos.x, 0, state->head_size.x)) {
+      if (ContainsF32(mouse_pos.x, 0, state->head_size.x) &&
+          state->target_scroll) {
         f32 offset = mouse_pos.y - state->head_size.y;
         if (offset < state->control_offset) {
           *state->target_scroll =
@@ -327,7 +328,8 @@ static void DoUIScrollableScrollBar(UIScrollableState *state) {
         state->control_offset_drag_start = state->control_offset;
       }
       Vec2 drag_delta;
-      if (IsUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta)) {
+      if (IsUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta) &&
+          state->target_scroll) {
         f32 offset = state->control_offset_drag_start + drag_delta.y;
         *state->target_scroll =
             ClampF32(offset / state->control_max * state->scroll_max, 0,
@@ -364,10 +366,8 @@ void EndUIScrollable(void) {
     EndUITag("ScrollArea");
 
     UIScrollableState *state = GetUIBoxStruct(UIScrollableState);
-    if (state->target_scroll) {
-      if (state->scroll_max > 0) {
-        DoUIScrollableScrollBar(state);
-      }
+    if (state->scroll_max > 0) {
+      DoUIScrollableScrollBar(state);
     }
   }
   EndUITag("Scrollable");
