@@ -13,13 +13,9 @@ typedef struct UIID {
   u64 hash;
 } UIID;
 
-typedef enum UILayout {
-  kUILayoutFlex,
-  kUILayoutStack,
-} UILayout;
-
 typedef enum UIPosition {
-  kUIPositionStatic,
+  kUIPositionRelative,
+  kUIPositionAbsolute,
   kUIPositionFixed,
 } UIPosition;
 
@@ -175,7 +171,6 @@ typedef struct UIProps {
   ColorU32 background_color;
   // The size of the box, including border and padding.
   Vec2 size;
-  UILayout layout;
   Axis2 main_axis;
   f32 flex;
   UIMainAxisSize main_axis_size;

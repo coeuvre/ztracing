@@ -38,20 +38,6 @@ typedef struct UIColumnProps {
 void BeginUIColumn(UIColumnProps props);
 static inline void EndUIColumn(void) { EndUITag("Column"); }
 
-typedef struct UIStackProps {
-  Str8 key;
-  Vec2 size;
-  UIEdgeInsets padding;
-  UIEdgeInsets margin;
-  UIBorder border;
-  ColorU32 color;
-  ColorU32 background_color;
-  UIMainAxisAlign main_axis_align;
-  UICrossAxisAlign cross_axis_align;
-} UIStackProps;
-void BeginUIStack(UIStackProps props);
-static inline void EndUIStack(void) { EndUITag("Stack"); }
-
 typedef struct UITextProps {
   Str8 key;
   Vec2 size;
@@ -67,8 +53,10 @@ void DoUIText(UITextProps props);
 
 typedef struct UIButtonProps {
   Vec2 size;
-  Str8 text;
+  UIPosition position;
+  UIEdgeInsets offset;
   UIEdgeInsets padding;
+  Str8 text;
 
   bool default_background_color;
   bool *hoverred;

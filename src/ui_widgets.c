@@ -48,21 +48,6 @@ void BeginUIColumn(UIColumnProps props) {
                        });
 }
 
-void BeginUIStack(UIStackProps props) {
-  BeginUITag("Stack", (UIProps){
-                          .key = props.key,
-                          .size = props.size,
-                          .layout = kUILayoutStack,
-                          .padding = props.padding,
-                          .margin = props.margin,
-                          .border = props.border,
-                          .color = props.color,
-                          .background_color = props.background_color,
-                          .main_axis_align = props.main_axis_align,
-                          .cross_axis_align = props.cross_axis_align,
-                      });
-}
-
 void DoUIText(UITextProps props) {
   BeginUITag("Text", (UIProps){
                          .key = props.key,
@@ -92,8 +77,10 @@ bool BeginUIButton(UIButtonProps props) {
   bool clicked;
   BeginUITag("Button", (UIProps){
                            .size = props.size,
-                           .text = props.text,
+                           .position = props.position,
+                           .offset = props.offset,
                            .padding = padding,
+                           .text = props.text,
                        });
   {
     UIButtonState *state = PushUIBoxStruct(UIButtonState);
@@ -513,10 +500,7 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
   if (state->open) {
     BeginUIBox((UIProps){
         .size = SubVec2(state->max, state->min),
-        .layout = kUILayoutStack,
         .color = ColorU32FromHex(0x000000),
-        .main_axis_align = kUIMainAxisAlignEnd,
-        .cross_axis_align = kUICrossAxisAlignEnd,
         .position = kUIPositionFixed,
         .offset = UIEdgeInsetsFromLT(state->min.x, state->min.y),
         .border = UIBorderFromBorderSide((UIBorderSide){
@@ -579,6 +563,8 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
 
       BeginUIButton((UIButtonProps){
           .default_background_color = 1,
+          .position = kUIPositionAbsolute,
+          .offset = UIEdgeInsetsFromRB(1, 1),
           .size = V2(resize_handle_size, resize_handle_size),
       });
       {
