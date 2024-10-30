@@ -289,9 +289,7 @@ typedef struct UIFrame {
   u64 frame_index;
   Vec2 viewport_size;
 
-  u32 toplevel_box_count;
-  UIBox *first_box;
-  UIBox *last_box;
+  UIBox *root;
   UIBox *current_box;
 
   UIBuildError *first_error;

@@ -147,9 +147,10 @@ void BeginUIFrame(Vec2 viewport_size) {
 
   frame->frame_index = state->frame_index;
   frame->viewport_size = viewport_size;
-  frame->toplevel_box_count = 0;
-  frame->first_box = frame->last_box = frame->current_box = 0;
   frame->first_error = frame->last_error = 0;
+  frame->current_box = 0;
+  BeginUITag("Root", (UIProps){0});
+  frame->root = frame->current_box;
 }
 
 static inline f32 GetEdgeInsetsSize(UIEdgeInsets edge_insets, Axis2 axis) {
@@ -724,9 +725,7 @@ static void ProcessInput(UIState *state, UIFrame *frame) {
     }
   }
 
-  for (UIBox *box = frame->last_box; box; box = box->prev) {
-    ProcessInputR(state, box);
-  }
+  ProcessInputR(state, frame->root);
 
   for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
     if (!IsZeroUIID(state->input.mouse.pressed[button])) {
@@ -825,15 +824,14 @@ static void PositionBox(UIFrame *frame, UIBox *box, Vec2 parent_min,
 void EndUIFrame(void) {
   UIState *state = GetUIState();
   UIFrame *frame = GetCurrentUIFrame();
+  EndUITag("Root");
   ASSERTF(!frame->current_box, "Mismatched BeginBox/EndBox calls");
 
-  for (UIBox *box = frame->first_box; box; box = box->next) {
-    Vec2 size = frame->viewport_size;
-    LayoutBox(frame, box, V2(0, 0), size);
-    box->computed.rel_pos = V2(0, 0);
+  Vec2 size = frame->viewport_size;
+  LayoutBox(frame, frame->root, V2(0, 0), size);
+  frame->root->computed.rel_pos = V2(0, 0);
 
-    PositionBox(frame, box, V2(0, 0), size, R2(V2(0, 0), size));
-  }
+  PositionBox(frame, frame->root, V2(0, 0), size, R2(V2(0, 0), size));
 
   ProcessInput(state, frame);
   DebugPrintUI(state);
@@ -845,9 +843,7 @@ void RenderUI(void) {
 
   ASSERTF(!frame->first_error, "%s", frame->first_error->message.ptr);
 
-  for (UIBox *box = frame->first_box; box; box = box->next) {
-    RenderBox(state, box);
-  }
+  RenderBox(state, frame->root);
 }
 
 static UIID UIIDFromStr8(UIID seed, Str8 str) {
@@ -945,8 +941,6 @@ void BeginUITag(const char *tag, UIProps props) {
   u32 seq = 0;
   if (parent) {
     seq = parent->children_count;
-  } else {
-    seq = frame->toplevel_box_count;
   }
 
   UIID id = UIIDForBox(seed, seq, tag, props.key);
@@ -957,10 +951,6 @@ void BeginUITag(const char *tag, UIProps props) {
   if (parent) {
     APPEND_DOUBLY_LINKED_LIST(parent->first, parent->last, box, prev, next);
     ++parent->children_count;
-  } else {
-    APPEND_DOUBLY_LINKED_LIST(frame->first_box, frame->last_box, box, prev,
-                              next);
-    ++frame->toplevel_box_count;
   }
   box->parent = parent;
   box->props = props;

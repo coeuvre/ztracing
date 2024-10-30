@@ -466,9 +466,10 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
   }
   EndUIBox();
 
-  for (UIBox *box = frame->first_box; box; box = box->next) {
-    UIDebugLayerBoxR(state, box, 0);
+  if (frame->root) {
+    UIDebugLayerBoxR(state, frame->root, 0);
   }
+
   EndUIColumn();
   EndUIBox();
 }
