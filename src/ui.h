@@ -13,6 +13,8 @@ typedef struct UIID {
   u64 hash;
 } UIID;
 
+UIID UIIDFromU8(UIID seed, u8 ch);
+
 typedef enum UIPosition {
   kUIPositionRelative,
   kUIPositionAbsolute,
@@ -178,6 +180,7 @@ typedef struct UIProps {
   UICrossAxisAlign cross_axis_align;
 
   UIPosition position;
+  i32 z_index;
   UIEdgeInsets offset;
   UIEdgeInsets margin;
   UIBorder border;
@@ -213,6 +216,15 @@ typedef struct UIBoxState {
 } UIBoxState;
 
 typedef struct UIBox UIBox;
+
+typedef struct UIBoxTreeLink {
+  UIBox *prev;
+  UIBox *next;
+  UIBox *first;
+  UIBox *last;
+  UIBox *parent;
+} UIBoxTreeLink;
+
 struct UIBox {
   UIID id;
   const char *tag;
@@ -222,12 +234,10 @@ struct UIBox {
   UIBox *hash_prev;
   UIBox *hash_next;
 
-  // tree links
-  UIBox *first;
-  UIBox *last;
-  UIBox *prev;
-  UIBox *next;
-  UIBox *parent;
+  // tree links for building order
+  UIBoxTreeLink build;
+  // tree links for stacking order
+  UIBoxTreeLink stack;
   u32 children_count;
 
   bool hoverable;
@@ -290,7 +300,8 @@ typedef struct UIFrame {
   Vec2 viewport_size;
 
   UIBox *root;
-  UIBox *current_box;
+  UIBox *current_build;
+  UIBox *current_stack;
 
   UIBuildError *first_error;
   UIBuildError *last_error;
@@ -374,6 +385,8 @@ void BeginUIFrame(Vec2 viewport_size);
 void EndUIFrame(void);
 void RenderUI(void);
 
+UIBox *GetUIBoxFromFrame(UIFrame *frame, UIID id);
+
 UIBuildError *GetFirstUIBuildError(void);
 
 static inline UIID UIIDZero(void) {
@@ -401,8 +414,8 @@ static inline void EndUIBox(void) { EndUITag("Box"); }
 
 static inline UIBox *GetCurrentUIBox(void) {
   UIFrame *frame = GetCurrentUIFrame();
-  DEBUG_ASSERT(frame->current_box);
-  UIBox *box = frame->current_box;
+  DEBUG_ASSERT(frame->current_build);
+  UIBox *box = frame->current_build;
   return box;
 }
 

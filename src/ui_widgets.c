@@ -377,12 +377,16 @@ typedef struct UIDebugLayerState {
   Vec2 pressed_max;
   f32 scroll;
   Rect2 hoverred_rect;
+  UIBox *debug_layer;
 
   Arena *arena;
   UIBoxDebugState *root;
 } UIDebugLayerState;
 
-static UIBoxDebugState *PushUIBoxDebugState(UIDebugLayerState *state, UIID id) {
+static UIBoxDebugState *PushUIBoxDebugState(UIDebugLayerState *state, UIID id,
+                                            bool build_order) {
+  id = UIIDFromU8(id, (u8)build_order);
+
   UIBoxDebugState **node = &state->root;
   for (u64 hash = id.hash; *node; hash <<= 2) {
     if (IsZeroUIID(id) || IsEqualUIID(id, (*node)->id)) {
@@ -398,17 +402,24 @@ static UIBoxDebugState *PushUIBoxDebugState(UIDebugLayerState *state, UIID id) {
   return *node;
 }
 
-static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
-  UIBoxDebugState *box_debug_state = PushUIBoxDebugState(state, box->id);
+static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level,
+                             bool build_order) {
+  if (box == state->debug_layer) {
+    return;
+  }
 
-  Str8 seq_str = PushUIStr8F("%u", box->seq);
-  Str8 text = PushUIStr8F(
-      "%s%s%s", box->tag, "#",
-      IsEmptyStr8(box->props.key) ? seq_str.ptr : box->props.key.ptr);
+  UIBoxDebugState *box_debug_state =
+      PushUIBoxDebugState(state, box->id, build_order);
+
+  bool has_key = !IsEmptyStr8(box->props.key);
+  Str8 text = PushUIStr8F("%s%s%s", box->tag, has_key ? "#" : "",
+                          has_key ? (char *)box->props.key.ptr : "");
 
   bool header_hovered;
   if (BeginUICollapsing((UICollapsingProps){
-          .open = box->first ? &box_debug_state->open : 0,
+          .open = (build_order ? box->build.first : box->stack.first)
+                      ? &box_debug_state->open
+                      : 0,
           .header =
               (UICollapsingHeaderProps){
                   .text = text,
@@ -417,8 +428,9 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level) {
               },
       })) {
     BeginUIColumn((UIColumnProps){0});
-    for (UIBox *child = box->first; child; child = child->next) {
-      UIDebugLayerBoxR(state, child, level + 1);
+    for (UIBox *child = (build_order ? box->build.first : box->stack.first);
+         child; child = (build_order ? child->build.next : child->stack.next)) {
+      UIDebugLayerBoxR(state, child, level + 1, build_order);
     }
     EndUIColumn();
   }
@@ -467,7 +479,8 @@ static void UIDebugLayerInternal(UIDebugLayerState *state) {
   EndUIBox();
 
   if (frame->root) {
-    UIDebugLayerBoxR(state, frame->root, 0);
+    UIDebugLayerBoxR(state, frame->root, 0, /* build_order= */ true);
+    UIDebugLayerBoxR(state, frame->root, 0, /* build_order= */ false);
   }
 
   EndUIColumn();
@@ -481,7 +494,9 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
   Vec2 default_frame_size = V2(400, 500);
   Vec2 min_frame_size = V2(resize_handle_size * 2, resize_handle_size * 2);
 
-  BeginUITag("DebugLayer", (UIProps){0});
+  BeginUITag("DebugLayer", (UIProps){
+                               .z_index = kUIDebugLayerZIndex,
+                           });
   UIDebugLayerState *state = PushUIBoxStruct(UIDebugLayerState);
   if (!state->init) {
     if (IsZeroVec2(SubVec2(state->max, state->min))) {
@@ -493,22 +508,26 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
     state->init = 1;
   }
 
+  UIBox *debug_layer = GetCurrentUIBox();
+  state->debug_layer = GetUIBoxFromFrame(GetLastUIFrame(), debug_layer->id);
+
   if (props.open) {
     state->open = *props.open;
   }
 
   state->hoverred_rect = Rect2Zero();
   if (state->open) {
-    BeginUIBox((UIProps){
-        .size = SubVec2(state->max, state->min),
-        .color = ColorU32FromHex(0x000000),
-        .position = kUIPositionFixed,
-        .offset = UIEdgeInsetsFromLT(state->min.x, state->min.y),
-        .border = UIBorderFromBorderSide((UIBorderSide){
-            .color = ColorU32FromHex(0xA8A8A8),
-            .width = 1,
-        }),
-    });
+    BeginUITag("Float",
+               (UIProps){
+                   .size = SubVec2(state->max, state->min),
+                   .color = ColorU32FromHex(0x000000),
+                   .position = kUIPositionFixed,
+                   .offset = UIEdgeInsetsFromLT(state->min.x, state->min.y),
+                   .border = UIBorderFromBorderSide((UIBorderSide){
+                       .color = ColorU32FromHex(0xA8A8A8),
+                       .width = 1,
+                   }),
+               });
     {
       SetUIBoxBlockMouseInput();
 
@@ -581,22 +600,22 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
       }
       EndUIButton();
     }
-    EndUIBox();
+    EndUITag("Float");
 
-    BeginUIBox((UIProps){0});
+    BeginUITag("Highlight", (UIProps){0});
     if (GetRect2Area(state->hoverred_rect) > 0) {
       Rect2 hoverred_rect = state->hoverred_rect;
 
-      BeginUIBox((UIProps){
+      GetCurrentUIBox()->props = (UIProps){
           .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255, 64),
           .size = SubVec2(hoverred_rect.max, hoverred_rect.min),
+          .z_index = -1,
           .position = kUIPositionFixed,
           .offset =
               UIEdgeInsetsFromLT(hoverred_rect.min.x, hoverred_rect.min.y),
-      });
-      EndUIBox();
+      };
     }
-    EndUIBox();
+    EndUITag("Highlight");
   }
   EndUITag("DebugLayer");
 }

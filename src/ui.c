@@ -13,7 +13,7 @@
 
 thread_local UIState t_ui_state;
 
-static UIBox *GetUIBoxFromFrame(UIFrame *frame, UIID id) {
+UIBox *GetUIBoxFromFrame(UIFrame *frame, UIID id) {
   UIBox *result = 0;
   UIBoxCache *cache = &frame->cache;
   if (!IsZeroUIID(id) && cache->box_hash_slots) {
@@ -148,9 +148,9 @@ void BeginUIFrame(Vec2 viewport_size) {
   frame->frame_index = state->frame_index;
   frame->viewport_size = viewport_size;
   frame->first_error = frame->last_error = 0;
-  frame->current_box = 0;
+  frame->current_stack = frame->current_build = 0;
   BeginUITag("Root", (UIProps){0});
-  frame->root = frame->current_box;
+  frame->root = frame->current_build;
 }
 
 static inline f32 GetEdgeInsetsSize(UIEdgeInsets edge_insets, Axis2 axis) {
@@ -233,7 +233,7 @@ static void AlignMainAxis(UIBox *box, Axis2 axis, UIMainAxisAlign align,
     } break;
   }
 
-  for (UIBox *child = box->first; child; child = child->next) {
+  for (UIBox *child = box->build.first; child; child = child->build.next) {
     pos += GetEdgeInsetsStart(child->props.margin, axis);
     box->computed.clip = box->computed.clip || (pos < 0 || pos > size_axis);
     SetItemVec2(&child->computed.rel_pos, axis, pos);
@@ -250,7 +250,7 @@ static void AlignCrossAxis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
   f32 padding_end = GetEdgeInsetsEnd(box->props.padding, axis);
 
   f32 self_size = GetItemVec2(box->computed.size, axis);
-  for (UIBox *child = box->first; child; child = child->next) {
+  for (UIBox *child = box->build.first; child; child = child->build.next) {
     f32 child_size = GetItemVec2(child->computed.size, axis);
     f32 free = self_size - child_size - border_start - border_end -
                padding_start - padding_end -
@@ -292,16 +292,16 @@ static inline b32 ShouldMaxAxis(UIBox *box, int axis, Axis2 main_axis,
 
 static f32 GetFirstNonZeroFontSize(UIBox *box) {
   f32 font_size = box->props.font_size;
-  if (font_size <= 0 && box->parent) {
-    font_size = GetFirstNonZeroFontSize(box->parent);
+  if (font_size <= 0 && box->build.parent) {
+    font_size = GetFirstNonZeroFontSize(box->build.parent);
   }
   return font_size;
 }
 
 static ColorU32 GetFirstNonZeroColor(UIBox *box) {
   ColorU32 color = box->props.color;
-  if (color.a == 0 && box->parent) {
-    color = GetFirstNonZeroColor(box->parent);
+  if (color.a == 0 && box->build.parent) {
+    color = GetFirstNonZeroColor(box->build.parent);
   }
   return color;
 }
@@ -370,7 +370,7 @@ static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
   UIBox *last_flex = 0;
 
   // First pass: layout non-flex children
-  for (UIBox *child = box->first; child; child = child->next) {
+  for (UIBox *child = box->build.first; child; child = child->build.next) {
     if (!ShouldLayout(child->props.position)) {
       continue;
     }
@@ -400,7 +400,7 @@ static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
 
   // Second pass: layout flex children
   f32 child_main_axis_flex = max_main_axis_size - child_main_axis_size;
-  for (UIBox *child = box->first; child; child = child->next) {
+  for (UIBox *child = box->build.first; child; child = child->build.next) {
     if (!ShouldLayout(child->props.position)) {
       continue;
     }
@@ -451,11 +451,11 @@ static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
 
 static Vec2 LayoutChildren(UIFrame *frame, UIBox *box, Vec2 max_size,
                            Axis2 main_axis, Axis2 cross_axis) {
-  ASSERT(box->first);
+  ASSERT(box->build.first);
 
   Vec2 result = LayoutChildrenFlex(frame, box, max_size, main_axis, cross_axis);
 
-  for (UIBox *child = box->first; child; child = child->next) {
+  for (UIBox *child = box->build.first; child; child = child->build.next) {
     if (ShouldLayout(child->props.position)) {
       continue;
     }
@@ -464,6 +464,49 @@ static Vec2 LayoutChildren(UIFrame *frame, UIBox *box, Vec2 max_size,
   }
 
   return result;
+}
+
+static void BeginStackingContext(UIFrame *frame, UIBox *box,
+                                 bool create_new_stacking_context) {
+  UIBox *parent = frame->current_stack;
+  box->stack.parent = parent;
+  if (parent) {
+    UIBox *after = parent->stack.last;
+    for (after = parent->stack.last; after; after = after->stack.prev) {
+      if (after->props.z_index <= box->props.z_index) {
+        break;
+      }
+    }
+    if (after) {
+      INSERT_DOUBLY_LINKED_LIST(parent->stack.first, parent->stack.last, after,
+                                box, stack.prev, stack.next);
+    } else {
+      PREPEND_DOUBLY_LINKED_LIST(parent->stack.first, parent->stack.last, box,
+                                 stack.prev, stack.next);
+    }
+  }
+
+  if (create_new_stacking_context) {
+    frame->current_stack = box;
+  }
+}
+
+static void EndStackingContext(UIFrame *frame, UIBox *box,
+                               bool create_new_stacking_context) {
+  if (create_new_stacking_context) {
+    frame->current_stack = box->stack.parent;
+  }
+}
+
+static void BuildStackingContext(UIFrame *frame, UIBox *box) {
+  bool create_new_stacking_context = frame->root == box ||
+                                     box->props.position == kUIPositionFixed ||
+                                     box->props.z_index != 0;
+  BeginStackingContext(frame, box, create_new_stacking_context);
+  for (UIBox *child = box->build.first; child; child = child->build.next) {
+    BuildStackingContext(frame, child);
+  }
+  EndStackingContext(frame, box, create_new_stacking_context);
 }
 
 static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
@@ -524,7 +567,7 @@ static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
   Axis2 main_axis = box->props.main_axis;
   Axis2 cross_axis = (main_axis + 1) % kAxis2Count;
   Vec2 children_size = V2(0, 0);
-  if (box->first) {
+  if (box->build.first) {
     if (!IsEmptyStr8(box->props.text)) {
       PushUIBuildErrorF(frame,
                         "text content is ignored because box has children");
@@ -625,19 +668,19 @@ static void RenderBox(UIState *state, UIBox *box) {
                box->props.border.bottom.color);
     }
 
+    if (!IsEmptyStr8(box->props.text)) {
+      DrawTextStr8(
+          V2(min.x + box->props.border.left.width + box->props.padding.left,
+             min.y + box->props.border.top.width + box->props.padding.top),
+          box->props.text, box->computed.font_size, GetFirstNonZeroColor(box));
+    }
+
     // Debug outline
     // DrawRectLine(min, max, ColorU32FromHex(0xFF00FF), 1.0f);
   }
 
-  if (box->first) {
-    for (UIBox *child = box->first; child; child = child->next) {
-      RenderBox(state, child);
-    }
-  } else if (!IsEmptyStr8(box->props.text)) {
-    DrawTextStr8(
-        V2(min.x + box->props.border.left.width + box->props.padding.left,
-           min.y + box->props.border.top.width + box->props.padding.top),
-        box->props.text, box->computed.font_size, GetFirstNonZeroColor(box));
+  for (UIBox *child = box->stack.first; child; child = child->stack.next) {
+    RenderBox(state, child);
   }
 
   if (need_clip) {
@@ -683,7 +726,7 @@ static void DebugPrintUI(UIState *state) { (void)state; }
 #endif
 
 static void ProcessInputR(UIState *state, UIBox *box) {
-  for (UIBox *child = box->last; child; child = child->prev) {
+  for (UIBox *child = box->stack.last; child; child = child->stack.prev) {
     ProcessInputR(state, child);
   }
 
@@ -816,7 +859,7 @@ static void PositionBox(UIFrame *frame, UIBox *box, Vec2 parent_min,
       (GetRect2Area(Rect2FromIntersection(parent_clip_rect, clip_rect)) <
        GetRect2Area(clip_rect));
 
-  for (UIBox *child = box->first; child; child = child->next) {
+  for (UIBox *child = box->build.first; child; child = child->build.next) {
     PositionBox(frame, child, min, max, box->computed.clip_rect);
   }
 }
@@ -825,11 +868,14 @@ void EndUIFrame(void) {
   UIState *state = GetUIState();
   UIFrame *frame = GetCurrentUIFrame();
   EndUITag("Root");
-  ASSERTF(!frame->current_box, "Mismatched BeginBox/EndBox calls");
+  ASSERTF(!frame->current_build, "Mismatched BeginBox/EndBox calls");
 
   Vec2 size = frame->viewport_size;
   LayoutBox(frame, frame->root, V2(0, 0), size);
   frame->root->computed.rel_pos = V2(0, 0);
+
+  BuildStackingContext(frame, frame->root);
+  ASSERT(!frame->current_stack);
 
   PositionBox(frame, frame->root, V2(0, 0), size, R2(V2(0, 0), size));
 
@@ -860,7 +906,7 @@ static UIID UIIDFromStr8(UIID seed, Str8 str) {
   return result;
 }
 
-static UIID UIIDFromU8(UIID seed, u8 ch) {
+UIID UIIDFromU8(UIID seed, u8 ch) {
   u8 str[2] = {ch, 0};
   UIID result = UIIDFromStr8(seed, (Str8){.ptr = str, .len = 1});
   return result;
@@ -931,7 +977,7 @@ static UIBox *GetUIBoxFromLastFrame(UIID id) {
 void BeginUITag(const char *tag, UIProps props) {
   UIFrame *frame = GetCurrentUIFrame();
 
-  UIBox *parent = frame->current_box;
+  UIBox *parent = frame->current_build;
   UIID seed;
   if (parent) {
     seed = parent->id;
@@ -949,10 +995,11 @@ void BeginUITag(const char *tag, UIProps props) {
   box->seq = seq;
 
   if (parent) {
-    APPEND_DOUBLY_LINKED_LIST(parent->first, parent->last, box, prev, next);
+    APPEND_DOUBLY_LINKED_LIST(parent->build.first, parent->build.last, box,
+                              build.prev, build.next);
     ++parent->children_count;
   }
-  box->parent = parent;
+  box->build.parent = parent;
   box->props = props;
 
   // Copy computed state from last frame, if any
@@ -961,18 +1008,18 @@ void BeginUITag(const char *tag, UIProps props) {
     box->computed = last_box->computed;
   }
 
-  frame->current_box = box;
+  frame->current_build = box;
 }
 
 void EndUITag(const char *tag) {
   UIFrame *frame = GetCurrentUIFrame();
-  UIBox *box = frame->current_box;
+  UIBox *box = frame->current_build;
   ASSERT(box);
   ASSERTF(strcmp(box->tag, tag) == 0,
           "Mismatched Begin/End calls. Begin with %s, end with %s", box->tag,
           tag);
 
-  frame->current_box = box->parent;
+  frame->current_build = box->build.parent;
 }
 
 void *PushUIBoxState(const char *type_name, usize size) {
