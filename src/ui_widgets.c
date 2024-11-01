@@ -230,7 +230,8 @@ void BeginUIScrollable(UIScrollableProps props) {
 
       BeginUITag("ScrollContent",
                  (UIProps){
-                     .margin = UIEdgeInsetsFromLTRB(0, -state->scroll, 0, 0),
+                     .margin = UIEdgeInsetsFromLT(0, -state->scroll),
+                     .isolate = true,
                  });
       UIBox *scroll_content = GetCurrentUIBox();
       f32 total_item_size = scroll_content->computed.size.y;

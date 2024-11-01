@@ -178,6 +178,7 @@ typedef struct UIProps {
   UIMainAxisSize main_axis_size;
   UIMainAxisAlign main_axis_align;
   UICrossAxisAlign cross_axis_align;
+  bool isolate;
 
   UIPosition position;
   i32 z_index;
@@ -206,7 +207,6 @@ typedef struct UIComputed {
 
   Rect2 screen_rect;
   Rect2 clip_rect;
-  b8 clip;
 } UIComputed;
 
 typedef struct UIBoxState {

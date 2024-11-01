@@ -78,6 +78,8 @@ static void BuildUI(f32 dt, f32 frame_time) {
         for (u32 item_index = 0; item_index < item_count; ++item_index) {
           BeginUIRow((UIRowProps){
               .size = V2(kUISizeUndefined, item_size),
+              .background_color =
+                  ColorU32FromSRGBNotPremultiplied(0, 0, item_index % 255, 255),
           });
           EndUIRow();
         }

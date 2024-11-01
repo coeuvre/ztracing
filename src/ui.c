@@ -235,11 +235,9 @@ static void AlignMainAxis(UIBox *box, Axis2 axis, UIMainAxisAlign align,
 
   for (UIBox *child = box->build.first; child; child = child->build.next) {
     pos += GetEdgeInsetsStart(child->props.margin, axis);
-    box->computed.clip = box->computed.clip || (pos < 0 || pos > size_axis);
     SetItemVec2(&child->computed.rel_pos, axis, pos);
     pos += GetItemVec2(child->computed.size, axis) +
            GetEdgeInsetsEnd(child->props.margin, axis);
-    box->computed.clip = box->computed.clip || (pos < 0 || pos > size_axis);
   }
 }
 
@@ -277,8 +275,6 @@ static void AlignCrossAxis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
     }
 
     SetItemVec2(&child->computed.rel_pos, axis, pos);
-    box->computed.clip =
-        box->computed.clip || (pos < 0 || pos + child_size > self_size);
   }
 }
 
@@ -499,9 +495,9 @@ static void EndStackingContext(UIFrame *frame, UIBox *box,
 }
 
 static void BuildStackingContext(UIFrame *frame, UIBox *box) {
-  bool create_new_stacking_context = frame->root == box ||
-                                     box->props.position == kUIPositionFixed ||
-                                     box->props.z_index != 0;
+  bool create_new_stacking_context =
+      frame->root == box || box->props.position == kUIPositionFixed ||
+      box->props.z_index != 0 || box->props.isolate;
   BeginStackingContext(frame, box, create_new_stacking_context);
   for (UIBox *child = box->build.first; child; child = child->build.next) {
     BuildStackingContext(frame, child);
@@ -517,7 +513,6 @@ static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
 
   box->computed.min_size = min_size;
   box->computed.max_size = max_size;
-  box->computed.clip = 0;
 
   if (!ShouldLayout(box->props.position)) {
     if (IsUIEdgeInsetsRightSet(box->props.offset) &&
@@ -624,13 +619,6 @@ static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
     cross_axis_align = kUICrossAxisAlignStart;
   }
   AlignCrossAxis(box, cross_axis, cross_axis_align);
-  // Clip if content size exceeds self size.
-  box->computed.clip =
-      box->computed.clip ||
-      children_size.x + box->props.padding.left + box->props.padding.right >
-          box->computed.size.x ||
-      children_size.y + box->props.padding.top + box->props.padding.bottom >
-          box->computed.size.y;
 }
 
 static void RenderBox(UIState *state, UIBox *box) {
@@ -638,12 +626,12 @@ static void RenderBox(UIState *state, UIBox *box) {
   Vec2 max = box->computed.screen_rect.max;
 
   Rect2 clip_rect = box->computed.clip_rect;
-  b32 need_clip = box->computed.clip;
-  if (need_clip) {
-    PushClipRect(clip_rect.min, clip_rect.max);
-  }
-
+  b32 need_clip = box->props.position != kUIPositionRelative;
   if (GetRect2Area(clip_rect) > 0) {
+    if (need_clip) {
+      PushClipRect(clip_rect.min, clip_rect.max);
+    }
+
     if (box->props.background_color.a) {
       DrawRect(min, max, box->props.background_color);
     }
@@ -677,15 +665,19 @@ static void RenderBox(UIState *state, UIBox *box) {
 
     // Debug outline
     // DrawRectLine(min, max, ColorU32FromHex(0xFF00FF), 1.0f);
+  } else {
+    need_clip = 0;
+  }
+
+  if (!need_clip) {
+    PushClipRect(clip_rect.min, clip_rect.max);
   }
 
   for (UIBox *child = box->stack.first; child; child = child->stack.next) {
     RenderBox(state, child);
   }
 
-  if (need_clip) {
-    PopClipRect();
-  }
+  PopClipRect();
 }
 
 #if 0
@@ -791,8 +783,8 @@ static void ProcessInput(UIState *state, UIFrame *frame) {
   state->input.mouse.wheel = V2(0, 0);
 }
 
-static Vec2 PositionAbsolute(Vec2 min, Vec2 max, UIEdgeInsets offset,
-                             Vec2 size) {
+static Vec2 PositionAbsolute(Vec2 min, Vec2 max, UIEdgeInsets offset, Vec2 size,
+                             UIEdgeInsets margin) {
   Vec2 result;
   if (IsUIEdgeInsetsLeftSet(offset)) {
     result.x = min.x + offset.left;
@@ -809,6 +801,9 @@ static Vec2 PositionAbsolute(Vec2 min, Vec2 max, UIEdgeInsets offset,
   } else {
     result.y = min.y;
   }
+
+  result.x += margin.left;
+  result.y += margin.top;
 
   return result;
 }
@@ -827,14 +822,16 @@ static void PositionBox(UIFrame *frame, UIBox *box, Vec2 parent_min,
 
     case kUIPositionAbsolute: {
       Vec2 size = box->computed.size;
-      min = PositionAbsolute(parent_min, parent_max, box->props.offset, size);
+      min = PositionAbsolute(parent_min, parent_max, box->props.offset, size,
+                             box->props.margin);
       max = AddVec2(min, size);
+      ignore_parent_clip_rect = true;
     } break;
 
     case kUIPositionFixed: {
       Vec2 size = box->computed.size;
       min = PositionAbsolute(V2(0, 0), frame->viewport_size, box->props.offset,
-                             size);
+                             size, box->props.margin);
       max = AddVec2(min, size);
       ignore_parent_clip_rect = true;
     } break;
@@ -854,10 +851,6 @@ static void PositionBox(UIFrame *frame, UIBox *box, Vec2 parent_min,
 
   box->computed.screen_rect = screen_rect;
   box->computed.clip_rect = clip_rect;
-  box->computed.clip =
-      box->computed.clip ||
-      (GetRect2Area(Rect2FromIntersection(parent_clip_rect, clip_rect)) <
-       GetRect2Area(clip_rect));
 
   for (UIBox *child = box->build.first; child; child = child->build.next) {
     PositionBox(frame, child, min, max, box->computed.clip_rect);
