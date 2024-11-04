@@ -160,7 +160,7 @@ bool BeginUICollapsing(UICollapsingProps props) {
     EndUIButton();
 
     // Clip box
-    BeginUIBox((UIProps){0});
+    BeginUIBox((UIProps){.isolate = true});
 
     BeginUIBox((UIProps){0});
     UIBox *content = GetCurrentUIBox();
@@ -603,18 +603,21 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
     }
     EndUITag("Float");
 
-    BeginUITag("Highlight", (UIProps){0});
+    BeginUITag("Highlight", (UIProps){
+                                .z_index = -1,
+                                .position = kUIPositionFixed,
+                                .size = V2(kUISizeInfinity, kUISizeInfinity),
+                            });
     if (GetRect2Area(state->hoverred_rect) > 0) {
       Rect2 hoverred_rect = state->hoverred_rect;
 
-      GetCurrentUIBox()->props = (UIProps){
+      BeginUIBox((UIProps){
           .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255, 64),
           .size = SubVec2(hoverred_rect.max, hoverred_rect.min),
-          .z_index = -1,
-          .position = kUIPositionFixed,
-          .offset =
+          .margin =
               UIEdgeInsetsFromLT(hoverred_rect.min.x, hoverred_rect.min.y),
-      };
+      });
+      EndUIBox();
     }
     EndUITag("Highlight");
   }
