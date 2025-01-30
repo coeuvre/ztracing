@@ -13,11 +13,11 @@ typedef struct UIID {
   u64 hash;
 } UIID;
 
-UIID UIIDFromU8(UIID seed, u8 ch);
+UIID uuid_from_u8(UIID seed, u8 ch);
 
 typedef enum UIPosition {
   kUIPositionRelative,
-  kUIPositionAbsolute,
+  kUIposition_absolute,
   kUIPositionFixed,
 } UIPosition;
 
@@ -49,7 +49,7 @@ typedef struct UIEdgeInsets {
   f32 bottom;
 } UIEdgeInsets;
 
-static inline UIEdgeInsets UIEdgeInsetsAll(f32 val) {
+static inline UIEdgeInsets ui_edge_insets_all(f32 val) {
   UIEdgeInsets result = {
       .set = {true, true, true, true},
       .left = val,
@@ -60,7 +60,7 @@ static inline UIEdgeInsets UIEdgeInsetsAll(f32 val) {
   return result;
 }
 
-static inline UIEdgeInsets UIEdgeInsetsSymmetric(f32 x, f32 y) {
+static inline UIEdgeInsets ui_edge_insets_symmetric(f32 x, f32 y) {
   UIEdgeInsets result = {
       .set = {true, true, true, true},
       .left = x,
@@ -71,8 +71,8 @@ static inline UIEdgeInsets UIEdgeInsetsSymmetric(f32 x, f32 y) {
   return result;
 }
 
-static inline UIEdgeInsets UIEdgeInsetsFromLTRB(f32 left, f32 top, f32 right,
-                                                f32 bottom) {
+static inline UIEdgeInsets ui_edge_insets_from_ltrb(f32 left, f32 top,
+                                                    f32 right, f32 bottom) {
   UIEdgeInsets result = {
       .set = {true, true, true, true},
       .left = left,
@@ -83,7 +83,7 @@ static inline UIEdgeInsets UIEdgeInsetsFromLTRB(f32 left, f32 top, f32 right,
   return result;
 }
 
-static inline UIEdgeInsets UIEdgeInsetsFromLT(f32 left, f32 top) {
+static inline UIEdgeInsets ui_edge_insets_from_lt(f32 left, f32 top) {
   UIEdgeInsets result = {
       .set = {true, false, true, false},
       .left = left,
@@ -94,7 +94,7 @@ static inline UIEdgeInsets UIEdgeInsetsFromLT(f32 left, f32 top) {
   return result;
 }
 
-static inline UIEdgeInsets UIEdgeInsetsFromRB(f32 right, f32 bottom) {
+static inline UIEdgeInsets ui_edge_insets_from_rb(f32 right, f32 bottom) {
   UIEdgeInsets result = {
       .set = {false, true, false, true},
       .left = 0,
@@ -105,28 +105,28 @@ static inline UIEdgeInsets UIEdgeInsetsFromRB(f32 right, f32 bottom) {
   return result;
 }
 
-static inline bool IsUIEdgeInsetsSet(UIEdgeInsets edge_insets) {
+static inline bool ui_edge_insets_is_set(UIEdgeInsets edge_insets) {
   b32 result = edge_insets.set[0] || edge_insets.set[1] || edge_insets.set[2] ||
                edge_insets.set[3];
   return result;
 }
 
-static inline bool IsUIEdgeInsetsLeftSet(UIEdgeInsets edge_insets) {
+static inline bool ui_edge_insets_is_left_set(UIEdgeInsets edge_insets) {
   bool result = edge_insets.set[0];
   return result;
 }
 
-static inline bool IsUIEdgeInsetsRightSet(UIEdgeInsets edge_insets) {
+static inline bool ui_edge_insets_is_right_set(UIEdgeInsets edge_insets) {
   bool result = edge_insets.set[1];
   return result;
 }
 
-static inline bool IsUIEdgeInsetsTopSet(UIEdgeInsets edge_insets) {
+static inline bool ui_edge_insets_is_top_set(UIEdgeInsets edge_insets) {
   bool result = edge_insets.set[2];
   return result;
 }
 
-static inline bool IsUIEdgeInsetsBottomSet(UIEdgeInsets edge_insets) {
+static inline bool ui_edge_insets_is_bottom_set(UIEdgeInsets edge_insets) {
   bool result = edge_insets.set[3];
   return result;
 }
@@ -148,7 +148,7 @@ typedef struct UIBorder {
 } UIBorder;
 
 // A uniform border with all sides the same color and width.
-static inline UIBorder UIBorderFromBorderSide(UIBorderSide border_side) {
+static inline UIBorder ui_border_from_border_side(UIBorderSide border_side) {
   UIBorder result;
   result.left = border_side;
   result.top = border_side;
@@ -323,47 +323,49 @@ typedef struct UIState {
   f32 fast_rate;
 } UIState;
 
-void InitUI(void);
-void QuitUI(void);
+void ui_init(void);
+void ui_quit(void);
 
 // Mouse pos in points.
-void OnUIMousePos(Vec2 pos);
-void OnUIMouseButtonUp(Vec2 pos, UIMouseButton button);
-void OnUIMouseButtonDown(Vec2 pos, UIMouseButton button);
-void OnUIMouseWheel(Vec2 delta);
+void ui_on_mouse_pos(Vec2 pos);
+void ui_on_mouse_button_up(Vec2 pos, UIMouseButton button);
+void ui_on_mouse_button_down(Vec2 pos, UIMouseButton button);
+void ui_on_mouse_wheel(Vec2 delta);
 
-void SetUIDeltaTime(f32 dt);
+void ui_set_delta_time(f32 dt);
 
-extern thread_local UIState t_ui_state;
+extern THREAD_LOCAL UIState t_ui_state;
 
-static inline UIState *GetUIState(void) {
+static inline UIState *ui_state_get(void) {
   UIState *state = &t_ui_state;
   DEBUG_ASSERT(state->init);
   return state;
 }
 
-static inline UIFrame *GetCurrentUIFrame(void) {
-  UIState *state = GetUIState();
+// Get current UIFrame
+static inline UIFrame *ui_frame_get(void) {
+  UIState *state = ui_state_get();
   UIFrame *result = state->current_frame;
   return result;
 }
 
-static inline UIFrame *GetLastUIFrame(void) {
-  UIState *state = GetUIState();
+// Get last UIFrame
+static inline UIFrame *ui_frame_get_last(void) {
+  UIState *state = ui_state_get();
   UIFrame *result = state->last_frame;
   return result;
 }
 
-static inline f32 GetUIDeltaTime(void) {
-  UIState *state = GetUIState();
+static inline f32 ui_get_delta_time(void) {
+  UIState *state = ui_state_get();
   return state->input.dt;
 }
 
-static inline f32 AnimateUIFastF32(f32 value, f32 target) {
-  UIState *state = GetUIState();
+static inline f32 ui_animate_fast_f32(f32 value, f32 target) {
+  UIState *state = ui_state_get();
   f32 result;
   f32 diff = (target - value);
-  if (AbsF32(diff) < 0.0001f) {
+  if (f32_abs(diff) < 0.0001f) {
     result = target;
     // TODO: Trigger re-draw.
   } else {
@@ -372,68 +374,69 @@ static inline f32 AnimateUIFastF32(f32 value, f32 target) {
   return result;
 }
 
-static inline ColorU32 AnimateUIFastColorU32(ColorU32 value, ColorU32 target) {
+static inline ColorU32 ui_animate_fast_color_u32(ColorU32 value,
+                                                 ColorU32 target) {
   ColorU32 result;
-  result.r = AnimateUIFastF32(value.r, target.r);
-  result.g = AnimateUIFastF32(value.g, target.g);
-  result.b = AnimateUIFastF32(value.b, target.b);
-  result.a = AnimateUIFastF32(value.a, target.a);
+  result.r = ui_animate_fast_f32(value.r, target.r);
+  result.g = ui_animate_fast_f32(value.g, target.g);
+  result.b = ui_animate_fast_f32(value.b, target.b);
+  result.a = ui_animate_fast_f32(value.a, target.a);
   return result;
 }
 
-void BeginUIFrame(Vec2 viewport_size);
-void EndUIFrame(void);
-void RenderUI(void);
+void ui_begin_frame(Vec2 viewport_size);
+void ui_end_frame(void);
+void ui_render(void);
 
-UIBox *GetUIBoxFromFrame(UIFrame *frame, UIID id);
+UIBox *ui_box_get(UIFrame *frame, UIID id);
 
-UIBuildError *GetFirstUIBuildError(void);
+UIBuildError *ui_get_first_build_error(void);
 
-static inline UIID UIIDZero(void) {
+static inline UIID uuid_zero(void) {
   UIID result = {0};
   return result;
 }
 
-bool IsEqualUIID(UIID a, UIID b);
+bool uuid_is_equal(UIID a, UIID b);
 
-static inline bool IsZeroUIID(UIID a) {
-  bool result = IsEqualUIID(a, UIIDZero());
+static inline bool uuid_is_zero(UIID a) {
+  bool result = uuid_is_equal(a, uuid_zero());
   return result;
 }
 
-Str8 PushUIStr8(Str8 str);
-Str8 PushUIStr8F(const char *fmt, ...);
-Str8 PushUIStr8FV(const char *fmt, va_list ap);
+Str8 ui_push_str8(Str8 str);
+Str8 ui_push_str8f(const char *fmt, ...);
+Str8 ui_push_str8fv(const char *fmt, va_list ap);
 
-void BeginUITag(const char *tag, UIProps props);
-void EndUITag(const char *tag);
+void ui_tag_begin(const char *tag, UIProps props);
+void ui_tag_end(const char *tag);
 
-static inline void BeginUIBox(UIProps props) { BeginUITag("Box", props); }
+static inline void ui_box_begin(UIProps props) { ui_tag_begin("Box", props); }
 
-static inline void EndUIBox(void) { EndUITag("Box"); }
+static inline void ui_box_end(void) { ui_tag_end("Box"); }
 
-static inline UIBox *GetCurrentUIBox(void) {
-  UIFrame *frame = GetCurrentUIFrame();
+static inline UIBox *ui_box_get_current(void) {
+  UIFrame *frame = ui_frame_get();
   DEBUG_ASSERT(frame->current_build);
   UIBox *box = frame->current_build;
   return box;
 }
 
-void *PushUIBoxState(const char *type_name, usize size);
-void *GetUIBoxState(const char *type_name, usize size);
+void *ui_box_push_state(const char *type_name, usize size);
+void *ui_box_get_state(const char *type_name, usize size);
 
-#define PushUIBoxStruct(Type) (Type *)PushUIBoxState(#Type, sizeof(Type))
-#define GetUIBoxStruct(Type) (Type *)GetUIBoxState(#Type, sizeof(Type))
+#define ui_box_push_struct(Type) (Type *)ui_box_push_state(#Type, sizeof(Type))
+#define ui_box_get_struct(Type) (Type *)ui_box_get_state(#Type, sizeof(Type))
 
-Vec2 GetUIMouseRelPos(void);
-Vec2 GetUIMousePos(void);
+Vec2 ui_get_mouse_rel_pos(void);
+Vec2 ui_get_mouse_pos(void);
 
-void SetUIBoxBlockMouseInput(void);
-bool IsUIMouseHovering(void);
-bool IsUIMouseButtonPressed(UIMouseButton button);
-bool IsUIMouseButtonDown(UIMouseButton button);
-bool IsUIMouseButtonClicked(UIMouseButton button);
-bool IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta);
-bool IsUIMouseScrolling(Vec2 *delta);
+void ui_set_block_mouse_input(void);
+bool ui_is_mouse_hovering(void);
+bool ui_is_mouse_button_pressed(UIMouseButton button);
+bool ui_is_mouse_button_down(UIMouseButton button);
+bool ui_is_mouse_button_clicked(UIMouseButton button);
+bool ui_is_mouse_button_dragging(UIMouseButton button, Vec2 *delta);
+bool ui_is_mouse_button_scrolling(Vec2 *delta);
 
 #endif  // ZTRACING_SRC_UI_H_

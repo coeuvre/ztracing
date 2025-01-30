@@ -10,7 +10,7 @@ static SDL_LogPriority kLogLevelToPriority[kLogLevelCount] = {
     SDL_LOG_PRIORITY_ERROR,
 };
 
-void LogMessage(LogLevel level, const char *fmt, ...) {
+void log_message(LogLevel level, const char *fmt, ...) {
   int category = SDL_LOG_CATEGORY_APPLICATION;
   SDL_LogPriority priority = kLogLevelToPriority[level];
   if (priority >= SDL_GetLogPriority(category)) {

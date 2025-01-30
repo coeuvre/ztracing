@@ -3,9 +3,9 @@
 
 #include "src/types.h"
 
-u64 GetPerformanceCounter(void);
-u64 GetPerformanceFrequency(void);
+u64 get_perf_counter(void);
+u64 get_perf_freq(void);
 
-void DoFrame(void);
+void do_frame(void);
 
 #endif  // ZTRACING_SRC_ZTRACING_H_

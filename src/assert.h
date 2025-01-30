@@ -5,26 +5,26 @@
 #include "src/log.h"
 
 #if COMPILER_MSVC
-#define BreakDebugger() __debugbreak()
+#define break_debugger() __debugbreak()
 #elif COMPILER_CLANG || COMPILER_GCC
-#define BreakDebugger() __builtin_trap()
+#define break_debugger() __builtin_trap()
 #else
 #error Unknown trap intrinsic for this compiler.
 #endif
 
-#define ASSERT(x)      \
-  do {                 \
-    if (!(x)) {        \
-      ERROR("%s", #x); \
-      BreakDebugger(); \
-    }                  \
+#define ASSERT(x)       \
+  do {                  \
+    if (!(x)) {         \
+      ERROR("%s", #x);  \
+      break_debugger(); \
+    }                   \
   } while (0)
 
 #define ASSERTF(x, fmt, ...)     \
   do {                           \
     if (!(x)) {                  \
       ERROR(fmt, ##__VA_ARGS__); \
-      BreakDebugger();           \
+      break_debugger();          \
     }                            \
   } while (0)
 

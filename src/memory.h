@@ -10,11 +10,11 @@
 #define GB(n) (((u64)(n)) << 30)
 #define TB(n) (((u64)(n)) << 40)
 
-static inline void ZeroMemory(void *ptr, usize size) { memset(ptr, 0, size); }
+static inline void memory_zero(void *ptr, usize size) { memset(ptr, 0, size); }
 
-void *AllocMemory(usize size);
-void FreeMemory(void *ptr, usize size);
-usize GetAllocatedBytes(void);
+void *memory_alloc(usize size);
+void memory_free(void *ptr, usize size);
+usize memory_get_allocated_bytes(void);
 
 typedef struct MemoryBlock MemoryBlock;
 struct MemoryBlock {
@@ -38,27 +38,27 @@ struct TempMemory {
   u8 *pos;
 };
 
-enum PushArenaFlag {
-  kPushArenaNoZero = (1 << 0),
+enum ArenaPushFlag {
+  kArenaPushNoZero = (1 << 0),
 };
 
-void FreeArena(Arena *arena);
-void ResetArena(Arena *arena);
-void *PushArena(Arena *arena, usize size, u32 flags);
-void PopArena(Arena *arena, usize size);
+void arena_free(Arena *arena);
+void arena_reset(Arena *arena);
+void *arena_push(Arena *arena, usize size, u32 flags);
+void arena_pop(Arena *arena, usize size);
 
-#define PushArray(arena, Type, len) \
-  (Type *)PushArena(arena, sizeof(Type) * len, 0)
-#define PushArrayNoZero(arena, Type, len) \
-  (Type *)PushArena(arena, sizeof(Type) * len, kPushArenaNoZero)
+#define arena_push_array(arena, Type, len) \
+  (Type *)arena_push(arena, sizeof(Type) * len, 0)
+#define arena_push_array_no_zero(arena, Type, len) \
+  (Type *)arena_push(arena, sizeof(Type) * len, kArenaPushNoZero)
 
-TempMemory BeginTempMemory(Arena *arena);
-void EndTempMemory(TempMemory temp);
+TempMemory temp_memory_begin(Arena *arena);
+void temp_memory_end(TempMemory temp);
 
-Arena *GetScratchArena(Arena **conflicts, usize len);
+Arena *arena_get_scratch(Arena **conflicts, usize len);
 
-#define BeginScratch(conflicts, len) \
-  BeginTempMemory(GetScratchArena((conflicts), (len)))
-#define EndScratch(temp) EndTempMemory(temp)
+#define scratch_begin(conflicts, len) \
+  temp_memory_begin(arena_get_scratch((conflicts), (len)))
+#define scratch_end(temp) temp_memory_end(temp)
 
 #endif  // ZTRACING_SRC_MEMORY_H_

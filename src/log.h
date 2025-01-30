@@ -9,10 +9,10 @@ typedef enum LogLevel {
   kLogLevelCount,
 } LogLevel;
 
-void LogMessage(LogLevel level, const char *fmt, ...);
+void log_message(LogLevel level, const char *fmt, ...);
 
 #define LOG(level, fmt, ...) \
-  LogMessage(level, "%s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
+  log_message(level, "%s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__)
 
 #define DEBUG(fmt, ...) LOG(kLogLevelDebug, "debug: " fmt, ##__VA_ARGS__)
 #define INFO(fmt, ...) LOG(kLogLevelInfo, "info: " fmt, ##__VA_ARGS__)

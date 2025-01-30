@@ -55,15 +55,15 @@ typedef struct SDL3DrawState {
   PackedFont *last_packed_font;
 } SDL3DrawState;
 
-thread_local SDL3DrawState t_draw_state;
+THREAD_LOCAL SDL3DrawState t_draw_state;
 
-static PackedFont PackFont(Arena *arena, stbtt_fontinfo *info, f32 font_size) {
-  TempMemory scratch = BeginScratch(&arena, 1);
+static PackedFont pack_font(Arena *arena, stbtt_fontinfo *info, f32 font_size) {
+  TempMemory scratch = scratch_begin(&arena, 1);
   PackedFont result = {0};
   result.font = info;
   result.width = 1024;
   result.height = 1024;
-  result.pixels_u8 = (u8 *)AllocMemory(result.width * result.height);
+  result.pixels_u8 = (u8 *)memory_alloc(result.width * result.height);
   stbtt_pack_context spc;
   ASSERT(stbtt_PackBegin(&spc, result.pixels_u8, result.width, result.height, 0,
                          1, 0) == 1);
@@ -72,10 +72,10 @@ static PackedFont PackFont(Arena *arena, stbtt_fontinfo *info, f32 font_size) {
   result.range.first_unicode_codepoint_in_range = 1;
   result.range.num_chars = 254;
   result.range.chardata_for_range =
-      PushArray(arena, stbtt_packedchar, result.range.num_chars);
+      arena_push_array(arena, stbtt_packedchar, result.range.num_chars);
   {
     stbrp_rect *rects =
-        PushArray(scratch.arena, stbrp_rect, result.range.num_chars);
+        arena_push_array(scratch.arena, stbrp_rect, result.range.num_chars);
     int n =
         stbtt_PackFontRangesGatherRects(&spc, info, &result.range, 1, rects);
     stbtt_PackFontRangesPackRects(&spc, rects, n);
@@ -83,13 +83,13 @@ static PackedFont PackFont(Arena *arena, stbtt_fontinfo *info, f32 font_size) {
                                                rects) == 1);
   }
   stbtt_PackEnd(&spc);
-  result.kern_cache =
-      PushArray(arena, i32, result.range.num_chars * result.range.num_chars);
-  EndScratch(scratch);
+  result.kern_cache = arena_push_array(
+      arena, i32, result.range.num_chars * result.range.num_chars);
+  scratch_end(scratch);
   return result;
 }
 
-static PackedFont *GetOrPackFont(stbtt_fontinfo *font, f32 font_size) {
+static PackedFont *get_or_pack_font(stbtt_fontinfo *font, f32 font_size) {
   PackedFont *result = 0;
   for (PackedFont *packed_font = t_draw_state.first_packed_font; packed_font;
        packed_font = packed_font->next) {
@@ -100,23 +100,22 @@ static PackedFont *GetOrPackFont(stbtt_fontinfo *font, f32 font_size) {
     }
   }
   if (!result) {
-    result = PushArray(&t_draw_state.arena, PackedFont, 1);
-    *result = PackFont(&t_draw_state.arena, font, font_size);
-    APPEND_DOUBLY_LINKED_LIST(t_draw_state.first_packed_font,
-                              t_draw_state.last_packed_font, result, prev,
-                              next);
+    result = arena_push_array(&t_draw_state.arena, PackedFont, 1);
+    *result = pack_font(&t_draw_state.arena, font, font_size);
+    DLL_APPEND(t_draw_state.first_packed_font, t_draw_state.last_packed_font,
+               result, prev, next);
   }
 
   return result;
 }
 
-void InitDrawSDL3(SDL_Window *window, SDL_Renderer *renderer) {
+void init_draw_sdl3(SDL_Window *window, SDL_Renderer *renderer) {
   t_draw_state.window = window;
   t_draw_state.renderer = renderer;
   SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND_PREMULTIPLIED);
 }
 
-f32 GetScreenContentScale(void) {
+f32 get_screen_content_scale(void) {
   f32 result = SDL_GetWindowDisplayScale(t_draw_state.window);
   if (result == 0) {
     result = 1;
@@ -124,25 +123,25 @@ f32 GetScreenContentScale(void) {
   return result;
 }
 
-Vec2 GetScreenSize(void) {
+Vec2 get_screen_size(void) {
   Vec2I screen_size_in_pixel = {0};
   SDL_GetCurrentRenderOutputSize(t_draw_state.renderer, &screen_size_in_pixel.x,
                                  &screen_size_in_pixel.y);
-  Vec2 result = MulVec2(Vec2FromVec2I(screen_size_in_pixel),
-                        1.0f / GetScreenContentScale());
+  Vec2 result = vec2_mul(vec2_from_vec2i(screen_size_in_pixel),
+                         1.0f / get_screen_content_scale());
   return result;
 }
 
-void PushClipRect(Vec2 min, Vec2 max) {
-  min = MulVec2(MaxVec2(min, Vec2Zero()), GetScreenContentScale());
-  max = MulVec2(max, GetScreenContentScale());
+void push_clip_rect(Vec2 min, Vec2 max) {
+  min = vec2_mul(vec2_max(min, vec2_zero()), get_screen_content_scale());
+  max = vec2_mul(max, get_screen_content_scale());
 
   DrawClipRect *clip_rect;
   if (t_draw_state.first_free_clip_rect) {
     clip_rect = t_draw_state.first_free_clip_rect;
     t_draw_state.first_free_clip_rect = t_draw_state.first_free_clip_rect->next;
   } else {
-    clip_rect = PushArray(&t_draw_state.arena, DrawClipRect, 1);
+    clip_rect = arena_push_array(&t_draw_state.arena, DrawClipRect, 1);
   }
   SDL_Rect rect;
   rect.x = min.x;
@@ -150,17 +149,16 @@ void PushClipRect(Vec2 min, Vec2 max) {
   rect.w = max.x - min.x;
   rect.h = max.y - min.y;
   clip_rect->rect = rect;
-  APPEND_DOUBLY_LINKED_LIST(t_draw_state.first_clip_rect,
-                            t_draw_state.last_clip_rect, clip_rect, prev, next);
+  DLL_APPEND(t_draw_state.first_clip_rect, t_draw_state.last_clip_rect,
+             clip_rect, prev, next);
   SDL_SetRenderClipRect(t_draw_state.renderer, &rect);
 }
 
-void PopClipRect(void) {
+void pop_clip_rect(void) {
   ASSERT(t_draw_state.last_clip_rect);
   DrawClipRect *free_clip_rect = t_draw_state.last_clip_rect;
-  REMOVE_DOUBLY_LINKED_LIST(t_draw_state.first_clip_rect,
-                            t_draw_state.last_clip_rect, free_clip_rect, prev,
-                            next);
+  DLL_REMOVE(t_draw_state.first_clip_rect, t_draw_state.last_clip_rect,
+             free_clip_rect, prev, next);
   free_clip_rect->next = t_draw_state.first_free_clip_rect;
   t_draw_state.first_free_clip_rect = free_clip_rect;
 
@@ -171,16 +169,16 @@ void PopClipRect(void) {
   SDL_SetRenderClipRect(t_draw_state.renderer, rect);
 }
 
-void ClearDraw(void) {
+void clear_draw(void) {
   SDL_SetRenderDrawColor(t_draw_state.renderer, 0, 0, 0, 0);
   SDL_RenderClear(t_draw_state.renderer);
 }
 
-void PresentDraw(void) { SDL_RenderPresent(t_draw_state.renderer); }
+void present_draw(void) { SDL_RenderPresent(t_draw_state.renderer); }
 
-void DrawRect(Vec2 min, Vec2 max, ColorU32 color) {
-  min = MulVec2(min, GetScreenContentScale());
-  max = MulVec2(max, GetScreenContentScale());
+void fill_rect(Vec2 min, Vec2 max, ColorU32 color) {
+  min = vec2_mul(min, get_screen_content_scale());
+  max = vec2_mul(max, get_screen_content_scale());
 
   SDL_SetRenderDrawColor(t_draw_state.renderer, color.r, color.g, color.b,
                          color.a);
@@ -202,8 +200,8 @@ static stbtt_fontinfo *GetFontInfo(void) {
 
 static inline i32 GetCharIndex(PackedFont *packed_font, u32 ch) {
   i32 result =
-      ClampI32(ch - packed_font->range.first_unicode_codepoint_in_range, 0,
-               packed_font->range.num_chars - 1);
+      i32_clamp(ch - packed_font->range.first_unicode_codepoint_in_range, 0,
+                packed_font->range.num_chars - 1);
   return result;
 }
 
@@ -230,25 +228,25 @@ static i32 GetKernAdvance(PackedFont *packed_font, u32 a, u32 b) {
       *kern_ptr = -1;
     }
   }
-  i32 result = MaxI32(*kern_ptr, 0);
+  i32 result = i32_max(*kern_ptr, 0);
   return result;
 }
 
-TextMetrics GetTextMetricsStr8(Str8 text, f32 height) {
-  TempMemory scratch = BeginScratch(0, 0);
+TextMetrics get_text_metrics_str8(Str8 text, f32 height) {
+  TempMemory scratch = scratch_begin(0, 0);
   TextMetrics result = {0};
-  f32 content_scale = GetScreenContentScale();
+  f32 content_scale = get_screen_content_scale();
 
   f32 font_size = height * content_scale;
   stbtt_fontinfo *font = GetFontInfo();
-  PackedFont *packed_font = GetOrPackFont(font, font_size);
+  PackedFont *packed_font = get_or_pack_font(font, font_size);
 
   f32 scale = stbtt_ScaleForPixelHeight(font, height * content_scale);
   i32 ascent, descent, line_gap;
   stbtt_GetFontVMetrics(font, &ascent, &descent, &line_gap);
   result.size.y = (ascent - descent) * scale;
 
-  Str32 text32 = PushStr32FromStr8(scratch.arena, text);
+  Str32 text32 = arena_push_str32_from_str8(scratch.arena, text);
   f32 baseline = (f32)ascent * scale;
   f32 pos_x = 0.0f;
   for (u32 i = 0; i < text32.len; ++i) {
@@ -260,29 +258,29 @@ TextMetrics GetTextMetricsStr8(Str8 text, f32 height) {
     }
   }
   result.size.x = pos_x;
-  result.size = MulVec2(result.size, 1.0f / content_scale);
+  result.size = vec2_mul(result.size, 1.0f / content_scale);
 
-  EndScratch(scratch);
+  scratch_end(scratch);
   return result;
 }
 
-void DrawTextStr8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
-  TempMemory scratch = BeginScratch(0, 0);
+void draw_text_str8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
+  TempMemory scratch = scratch_begin(0, 0);
 
-  Vec4 colorf = LinearColorFromSRGB(color);
+  Vec4 colorf = linear_color_from_srgb(color);
 
-  f32 content_scale = GetScreenContentScale();
-  pos = MulVec2(pos, content_scale);
+  f32 content_scale = get_screen_content_scale();
+  pos = vec2_mul(pos, content_scale);
 
   f32 font_size = height * content_scale;
   stbtt_fontinfo *font = GetFontInfo();
-  PackedFont *packed_font = GetOrPackFont(font, font_size);
+  PackedFont *packed_font = get_or_pack_font(font, font_size);
   if (!packed_font->texture) {
     ASSERT(packed_font->pixels_u8);
     int pw = packed_font->width;
     int ph = packed_font->height;
     u32 *pixels_u32 =
-        PushArrayNoZero(scratch.arena, u32, pw * ph * sizeof(u32));
+        arena_push_array_no_zero(scratch.arena, u32, pw * ph * sizeof(u32));
     u32 *dst_row = pixels_u32;
     u8 *src_row = packed_font->pixels_u8;
     for (i32 y = 0; y < ph; ++y) {
@@ -303,8 +301,8 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
         SDL_CreateTextureFromSurface(t_draw_state.renderer, surface);
     ASSERT(packed_font->texture);
     SDL_DestroySurface(surface);
-    FreeMemory(packed_font->pixels_u8,
-               packed_font->width * packed_font->height);
+    memory_free(packed_font->pixels_u8,
+                packed_font->width * packed_font->height);
     packed_font->pixels_u8 = 0;
   }
 
@@ -312,7 +310,7 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
   i32 ascent, descent, line_gap;
   stbtt_GetFontVMetrics(font, &ascent, &descent, &line_gap);
 
-  Str32 text32 = PushStr32FromStr8(scratch.arena, text);
+  Str32 text32 = arena_push_str32_from_str8(scratch.arena, text);
   f32 baseline = pos.y + (f32)ascent * scale;
   f32 pos_x = pos.x;
   for (u32 i = 0; i < text32.len; ++i) {
@@ -348,5 +346,5 @@ void DrawTextStr8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
     }
   }
 
-  EndScratch(scratch);
+  scratch_end(scratch);
 }

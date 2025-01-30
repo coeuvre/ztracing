@@ -8,25 +8,25 @@
 #include "src/memory.h"
 #include "src/types.h"
 
-Str8 PushStr8(Arena *arena, Str8 str) {
-  u8 *ptr = PushArrayNoZero(arena, u8, str.len + 1);
+Str8 arena_push_str8(Arena *arena, Str8 str) {
+  u8 *ptr = arena_push_array_no_zero(arena, u8, str.len + 1);
   memcpy(ptr, str.ptr, str.len + 1);
   Str8 result = {ptr, str.len};
   return result;
 }
 
-Str8 PushStr8F(Arena *arena, const char *format, ...) {
+Str8 arena_push_str8f(Arena *arena, const char *format, ...) {
   va_list ap;
   va_start(ap, format);
-  Str8 result = PushStr8FV(arena, format, ap);
+  Str8 result = arena_push_str8fv(arena, format, ap);
   va_end(ap);
   return result;
 }
 
-Str8 PushStr8FV(Arena *arena, const char *format, va_list ap) {
+Str8 arena_push_str8fv(Arena *arena, const char *format, va_list ap) {
   usize kInitBufferSize = 256;
   usize buf_len = kInitBufferSize;
-  char *buf_ptr = PushArray(arena, char, buf_len);
+  char *buf_ptr = arena_push_array(arena, char, buf_len);
 
   va_list args;
   va_copy(args, ap);
@@ -34,12 +34,12 @@ Str8 PushStr8FV(Arena *arena, const char *format, va_list ap) {
 
   if (str_len + 1 <= buf_len) {
     // Free the unused part of the buffer.
-    PopArena(arena, buf_len - str_len - 1);
+    arena_pop(arena, buf_len - str_len - 1);
   } else {
     // The buffer was too small. We need to resize it and try again.
-    PopArena(arena, buf_len);
+    arena_pop(arena, buf_len);
     buf_len = str_len + 1;
-    buf_ptr = PushArray(arena, char, buf_len);
+    buf_ptr = arena_push_array(arena, char, buf_len);
     va_copy(args, ap);
     vsnprintf(buf_ptr, buf_len, format, args);
   }
@@ -54,7 +54,7 @@ struct UnicodeDecode {
   u32 increment;
 };
 
-static UnicodeDecode DecodeUtf8(u8 *ptr, usize len) {
+static UnicodeDecode utf_decode(u8 *ptr, usize len) {
 #define VALID_PREFIX(b) (((b) & 0b11000000) == 0b10000000)
   UnicodeDecode result;
   result.codepoint = 0xFFFD;
@@ -93,18 +93,18 @@ static UnicodeDecode DecodeUtf8(u8 *ptr, usize len) {
   return result;
 }
 
-Str32 PushStr32FromStr8(Arena *arena, Str8 str) {
+Str32 arena_push_str32_from_str8(Arena *arena, Str8 str) {
   usize cap = str.len + 1;
-  u32 *ptr = PushArrayNoZero(arena, u32, cap);
+  u32 *ptr = arena_push_array_no_zero(arena, u32, cap);
   u32 len = 0;
   u8 *end = str.ptr + str.len;
   UnicodeDecode decode;
   for (u8 *cursor = str.ptr; cursor < end; cursor += decode.increment) {
-    decode = DecodeUtf8(cursor, end - cursor);
+    decode = utf_decode(cursor, end - cursor);
     ptr[len++] = decode.codepoint;
   }
   ptr[len++] = 0;
   DEBUG_ASSERT(len <= cap);
-  PopArena(arena, (cap - len) * 4);
+  arena_pop(arena, (cap - len) * 4);
   return (Str32){ptr, len - 1};
 }

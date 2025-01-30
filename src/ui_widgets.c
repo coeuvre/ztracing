@@ -10,56 +10,57 @@
 #include "src/types.h"
 #include "src/ui.h"
 
-void BeginUIRow(UIRowProps props) {
-  BeginUITag("Row", (UIProps){
-                        .key = props.key,
-                        .size = props.size,
-                        .padding = props.padding,
-                        .margin = props.margin,
-                        .border = props.border,
-                        .color = props.color,
-                        .background_color = props.background_color,
-                        .main_axis_align = props.main_axis_align,
-                        .main_axis = kAxis2X,
-                        .main_axis_size = kUIMainAxisSizeMax,
-                        .cross_axis_align =
-                            props.cross_axis_align != kUICrossAxisAlignUnknown
-                                ? props.cross_axis_align
-                                : kUICrossAxisAlignCenter,
-                    });
+void ui_row_begin(UIRowProps props) {
+  ui_tag_begin("Row", (UIProps){
+                          .key = props.key,
+                          .size = props.size,
+                          .padding = props.padding,
+                          .margin = props.margin,
+                          .border = props.border,
+                          .color = props.color,
+                          .background_color = props.background_color,
+                          .main_axis_align = props.main_axis_align,
+                          .main_axis = kAxis2X,
+                          .main_axis_size = kUIMainAxisSizeMax,
+                          .cross_axis_align =
+                              props.cross_axis_align != kUICrossAxisAlignUnknown
+                                  ? props.cross_axis_align
+                                  : kUICrossAxisAlignCenter,
+                      });
 }
 
-void BeginUIColumn(UIColumnProps props) {
-  BeginUITag("Column", (UIProps){
+void ui_column_begin(UIColumnProps props) {
+  ui_tag_begin(
+      "Column",
+      (UIProps){
+          .key = props.key,
+          .size = props.size,
+          .padding = props.padding,
+          .margin = props.margin,
+          .border = props.border,
+          .color = props.color,
+          .background_color = props.background_color,
+          .main_axis_align = props.main_axis_align,
+          .main_axis = kAxis2Y,
+          .main_axis_size = kUIMainAxisSizeMax,
+          .cross_axis_align = props.cross_axis_align != kUICrossAxisAlignUnknown
+                                  ? props.cross_axis_align
+                                  : kUICrossAxisAlignCenter,
+      });
+}
+
+void ui_text(UITextProps props) {
+  ui_tag_begin("Text", (UIProps){
                            .key = props.key,
                            .size = props.size,
+                           .text = props.text,
                            .padding = props.padding,
                            .margin = props.margin,
                            .border = props.border,
                            .color = props.color,
                            .background_color = props.background_color,
-                           .main_axis_align = props.main_axis_align,
-                           .main_axis = kAxis2Y,
-                           .main_axis_size = kUIMainAxisSizeMax,
-                           .cross_axis_align = props.cross_axis_align !=
-                                                       kUICrossAxisAlignUnknown
-                                                   ? props.cross_axis_align
-                                                   : kUICrossAxisAlignCenter,
                        });
-}
-
-void DoUIText(UITextProps props) {
-  BeginUITag("Text", (UIProps){
-                         .key = props.key,
-                         .size = props.size,
-                         .text = props.text,
-                         .padding = props.padding,
-                         .margin = props.margin,
-                         .border = props.border,
-                         .color = props.color,
-                         .background_color = props.background_color,
-                     });
-  EndUITag("Text");
+  ui_tag_end("Text");
 }
 
 typedef struct UIButtonState {
@@ -67,50 +68,50 @@ typedef struct UIButtonState {
   ColorU32 target_background_color;
 } UIButtonState;
 
-bool BeginUIButton(UIButtonProps props) {
+bool ui_button_begin(UIButtonProps props) {
   UIEdgeInsets padding = props.padding;
-  if (!IsUIEdgeInsetsSet(padding)) {
+  if (!ui_edge_insets_is_set(padding)) {
     // TODO: Use theme
-    padding = UIEdgeInsetsSymmetric(6, 3);
+    padding = ui_edge_insets_symmetric(6, 3);
   }
 
   bool clicked;
-  BeginUITag("Button", (UIProps){
-                           .size = props.size,
-                           .position = props.position,
-                           .offset = props.offset,
-                           .padding = padding,
-                           .text = props.text,
-                       });
+  ui_tag_begin("Button", (UIProps){
+                             .size = props.size,
+                             .position = props.position,
+                             .offset = props.offset,
+                             .padding = padding,
+                             .text = props.text,
+                         });
   {
-    UIButtonState *state = PushUIBoxStruct(UIButtonState);
+    UIButtonState *state = ui_box_push_struct(UIButtonState);
 
-    if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
-      state->target_background_color = ColorU32FromHex(0x4B6F9E);
-    } else if (IsUIMouseHovering()) {
-      state->target_background_color = ColorU32FromHex(0x4B7DB8);
+    if (ui_is_mouse_button_down(kUIMouseButtonLeft)) {
+      state->target_background_color = color_u32_from_hex(0x4B6F9E);
+    } else if (ui_is_mouse_hovering()) {
+      state->target_background_color = color_u32_from_hex(0x4B7DB8);
     } else if (props.default_background_color) {
-      state->target_background_color = ColorU32FromHex(0xB9D3F3);
+      state->target_background_color = color_u32_from_hex(0xB9D3F3);
     } else {
-      state->target_background_color = ColorU32Zero();
+      state->target_background_color = color_u32_zero();
     }
 
     if (props.hoverred) {
-      *props.hoverred = IsUIMouseHovering();
+      *props.hoverred = ui_is_mouse_hovering();
     }
 
-    clicked = IsUIMouseButtonClicked(kUIMouseButtonLeft);
+    clicked = ui_is_mouse_button_clicked(kUIMouseButtonLeft);
 
-    state->background_color = AnimateUIFastColorU32(
+    state->background_color = ui_animate_fast_color_u32(
         state->background_color, state->target_background_color);
 
-    GetCurrentUIBox()->props.background_color = state->background_color;
+    ui_box_get_current()->props.background_color = state->background_color;
   }
 
   return clicked;
 }
 
-void EndUIButton(void) { EndUITag("Button"); }
+void ui_button_end(void) { ui_tag_end("Button"); }
 
 typedef struct UICollapsingState {
   bool init;
@@ -118,9 +119,9 @@ typedef struct UICollapsingState {
   UIBox *header;
 } UICollapsingState;
 
-bool BeginUICollapsing(UICollapsingProps props) {
-  BeginUITag("Collapsing", (UIProps){0});
-  UICollapsingState *state = PushUIBoxStruct(UICollapsingState);
+bool ui_collapsing_begin(UICollapsingProps props) {
+  ui_tag_begin("Collapsing", (UIProps){0});
+  UICollapsingState *state = ui_box_push_struct(UICollapsingState);
   if (!state->init) {
     if (props.open && *props.open) {
       state->open_t = 1.0f;
@@ -128,16 +129,16 @@ bool BeginUICollapsing(UICollapsingProps props) {
     state->init = true;
   }
 
-  BeginUIColumn((UIColumnProps){0});
+  ui_column_begin((UIColumnProps){0});
   {
-    bool clicked = BeginUIButton((UIButtonProps){
+    bool clicked = ui_button_begin((UIButtonProps){
         .default_background_color = props.header.default_background_color,
-        .padding = UIEdgeInsetsAll(0),
+        .padding = ui_edge_insets_all(0),
         .hoverred = props.header.hoverred,
     });
-    state->header = GetCurrentUIBox();
+    state->header = ui_box_get_current();
     {
-      BeginUIRow((UIRowProps){
+      ui_row_begin((UIRowProps){
           .padding = props.header.padding,
       });
       {
@@ -145,49 +146,50 @@ bool BeginUICollapsing(UICollapsingProps props) {
           *props.open = !*props.open;
         }
 
-        Str8 prefix = STR8_LIT("   ");
+        Str8 prefix = str8_lit("   ");
         if (props.open) {
-          prefix = *props.open ? STR8_LIT(" - ") : STR8_LIT(" + ");
+          prefix = *props.open ? str8_lit(" - ") : str8_lit(" + ");
         }
 
-        BeginUIBox((UIProps){
-            .text = PushUIStr8F("%s%s", prefix.ptr, props.header.text.ptr),
+        ui_box_begin((UIProps){
+            .text = ui_push_str8f("%s%s", prefix.ptr, props.header.text.ptr),
         });
-        EndUIBox();
+        ui_box_end();
       }
-      EndUIRow();
+      ui_row_end();
     }
-    EndUIButton();
+    ui_button_end();
 
     // Clip box
-    BeginUIBox((UIProps){.isolate = true});
+    ui_box_begin((UIProps){.isolate = true});
 
-    BeginUIBox((UIProps){0});
-    UIBox *content = GetCurrentUIBox();
+    ui_box_begin((UIProps){0});
+    UIBox *content = ui_box_get_current();
     if (props.open && *props.open && content->computed.size.y == 0) {
       // For the first frame, the content size is unknown. Make margin -INF
       // effectively make it invisible.
-      content->props.margin = UIEdgeInsetsFromLTRB(0, -kUISizeInfinity, 0, 0);
+      content->props.margin =
+          ui_edge_insets_from_ltrb(0, -kUISizeInfinity, 0, 0);
     } else {
-      content->props.margin = UIEdgeInsetsFromLTRB(
+      content->props.margin = ui_edge_insets_from_ltrb(
           0, (1.0f - state->open_t) * -content->computed.size.y, 0, 0);
     }
   }
 
-  state->open_t = AnimateUIFastF32(state->open_t,
-                                   (props.open && *props.open) ? 1.0f : 0.0f);
+  state->open_t = ui_animate_fast_f32(
+      state->open_t, (props.open && *props.open) ? 1.0f : 0.0f);
 
   bool result = state->open_t != 0.0f;
   return result;
 }
 
-void EndUICollapsing(void) {
+void ui_collapsing_end(void) {
   {
-    EndUIBox();
-    EndUIBox();
+    ui_box_end();
+    ui_box_end();
   }
-  EndUIColumn();
-  EndUITag("Collapsing");
+  ui_column_end();
+  ui_tag_end("Collapsing");
 }
 
 typedef struct UIScrollableState {
@@ -208,46 +210,47 @@ typedef struct UIScrollableState {
   f32 control_size;
 } UIScrollableState;
 
-void BeginUIScrollable(UIScrollableProps props) {
-  BeginUITag("Scrollable", (UIProps){
-                               .main_axis = kAxis2X,
-                           });
+void ui_scrollable_begin(UIScrollableProps props) {
+  ui_tag_begin("Scrollable", (UIProps){
+                                 .main_axis = kAxis2X,
+                             });
   {
-    UIScrollableState *state = PushUIBoxStruct(UIScrollableState);
+    UIScrollableState *state = ui_box_push_struct(UIScrollableState);
     state->target_scroll = props.scroll;
 
     Vec2 wheel_delta;
-    b32 scrolling = IsUIMouseScrolling(&wheel_delta);
+    b32 scrolling = ui_is_mouse_button_scrolling(&wheel_delta);
 
-    BeginUITag("ScrollArea", (UIProps){
-                                 .flex = 1,
-                                 .main_axis = kAxis2Y,
-                                 .size = V2(kUISizeUndefined, kUISizeInfinity),
-                             });
+    ui_tag_begin("ScrollArea",
+                 (UIProps){
+                     .flex = 1,
+                     .main_axis = kAxis2Y,
+                     .size = v2(kUISizeUndefined, kUISizeInfinity),
+                 });
     {
-      UIBox *scroll_area = GetCurrentUIBox();
+      UIBox *scroll_area = ui_box_get_current();
       state->scroll_area_size = scroll_area->computed.size.y;
 
-      BeginUITag("ScrollContent",
-                 (UIProps){
-                     .margin = UIEdgeInsetsFromLT(0, -state->scroll),
-                     .isolate = true,
-                 });
-      UIBox *scroll_content = GetCurrentUIBox();
+      ui_tag_begin("ScrollContent",
+                   (UIProps){
+                       .margin = ui_edge_insets_from_lt(0, -state->scroll),
+                       .isolate = true,
+                   });
+      UIBox *scroll_content = ui_box_get_current();
       f32 total_item_size = scroll_content->computed.size.y;
 
-      state->head_size = V2(10, 0);
-      state->scroll_max = MaxF32(total_item_size - state->scroll_area_size, 0);
+      state->head_size = v2(10, 0);
+      state->scroll_max = f32_max(total_item_size - state->scroll_area_size, 0);
       // Assume first frame if scroll_max is 0
       if (state->scroll_max) {
         if (state->target_scroll) {
           *state->target_scroll =
-              ClampF32(*state->target_scroll, 0, state->scroll_max);
+              f32_clamp(*state->target_scroll, 0, state->scroll_max);
           state->scroll =
-              AnimateUIFastF32(state->scroll, *state->target_scroll);
+              ui_animate_fast_f32(state->scroll, *state->target_scroll);
         }
         // Only clamp scroll for non-first frame
-        state->scroll = ClampF32(state->scroll, 0, state->scroll_max);
+        state->scroll = f32_clamp(state->scroll, 0, state->scroll_max);
       } else {
         if (state->target_scroll) {
           state->scroll = *state->target_scroll;
@@ -256,11 +259,11 @@ void BeginUIScrollable(UIScrollableProps props) {
 
       f32 min_control_size = 4;
       f32 free_size =
-          MaxF32(state->scroll_area_size - 2 * state->head_size.y, 0.0f);
+          f32_max(state->scroll_area_size - 2 * state->head_size.y, 0.0f);
       state->control_size =
-          MinF32(MaxF32(state->scroll_area_size / total_item_size * free_size,
-                        min_control_size),
-                 free_size);
+          f32_min(f32_max(state->scroll_area_size / total_item_size * free_size,
+                          min_control_size),
+                  free_size);
 
       state->scroll_step = 0.2f * state->scroll_area_size;
 
@@ -268,9 +271,9 @@ void BeginUIScrollable(UIScrollableProps props) {
       state->control_offset =
           (state->scroll / state->scroll_max) * state->control_max;
       if (state->target_scroll && scrolling) {
-        *state->target_scroll =
-            ClampF32(*state->target_scroll + wheel_delta.y * state->scroll_step,
-                     0, state->scroll_max);
+        *state->target_scroll = f32_clamp(
+            *state->target_scroll + wheel_delta.y * state->scroll_step, 0,
+            state->scroll_max);
       }
 
       // ...
@@ -278,87 +281,87 @@ void BeginUIScrollable(UIScrollableProps props) {
   }
 }
 
-static void DoUIScrollableScrollBar(UIScrollableState *state) {
-  BeginUITag("ScrollBar", (UIProps){0});
-  BeginUIColumn((UIColumnProps){0});
+static void ui_scrollable_scroll_bar(UIScrollableState *state) {
+  ui_tag_begin("ScrollBar", (UIProps){0});
+  ui_column_begin((UIColumnProps){0});
   {
-    Vec2 mouse_pos = GetUIMouseRelPos();
-    if (IsUIMouseButtonDown(kUIMouseButtonLeft)) {
-      if (ContainsF32(mouse_pos.x, 0, state->head_size.x) &&
+    Vec2 mouse_pos = ui_get_mouse_rel_pos();
+    if (ui_is_mouse_button_down(kUIMouseButtonLeft)) {
+      if (f32_contains(mouse_pos.x, 0, state->head_size.x) &&
           state->target_scroll) {
         f32 offset = mouse_pos.y - state->head_size.y;
         if (offset < state->control_offset) {
           *state->target_scroll =
-              ClampF32(*state->target_scroll - 0.2f * state->scroll_step, 0,
-                       state->scroll_max);
+              f32_clamp(*state->target_scroll - 0.2f * state->scroll_step, 0,
+                        state->scroll_max);
         } else if (offset > state->control_offset + state->control_size) {
           *state->target_scroll =
-              ClampF32(*state->target_scroll + 0.2f * state->scroll_step, 0,
-                       state->scroll_max);
+              f32_clamp(*state->target_scroll + 0.2f * state->scroll_step, 0,
+                        state->scroll_max);
         }
       }
     }
-    ColorU32 background_color = ColorU32FromHex(0xF5F5F5);
+    ColorU32 background_color = color_u32_from_hex(0xF5F5F5);
 
-    BeginUIBox((UIProps){
-        .size = V2(state->head_size.x, state->control_offset),
+    ui_box_begin((UIProps){
+        .size = v2(state->head_size.x, state->control_offset),
         .background_color = background_color,
     });
-    EndUIBox();
+    ui_box_end();
 
-    BeginUIBox((UIProps){0});
+    ui_box_begin((UIProps){0});
     {
-      ColorU32 control_background_color = ColorU32FromHex(0xBEBEBE);
-      if (IsUIMouseHovering()) {
-        control_background_color = ColorU32FromHex(0x959595);
+      ColorU32 control_background_color = color_u32_from_hex(0xBEBEBE);
+      if (ui_is_mouse_hovering()) {
+        control_background_color = color_u32_from_hex(0x959595);
       }
-      if (IsUIMouseButtonPressed(kUIMouseButtonLeft)) {
+      if (ui_is_mouse_button_pressed(kUIMouseButtonLeft)) {
         state->control_offset_drag_start = state->control_offset;
       }
       Vec2 drag_delta;
-      if (IsUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta) &&
+      if (ui_is_mouse_button_dragging(kUIMouseButtonLeft, &drag_delta) &&
           state->target_scroll) {
         f32 offset = state->control_offset_drag_start + drag_delta.y;
         *state->target_scroll =
-            ClampF32(offset / state->control_max * state->scroll_max, 0,
-                     state->scroll_max);
+            f32_clamp(offset / state->control_max * state->scroll_max, 0,
+                      state->scroll_max);
 
-        control_background_color = ColorU32FromHex(0x7D7D7D);
+        control_background_color = color_u32_from_hex(0x7D7D7D);
       }
 
-      BeginUIBox((UIProps){
-          .size = V2(state->head_size.x, state->control_size),
+      ui_box_begin((UIProps){
+          .size = v2(state->head_size.x, state->control_size),
           .background_color = control_background_color,
       });
-      EndUIBox();
+      ui_box_end();
     }
-    EndUIBox();
+    ui_box_end();
 
-    BeginUIBox((UIProps){
-        .size = V2(state->head_size.x, kUISizeUndefined),
+    ui_box_begin((UIProps){
+        .size = v2(state->head_size.x, kUISizeUndefined),
         .flex = 1,
         .background_color = background_color,
     });
-    EndUIBox();
+    ui_box_end();
   }
-  EndUIColumn();
-  EndUITag("ScrollBar");
+  ui_column_end();
+  ui_tag_end("ScrollBar");
 }
 
-void EndUIScrollable(void) {
+void ui_scrollable_end(void) {
   {
     {
       // ...
-      EndUITag("ScrollContent");
+      ui_tag_end("ScrollContent");
     }
-    EndUITag("ScrollArea");
+    ui_tag_end("ScrollArea");
 
-    UIScrollableState *state = GetUIBoxStruct(UIScrollableState);
+    UIScrollableState *state = ui_box_get_struct(UIScrollableState);
     if (state->scroll_max > 0) {
-      DoUIScrollableScrollBar(state);
+      ui_scrollable_scroll_bar(state);
     }
   }
-  EndUITag("Scrollable");
+  ui_tag_end("Scrollable");
 }
 
 typedef struct UIBoxDebugState UIBoxDebugState;
@@ -384,63 +387,64 @@ typedef struct UIDebugLayerState {
   UIBoxDebugState *root;
 } UIDebugLayerState;
 
-static UIBoxDebugState *PushUIBoxDebugState(UIDebugLayerState *state, UIID id,
-                                            bool build_order) {
-  id = UIIDFromU8(id, (u8)build_order);
+static UIBoxDebugState *push_ui_box_debug_state(UIDebugLayerState *state,
+                                                UIID id, bool build_order) {
+  id = uuid_from_u8(id, (u8)build_order);
 
   UIBoxDebugState **node = &state->root;
   for (u64 hash = id.hash; *node; hash <<= 2) {
-    if (IsZeroUIID(id) || IsEqualUIID(id, (*node)->id)) {
+    if (uuid_is_zero(id) || uuid_is_equal(id, (*node)->id)) {
       break;
     }
     node = &((*node)->child[hash >> 62]);
   }
   if (!*node) {
-    UIBoxDebugState *debug_state = PushArray(state->arena, UIBoxDebugState, 1);
+    UIBoxDebugState *debug_state =
+        arena_push_array(state->arena, UIBoxDebugState, 1);
     debug_state->id = id;
     (*node) = debug_state;
   }
   return *node;
 }
 
-static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level,
-                             bool build_order) {
+static void ui_debug_layer_box_r(UIDebugLayerState *state, UIBox *box,
+                                 u32 level, bool build_order) {
   if (box == state->debug_layer) {
     return;
   }
 
   UIBoxDebugState *box_debug_state =
-      PushUIBoxDebugState(state, box->id, build_order);
+      push_ui_box_debug_state(state, box->id, build_order);
 
-  bool has_key = !IsEmptyStr8(box->props.key);
-  Str8 text = PushUIStr8F("%s%s%s", box->tag, has_key ? "#" : "",
-                          has_key ? (char *)box->props.key.ptr : "");
+  bool has_key = !str8_is_empty(box->props.key);
+  Str8 text = ui_push_str8f("%s%s%s", box->tag, has_key ? "#" : "",
+                            has_key ? (char *)box->props.key.ptr : "");
 
   bool header_hovered;
-  if (BeginUICollapsing((UICollapsingProps){
+  if (ui_collapsing_begin((UICollapsingProps){
           .open = (build_order ? box->build.first : box->stack.first)
                       ? &box_debug_state->open
                       : 0,
           .header =
               (UICollapsingHeaderProps){
                   .text = text,
-                  .padding = UIEdgeInsetsFromLTRB(level * 15, 0, 0, 0),
+                  .padding = ui_edge_insets_from_ltrb(level * 15, 0, 0, 0),
                   .hoverred = &header_hovered,
               },
       })) {
-    BeginUIColumn((UIColumnProps){0});
+    ui_column_begin((UIColumnProps){0});
     for (UIBox *child = (build_order ? box->build.first : box->stack.first);
          child; child = (build_order ? child->build.next : child->stack.next)) {
-      UIDebugLayerBoxR(state, child, level + 1, build_order);
+      ui_debug_layer_box_r(state, child, level + 1, build_order);
     }
-    EndUIColumn();
+    ui_column_end();
   }
-  EndUICollapsing();
+  ui_collapsing_end();
 
   if (header_hovered) {
     Rect2 hoverred_rect = box->computed.screen_rect;
     {
-      Vec2 size = SubVec2(hoverred_rect.max, hoverred_rect.min);
+      Vec2 size = vec2_sub(hoverred_rect.max, hoverred_rect.min);
       // Make zero area box visible.
       if (size.x == 0 && size.y != 0) {
         hoverred_rect.max.x = hoverred_rect.min.x + 1;
@@ -454,116 +458,117 @@ static void UIDebugLayerBoxR(UIDebugLayerState *state, UIBox *box, u32 level,
   }
 }
 
-static void UIDebugLayerInternal(UIDebugLayerState *state) {
-  UIState *ui_state = GetUIState();
+static void ui_debug_layer_internal(UIDebugLayerState *state) {
+  UIState *ui_state = ui_state_get();
   UIFrame *frame = ui_state->frames + ((ui_state->frame_index - 1) %
                                        ARRAY_COUNT(ui_state->frames));
 
-  BeginUIBox((UIProps){
-      .padding = UIEdgeInsetsSymmetric(6, 3),
+  ui_box_begin((UIProps){
+      .padding = ui_edge_insets_symmetric(6, 3),
   });
-  BeginUIColumn((UIColumnProps){0});
-  BeginUIBox((UIProps){0});
+  ui_column_begin((UIColumnProps){0});
+  ui_box_begin((UIProps){0});
   {
-    BeginUIColumn((UIColumnProps){0});
+    ui_column_begin((UIColumnProps){0});
 
-    BeginUIRow((UIRowProps){0});
-    DoUIText((UITextProps){
-        .text = PushUIStr8F("Boxes: %" PRIu64 " / %" PRIu64,
-                            frame->cache.total_box_count,
-                            frame->cache.box_hash_slots_count),
+    ui_row_begin((UIRowProps){0});
+    ui_text((UITextProps){
+        .text = ui_push_str8f("Boxes: %" PRIu64 " / %" PRIu64,
+                              frame->cache.total_box_count,
+                              frame->cache.box_hash_slots_count),
     });
-    EndUIRow();
+    ui_row_end();
 
-    EndUIColumn();
+    ui_column_end();
   }
-  EndUIBox();
+  ui_box_end();
 
   if (frame->root) {
-    UIDebugLayerBoxR(state, frame->root, 0, /* build_order= */ true);
-    UIDebugLayerBoxR(state, frame->root, 0, /* build_order= */ false);
+    ui_debug_layer_box_r(state, frame->root, 0, /* build_order= */ true);
+    ui_debug_layer_box_r(state, frame->root, 0, /* build_order= */ false);
   }
 
-  EndUIColumn();
-  EndUIBox();
+  ui_column_end();
+  ui_box_end();
 }
 
-void DoUIDebugLayer(UIDebugLayerProps props) {
+void ui_debug_layer(UIDebugLayerProps props) {
   ASSERTF(props.arena, "Must provide an arena");
 
   f32 resize_handle_size = 16;
-  Vec2 default_frame_size = V2(400, 500);
-  Vec2 min_frame_size = V2(resize_handle_size * 2, resize_handle_size * 2);
+  Vec2 default_frame_size = v2(400, 500);
+  Vec2 min_frame_size = v2(resize_handle_size * 2, resize_handle_size * 2);
 
-  BeginUITag("DebugLayer", (UIProps){
-                               .z_index = kUIDebugLayerZIndex,
-                           });
-  UIDebugLayerState *state = PushUIBoxStruct(UIDebugLayerState);
+  ui_tag_begin("DebugLayer", (UIProps){
+                                 .z_index = kUIDebugLayerZIndex,
+                             });
+  UIDebugLayerState *state = ui_box_push_struct(UIDebugLayerState);
   if (!state->init) {
-    if (IsZeroVec2(SubVec2(state->max, state->min))) {
+    if (vec2_is_zero(vec2_sub(state->max, state->min))) {
       state->max =
-          AddVec2(state->min, V2(default_frame_size.x + resize_handle_size,
-                                 default_frame_size.y + resize_handle_size));
+          vec2_add(state->min, v2(default_frame_size.x + resize_handle_size,
+                                  default_frame_size.y + resize_handle_size));
     }
     state->arena = props.arena;
     state->init = 1;
   }
 
-  UIBox *debug_layer = GetCurrentUIBox();
-  state->debug_layer = GetUIBoxFromFrame(GetLastUIFrame(), debug_layer->id);
+  UIBox *debug_layer = ui_box_get_current();
+  state->debug_layer = ui_box_get(ui_frame_get_last(), debug_layer->id);
 
   if (props.open) {
     state->open = *props.open;
   }
 
-  state->hoverred_rect = Rect2Zero();
+  state->hoverred_rect = rect2_zero();
   if (state->open) {
-    BeginUITag("Float",
-               (UIProps){
-                   .size = SubVec2(state->max, state->min),
-                   .color = ColorU32FromHex(0x000000),
-                   .position = kUIPositionFixed,
-                   .offset = UIEdgeInsetsFromLT(state->min.x, state->min.y),
-                   .border = UIBorderFromBorderSide((UIBorderSide){
-                       .color = ColorU32FromHex(0xA8A8A8),
-                       .width = 1,
-                   }),
-               });
+    ui_tag_begin(
+        "Float",
+        (UIProps){
+            .size = vec2_sub(state->max, state->min),
+            .color = color_u32_from_hex(0x000000),
+            .position = kUIPositionFixed,
+            .offset = ui_edge_insets_from_lt(state->min.x, state->min.y),
+            .border = ui_border_from_border_side((UIBorderSide){
+                .color = color_u32_from_hex(0xA8A8A8),
+                .width = 1,
+            }),
+        });
     {
-      SetUIBoxBlockMouseInput();
+      ui_set_block_mouse_input();
 
-      if (IsUIMouseButtonPressed(kUIMouseButtonLeft)) {
+      if (ui_is_mouse_button_pressed(kUIMouseButtonLeft)) {
         state->pressed_min = state->min;
         state->pressed_max = state->max;
       }
       Vec2 drag_delta;
-      if (IsUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta)) {
-        Vec2 size = SubVec2(state->max, state->min);
-        state->min = RoundVec2(AddVec2(state->pressed_min, drag_delta));
-        state->max = AddVec2(state->min, size);
+      if (ui_is_mouse_button_dragging(kUIMouseButtonLeft, &drag_delta)) {
+        Vec2 size = vec2_sub(state->max, state->min);
+        state->min = vec2_round(vec2_add(state->pressed_min, drag_delta));
+        state->max = vec2_add(state->min, size);
       }
 
-      BeginUIBox((UIProps){
-          .background_color = ColorU32FromHex(0xF0F0F0),
+      ui_box_begin((UIProps){
+          .background_color = color_u32_from_hex(0xF0F0F0),
       });
-      BeginUIColumn((UIColumnProps){0});
+      ui_column_begin((UIColumnProps){0});
       {
-        BeginUIBox((UIProps){
-            .background_color = ColorU32FromHex(0xD1D1D1),
+        ui_box_begin((UIProps){
+            .background_color = color_u32_from_hex(0xD1D1D1),
         });
-        BeginUIRow((UIRowProps){0});
+        ui_row_begin((UIRowProps){0});
         {
-          UIEdgeInsets padding = UIEdgeInsetsSymmetric(6, 3);
-          DoUIText((UITextProps){
-              .text = STR8_LIT("Debug"),
+          UIEdgeInsets padding = ui_edge_insets_symmetric(6, 3);
+          ui_text((UITextProps){
+              .text = str8_lit("Debug"),
               .padding = padding,
           });
 
-          BeginUIBox((UIProps){.flex = 1});
-          EndUIBox();
+          ui_box_begin((UIProps){.flex = 1});
+          ui_box_end();
 
           if (DoUIButton((UIButtonProps){
-                  .text = STR8_LIT("X"),
+                  .text = str8_lit("X"),
                   .padding = padding,
               })) {
             state->open = false;
@@ -572,54 +577,56 @@ void DoUIDebugLayer(UIDebugLayerProps props) {
             }
           }
         }
-        EndUIRow();
-        EndUIBox();
+        ui_row_end();
+        ui_box_end();
 
-        BeginUIScrollable((UIScrollableProps){.scroll = &state->scroll});
-        UIDebugLayerInternal(state);
-        EndUIScrollable();
+        ui_scrollable_begin((UIScrollableProps){.scroll = &state->scroll});
+        ui_debug_layer_internal(state);
+        ui_scrollable_end();
       }
-      EndUIColumn();
-      EndUIBox();
+      ui_column_end();
+      ui_box_end();
 
-      BeginUIButton((UIButtonProps){
+      ui_button_begin((UIButtonProps){
           .default_background_color = 1,
-          .position = kUIPositionAbsolute,
-          .offset = UIEdgeInsetsFromRB(1, 1),
-          .size = V2(resize_handle_size, resize_handle_size),
+          .position = kUIposition_absolute,
+          .offset = ui_edge_insets_from_rb(1, 1),
+          .size = v2(resize_handle_size, resize_handle_size),
       });
       {
-        if (IsUIMouseButtonPressed(kUIMouseButtonLeft)) {
+        if (ui_is_mouse_button_pressed(kUIMouseButtonLeft)) {
           state->pressed_min = state->min;
           state->pressed_max = state->max;
         }
         Vec2 drag_delta;
-        if (IsUIMouseButtonDragging(kUIMouseButtonLeft, &drag_delta)) {
-          state->max = RoundVec2(AddVec2(state->pressed_max, drag_delta));
-          state->max = MaxVec2(state->max, AddVec2(state->min, min_frame_size));
+        if (ui_is_mouse_button_dragging(kUIMouseButtonLeft, &drag_delta)) {
+          state->max = vec2_round(vec2_add(state->pressed_max, drag_delta));
+          state->max =
+              vec2_max(state->max, vec2_add(state->min, min_frame_size));
         }
       }
-      EndUIButton();
+      ui_button_end();
     }
-    EndUITag("Float");
+    ui_tag_end("Float");
 
-    BeginUITag("Highlight", (UIProps){
-                                .z_index = -1,
-                                .position = kUIPositionFixed,
-                                .size = V2(kUISizeInfinity, kUISizeInfinity),
-                            });
-    if (GetRect2Area(state->hoverred_rect) > 0) {
+    ui_tag_begin("Highlight", (UIProps){
+                                  .z_index = -1,
+                                  .position = kUIPositionFixed,
+                                  .size = v2(kUISizeInfinity, kUISizeInfinity),
+                              });
+    if (rect2_get_area(state->hoverred_rect) > 0) {
       Rect2 hoverred_rect = state->hoverred_rect;
 
-      BeginUIBox((UIProps){
-          .background_color = ColorU32FromSRGBNotPremultiplied(255, 0, 255, 64),
-          .size = SubVec2(hoverred_rect.max, hoverred_rect.min),
+      ui_box_begin((UIProps){
+          .background_color =
+              color_u32_from_srgb_not_premultiplied(255, 0, 255, 64),
+          .size = vec2_sub(hoverred_rect.max, hoverred_rect.min),
           .margin =
-              UIEdgeInsetsFromLT(hoverred_rect.min.x, hoverred_rect.min.y),
+              ui_edge_insets_from_lt(hoverred_rect.min.x, hoverred_rect.min.y),
       });
-      EndUIBox();
+      ui_box_end();
     }
-    EndUITag("Highlight");
+    ui_tag_end("Highlight");
   }
-  EndUITag("DebugLayer");
+  ui_tag_end("DebugLayer");
 }

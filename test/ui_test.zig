@@ -18,7 +18,7 @@ const CrossAxisOption = struct {
 };
 
 fn expectUIBuildError(expected: []const u8) !void {
-    var maybe_err = c.GetFirstUIBuildError();
+    var maybe_err = c.ui_get_first_build_error();
     while (maybe_err) |err| : (maybe_err = maybe_err.*.next) {
         const actual = sliceFromStr8(err.*.message);
         if (std.mem.eql(u8, actual, expected)) {
@@ -28,7 +28,7 @@ fn expectUIBuildError(expected: []const u8) !void {
 
     log.err("Expected build error \"{s}\" not found", .{expected});
     log.err("Existing build error:", .{});
-    maybe_err = c.GetFirstUIBuildError();
+    maybe_err = c.ui_get_first_build_error();
     while (maybe_err) |err| : (maybe_err = maybe_err.*.next) {
         log.err("    {s}", .{sliceFromStr8(err.*.message)});
     }
@@ -36,7 +36,7 @@ fn expectUIBuildError(expected: []const u8) !void {
 }
 
 fn expectEqualVec2(expected: c.Vec2, actual: c.Vec2) !void {
-    if (c.IsEqualVec2(expected, actual) == 0) {
+    if (c.vec2_is_equal(expected, actual) == 0) {
         log.err("expected Vec2({d:.2}, {d:.2}), but got Vec2({d:.2}, {d:.2})", .{
             expected.x,
             expected.y,
@@ -68,267 +68,267 @@ const State = extern struct {
 };
 
 fn pushBoxState() [*c]State {
-    return @ptrCast(@alignCast(c.PushUIBoxState("State", @sizeOf(State))));
+    return @ptrCast(@alignCast(c.ui_box_push_state("State", @sizeOf(State))));
 }
 
 test "State, return the same state across frame" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             state.*.value = 10;
         }
-        c.EndUIBox();
+        c.ui_box_end();
 
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             state.*.value = 11;
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             try testing.expectEqual(10, state.*.value);
         }
-        c.EndUIBox();
+        c.ui_box_end();
 
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             try testing.expectEqual(11, state.*.value);
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 }
 
 test "State, reset state if key is different" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{ .key = c.STR8_LIT("Key0") });
+        c.ui_box_begin(.{ .key = c.str8_lit("Key0") });
         {
             const state = pushBoxState();
             state.*.value = 10;
         }
-        c.EndUIBox();
+        c.ui_box_end();
 
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             state.*.value = 11;
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{ .key = c.STR8_LIT("Key1") });
+        c.ui_box_begin(.{ .key = c.str8_lit("Key1") });
         {
             const state = pushBoxState();
             try testing.expectEqual(0, state.*.value);
         }
-        c.EndUIBox();
+        c.ui_box_end();
 
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             try testing.expectEqual(11, state.*.value);
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 }
 
 test "State, reset state if tag is different" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             state.*.value = 10;
         }
-        c.EndUIBox();
+        c.ui_box_end();
 
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             state.*.value = 11;
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUITag("Tag", .{});
+        c.ui_tag_begin("Tag", .{});
         {
             const state = pushBoxState();
             try testing.expectEqual(0, state.*.value);
         }
-        c.EndUITag("Tag");
+        c.ui_tag_end("Tag");
 
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             try testing.expectEqual(11, state.*.value);
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 }
 
 test "State, reset state if box is not build from last frame" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             state.*.value = 10;
         }
-        c.EndUIBox();
+        c.ui_box_end();
 
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             state.*.value = 11;
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             try testing.expectEqual(10, state.*.value);
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             try testing.expectEqual(10, state.*.value);
         }
-        c.EndUIBox();
+        c.ui_box_end();
 
-        c.BeginUIBox(.{});
+        c.ui_box_begin(.{});
         {
             const state = pushBoxState();
             try testing.expectEqual(0, state.*.value);
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 }
 
 test "State, reset state if parent is different" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        _ = c.BeginUIBox(.{});
+        _ = c.ui_box_begin(.{});
         {
-            c.BeginUIBox(.{});
+            c.ui_box_begin(.{});
             {
                 const state = pushBoxState();
                 state.*.value = 11;
             }
-            c.EndUIBox();
+            c.ui_box_end();
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        _ = c.BeginUITag("Tag", .{});
+        _ = c.ui_tag_begin("Tag", .{});
         {
-            c.BeginUIBox(.{});
+            c.ui_box_begin(.{});
             {
                 const state = pushBoxState();
                 try testing.expectEqual(0, state.*.value);
             }
-            c.EndUIBox();
+            c.ui_box_end();
         }
-        c.EndUITag("Tag");
+        c.ui_tag_end("Tag");
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 }
 
 // test "Layout, root has the same size as the screen" {
-//     c.InitUI();
-//     defer c.QuitUI();
+//     c.ui_init();
+//     defer c.ui_quit();
 //
 //     const sizes: []const c.Vec2 = &.{
-//         c.V2(c.kUISizeUndefined, c.kUISizeUndefined),
-//         c.V2(50, 50),
-//         c.V2(50, 200),
-//         c.V2(200, 50),
-//         c.V2(200, 200),
+//         c.v2(c.kUISizeUndefined, c.kUISizeUndefined),
+//         c.v2(50, 50),
+//         c.v2(50, 200),
+//         c.v2(200, 50),
+//         c.v2(200, 200),
 //     };
 //
 //     for (sizes) |size| {
-//         c.BeginUIFrame(c.V2(100, 100));
-//         c.BeginUIBox(.{ .size = size });
-//         const root = c.GetCurrentUIBox();
-//         c.EndUIBox();
-//         c.EndUIFrame();
+//         c.ui_begin_frame(c.v2(100, 100));
+//         c.ui_box_begin(.{ .size = size });
+//         const root = c.ui_box_get_current();
+//         c.ui_box_end();
+//         c.ui_end_frame();
 //
-//         try expectBoxSize(root, c.V2(100, 100));
+//         try expectBoxSize(root, c.v2(100, 100));
 //     }
 // }
 
 test "Layout, aligns" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     const main_axis_options: []const MainAxisOption = &.{
         .{ .@"align" = c.kUIMainAxisAlignStart, .rel_pos = 0 },
@@ -345,31 +345,31 @@ test "Layout, aligns" {
         for (cross_axis_options) |cross_axis_option| {
             var container: [*c]c.UIBox = undefined;
 
-            c.BeginUIFrame(c.V2(100, 100));
-            _ = c.BeginUIBox(.{
-                .size = c.V2(100, 100),
+            c.ui_begin_frame(c.v2(100, 100));
+            _ = c.ui_box_begin(.{
+                .size = c.v2(100, 100),
                 .main_axis_align = main_axis_option.@"align",
                 .cross_axis_align = cross_axis_option.@"align",
             });
             {
-                c.BeginUIBox(.{ .size = c.V2(50, 50) });
-                container = c.GetCurrentUIBox();
-                c.EndUIBox();
+                c.ui_box_begin(.{ .size = c.v2(50, 50) });
+                container = c.ui_box_get_current();
+                c.ui_box_end();
             }
-            c.EndUIBox();
-            c.EndUIFrame();
+            c.ui_box_end();
+            c.ui_end_frame();
 
-            try expectBoxRelPos(container, c.V2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
-            try expectBoxSize(container, c.V2(50, 50));
+            try expectBoxRelPos(container, c.v2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
+            try expectBoxSize(container, c.v2(50, 50));
         }
     }
 }
 
 test "Layout, padding" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
-    const padding = c.UIEdgeInsetsFromLTRB(1, 2, 3, 4);
+    const padding = c.ui_edge_insets_from_ltrb(1, 2, 3, 4);
     const main_axis_options: []const MainAxisOption = &.{
         .{ .@"align" = c.kUIMainAxisAlignStart, .rel_pos = 1 },
         .{ .@"align" = c.kUIMainAxisAlignCenter, .rel_pos = 24 },
@@ -385,147 +385,147 @@ test "Layout, padding" {
         for (cross_axis_options) |cross_axis_option| {
             var container: [*c]c.UIBox = undefined;
 
-            c.BeginUIFrame(c.V2(100, 100));
-            _ = c.BeginUIBox(.{
-                .size = c.V2(100, 100),
+            c.ui_begin_frame(c.v2(100, 100));
+            _ = c.ui_box_begin(.{
+                .size = c.v2(100, 100),
                 .main_axis_align = main_axis_option.@"align",
                 .cross_axis_align = cross_axis_option.@"align",
                 .padding = padding,
             });
             {
-                c.BeginUIBox(.{});
+                c.ui_box_begin(.{});
                 {
-                    container = c.GetCurrentUIBox();
-                    _ = c.BeginUIBox(.{ .size = c.V2(50, 50) });
-                    c.EndUIBox();
+                    container = c.ui_box_get_current();
+                    _ = c.ui_box_begin(.{ .size = c.v2(50, 50) });
+                    c.ui_box_end();
                 }
-                c.EndUIBox();
+                c.ui_box_end();
             }
-            c.EndUIBox();
-            c.EndUIFrame();
+            c.ui_box_end();
+            c.ui_end_frame();
 
-            try expectBoxRelPos(container, c.V2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
-            try expectBoxSize(container, c.V2(50, 50));
+            try expectBoxRelPos(container, c.v2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
+            try expectBoxSize(container, c.v2(50, 50));
         }
     }
 }
 
 test "Layout, no children, no fixed size, as small as possible" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     var container: [*c]c.UIBox = undefined;
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{});
-        container = c.GetCurrentUIBox();
-        c.EndUIBox();
+        c.ui_box_begin(.{});
+        container = c.ui_box_get_current();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    try expectBoxSize(container, c.V2(0, 0));
+    try expectBoxSize(container, c.v2(0, 0));
 }
 
 test "Layout, no children, no fixed size, flex, main axis is as big as possible" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     var container: [*c]c.UIBox = undefined;
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{ .flex = 1 });
-        container = c.GetCurrentUIBox();
-        c.EndUIBox();
+        c.ui_box_begin(.{ .flex = 1 });
+        container = c.ui_box_get_current();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    try expectBoxSize(container, c.V2(100, 0));
+    try expectBoxSize(container, c.v2(100, 0));
 }
 
 test "Layout, with one child, size around it" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     var container: [*c]c.UIBox = undefined;
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        _ = c.BeginUIBox(.{});
+        _ = c.ui_box_begin(.{});
         {
-            c.BeginUIBox(.{ .size = c.V2(50, 50) });
-            container = c.GetCurrentUIBox();
-            c.EndUIBox();
+            c.ui_box_begin(.{ .size = c.v2(50, 50) });
+            container = c.ui_box_get_current();
+            c.ui_box_end();
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    try expectBoxSize(container, c.V2(50, 50));
+    try expectBoxSize(container, c.v2(50, 50));
 }
 
 test "Layout, with fixed size" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     var container: [*c]c.UIBox = undefined;
     var child: [*c]c.UIBox = undefined;
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{ .size = c.V2(30, 20) });
+        c.ui_box_begin(.{ .size = c.v2(30, 20) });
         {
-            container = c.GetCurrentUIBox();
-            c.BeginUIBox(.{ .size = c.V2(50, 40) });
-            child = c.GetCurrentUIBox();
-            c.EndUIBox();
+            container = c.ui_box_get_current();
+            c.ui_box_begin(.{ .size = c.v2(50, 40) });
+            child = c.ui_box_get_current();
+            c.ui_box_end();
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    try expectBoxSize(container, c.V2(30, 20));
-    try expectBoxSize(child, c.V2(30, 20));
+    try expectBoxSize(container, c.v2(30, 20));
+    try expectBoxSize(child, c.v2(30, 20));
 }
 
 test "Layout, with fixed size, negative" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     var container: [*c]c.UIBox = undefined;
     var child: [*c]c.UIBox = undefined;
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{ .size = c.V2(30, -20) });
+        c.ui_box_begin(.{ .size = c.v2(30, -20) });
         {
-            container = c.GetCurrentUIBox();
-            c.BeginUIBox(.{ .size = c.V2(50, 50) });
-            child = c.GetCurrentUIBox();
-            c.EndUIBox();
+            container = c.ui_box_get_current();
+            c.ui_box_begin(.{ .size = c.v2(50, 50) });
+            child = c.ui_box_get_current();
+            c.ui_box_end();
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    try expectBoxSize(container, c.V2(30, 0));
-    try expectBoxSize(child, c.V2(30, 0));
+    try expectBoxSize(container, c.v2(30, 0));
+    try expectBoxSize(child, c.v2(30, 0));
 }
 
 test "Layout, main axis size, child has different main axis than parent" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     const main_axis_sizes: []const c.UIMainAxisSize = &.{
         c.kUIMainAxisSizeMin,
@@ -535,31 +535,31 @@ test "Layout, main axis size, child has different main axis than parent" {
     for (main_axis_sizes) |main_axis_size| {
         var row: [*c]c.UIBox = undefined;
 
-        c.BeginUIFrame(c.V2(100, 100));
-        _ = c.BeginUIBox(.{ .main_axis = c.kAxis2Y });
+        c.ui_begin_frame(c.v2(100, 100));
+        _ = c.ui_box_begin(.{ .main_axis = c.kAxis2Y });
         {
-            c.BeginUIBox(.{ .main_axis_size = main_axis_size });
+            c.ui_box_begin(.{ .main_axis_size = main_axis_size });
             {
-                row = c.GetCurrentUIBox();
-                _ = c.BeginUIBox(.{ .size = c.V2(30, 20) });
-                c.EndUIBox();
+                row = c.ui_box_get_current();
+                _ = c.ui_box_begin(.{ .size = c.v2(30, 20) });
+                c.ui_box_end();
             }
-            c.EndUIBox();
+            c.ui_box_end();
         }
-        c.EndUIBox();
-        c.EndUIFrame();
+        c.ui_box_end();
+        c.ui_end_frame();
 
         if (main_axis_size == c.kUIMainAxisSizeMin) {
-            try expectBoxSize(row, c.V2(30, 20));
+            try expectBoxSize(row, c.v2(30, 20));
         } else {
-            try expectBoxSize(row, c.V2(100, 20));
+            try expectBoxSize(row, c.v2(100, 20));
         }
     }
 }
 
 test "Layout, main axis size, child has same main axis as parent" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     const main_axis_sizes: []const c.UIMainAxisSize = &.{
         c.kUIMainAxisSizeMin,
@@ -569,24 +569,24 @@ test "Layout, main axis size, child has same main axis as parent" {
     for (main_axis_sizes) |main_axis_size| {
         var row: [*c]c.UIBox = undefined;
 
-        c.BeginUIFrame(c.V2(100, 100));
-        _ = c.BeginUIBox(.{});
+        c.ui_begin_frame(c.v2(100, 100));
+        _ = c.ui_box_begin(.{});
         {
-            c.BeginUIBox(.{ .main_axis_size = main_axis_size });
+            c.ui_box_begin(.{ .main_axis_size = main_axis_size });
             {
-                row = c.GetCurrentUIBox();
-                _ = c.BeginUIBox(.{ .size = c.V2(20, 20) });
-                c.EndUIBox();
+                row = c.ui_box_get_current();
+                _ = c.ui_box_begin(.{ .size = c.v2(20, 20) });
+                c.ui_box_end();
             }
-            c.EndUIBox();
+            c.ui_box_end();
         }
-        c.EndUIBox();
-        c.EndUIFrame();
+        c.ui_box_end();
+        c.ui_end_frame();
 
         if (main_axis_size == c.kUIMainAxisSizeMin) {
-            try expectBoxSize(row, c.V2(20, 20));
+            try expectBoxSize(row, c.v2(20, 20));
         } else {
-            try expectBoxSize(row, c.V2(100, 20));
+            try expectBoxSize(row, c.v2(100, 20));
         }
     }
 }
@@ -594,189 +594,189 @@ test "Layout, main axis size, child has same main axis as parent" {
 // TODO: test min/max size
 
 test "Layout, no fixed size, size around text" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     var text: [*c]c.UIBox = undefined;
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("text") });
-        text = c.GetCurrentUIBox();
-        c.EndUIBox();
+        c.ui_box_begin(.{ .text = c.ui_push_str8f("text") });
+        text = c.ui_box_get_current();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    const text_metrics = c.GetTextMetricsStr8(c.STR8_LIT("Text"), c.kUIFontSizeDefault);
+    const text_metrics = c.get_text_metrics_str8(c.str8_lit("Text"), c.kUIFontSizeDefault);
     try expectBoxSize(text, text_metrics.size);
 }
 
 test "Layout, fixed size, truncate text" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     var text: [*c]c.UIBox = undefined;
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{ .size = c.V2(2, 2), .text = c.PushUIStr8F("Text") });
-        text = c.GetCurrentUIBox();
-        c.EndUIBox();
+        c.ui_box_begin(.{ .size = c.v2(2, 2), .text = c.ui_push_str8f("Text") });
+        text = c.ui_box_get_current();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    try expectBoxSize(text, c.V2(2, 2));
+    try expectBoxSize(text, c.v2(2, 2));
 }
 
 test "Layout, row, no constraints on children" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     var c0: [*c]c.UIBox = undefined;
     var c1: [*c]c.UIBox = undefined;
 
-    c.BeginUIFrame(c.V2(1000, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(1000, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
-        c0 = c.GetCurrentUIBox();
-        c.EndUIBox();
+        c.ui_box_begin(.{ .text = c.ui_push_str8f("Hello!") });
+        c0 = c.ui_box_get_current();
+        c.ui_box_end();
 
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
-        c1 = c.GetCurrentUIBox();
-        c.EndUIBox();
+        c.ui_box_begin(.{ .text = c.ui_push_str8f("Goodbye!") });
+        c1 = c.ui_box_get_current();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.kUIFontSizeDefault).size;
-    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.kUIFontSizeDefault).size;
+    const c0_text_size = c.get_text_metrics_str8(c.str8_lit("Hello!"), c.kUIFontSizeDefault).size;
+    const c1_text_size = c.get_text_metrics_str8(c.str8_lit("Goodbye!"), c.kUIFontSizeDefault).size;
 
     try testing.expect(c0_text_size.x + c1_text_size.x < 1000);
     try expectBoxSize(c0, c0_text_size);
-    try expectBoxRelPos(c0, c.V2(0, 0));
+    try expectBoxRelPos(c0, c.v2(0, 0));
     try expectBoxSize(c1, c1_text_size);
-    try expectBoxRelPos(c1, c.V2(c0_text_size.x, 0));
+    try expectBoxRelPos(c1, c.v2(c0_text_size.x, 0));
 }
 
 test "Layout, row, no constraints on children, but truncate" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     var c0: [*c]c.UIBox = undefined;
     var c1: [*c]c.UIBox = undefined;
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("Hello!") });
-        c0 = c.GetCurrentUIBox();
-        c.EndUIBox();
+        c.ui_box_begin(.{ .text = c.ui_push_str8f("Hello!") });
+        c0 = c.ui_box_get_current();
+        c.ui_box_end();
 
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
-        c1 = c.GetCurrentUIBox();
-        c.EndUIBox();
+        c.ui_box_begin(.{ .text = c.ui_push_str8f("Goodbye!") });
+        c1 = c.ui_box_get_current();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Hello!"), c.kUIFontSizeDefault).size;
-    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.kUIFontSizeDefault).size;
+    const c0_text_size = c.get_text_metrics_str8(c.str8_lit("Hello!"), c.kUIFontSizeDefault).size;
+    const c1_text_size = c.get_text_metrics_str8(c.str8_lit("Goodbye!"), c.kUIFontSizeDefault).size;
 
     try testing.expect(c0_text_size.x + c1_text_size.x > 100);
     try expectBoxSize(c0, c0_text_size);
-    try expectBoxRelPos(c0, c.V2(0, 0));
-    try expectBoxSize(c1, c.V2(100 - c0_text_size.x, c1_text_size.y));
-    try expectBoxRelPos(c1, c.V2(c0_text_size.x, 0));
+    try expectBoxRelPos(c0, c.v2(0, 0));
+    try expectBoxSize(c1, c.v2(100 - c0_text_size.x, c1_text_size.y));
+    try expectBoxRelPos(c1, c.v2(c0_text_size.x, 0));
 }
 
 test "Layout, row, constraint flex" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     var c0: [*c]c.UIBox = undefined;
     var c1: [*c]c.UIBox = undefined;
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{
+        c.ui_box_begin(.{
             .flex = 1,
-            .text = c.PushUIStr8F("A very long text that doesn't fit in one line!"),
+            .text = c.ui_push_str8f("A very long text that doesn't fit in one line!"),
         });
-        c0 = c.GetCurrentUIBox();
-        c.EndUIBox();
+        c0 = c.ui_box_get_current();
+        c.ui_box_end();
 
-        c.BeginUIBox(.{ .text = c.PushUIStr8F("Goodbye!") });
-        c1 = c.GetCurrentUIBox();
-        c.EndUIBox();
+        c.ui_box_begin(.{ .text = c.ui_push_str8f("Goodbye!") });
+        c1 = c.ui_box_get_current();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    const c0_text_size = c.GetTextMetricsStr8(c.STR8_LIT("A very long text that doesn't fit in one line!"), c.kUIFontSizeDefault).size;
-    const c1_text_size = c.GetTextMetricsStr8(c.STR8_LIT("Goodbye!"), c.kUIFontSizeDefault).size;
+    const c0_text_size = c.get_text_metrics_str8(c.str8_lit("A very long text that doesn't fit in one line!"), c.kUIFontSizeDefault).size;
+    const c1_text_size = c.get_text_metrics_str8(c.str8_lit("Goodbye!"), c.kUIFontSizeDefault).size;
 
     try testing.expect(c0_text_size.x > 100);
-    try expectBoxSize(c0, c.V2(100 - c1_text_size.x, c0_text_size.y));
-    try expectBoxRelPos(c0, c.V2(0, 0));
+    try expectBoxSize(c0, c.v2(100 - c1_text_size.x, c0_text_size.y));
+    try expectBoxRelPos(c0, c.v2(0, 0));
     try expectBoxSize(c1, c1_text_size);
-    try expectBoxRelPos(c1, c.V2(100 - c1_text_size.x, 0));
+    try expectBoxRelPos(c1, c.v2(100 - c1_text_size.x, 0));
 }
 
 test "Layout, main axis unbounded" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
     var container: [*c]c.UIBox = undefined;
     var child: [*c]c.UIBox = undefined;
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
+        c.ui_box_begin(.{ .size = c.v2(c.kUISizeInfinity, c.kUISizeUndefined) });
         {
-            container = c.GetCurrentUIBox();
-            c.BeginUIBox(.{});
+            container = c.ui_box_get_current();
+            c.ui_box_begin(.{});
             {
-                child = c.GetCurrentUIBox();
-                _ = c.BeginUIBox(.{ .size = c.V2(100000, 10) });
-                c.EndUIBox();
+                child = c.ui_box_get_current();
+                _ = c.ui_box_begin(.{ .size = c.v2(100000, 10) });
+                c.ui_box_end();
 
-                _ = c.BeginUIBox(.{ .size = c.V2(100000, 20) });
-                c.EndUIBox();
+                _ = c.ui_box_begin(.{ .size = c.v2(100000, 20) });
+                c.ui_box_end();
             }
-            c.EndUIBox();
+            c.ui_box_end();
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
-    try expectBoxSize(container, c.V2(100, 20));
-    try expectBoxSize(child, c.V2(200000, 20));
+    try expectBoxSize(container, c.v2(100, 20));
+    try expectBoxSize(child, c.v2(200000, 20));
 }
 
 test "Layout, main axis unbounded, with unbounded content" {
-    c.InitUI();
-    defer c.QuitUI();
+    c.ui_init();
+    defer c.ui_quit();
 
-    c.BeginUIFrame(c.V2(100, 100));
-    _ = c.BeginUIBox(.{});
+    c.ui_begin_frame(c.v2(100, 100));
+    _ = c.ui_box_begin(.{});
     {
-        _ = c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
+        _ = c.ui_box_begin(.{ .size = c.v2(c.kUISizeInfinity, c.kUISizeUndefined) });
         {
-            _ = c.BeginUIBox(.{ .size = c.V2(c.kUISizeInfinity, c.kUISizeUndefined) });
-            c.EndUIBox();
+            _ = c.ui_box_begin(.{ .size = c.v2(c.kUISizeInfinity, c.kUISizeUndefined) });
+            c.ui_box_end();
         }
-        c.EndUIBox();
+        c.ui_box_end();
     }
-    c.EndUIBox();
-    c.EndUIFrame();
+    c.ui_box_end();
+    c.ui_end_frame();
 
     try expectUIBuildError("Cannot have unbounded content within unbounded constraint");
 }

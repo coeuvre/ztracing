@@ -20,8 +20,8 @@ typedef struct UIRowProps {
   UICrossAxisAlign cross_axis_align;
 } UIRowProps;
 
-void BeginUIRow(UIRowProps props);
-static inline void EndUIRow(void) { EndUITag("Row"); }
+void ui_row_begin(UIRowProps props);
+static inline void ui_row_end(void) { ui_tag_end("Row"); }
 
 typedef struct UIColumnProps {
   Str8 key;
@@ -35,8 +35,8 @@ typedef struct UIColumnProps {
   UICrossAxisAlign cross_axis_align;
 } UIColumnProps;
 
-void BeginUIColumn(UIColumnProps props);
-static inline void EndUIColumn(void) { EndUITag("Column"); }
+void ui_column_begin(UIColumnProps props);
+static inline void ui_column_end(void) { ui_tag_end("Column"); }
 
 typedef struct UITextProps {
   Str8 key;
@@ -49,7 +49,7 @@ typedef struct UITextProps {
   ColorU32 background_color;
 } UITextProps;
 
-void DoUIText(UITextProps props);
+void ui_text(UITextProps props);
 
 typedef struct UIButtonProps {
   Vec2 size;
@@ -62,12 +62,12 @@ typedef struct UIButtonProps {
   bool *hoverred;
 } UIButtonProps;
 
-bool BeginUIButton(UIButtonProps props);
-void EndUIButton(void);
+bool ui_button_begin(UIButtonProps props);
+void ui_button_end(void);
 
 static inline bool DoUIButton(UIButtonProps props) {
-  bool clicked = BeginUIButton(props);
-  EndUIButton();
+  bool clicked = ui_button_begin(props);
+  ui_button_end();
   return clicked;
 }
 
@@ -85,22 +85,22 @@ typedef struct UICollapsingProps {
   UICollapsingHeaderProps header;
 } UICollapsingProps;
 
-bool BeginUICollapsing(UICollapsingProps props);
-void EndUICollapsing(void);
+bool ui_collapsing_begin(UICollapsingProps props);
+void ui_collapsing_end(void);
 
 typedef struct UIScrollableProps {
   // Scroll position, optional
   f32 *scroll;
 } UIScrollableProps;
 
-void BeginUIScrollable(UIScrollableProps props);
-void EndUIScrollable(void);
+void ui_scrollable_begin(UIScrollableProps props);
+void ui_scrollable_end(void);
 
 #define kUIDebugLayerZIndex 1000
 typedef struct UIDebugLayerProps {
   Arena *arena;
   bool *open;
 } UIDebugLayerProps;
-void DoUIDebugLayer(UIDebugLayerProps props);
+void ui_debug_layer(UIDebugLayerProps props);
 
 #endif  // ZTRACING_SRC_UI_WIDGETS_H_

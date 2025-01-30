@@ -3,6 +3,6 @@
 
 #include <SDL3/SDL.h>
 
-void InitDrawSDL3(SDL_Window *window, SDL_Renderer *renderer);
+void init_draw_sdl3(SDL_Window *window, SDL_Renderer *renderer);
 
 #endif  // ZTRACING_SRC_DRAW_SDL3_H_

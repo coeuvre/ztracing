@@ -11,16 +11,16 @@
 #include "src/string.h"
 #include "src/types.h"
 
-thread_local UIState t_ui_state;
+THREAD_LOCAL UIState t_ui_state;
 
-UIBox *GetUIBoxFromFrame(UIFrame *frame, UIID id) {
+UIBox *ui_box_get(UIFrame *frame, UIID id) {
   UIBox *result = 0;
   UIBoxCache *cache = &frame->cache;
-  if (!IsZeroUIID(id) && cache->box_hash_slots) {
+  if (!uuid_is_zero(id) && cache->box_hash_slots) {
     UIBoxHashSlot *slot =
         &cache->box_hash_slots[id.hash % cache->box_hash_slots_count];
     for (UIBox *box = slot->first; box; box = box->hash_next) {
-      if (IsEqualUIID(box->id, id)) {
+      if (uuid_is_equal(box->id, id)) {
         result = box;
         break;
       }
@@ -29,70 +29,70 @@ UIBox *GetUIBoxFromFrame(UIFrame *frame, UIID id) {
   return result;
 }
 
-static UIBox *PushUIBox(UIBoxCache *cache, Arena *arena, UIID id) {
-  ASSERT(!IsZeroUIID(id));
-  UIBox *result = PushArray(arena, UIBox, 1);
+static UIBox *ui_box_push(UIBoxCache *cache, Arena *arena, UIID id) {
+  ASSERT(!uuid_is_zero(id));
+  UIBox *result = arena_push_array(arena, UIBox, 1);
   result->id = id;
 
   UIBoxHashSlot *slot =
       &cache->box_hash_slots[id.hash % cache->box_hash_slots_count];
-  APPEND_DOUBLY_LINKED_LIST(slot->first, slot->last, result, hash_prev,
-                            hash_next);
+  DLL_APPEND(slot->first, slot->last, result, hash_prev, hash_next);
   ++cache->total_box_count;
 
   return result;
 }
 
-static void PushUIBuildErrorF(UIFrame *frame, const char *fmt, ...) {
-  UIBuildError *error = PushArray(&frame->arena, UIBuildError, 1);
+static void ui_push_build_errorf(UIFrame *frame, const char *fmt, ...) {
+  UIBuildError *error = arena_push_array(&frame->arena, UIBuildError, 1);
 
   va_list ap;
   va_start(ap, fmt);
-  error->message = PushStr8FV(&frame->arena, fmt, ap);
+  error->message = arena_push_str8fv(&frame->arena, fmt, ap);
   va_end(ap);
 
-  APPEND_DOUBLY_LINKED_LIST(frame->first_error, frame->last_error, error, prev,
-                            next);
+  DLL_APPEND(frame->first_error, frame->last_error, error, prev, next);
 }
 
-static inline b32 IsMouseButtonPressed(UIState *state, UIMouseButton button) {
+static inline b32 is_mouse_button_pressed(UIState *state,
+                                          UIMouseButton button) {
   UIMouseButtonState *mouse_button_state = &state->input.mouse.buttons[button];
   b32 result =
       mouse_button_state->is_down && mouse_button_state->transition_count > 0;
   return result;
 }
 
-static inline b32 IsMouseButtonClicked(UIState *state, UIMouseButton button) {
+static inline b32 is_mouse_button_clicked(UIState *state,
+                                          UIMouseButton button) {
   UIMouseButtonState *mouse_button_state = &state->input.mouse.buttons[button];
   b32 result =
       !mouse_button_state->is_down && mouse_button_state->transition_count > 0;
   return result;
 }
 
-void InitUI(void) {
+void ui_init(void) {
   UIState *state = &t_ui_state;
-  ASSERTF(!state->init, "InitUI called more than once");
+  ASSERTF(!state->init, "ui_init called more than once");
 
   state->init = 1;
   state->input.dt = 1.0f / 60.0f;  // Assume 60 FPS by default.
-  state->input.mouse.pos = V2(-1, -1);
+  state->input.mouse.pos = v2(-1, -1);
 }
 
-void QuitUI(void) {
-  UIState *state = GetUIState();
-  FreeArena(&state->frames[0].arena);
-  FreeArena(&state->frames[1].arena);
+void ui_quit(void) {
+  UIState *state = ui_state_get();
+  arena_free(&state->frames[0].arena);
+  arena_free(&state->frames[1].arena);
   *state = (UIState){0};
 }
 
-void OnUIMousePos(Vec2 pos) {
-  UIState *state = GetUIState();
+void ui_on_mouse_pos(Vec2 pos) {
+  UIState *state = ui_state_get();
 
   state->input.mouse.pos = pos;
 }
 
-void OnUIMouseButtonUp(Vec2 pos, UIMouseButton button) {
-  UIState *state = GetUIState();
+void ui_on_mouse_button_up(Vec2 pos, UIMouseButton button) {
+  UIState *state = ui_state_get();
 
   state->input.mouse.pos = pos;
 
@@ -103,8 +103,8 @@ void OnUIMouseButtonUp(Vec2 pos, UIMouseButton button) {
   }
 }
 
-void OnUIMouseButtonDown(Vec2 pos, UIMouseButton button) {
-  UIState *state = GetUIState();
+void ui_on_mouse_button_down(Vec2 pos, UIMouseButton button) {
+  UIState *state = ui_state_get();
 
   state->input.mouse.pos = pos;
 
@@ -115,21 +115,21 @@ void OnUIMouseButtonDown(Vec2 pos, UIMouseButton button) {
   }
 }
 
-void OnUIMouseWheel(Vec2 delta) {
-  UIState *state = GetUIState();
+void ui_on_mouse_wheel(Vec2 delta) {
+  UIState *state = ui_state_get();
 
   state->input.mouse.wheel = delta;
 }
 
-void SetUIDeltaTime(f32 dt) {
-  UIState *state = GetUIState();
+void ui_set_delta_time(f32 dt) {
+  UIState *state = ui_state_get();
 
   state->input.dt = dt;
-  state->fast_rate = 1.0f - ExpF32(-50.f * dt);
+  state->fast_rate = 1.0f - f32_exp(-50.f * dt);
 }
 
-void BeginUIFrame(Vec2 viewport_size) {
-  UIState *state = GetUIState();
+void ui_begin_frame(Vec2 viewport_size) {
+  UIState *state = ui_state_get();
   state->frame_index += 1;
   state->current_frame =
       state->frames + (state->frame_index % ARRAY_COUNT(state->frames));
@@ -138,22 +138,23 @@ void BeginUIFrame(Vec2 viewport_size) {
 
   UIFrame *frame = state->current_frame;
 
-  ResetArena(&frame->arena);
+  arena_reset(&frame->arena);
 
   frame->cache = (UIBoxCache){0};
   frame->cache.box_hash_slots_count = 4096;
-  frame->cache.box_hash_slots = PushArray(&frame->arena, UIBoxHashSlot,
-                                          frame->cache.box_hash_slots_count);
+  frame->cache.box_hash_slots = arena_push_array(
+      &frame->arena, UIBoxHashSlot, frame->cache.box_hash_slots_count);
 
   frame->frame_index = state->frame_index;
   frame->viewport_size = viewport_size;
   frame->first_error = frame->last_error = 0;
   frame->current_stack = frame->current_build = 0;
-  BeginUITag("Root", (UIProps){0});
+  ui_tag_begin("Root", (UIProps){0});
   frame->root = frame->current_build;
 }
 
-static inline f32 GetEdgeInsetsSize(UIEdgeInsets edge_insets, Axis2 axis) {
+static inline f32 ui_edge_insets_get_size(UIEdgeInsets edge_insets,
+                                          Axis2 axis) {
   // TODO: Handle text direction.
   f32 result;
   if (axis == kAxis2X) {
@@ -164,7 +165,8 @@ static inline f32 GetEdgeInsetsSize(UIEdgeInsets edge_insets, Axis2 axis) {
   return result;
 }
 
-static inline f32 GetEdgeInsetsStart(UIEdgeInsets edge_insets, Axis2 axis) {
+static inline f32 ui_edge_insets_get_start(UIEdgeInsets edge_insets,
+                                           Axis2 axis) {
   // TODO: Handle text direction.
   f32 result;
   if (axis == kAxis2X) {
@@ -175,7 +177,7 @@ static inline f32 GetEdgeInsetsStart(UIEdgeInsets edge_insets, Axis2 axis) {
   return result;
 }
 
-static inline f32 GetEdgeInsetsEnd(UIEdgeInsets edge_insets, Axis2 axis) {
+static inline f32 ui_edge_insets_get_end(UIEdgeInsets edge_insets, Axis2 axis) {
   // TODO: Handle text direction.
   f32 result;
   if (axis == kAxis2X) {
@@ -186,7 +188,7 @@ static inline f32 GetEdgeInsetsEnd(UIEdgeInsets edge_insets, Axis2 axis) {
   return result;
 }
 
-static inline UIBorderSide GetBorderSideStart(UIBorder border, Axis2 axis) {
+static inline UIBorderSide ui_border_get_start(UIBorder border, Axis2 axis) {
   UIBorderSide result;
   if (axis == kAxis2X) {
     result = border.left;
@@ -196,7 +198,7 @@ static inline UIBorderSide GetBorderSideStart(UIBorder border, Axis2 axis) {
   return result;
 }
 
-static inline UIBorderSide GetBorderSideEnd(UIBorder border, Axis2 axis) {
+static inline UIBorderSide ui_border_get_end(UIBorder border, Axis2 axis) {
   UIBorderSide result;
   if (axis == kAxis2X) {
     result = border.right;
@@ -206,13 +208,13 @@ static inline UIBorderSide GetBorderSideEnd(UIBorder border, Axis2 axis) {
   return result;
 }
 
-static void AlignMainAxis(UIBox *box, Axis2 axis, UIMainAxisAlign align,
-                          f32 children_size) {
-  f32 border_start = GetBorderSideStart(box->props.border, axis).width;
-  f32 border_end = GetBorderSideEnd(box->props.border, axis).width;
-  f32 padding_start = GetEdgeInsetsStart(box->props.padding, axis);
-  f32 padding_end = GetEdgeInsetsEnd(box->props.padding, axis);
-  f32 size_axis = GetItemVec2(box->computed.size, axis);
+static void align_main_axis(UIBox *box, Axis2 axis, UIMainAxisAlign align,
+                            f32 children_size) {
+  f32 border_start = ui_border_get_start(box->props.border, axis).width;
+  f32 border_end = ui_border_get_end(box->props.border, axis).width;
+  f32 padding_start = ui_edge_insets_get_start(box->props.padding, axis);
+  f32 padding_end = ui_edge_insets_get_end(box->props.padding, axis);
+  f32 size_axis = vec2_get(box->computed.size, axis);
   f32 free = size_axis - children_size - border_start - border_end -
              padding_start - padding_end;
   f32 pos = border_start + padding_start;
@@ -234,26 +236,26 @@ static void AlignMainAxis(UIBox *box, Axis2 axis, UIMainAxisAlign align,
   }
 
   for (UIBox *child = box->build.first; child; child = child->build.next) {
-    pos += GetEdgeInsetsStart(child->props.margin, axis);
-    SetItemVec2(&child->computed.rel_pos, axis, pos);
-    pos += GetItemVec2(child->computed.size, axis) +
-           GetEdgeInsetsEnd(child->props.margin, axis);
+    pos += ui_edge_insets_get_start(child->props.margin, axis);
+    vec2_set(&child->computed.rel_pos, axis, pos);
+    pos += vec2_get(child->computed.size, axis) +
+           ui_edge_insets_get_end(child->props.margin, axis);
   }
 }
 
-static void AlignCrossAxis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
-  f32 border_start = GetBorderSideStart(box->props.border, axis).width;
-  f32 border_end = GetBorderSideEnd(box->props.border, axis).width;
-  f32 padding_start = GetEdgeInsetsStart(box->props.padding, axis);
-  f32 padding_end = GetEdgeInsetsEnd(box->props.padding, axis);
+static void align_cross_axis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
+  f32 border_start = ui_border_get_start(box->props.border, axis).width;
+  f32 border_end = ui_border_get_end(box->props.border, axis).width;
+  f32 padding_start = ui_edge_insets_get_start(box->props.padding, axis);
+  f32 padding_end = ui_edge_insets_get_end(box->props.padding, axis);
 
-  f32 self_size = GetItemVec2(box->computed.size, axis);
+  f32 self_size = vec2_get(box->computed.size, axis);
   for (UIBox *child = box->build.first; child; child = child->build.next) {
-    f32 child_size = GetItemVec2(child->computed.size, axis);
+    f32 child_size = vec2_get(child->computed.size, axis);
     f32 free = self_size - child_size - border_start - border_end -
                padding_start - padding_end -
-               GetEdgeInsetsSize(child->props.margin, axis);
-    f32 margin_start = GetEdgeInsetsStart(child->props.margin, axis);
+               ui_edge_insets_get_size(child->props.margin, axis);
+    f32 margin_start = ui_edge_insets_get_start(child->props.margin, axis);
     f32 pos = 0;
     switch (align) {
       case kUICrossAxisAlignStart:
@@ -274,90 +276,91 @@ static void AlignCrossAxis(UIBox *box, Axis2 axis, UICrossAxisAlign align) {
       } break;
     }
 
-    SetItemVec2(&child->computed.rel_pos, axis, pos);
+    vec2_set(&child->computed.rel_pos, axis, pos);
   }
 }
 
-static inline b32 ShouldMaxAxis(UIBox *box, int axis, Axis2 main_axis,
-                                f32 max_size_axis) {
+static inline b32 should_max_axis(UIBox *box, int axis, Axis2 main_axis,
+                                  f32 max_size_axis) {
   // cross axis is always as small as possible
   b32 result = box->props.main_axis_size == kUIMainAxisSizeMax &&
                axis == (int)main_axis && max_size_axis != F32_INFINITY;
   return result;
 }
 
-static f32 GetFirstNonZeroFontSize(UIBox *box) {
+static f32 get_first_non_zero_font_size(UIBox *box) {
   f32 font_size = box->props.font_size;
   if (font_size <= 0 && box->build.parent) {
-    font_size = GetFirstNonZeroFontSize(box->build.parent);
+    font_size = get_first_non_zero_font_size(box->build.parent);
   }
   return font_size;
 }
 
-static ColorU32 GetFirstNonZeroColor(UIBox *box) {
+static ColorU32 get_first_non_zero_color(UIBox *box) {
   ColorU32 color = box->props.color;
   if (color.a == 0 && box->build.parent) {
-    color = GetFirstNonZeroColor(box->build.parent);
+    color = get_first_non_zero_color(box->build.parent);
   }
   return color;
 }
 
-static Vec2 LayoutText(UIBox *box, Vec2 max_size, Axis2 main_axis,
-                       Axis2 cross_axis) {
-  ASSERT(!IsEmptyStr8(box->props.text));
+static Vec2 layout_text(UIBox *box, Vec2 max_size, Axis2 main_axis,
+                        Axis2 cross_axis) {
+  ASSERT(!str8_is_empty(box->props.text));
 
   // TODO: constraint text size within [(0, 0), max_size]
 
-  f32 font_size = GetFirstNonZeroFontSize(box);
+  f32 font_size = get_first_non_zero_font_size(box);
   if (font_size <= 0) {
     font_size = kUIFontSizeDefault;
   }
   box->computed.font_size = font_size;
-  TextMetrics metrics = GetTextMetricsStr8(box->props.text, font_size);
+  TextMetrics metrics = get_text_metrics_str8(box->props.text, font_size);
   Vec2 text_size = metrics.size;
-  text_size = MinVec2(text_size, max_size);
+  text_size = vec2_min(text_size, max_size);
 
   Vec2 children_size;
-  SetItemVec2(&children_size, main_axis, GetItemVec2(text_size, main_axis));
-  SetItemVec2(&children_size, cross_axis, GetItemVec2(text_size, cross_axis));
+  vec2_set(&children_size, main_axis, vec2_get(text_size, main_axis));
+  vec2_set(&children_size, cross_axis, vec2_get(text_size, cross_axis));
   return children_size;
 }
 
-static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size, Vec2 max_size);
+static void layout_box(UIFrame *frame, UIBox *box, Vec2 min_size,
+                       Vec2 max_size);
 
-static Vec2 LayoutChild(UIFrame *frame, UIBox *child, Vec2 min_size,
-                        Vec2 max_size, Axis2 main_axis) {
+static Vec2 layout_child(UIFrame *frame, UIBox *child, Vec2 min_size,
+                         Vec2 max_size, Axis2 main_axis) {
   // Leave space for margin
   f32 margin_x = child->props.margin.left + child->props.margin.right;
   f32 margin_y = child->props.margin.top + child->props.margin.bottom;
-  max_size.x = MaxF32(max_size.x - margin_x, 0);
-  max_size.y = MaxF32(max_size.y - margin_y, 0);
+  max_size.x = f32_max(max_size.x - margin_x, 0);
+  max_size.y = f32_max(max_size.y - margin_y, 0);
 
-  LayoutBox(frame, child, min_size, max_size);
+  layout_box(frame, child, min_size, max_size);
 
   // Add margin back
   Vec2 child_size;
-  child_size.x = MinF32(child->computed.size.x + margin_x, max_size.x);
-  child_size.y = MinF32(child->computed.size.y + margin_y, max_size.y);
+  child_size.x = f32_min(child->computed.size.x + margin_x, max_size.x);
+  child_size.y = f32_min(child->computed.size.y + margin_y, max_size.y);
 
-  if (GetItemVec2(child_size, main_axis) == kUISizeInfinity &&
-      GetItemVec2(max_size, main_axis) == kUISizeInfinity) {
-    PushUIBuildErrorF(
+  if (vec2_get(child_size, main_axis) == kUISizeInfinity &&
+      vec2_get(max_size, main_axis) == kUISizeInfinity) {
+    ui_push_build_errorf(
         frame, "Cannot have unbounded content within unbounded constraint");
   }
 
   return child_size;
 }
 
-static inline bool ShouldLayout(UIPosition pos) {
+static inline bool should_layout(UIPosition pos) {
   bool result = pos == kUIPositionRelative;
   return result;
 }
 
-static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
-                               Axis2 main_axis, Axis2 cross_axis) {
-  f32 max_main_axis_size = GetItemVec2(max_size, main_axis);
-  f32 max_cross_axis_size = GetItemVec2(max_size, cross_axis);
+static Vec2 should_children_flex(UIFrame *frame, UIBox *box, Vec2 max_size,
+                                 Axis2 main_axis, Axis2 cross_axis) {
+  f32 max_main_axis_size = vec2_get(max_size, main_axis);
+  f32 max_cross_axis_size = vec2_get(max_size, cross_axis);
 
   f32 child_main_axis_size = 0.0f;
   f32 child_cross_axis_size = 0.0f;
@@ -367,28 +370,28 @@ static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
 
   // First pass: layout non-flex children
   for (UIBox *child = box->build.first; child; child = child->build.next) {
-    if (!ShouldLayout(child->props.position)) {
+    if (!should_layout(child->props.position)) {
       continue;
     }
 
     total_flex += child->props.flex;
     if (!child->props.flex) {
       Vec2 this_child_max_size;
-      SetItemVec2(&this_child_max_size, main_axis,
-                  max_main_axis_size - child_main_axis_size);
-      SetItemVec2(&this_child_max_size, cross_axis, max_cross_axis_size);
+      vec2_set(&this_child_max_size, main_axis,
+               max_main_axis_size - child_main_axis_size);
+      vec2_set(&this_child_max_size, cross_axis, max_cross_axis_size);
       Vec2 this_child_min_size = {0};
       if (box->props.cross_axis_align == kUICrossAxisAlignStretch) {
-        SetItemVec2(&this_child_min_size, cross_axis,
-                    GetItemVec2(this_child_max_size, cross_axis));
+        vec2_set(&this_child_min_size, cross_axis,
+                 vec2_get(this_child_max_size, cross_axis));
       }
 
-      Vec2 this_child_size = LayoutChild(frame, child, this_child_min_size,
-                                         this_child_max_size, main_axis);
+      Vec2 this_child_size = layout_child(frame, child, this_child_min_size,
+                                          this_child_max_size, main_axis);
 
-      child_main_axis_size += GetItemVec2(this_child_size, main_axis);
-      child_cross_axis_size = MaxF32(child_cross_axis_size,
-                                     GetItemVec2(this_child_size, cross_axis));
+      child_main_axis_size += vec2_get(this_child_size, main_axis);
+      child_cross_axis_size =
+          f32_max(child_cross_axis_size, vec2_get(this_child_size, cross_axis));
     } else {
       last_flex = child;
     }
@@ -397,13 +400,14 @@ static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
   // Second pass: layout flex children
   f32 child_main_axis_flex = max_main_axis_size - child_main_axis_size;
   for (UIBox *child = box->build.first; child; child = child->build.next) {
-    if (!ShouldLayout(child->props.position)) {
+    if (!should_layout(child->props.position)) {
       continue;
     }
 
     if (child->props.flex) {
       if (max_main_axis_size == kUISizeInfinity) {
-        PushUIBuildErrorF(frame, "Unbounded constraint doesn't work with flex");
+        ui_push_build_errorf(frame,
+                             "Unbounded constraint doesn't work with flex");
       }
 
       f32 this_child_max_main_axis_size;
@@ -412,58 +416,57 @@ static Vec2 LayoutChildrenFlex(UIFrame *frame, UIBox *box, Vec2 max_size,
             max_main_axis_size - child_main_axis_size;
       } else {
         this_child_max_main_axis_size =
-            ClampF32(child->props.flex / total_flex * child_main_axis_flex, 0,
-                     max_main_axis_size - child_main_axis_size);
+            f32_clamp(child->props.flex / total_flex * child_main_axis_flex, 0,
+                      max_main_axis_size - child_main_axis_size);
       }
 
       // Tight constraint for child
       Vec2 this_child_max_size;
-      SetItemVec2(&this_child_max_size, main_axis,
-                  this_child_max_main_axis_size);
-      SetItemVec2(&this_child_max_size, cross_axis, max_cross_axis_size);
+      vec2_set(&this_child_max_size, main_axis, this_child_max_main_axis_size);
+      vec2_set(&this_child_max_size, cross_axis, max_cross_axis_size);
       Vec2 this_child_min_size;
-      SetItemVec2(&this_child_min_size, main_axis,
-                  this_child_max_main_axis_size);
+      vec2_set(&this_child_min_size, main_axis, this_child_max_main_axis_size);
       if (box->props.cross_axis_align == kUICrossAxisAlignStretch) {
-        SetItemVec2(&this_child_min_size, cross_axis, max_cross_axis_size);
+        vec2_set(&this_child_min_size, cross_axis, max_cross_axis_size);
       } else {
-        SetItemVec2(&this_child_min_size, cross_axis, 0.0f);
+        vec2_set(&this_child_min_size, cross_axis, 0.0f);
       }
 
-      Vec2 this_child_size = LayoutChild(frame, child, this_child_min_size,
-                                         this_child_max_size, main_axis);
+      Vec2 this_child_size = layout_child(frame, child, this_child_min_size,
+                                          this_child_max_size, main_axis);
 
-      child_main_axis_size += GetItemVec2(this_child_size, main_axis);
-      child_cross_axis_size = MaxF32(child_cross_axis_size,
-                                     GetItemVec2(this_child_size, cross_axis));
+      child_main_axis_size += vec2_get(this_child_size, main_axis);
+      child_cross_axis_size =
+          f32_max(child_cross_axis_size, vec2_get(this_child_size, cross_axis));
     }
   }
 
-  Vec2 children_size = V2(0, 0);
-  SetItemVec2(&children_size, main_axis, child_main_axis_size);
-  SetItemVec2(&children_size, cross_axis, child_cross_axis_size);
+  Vec2 children_size = v2(0, 0);
+  vec2_set(&children_size, main_axis, child_main_axis_size);
+  vec2_set(&children_size, cross_axis, child_cross_axis_size);
   return children_size;
 }
 
-static Vec2 LayoutChildren(UIFrame *frame, UIBox *box, Vec2 max_size,
-                           Axis2 main_axis, Axis2 cross_axis) {
+static Vec2 layout_children(UIFrame *frame, UIBox *box, Vec2 max_size,
+                            Axis2 main_axis, Axis2 cross_axis) {
   ASSERT(box->build.first);
 
-  Vec2 result = LayoutChildrenFlex(frame, box, max_size, main_axis, cross_axis);
+  Vec2 result =
+      should_children_flex(frame, box, max_size, main_axis, cross_axis);
 
   for (UIBox *child = box->build.first; child; child = child->build.next) {
-    if (ShouldLayout(child->props.position)) {
+    if (should_layout(child->props.position)) {
       continue;
     }
 
-    LayoutBox(frame, child, V2(0, 0), frame->viewport_size);
+    layout_box(frame, child, v2(0, 0), frame->viewport_size);
   }
 
   return result;
 }
 
-static void BeginStackingContext(UIFrame *frame, UIBox *box,
-                                 bool create_new_stacking_context) {
+static void begin_stacking_context(UIFrame *frame, UIBox *box,
+                                   bool create_new_stacking_context) {
   UIBox *parent = frame->current_stack;
   box->stack.parent = parent;
   if (parent) {
@@ -474,11 +477,11 @@ static void BeginStackingContext(UIFrame *frame, UIBox *box,
       }
     }
     if (after) {
-      INSERT_DOUBLY_LINKED_LIST(parent->stack.first, parent->stack.last, after,
-                                box, stack.prev, stack.next);
+      DLL_INSERT(parent->stack.first, parent->stack.last, after, box,
+                 stack.prev, stack.next);
     } else {
-      PREPEND_DOUBLY_LINKED_LIST(parent->stack.first, parent->stack.last, box,
-                                 stack.prev, stack.next);
+      DLL_PREPEND(parent->stack.first, parent->stack.last, box, stack.prev,
+                  stack.next);
     }
   }
 
@@ -487,73 +490,73 @@ static void BeginStackingContext(UIFrame *frame, UIBox *box,
   }
 }
 
-static void EndStackingContext(UIFrame *frame, UIBox *box,
-                               bool create_new_stacking_context) {
+static void end_stacking_context(UIFrame *frame, UIBox *box,
+                                 bool create_new_stacking_context) {
   if (create_new_stacking_context) {
     frame->current_stack = box->stack.parent;
   }
 }
 
-static void BuildStackingContext(UIFrame *frame, UIBox *box) {
+static void build_stacking_context(UIFrame *frame, UIBox *box) {
   bool create_new_stacking_context =
       frame->root == box || box->props.position == kUIPositionFixed ||
       box->props.z_index != 0 || box->props.isolate;
-  BeginStackingContext(frame, box, create_new_stacking_context);
+  begin_stacking_context(frame, box, create_new_stacking_context);
   for (UIBox *child = box->build.first; child; child = child->build.next) {
-    BuildStackingContext(frame, child);
+    build_stacking_context(frame, child);
   }
-  EndStackingContext(frame, box, create_new_stacking_context);
+  end_stacking_context(frame, box, create_new_stacking_context);
 }
 
-static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
-                      Vec2 max_size) {
-  ASSERTF(ContainsVec2IncludingEnd(min_size, V2(0, 0), max_size),
+static void layout_box(UIFrame *frame, UIBox *box, Vec2 min_size,
+                       Vec2 max_size) {
+  ASSERTF(vec2_contains_including_end(min_size, v2(0, 0), max_size),
           "min_size=(%.2f, %.2f), max_size=(%.2f, %.2f)", min_size.x,
           min_size.y, max_size.x, max_size.y);
 
   box->computed.min_size = min_size;
   box->computed.max_size = max_size;
 
-  if (!ShouldLayout(box->props.position)) {
-    if (IsUIEdgeInsetsRightSet(box->props.offset) &&
-        IsUIEdgeInsetsLeftSet(box->props.offset)) {
+  if (!should_layout(box->props.position)) {
+    if (ui_edge_insets_is_right_set(box->props.offset) &&
+        ui_edge_insets_is_left_set(box->props.offset)) {
       box->props.size.x =
-          MaxF32(box->props.offset.right - box->props.offset.left, 0);
+          f32_max(box->props.offset.right - box->props.offset.left, 0);
     }
 
-    if (IsUIEdgeInsetsBottomSet(box->props.offset) &&
-        IsUIEdgeInsetsTopSet(box->props.offset)) {
+    if (ui_edge_insets_is_bottom_set(box->props.offset) &&
+        ui_edge_insets_is_top_set(box->props.offset)) {
       box->props.size.y =
-          MaxF32(box->props.offset.bottom - box->props.offset.top, 0);
+          f32_max(box->props.offset.bottom - box->props.offset.top, 0);
     }
   }
 
   Vec2 children_max_size = max_size;
   for (int axis = 0; axis < kAxis2Count; ++axis) {
-    f32 min_size_axis = GetItemVec2(min_size, axis);
-    f32 max_size_axis = GetItemVec2(max_size, axis);
-    f32 build_size_axis = GetItemVec2(box->props.size, axis);
+    f32 min_size_axis = vec2_get(min_size, axis);
+    f32 max_size_axis = vec2_get(max_size, axis);
+    f32 build_size_axis = vec2_get(box->props.size, axis);
     if (build_size_axis == kUISizeInfinity) {
       // If it's infinity, let children be infinity.
-      SetItemVec2(&children_max_size, axis, kUISizeInfinity);
+      vec2_set(&children_max_size, axis, kUISizeInfinity);
     } else if (build_size_axis != kUISizeUndefined) {
       // If box has specific size, and is not infinity, use that (but also
       // respect the constraint) as constraint for children.
-      SetItemVec2(&children_max_size, axis,
-                  ClampF32(build_size_axis, min_size_axis, max_size_axis));
+      vec2_set(&children_max_size, axis,
+               f32_clamp(build_size_axis, min_size_axis, max_size_axis));
     } else {
       // Otherwise, pass down the constraint to children to make them as large
       // as possible
-      SetItemVec2(&children_max_size, axis, max_size_axis);
+      vec2_set(&children_max_size, axis, max_size_axis);
     }
   }
   // Leave space for padding and border
-  children_max_size.x = MaxF32(
+  children_max_size.x = f32_max(
       children_max_size.x -
           (box->props.border.left.width + box->props.border.right.width) -
           (box->props.padding.left + box->props.padding.right),
       0);
-  children_max_size.y = MaxF32(
+  children_max_size.y = f32_max(
       children_max_size.y -
           (box->props.border.top.width + box->props.border.bottom.width) -
           (box->props.padding.top + box->props.padding.bottom),
@@ -561,48 +564,50 @@ static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
 
   Axis2 main_axis = box->props.main_axis;
   Axis2 cross_axis = (main_axis + 1) % kAxis2Count;
-  Vec2 children_size = V2(0, 0);
+  Vec2 children_size = v2(0, 0);
   if (box->build.first) {
-    if (!IsEmptyStr8(box->props.text)) {
-      PushUIBuildErrorF(frame,
-                        "text content is ignored because box has children");
+    if (!str8_is_empty(box->props.text)) {
+      ui_push_build_errorf(frame,
+                           "text content is ignored because box has children");
     }
     children_size =
-        LayoutChildren(frame, box, children_max_size, main_axis, cross_axis);
-  } else if (!IsEmptyStr8(box->props.text)) {
-    children_size = LayoutText(box, children_max_size, main_axis, cross_axis);
+        layout_children(frame, box, children_max_size, main_axis, cross_axis);
+  } else if (!str8_is_empty(box->props.text)) {
+    children_size = layout_text(box, children_max_size, main_axis, cross_axis);
   }
 
   // Size box itself
   for (int axis = 0; axis < kAxis2Count; ++axis) {
-    f32 min_size_axis = GetItemVec2(min_size, axis);
-    f32 max_size_axis = GetItemVec2(max_size, axis);
+    f32 min_size_axis = vec2_get(min_size, axis);
+    f32 max_size_axis = vec2_get(max_size, axis);
 
-    f32 build_size_axis = GetItemVec2(box->props.size, axis);
+    f32 build_size_axis = vec2_get(box->props.size, axis);
     if (build_size_axis != kUISizeUndefined) {
       // If box has specific size, use that size but also respect the
       // constraint.
-      SetItemVec2(&box->computed.size, axis,
-                  ClampF32(build_size_axis, min_size_axis, max_size_axis));
-    } else if (ShouldMaxAxis(box, axis, main_axis, max_size_axis)) {
+      vec2_set(&box->computed.size, axis,
+               f32_clamp(build_size_axis, min_size_axis, max_size_axis));
+    } else if (should_max_axis(box, axis, main_axis, max_size_axis)) {
       // If box should maximize this axis, regardless of it's children, do it.
-      SetItemVec2(&box->computed.size, axis, max_size_axis);
+      vec2_set(&box->computed.size, axis, max_size_axis);
     } else {
       // Size itself around children
-      f32 border_start_axis = GetBorderSideStart(box->props.border, axis).width;
-      f32 border_end_axis = GetBorderSideEnd(box->props.border, axis).width;
-      f32 padding_start_axis = GetEdgeInsetsStart(box->props.padding, axis);
-      f32 padding_end_axis = GetEdgeInsetsEnd(box->props.padding, axis);
-      f32 children_size_axis = GetItemVec2(children_size, axis);
+      f32 border_start_axis =
+          ui_border_get_start(box->props.border, axis).width;
+      f32 border_end_axis = ui_border_get_end(box->props.border, axis).width;
+      f32 padding_start_axis =
+          ui_edge_insets_get_start(box->props.padding, axis);
+      f32 padding_end_axis = ui_edge_insets_get_end(box->props.padding, axis);
+      f32 children_size_axis = vec2_get(children_size, axis);
       f32 content_size_axis = children_size_axis + border_start_axis +
                               border_end_axis + padding_start_axis +
                               padding_end_axis;
-      SetItemVec2(&box->computed.size, axis,
-                  ClampF32(content_size_axis, min_size_axis, max_size_axis));
+      vec2_set(&box->computed.size, axis,
+               f32_clamp(content_size_axis, min_size_axis, max_size_axis));
     }
   }
 
-  ASSERTF(ContainsVec2IncludingEnd(box->computed.size, min_size, max_size),
+  ASSERTF(vec2_contains_including_end(box->computed.size, min_size, max_size),
           "computed_size=(%.2f, %.2f), min_size=(%.2f, %.2f), max_size=(%.2f, "
           "%.2f)",
           box->computed.size.x, box->computed.size.y, min_size.x, min_size.y,
@@ -612,79 +617,80 @@ static void LayoutBox(UIFrame *frame, UIBox *box, Vec2 min_size,
   if (main_axis_align == kUIMainAxisAlignUnknown) {
     main_axis_align = kUIMainAxisAlignStart;
   }
-  AlignMainAxis(box, main_axis, main_axis_align,
-                GetItemVec2(children_size, main_axis));
+  align_main_axis(box, main_axis, main_axis_align,
+                  vec2_get(children_size, main_axis));
   UICrossAxisAlign cross_axis_align = box->props.cross_axis_align;
   if (cross_axis_align == kUICrossAxisAlignUnknown) {
     cross_axis_align = kUICrossAxisAlignStart;
   }
-  AlignCrossAxis(box, cross_axis, cross_axis_align);
+  align_cross_axis(box, cross_axis, cross_axis_align);
 }
 
-static void RenderBox(UIState *state, UIBox *box) {
+static void render_box(UIState *state, UIBox *box) {
   Vec2 min = box->computed.screen_rect.min;
   Vec2 max = box->computed.screen_rect.max;
 
   Rect2 clip_rect = box->computed.clip_rect;
   b32 need_clip = box->props.position != kUIPositionRelative;
-  if (GetRect2Area(clip_rect) > 0) {
+  if (rect2_get_area(clip_rect) > 0) {
     if (need_clip) {
-      PushClipRect(clip_rect.min, clip_rect.max);
+      push_clip_rect(clip_rect.min, clip_rect.max);
     }
 
     if (box->props.background_color.a) {
-      DrawRect(min, max, box->props.background_color);
+      fill_rect(min, max, box->props.background_color);
     }
 
     if (box->props.border.left.width > 0) {
-      DrawRect(min, V2(min.x + box->props.border.left.width, max.y),
-               box->props.border.left.color);
+      fill_rect(min, v2(min.x + box->props.border.left.width, max.y),
+                box->props.border.left.color);
     }
 
     if (box->props.border.top.width > 0) {
-      DrawRect(min, V2(max.x, min.y + box->props.border.top.width),
-               box->props.border.top.color);
+      fill_rect(min, v2(max.x, min.y + box->props.border.top.width),
+                box->props.border.top.color);
     }
 
     if (box->props.border.right.width > 0) {
-      DrawRect(V2(max.x - box->props.border.right.width, min.y), max,
-               box->props.border.right.color);
+      fill_rect(v2(max.x - box->props.border.right.width, min.y), max,
+                box->props.border.right.color);
     }
 
     if (box->props.border.bottom.width > 0) {
-      DrawRect(V2(min.x, max.y - box->props.border.bottom.width), max,
-               box->props.border.bottom.color);
+      fill_rect(v2(min.x, max.y - box->props.border.bottom.width), max,
+                box->props.border.bottom.color);
     }
 
-    if (!IsEmptyStr8(box->props.text)) {
-      DrawTextStr8(
-          V2(min.x + box->props.border.left.width + box->props.padding.left,
+    if (!str8_is_empty(box->props.text)) {
+      draw_text_str8(
+          v2(min.x + box->props.border.left.width + box->props.padding.left,
              min.y + box->props.border.top.width + box->props.padding.top),
-          box->props.text, box->computed.font_size, GetFirstNonZeroColor(box));
+          box->props.text, box->computed.font_size,
+          get_first_non_zero_color(box));
     }
 
     // Debug outline
-    // DrawRectLine(min, max, ColorU32FromHex(0xFF00FF), 1.0f);
+    // stroke_rect(min, max, color_u32_from_hex(0xFF00FF), 1.0f);
   } else {
     need_clip = 0;
   }
 
   if (!need_clip) {
-    PushClipRect(clip_rect.min, clip_rect.max);
+    push_clip_rect(clip_rect.min, clip_rect.max);
   }
 
   for (UIBox *child = box->stack.first; child; child = child->stack.next) {
-    RenderBox(state, child);
+    render_box(state, child);
   }
 
-  PopClipRect();
+  pop_clip_rect();
 }
 
 #if 0
 #include <stdlib.h>
 
 #include "src/log.h"
-static void DebugPrintUIR(UIBox *box, u32 level) {
+static void ui_debug_print_r(UIBox *box, u32 level) {
   INFO(
       "%*s%s[seq=%u, key=%s, min_size=(%.2f, %.2f), max_size=(%.2f, %.2f), "
       "build_size=(%.2f, %.2f), size=(%.2f, %.2f), rel_pos=(%.2f, %.2f), "
@@ -700,103 +706,103 @@ static void DebugPrintUIR(UIBox *box, u32 level) {
       box->computed.clip_rect.min.x, box->computed.clip_rect.min.y,
       box->computed.clip_rect.max.x, box->computed.clip_rect.max.y);
   for (UIBox *child = box->first; child; child = child->next) {
-    DebugPrintUIR(child, level + 1);
+    ui_debug_print_r(child, level + 1);
   }
 }
 
-static void DebugPrintUI(UIState *state) {
+static void ui_debug_print(UIState *state) {
   if (state->frame_index > 1) {
-    UIFrame *frame = GetCurrentUIFrame();
+    UIFrame *frame = ui_frame_get();
     for (UIBox *box = frame->first_box; box; box = box->next) {
-      DebugPrintUIR(box, 0);
+      ui_debug_print_r(box, 0);
     }
     exit(0);
   }
 }
 #else
-static void DebugPrintUI(UIState *state) { (void)state; }
+static void ui_debug_print(UIState *state) { (void)state; }
 #endif
 
-static void ProcessInputR(UIState *state, UIBox *box) {
+static void process_input_r(UIState *state, UIBox *box) {
   for (UIBox *child = box->stack.last; child; child = child->stack.prev) {
-    ProcessInputR(state, child);
+    process_input_r(state, child);
   }
 
   // Mouse input
-  if (IsZeroUIID(state->input.mouse.hovering) && box->hoverable &&
-      ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
-                   box->computed.clip_rect.max)) {
+  if (uuid_is_zero(state->input.mouse.hovering) && box->hoverable &&
+      vec2_contains(state->input.mouse.pos, box->computed.clip_rect.min,
+                    box->computed.clip_rect.max)) {
     state->input.mouse.hovering = box->id;
   }
 
   for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
-    if (IsZeroUIID(state->input.mouse.pressed[button]) &&
+    if (uuid_is_zero(state->input.mouse.pressed[button]) &&
         box->clickable[button] &&
-        ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
-                     box->computed.clip_rect.max) &&
-        IsMouseButtonPressed(state, button)) {
+        vec2_contains(state->input.mouse.pos, box->computed.clip_rect.min,
+                      box->computed.clip_rect.max) &&
+        is_mouse_button_pressed(state, button)) {
       state->input.mouse.pressed[button] = box->id;
       state->input.mouse.pressed_pos[button] = state->input.mouse.pos;
     }
   }
 
-  if (IsZeroUIID(state->input.mouse.scrolling) && box->scrollable &&
-      !IsZeroVec2(state->input.mouse.wheel) &&
-      ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
-                   box->computed.clip_rect.max)) {
+  if (uuid_is_zero(state->input.mouse.scrolling) && box->scrollable &&
+      !vec2_is_zero(state->input.mouse.wheel) &&
+      vec2_contains(state->input.mouse.pos, box->computed.clip_rect.min,
+                    box->computed.clip_rect.max)) {
     state->input.mouse.scrolling = box->id;
     state->input.mouse.scroll_delta = state->input.mouse.wheel;
   }
 }
 
-static void ProcessInput(UIState *state, UIFrame *frame) {
-  state->input.mouse.hovering = UIIDZero();
-  state->input.mouse.scrolling = UIIDZero();
+static void process_input(UIState *state, UIFrame *frame) {
+  state->input.mouse.hovering = uuid_zero();
+  state->input.mouse.scrolling = uuid_zero();
   for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
-    state->input.mouse.pressed[button] = UIIDZero();
-    state->input.mouse.clicked[button] = UIIDZero();
-    if (!IsZeroUIID(state->input.mouse.holding[button])) {
+    state->input.mouse.pressed[button] = uuid_zero();
+    state->input.mouse.clicked[button] = uuid_zero();
+    if (!uuid_is_zero(state->input.mouse.holding[button])) {
       state->input.mouse.hovering = state->input.mouse.holding[button];
     }
   }
 
-  ProcessInputR(state, frame->root);
+  process_input_r(state, frame->root);
 
   for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
-    if (!IsZeroUIID(state->input.mouse.pressed[button])) {
+    if (!uuid_is_zero(state->input.mouse.pressed[button])) {
       state->input.mouse.holding[button] = state->input.mouse.pressed[button];
     }
 
-    if (IsMouseButtonClicked(state, button)) {
+    if (is_mouse_button_clicked(state, button)) {
       UIID id = state->input.mouse.holding[button];
-      UIBox *box = GetUIBoxFromFrame(frame, id);
+      UIBox *box = ui_box_get(frame, id);
       if (box &&
-          ContainsVec2(state->input.mouse.pos, box->computed.clip_rect.min,
-                       box->computed.clip_rect.max)) {
+          vec2_contains(state->input.mouse.pos, box->computed.clip_rect.min,
+                        box->computed.clip_rect.max)) {
         state->input.mouse.clicked[button] = id;
       }
-      state->input.mouse.holding[button] = UIIDZero();
+      state->input.mouse.holding[button] = uuid_zero();
     }
 
     state->input.mouse.buttons[button].transition_count = 0;
   }
-  state->input.mouse.wheel = V2(0, 0);
+  state->input.mouse.wheel = v2(0, 0);
 }
 
-static Vec2 PositionAbsolute(Vec2 min, Vec2 max, UIEdgeInsets offset, Vec2 size,
-                             UIEdgeInsets margin) {
+static Vec2 position_absolute(Vec2 min, Vec2 max, UIEdgeInsets offset,
+                              Vec2 size, UIEdgeInsets margin) {
   Vec2 result;
-  if (IsUIEdgeInsetsLeftSet(offset)) {
+  if (ui_edge_insets_is_left_set(offset)) {
     result.x = min.x + offset.left;
-  } else if (IsUIEdgeInsetsRightSet(offset)) {
+  } else if (ui_edge_insets_is_right_set(offset)) {
     result.x = max.x - offset.right - size.x;
   } else {
     result.x = min.x;
   }
 
-  if (IsUIEdgeInsetsTopSet(offset)) {
+  if (ui_edge_insets_is_top_set(offset)) {
     result.y = min.y + offset.top;
-  } else if (IsUIEdgeInsetsBottomSet(offset)) {
+  } else if (ui_edge_insets_is_bottom_set(offset)) {
     result.y = max.y - offset.bottom - size.y;
   } else {
     result.y = min.y;
@@ -808,31 +814,31 @@ static Vec2 PositionAbsolute(Vec2 min, Vec2 max, UIEdgeInsets offset, Vec2 size,
   return result;
 }
 
-static void PositionBox(UIFrame *frame, UIBox *box, Vec2 parent_min,
-                        Vec2 parent_max, Rect2 parent_clip_rect) {
+static void position_box(UIFrame *frame, UIBox *box, Vec2 parent_min,
+                         Vec2 parent_max, Rect2 parent_clip_rect) {
   Vec2 min, max;
   bool ignore_parent_clip_rect = false;
   switch (box->props.position) {
     case kUIPositionRelative: {
-      Vec2 offset = V2(box->props.offset.left - box->props.offset.right,
+      Vec2 offset = v2(box->props.offset.left - box->props.offset.right,
                        box->props.offset.top - box->props.offset.bottom);
-      min = AddVec2(AddVec2(parent_min, box->computed.rel_pos), offset);
-      max = AddVec2(min, box->computed.size);
+      min = vec2_add(vec2_add(parent_min, box->computed.rel_pos), offset);
+      max = vec2_add(min, box->computed.size);
     } break;
 
-    case kUIPositionAbsolute: {
+    case kUIposition_absolute: {
       Vec2 size = box->computed.size;
-      min = PositionAbsolute(parent_min, parent_max, box->props.offset, size,
-                             box->props.margin);
-      max = AddVec2(min, size);
+      min = position_absolute(parent_min, parent_max, box->props.offset, size,
+                              box->props.margin);
+      max = vec2_add(min, size);
       ignore_parent_clip_rect = true;
     } break;
 
     case kUIPositionFixed: {
       Vec2 size = box->computed.size;
-      min = PositionAbsolute(V2(0, 0), frame->viewport_size, box->props.offset,
-                             size, box->props.margin);
-      max = AddVec2(min, size);
+      min = position_absolute(v2(0, 0), frame->viewport_size, box->props.offset,
+                              size, box->props.margin);
+      max = vec2_add(min, size);
       ignore_parent_clip_rect = true;
     } break;
 
@@ -841,48 +847,48 @@ static void PositionBox(UIFrame *frame, UIBox *box, Vec2 parent_min,
     } break;
   }
 
-  Rect2 screen_rect = R2(min, max);
+  Rect2 screen_rect = r2(min, max);
   Rect2 clip_rect;
   if (ignore_parent_clip_rect) {
     clip_rect = screen_rect;
   } else {
-    clip_rect = Rect2FromIntersection(parent_clip_rect, screen_rect);
+    clip_rect = rect2_from_intersection(parent_clip_rect, screen_rect);
   }
 
   box->computed.screen_rect = screen_rect;
   box->computed.clip_rect = clip_rect;
 
   for (UIBox *child = box->build.first; child; child = child->build.next) {
-    PositionBox(frame, child, min, max, box->computed.clip_rect);
+    position_box(frame, child, min, max, box->computed.clip_rect);
   }
 }
 
-void EndUIFrame(void) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame();
-  EndUITag("Root");
+void ui_end_frame(void) {
+  UIState *state = ui_state_get();
+  UIFrame *frame = ui_frame_get();
+  ui_tag_end("Root");
   ASSERTF(!frame->current_build, "Mismatched BeginBox/EndBox calls");
 
   Vec2 size = frame->viewport_size;
-  LayoutBox(frame, frame->root, V2(0, 0), size);
-  frame->root->computed.rel_pos = V2(0, 0);
+  layout_box(frame, frame->root, v2(0, 0), size);
+  frame->root->computed.rel_pos = v2(0, 0);
 
-  BuildStackingContext(frame, frame->root);
+  build_stacking_context(frame, frame->root);
   ASSERT(!frame->current_stack);
 
-  PositionBox(frame, frame->root, V2(0, 0), size, R2(V2(0, 0), size));
+  position_box(frame, frame->root, v2(0, 0), size, r2(v2(0, 0), size));
 
-  ProcessInput(state, frame);
-  DebugPrintUI(state);
+  process_input(state, frame);
+  ui_debug_print(state);
 }
 
-void RenderUI(void) {
-  UIState *state = GetUIState();
-  UIFrame *frame = GetCurrentUIFrame();
+void ui_render(void) {
+  UIState *state = ui_state_get();
+  UIFrame *frame = ui_frame_get();
 
   ASSERTF(!frame->first_error, "%s", frame->first_error->message.ptr);
 
-  RenderBox(state, frame->root);
+  render_box(state, frame->root);
 }
 
 static UIID UIIDFromStr8(UIID seed, Str8 str) {
@@ -899,104 +905,104 @@ static UIID UIIDFromStr8(UIID seed, Str8 str) {
   return result;
 }
 
-UIID UIIDFromU8(UIID seed, u8 ch) {
+UIID uuid_from_u8(UIID seed, u8 ch) {
   u8 str[2] = {ch, 0};
   UIID result = UIIDFromStr8(seed, (Str8){.ptr = str, .len = 1});
   return result;
 }
 
-UIBuildError *GetFirstUIBuildError(void) {
-  UIFrame *frame = GetCurrentUIFrame();
+UIBuildError *ui_get_first_build_error(void) {
+  UIFrame *frame = ui_frame_get();
   UIBuildError *result = frame->first_error;
   return result;
 }
 
-bool IsEqualUIID(UIID a, UIID b) {
+bool uuid_is_equal(UIID a, UIID b) {
   bool result = a.hash == b.hash;
   return result;
 }
 
-Str8 PushUIStr8(Str8 str) {
-  UIFrame *frame = GetCurrentUIFrame();
-  Str8 result = PushStr8(&frame->arena, str);
+Str8 ui_push_str8(Str8 str) {
+  UIFrame *frame = ui_frame_get();
+  Str8 result = arena_push_str8(&frame->arena, str);
   return result;
 }
 
-Str8 PushUIStr8F(const char *fmt, ...) {
+Str8 ui_push_str8f(const char *fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  Str8 result = PushUIStr8FV(fmt, ap);
+  Str8 result = ui_push_str8fv(fmt, ap);
   va_end(ap);
   return result;
 }
 
-Str8 PushUIStr8FV(const char *fmt, va_list ap) {
-  UIFrame *frame = GetCurrentUIFrame();
-  Str8 result = PushStr8FV(&frame->arena, fmt, ap);
+Str8 ui_push_str8fv(const char *fmt, va_list ap) {
+  UIFrame *frame = ui_frame_get();
+  Str8 result = arena_push_str8fv(&frame->arena, fmt, ap);
   return result;
 }
 
-static UIID UIIDFromU32(UIID seed, u32 num) {
+static UIID uuid_from_u32(UIID seed, u32 num) {
   UIID id = seed;
   u32 s = num;
   while (s > 0) {
-    id = UIIDFromU8(id, (u8)(s & 0xFF));
+    id = uuid_from_u8(id, (u8)(s & 0xFF));
     s = s >> 8;
   }
   return id;
 }
 
-static UIID UIIDForBox(UIID seed, u32 seq, const char *tag, Str8 key) {
+static UIID uuid_for_box(UIID seed, u32 seq, const char *tag, Str8 key) {
   // id = seed + tag + (key || seq)
   UIID id = seed;
-  id = UIIDFromStr8(id, Str8FromCStr(tag));
-  if (!IsEmptyStr8(key)) {
+  id = UIIDFromStr8(id, str8_from_cstr(tag));
+  if (!str8_is_empty(key)) {
     id = UIIDFromStr8(id, key);
   } else {
-    id = UIIDFromU32(id, seq);
+    id = uuid_from_u32(id, seq);
   }
   return id;
 }
 
-static UIBox *GetUIBoxFromLastFrame(UIID id) {
+static UIBox *ui_box_get_from_last_frame(UIID id) {
   UIBox *result = 0;
-  UIFrame *last_frame = GetLastUIFrame();
+  UIFrame *last_frame = ui_frame_get_last();
   if (last_frame) {
-    result = GetUIBoxFromFrame(last_frame, id);
+    result = ui_box_get(last_frame, id);
   }
   return result;
 }
 
-void BeginUITag(const char *tag, UIProps props) {
-  UIFrame *frame = GetCurrentUIFrame();
+void ui_tag_begin(const char *tag, UIProps props) {
+  UIFrame *frame = ui_frame_get();
 
   UIBox *parent = frame->current_build;
   UIID seed;
   if (parent) {
     seed = parent->id;
   } else {
-    seed = UIIDZero();
+    seed = uuid_zero();
   }
   u32 seq = 0;
   if (parent) {
     seq = parent->children_count;
   }
 
-  UIID id = UIIDForBox(seed, seq, tag, props.key);
-  UIBox *box = PushUIBox(&frame->cache, &frame->arena, id);
+  UIID id = uuid_for_box(seed, seq, tag, props.key);
+  UIBox *box = ui_box_push(&frame->cache, &frame->arena, id);
   box->tag = tag;
   box->seq = seq;
 
   if (parent) {
-    APPEND_DOUBLY_LINKED_LIST(parent->build.first, parent->build.last, box,
-                              build.prev, build.next);
+    DLL_APPEND(parent->build.first, parent->build.last, box, build.prev,
+               build.next);
     ++parent->children_count;
   }
   box->build.parent = parent;
   box->props = props;
 
   // Copy computed state from last frame, if any
-  UIBox *last_box = GetUIBoxFromLastFrame(id);
+  UIBox *last_box = ui_box_get_from_last_frame(id);
   if (last_box) {
     box->computed = last_box->computed;
   }
@@ -1004,8 +1010,8 @@ void BeginUITag(const char *tag, UIProps props) {
   frame->current_build = box;
 }
 
-void EndUITag(const char *tag) {
-  UIFrame *frame = GetCurrentUIFrame();
+void ui_tag_end(const char *tag) {
+  UIFrame *frame = ui_frame_get();
   UIBox *box = frame->current_build;
   ASSERT(box);
   ASSERTF(strcmp(box->tag, tag) == 0,
@@ -1015,34 +1021,34 @@ void EndUITag(const char *tag) {
   frame->current_build = box->build.parent;
 }
 
-void *PushUIBoxState(const char *type_name, usize size) {
-  UIFrame *frame = GetCurrentUIFrame();
-  UIBox *box = GetCurrentUIBox();
+void *ui_box_push_state(const char *type_name, usize size) {
+  UIFrame *frame = ui_frame_get();
+  UIBox *box = ui_box_get_current();
   ASSERTF(!box->state.ptr, "Can only push once to the UIBox");
 
-  DEBUG_ASSERT(GetUIBoxFromFrame(frame, box->id) == box);
+  DEBUG_ASSERT(ui_box_get(frame, box->id) == box);
   box->state.type_name = type_name;
   box->state.size = size;
 
-  UIBox *last_box = GetUIBoxFromLastFrame(box->id);
+  UIBox *last_box = ui_box_get_from_last_frame(box->id);
   if (last_box && last_box->state.ptr) {
     ASSERTF(last_box->state.size == box->state.size &&
                 strcmp(last_box->state.type_name, type_name) == 0,
             "The type pushed to this box (%s) is not the same as the last "
             "frame (%s)",
             type_name, last_box->state.type_name);
-    box->state.ptr = PushArena(&frame->arena, size, kPushArenaNoZero);
+    box->state.ptr = arena_push(&frame->arena, size, kArenaPushNoZero);
     // Copy state from last frame
     memcpy(box->state.ptr, last_box->state.ptr, size);
   } else {
-    box->state.ptr = PushArena(&frame->arena, size, 0);
+    box->state.ptr = arena_push(&frame->arena, size, 0);
   }
 
   return box->state.ptr;
 }
 
-void *GetUIBoxState(const char *type_name, usize size) {
-  UIBox *box = GetCurrentUIBox();
+void *ui_box_get_state(const char *type_name, usize size) {
+  UIBox *box = ui_box_get_current();
   ASSERTF(box->state.ptr, "UIBox doesn't have state");
   ASSERTF(
       box->state.size == size && strcmp(box->state.type_name, type_name) == 0,
@@ -1053,24 +1059,24 @@ void *GetUIBoxState(const char *type_name, usize size) {
   return result;
 }
 
-Vec2 GetUIMouseRelPos(void) {
-  UIState *state = GetUIState();
-  UIBox *box = GetCurrentUIBox();
-  Vec2 result = V2(0, 0);
+Vec2 ui_get_mouse_rel_pos(void) {
+  UIState *state = ui_state_get();
+  UIBox *box = ui_box_get_current();
+  Vec2 result = v2(0, 0);
   if (box) {
-    result = SubVec2(state->input.mouse.pos, box->computed.screen_rect.min);
+    result = vec2_sub(state->input.mouse.pos, box->computed.screen_rect.min);
   }
   return result;
 }
 
-Vec2 GetUIMousePos(void) {
-  UIState *state = GetUIState();
+Vec2 ui_get_mouse_pos(void) {
+  UIState *state = ui_state_get();
   Vec2 result = state->input.mouse.pos;
   return result;
 }
 
-void SetUIBoxBlockMouseInput(void) {
-  UIBox *box = GetCurrentUIBox();
+void ui_set_block_mouse_input(void) {
+  UIBox *box = ui_box_get_current();
   box->hoverable = true;
   for (i32 button = 0; button < kUIMouseButtonCount; ++button) {
     box->clickable[button] = true;
@@ -1078,72 +1084,72 @@ void SetUIBoxBlockMouseInput(void) {
   box->scrollable = true;
 }
 
-bool IsUIMouseHovering(void) {
-  UIState *state = GetUIState();
-  UIBox *box = GetCurrentUIBox();
+bool ui_is_mouse_hovering(void) {
+  UIState *state = ui_state_get();
+  UIBox *box = ui_box_get_current();
   bool result = false;
   if (box) {
     box->hoverable = true;
-    result = IsEqualUIID(state->input.mouse.hovering, box->id);
+    result = uuid_is_equal(state->input.mouse.hovering, box->id);
   }
   return result;
 }
 
-bool IsUIMouseButtonPressed(UIMouseButton button) {
-  UIState *state = GetUIState();
-  UIBox *box = GetCurrentUIBox();
+bool ui_is_mouse_button_pressed(UIMouseButton button) {
+  UIState *state = ui_state_get();
+  UIBox *box = ui_box_get_current();
   bool result = false;
   if (box) {
     box->clickable[button] = true;
-    result = IsEqualUIID(state->input.mouse.pressed[button], box->id);
+    result = uuid_is_equal(state->input.mouse.pressed[button], box->id);
   }
   return result;
 }
 
-bool IsUIMouseButtonDown(UIMouseButton button) {
-  UIState *state = GetUIState();
-  UIBox *box = GetCurrentUIBox();
+bool ui_is_mouse_button_down(UIMouseButton button) {
+  UIState *state = ui_state_get();
+  UIBox *box = ui_box_get_current();
   bool result = false;
   if (box) {
     box->clickable[button] = true;
-    result = IsEqualUIID(state->input.mouse.holding[button], box->id);
+    result = uuid_is_equal(state->input.mouse.holding[button], box->id);
   }
   return result;
 }
 
-bool IsUIMouseButtonClicked(UIMouseButton button) {
-  UIState *state = GetUIState();
-  UIBox *box = GetCurrentUIBox();
+bool ui_is_mouse_button_clicked(UIMouseButton button) {
+  UIState *state = ui_state_get();
+  UIBox *box = ui_box_get_current();
   bool result = false;
   if (box) {
     box->clickable[button] = true;
-    result = IsEqualUIID(state->input.mouse.clicked[button], box->id);
+    result = uuid_is_equal(state->input.mouse.clicked[button], box->id);
   }
   return result;
 }
 
-bool IsUIMouseButtonDragging(UIMouseButton button, Vec2 *delta) {
-  UIState *state = GetUIState();
-  UIBox *box = GetCurrentUIBox();
+bool ui_is_mouse_button_dragging(UIMouseButton button, Vec2 *delta) {
+  UIState *state = ui_state_get();
+  UIBox *box = ui_box_get_current();
   bool result = false;
   if (box) {
     box->clickable[button] = true;
-    result = IsEqualUIID(state->input.mouse.holding[button], box->id);
+    result = uuid_is_equal(state->input.mouse.holding[button], box->id);
     if (result && delta) {
-      *delta = SubVec2(state->input.mouse.pos,
-                       state->input.mouse.pressed_pos[button]);
+      *delta = vec2_sub(state->input.mouse.pos,
+                        state->input.mouse.pressed_pos[button]);
     }
   }
   return result;
 }
 
-bool IsUIMouseScrolling(Vec2 *delta) {
-  UIState *state = GetUIState();
-  UIBox *box = GetCurrentUIBox();
+bool ui_is_mouse_button_scrolling(Vec2 *delta) {
+  UIState *state = ui_state_get();
+  UIBox *box = ui_box_get_current();
   bool result = false;
   if (box) {
     box->scrollable = true;
-    result = IsEqualUIID(state->input.mouse.scrolling, box->id);
+    result = uuid_is_equal(state->input.mouse.scrolling, box->id);
     if (result && delta) {
       *delta = state->input.mouse.scroll_delta;
     }

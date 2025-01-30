@@ -8,7 +8,7 @@
 #define kPageSize KB(4)
 #define kAlign 8
 
-static inline usize AlignPow2USize(usize addr, usize align) {
+static inline usize usize_align_pow2(usize addr, usize align) {
   usize result = ((addr + align - 1) & (~(align - 1)));
   return result;
 }
@@ -16,25 +16,25 @@ static inline usize AlignPow2USize(usize addr, usize align) {
 // TODO: thread-safe
 static usize g_allocated_bytes;
 
-void *AllocMemory(usize size) {
+void *memory_alloc(usize size) {
   g_allocated_bytes += size;
   void *result = malloc(size);
   ASSERT(result);
   return result;
 }
 
-void FreeMemory(void *ptr, usize size) {
+void memory_free(void *ptr, usize size) {
   g_allocated_bytes -= size;
   free(ptr);
 }
 
-usize GetAllocatedBytes(void) { return g_allocated_bytes; }
+usize memory_get_allocated_bytes(void) { return g_allocated_bytes; }
 
 // Allocate a memory block which is at least `size` bytes large.
-static MemoryBlock *AllocMemoryBlock(usize size) {
-  usize block_size = AlignPow2USize(sizeof(MemoryBlock) + size, kPageSize);
+static MemoryBlock *memory_block_alloc(usize size) {
+  usize block_size = usize_align_pow2(sizeof(MemoryBlock) + size, kPageSize);
 
-  MemoryBlock *block = (MemoryBlock *)AllocMemory(block_size);
+  MemoryBlock *block = (MemoryBlock *)memory_alloc(block_size);
   block->prev = 0;
   block->begin = (u8 *)(block + 1);
   block->end = (u8 *)block + block_size;
@@ -42,31 +42,31 @@ static MemoryBlock *AllocMemoryBlock(usize size) {
   return block;
 }
 
-static inline void FreeMemoryBlock(MemoryBlock *block) {
+static inline void memory_block_free(MemoryBlock *block) {
   usize block_size = block->end - (u8 *)block;
-  FreeMemory(block, block_size);
+  memory_free(block, block_size);
 }
 
-static void FreeLastMemoryBlock(Arena *arena) {
+static void memory_block_free_last(Arena *arena) {
   MemoryBlock *block = arena->current_block;
   arena->current_block = block->prev;
-  FreeMemoryBlock(block);
+  memory_block_free(block);
 }
 
-void FreeArena(Arena *arena) {
+void arena_free(Arena *arena) {
   ASSERT(arena->temp_count == 0);
   while (arena->current_block) {
     b32 is_last_block = arena->current_block->prev == 0;
-    FreeLastMemoryBlock(arena);
+    memory_block_free_last(arena);
     if (is_last_block) {
       break;
     }
   }
 }
 
-static void PopArenaTo(Arena *arena, MemoryBlock *block, u8 *pos) {
+static void arena_pop_to(Arena *arena, MemoryBlock *block, u8 *pos) {
   while (arena->current_block != block) {
-    FreeLastMemoryBlock(arena);
+    memory_block_free_last(arena);
   }
   if (arena->current_block) {
     DEBUG_ASSERT(arena->current_block->pos >= pos);
@@ -74,39 +74,39 @@ static void PopArenaTo(Arena *arena, MemoryBlock *block, u8 *pos) {
   }
 }
 
-void ResetArena(Arena *arena) { PopArenaTo(arena, 0, 0); }
+void arena_reset(Arena *arena) { arena_pop_to(arena, 0, 0); }
 
-void *PushArena(Arena *arena, usize size, u32 flags) {
+void *arena_push(Arena *arena, usize size, u32 flags) {
   u8 *result = 0;
 
   MemoryBlock *block = arena->current_block;
   if (block) {
-    u8 *addr = (u8 *)AlignPow2USize((usize)block->pos, kAlign);
+    u8 *addr = (u8 *)usize_align_pow2((usize)block->pos, kAlign);
     if (addr + size <= block->end) {
       result = addr;
     }
   }
 
   if (!result) {
-    MemoryBlock *new_block = AllocMemoryBlock(size);
+    MemoryBlock *new_block = memory_block_alloc(size);
     new_block->prev = arena->current_block;
     block = new_block;
     arena->current_block = block;
 
-    result = (u8 *)AlignPow2USize((usize)block->pos, kAlign);
+    result = (u8 *)usize_align_pow2((usize)block->pos, kAlign);
   }
 
   DEBUG_ASSERT(result + size <= block->end);
   block->pos = result + size;
 
-  if (!(flags & kPushArenaNoZero)) {
-    ZeroMemory(result, size);
+  if (!(flags & kArenaPushNoZero)) {
+    memory_zero(result, size);
   }
 
   return result;
 }
 
-void PopArena(Arena *arena, usize size) {
+void arena_pop(Arena *arena, usize size) {
   for (;;) {
     MemoryBlock *block = arena->current_block;
     DEBUG_ASSERT(block);
@@ -115,12 +115,12 @@ void PopArena(Arena *arena, usize size) {
       break;
     } else {
       size -= block->pos - block->begin;
-      FreeLastMemoryBlock(arena);
+      memory_block_free_last(arena);
     }
   }
 }
 
-TempMemory BeginTempMemory(Arena *arena) {
+TempMemory temp_memory_begin(Arena *arena) {
   TempMemory temp;
   temp.arena = arena;
   temp.block = arena->current_block;
@@ -129,16 +129,16 @@ TempMemory BeginTempMemory(Arena *arena) {
   return temp;
 }
 
-void EndTempMemory(TempMemory temp) {
+void temp_memory_end(TempMemory temp) {
   Arena *arena = temp.arena;
-  PopArenaTo(arena, temp.block, temp.pos);
+  arena_pop_to(arena, temp.block, temp.pos);
   DEBUG_ASSERT(arena->temp_count > 0);
   --arena->temp_count;
 }
 
-thread_local Arena t_scratch_arenas[2];
+THREAD_LOCAL Arena t_scratch_arenas[2];
 
-Arena *GetScratchArena(Arena **conflicts, usize len) {
+Arena *arena_get_scratch(Arena **conflicts, usize len) {
   Arena *result = 0;
   for (u32 i = 0; i < ARRAY_COUNT(t_scratch_arenas); ++i) {
     Arena *candidate = t_scratch_arenas + i;

@@ -1,5 +1,28 @@
 const std = @import("std");
 
+const Build = std.Build;
+
+fn addDeps(b: *Build, exe: *Build.Step.Compile) void {
+    const target = exe.rootModuleTarget();
+    switch (target.os.tag) {
+        .macos => {
+            const framework_path = b.path("third_party/SDL3/macos");
+            exe.addFrameworkPath(framework_path);
+            exe.linkFramework("SDL3");
+            exe.addRPath(framework_path);
+        },
+        .windows => {
+            exe.addIncludePath(b.path("third_party/SDL3/windows/include"));
+            exe.addLibraryPath(b.path("third_party/SDL3/windows/lib"));
+            exe.linkSystemLibrary("SDL3");
+        },
+        else => std.debug.panic("Unsupported OS {}", .{target.os.tag}),
+    }
+    exe.linkLibC();
+
+    exe.addIncludePath(b.path("."));
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -27,21 +50,7 @@ pub fn build(b: *std.Build) void {
             "src/ztracing_sdl3.c",
         }),
     });
-    ztracing.addIncludePath(b.path("."));
-    ztracing.linkLibC();
-    ztracing.linkSystemLibrary("SDL3");
-    if (target.result.os.tag == .windows) {
-        ztracing.linkSystemLibrary("Winmm");
-        ztracing.linkSystemLibrary("Ole32");
-        ztracing.linkSystemLibrary("Setupapi");
-        ztracing.linkSystemLibrary("Gdi32");
-        ztracing.linkSystemLibrary("OleAut32");
-        ztracing.linkSystemLibrary("Imm32");
-        ztracing.linkSystemLibrary("Version");
-        if (optimize != .Debug) {
-            ztracing.subsystem = .Windows;
-        }
-    }
+    addDeps(b, ztracing);
     b.installArtifact(ztracing);
 
     const test_binary = b.addTest(.{
@@ -51,9 +60,7 @@ pub fn build(b: *std.Build) void {
         .filters = test_filters,
     });
     test_binary.addCSourceFiles(.{ .files = &srcs });
-    test_binary.addIncludePath(b.path("."));
-    test_binary.linkLibC();
-    test_binary.linkSystemLibrary("SDL3");
+    addDeps(b, test_binary);
     const install_test = b.addInstallArtifact(test_binary, .{});
 
     const run_test = b.addRunArtifact(install_test.artifact);

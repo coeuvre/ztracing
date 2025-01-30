@@ -16,26 +16,26 @@ typedef struct Str8 {
   usize len;
 } Str8;
 
-#define STR8_LIT(s) (Str8){(u8 *)(s), sizeof(s) - 1}
+#define str8_lit(s) (Str8){(u8 *)(s), sizeof(s) - 1}
 
-static inline Str8 Str8FromCStr(const char *str) {
+static inline Str8 str8_from_cstr(const char *str) {
   Str8 result;
   result.ptr = (u8 *)str;
   result.len = strlen(str);
   return result;
 }
 
-static inline Str8 Str8Zero(void) {
+static inline Str8 str8_zero(void) {
   Str8 result = {0};
   return result;
 }
 
-static inline b32 IsEmptyStr8(Str8 str) {
+static inline b32 str8_is_empty(Str8 str) {
   b32 result = str.len == 0;
   return result;
 }
 
-static inline b32 IsEqualStr8(Str8 a, Str8 b) {
+static inline b32 str8_is_equal(Str8 a, Str8 b) {
   b32 result;
   if (a.len == b.len) {
     if (a.ptr != b.ptr) {
@@ -53,9 +53,9 @@ static inline b32 IsEqualStr8(Str8 a, Str8 b) {
   return result;
 }
 
-Str8 PushStr8(Arena *arena, Str8 str);
-Str8 PushStr8F(Arena *arena, const char *format, ...);
-Str8 PushStr8FV(Arena *arena, const char *format, va_list ap);
+Str8 arena_push_str8(Arena *arena, Str8 str);
+Str8 arena_push_str8f(Arena *arena, const char *format, ...);
+Str8 arena_push_str8fv(Arena *arena, const char *format, va_list ap);
 
 typedef struct Str32 Str32;
 struct Str32 {
@@ -63,6 +63,6 @@ struct Str32 {
   usize len;
 };
 
-Str32 PushStr32FromStr8(Arena *arena, Str8 str);
+Str32 arena_push_str32_from_str8(Arena *arena, Str8 str);
 
 #endif  // ZTRACING_SRC_STRING_H_

@@ -14,12 +14,12 @@ static SDL_Window *window;
 static b32 window_shown;
 static b32 window_coordinate_is_in_pixels;
 
-u64 GetPerformanceCounter(void) {
+u64 get_perf_counter(void) {
   u64 result = SDL_GetPerformanceCounter();
   return result;
 }
 
-u64 GetPerformanceFrequency(void) {
+u64 get_perf_freq(void) {
   u64 result = SDL_GetPerformanceFrequency();
   return result;
 }
@@ -50,13 +50,13 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   ASSERTF(renderer, "Failed to create renderer: %s", SDL_GetError());
   SDL_SetRenderVSync(renderer, 1);
 
-  InitDrawSDL3(window, renderer);
-  InitUI();
+  init_draw_sdl3(window, renderer);
+  ui_init();
 
   return SDL_APP_CONTINUE;
 }
 
-static UIMouseButton sdl_button_to_ui_button[] = {
+static UIMouseButton g_sdl_button_to_ui_button[] = {
     [SDL_BUTTON_LEFT] = kUIMouseButtonLeft,
     [SDL_BUTTON_MIDDLE] = kUIMouseButtonMiddle,
     [SDL_BUTTON_RIGHT] = kUIMouseButtonRight,
@@ -64,10 +64,10 @@ static UIMouseButton sdl_button_to_ui_button[] = {
     [SDL_BUTTON_X2] = kUIMouseButtonX2,
 };
 
-static Vec2 MousePosFromSDL(Vec2 pos) {
+static Vec2 mouse_pos_from_sdl(Vec2 pos) {
   Vec2 result = pos;
   if (window_coordinate_is_in_pixels) {
-    result = MulVec2(result, 1.0f / GetScreenContentScale());
+    result = vec2_mul(result, 1.0f / get_screen_content_scale());
   }
   return result;
 }
@@ -82,19 +82,19 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     } break;
 
     case SDL_EVENT_MOUSE_BUTTON_UP: {
-      Vec2 mouse_pos = MousePosFromSDL(V2(event->button.x, event->button.y));
-      OnUIMouseButtonUp(mouse_pos,
-                        sdl_button_to_ui_button[event->button.button]);
+      Vec2 mouse_pos = mouse_pos_from_sdl(v2(event->button.x, event->button.y));
+      ui_on_mouse_button_up(mouse_pos,
+                            g_sdl_button_to_ui_button[event->button.button]);
     } break;
 
     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
-      Vec2 mouse_pos = MousePosFromSDL(V2(event->button.x, event->button.y));
-      OnUIMouseButtonDown(mouse_pos,
-                          sdl_button_to_ui_button[event->button.button]);
+      Vec2 mouse_pos = mouse_pos_from_sdl(v2(event->button.x, event->button.y));
+      ui_on_mouse_button_down(mouse_pos,
+                              g_sdl_button_to_ui_button[event->button.button]);
     } break;
 
     case SDL_EVENT_MOUSE_WHEEL: {
-      OnUIMouseWheel(V2(event->wheel.x, -event->wheel.y));
+      ui_on_mouse_wheel(v2(event->wheel.x, -event->wheel.y));
     } break;
 
     default: {
@@ -103,20 +103,20 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   return result;
 }
 
-static Vec2 GetGlobalWindowRelativeMousePos(void) {
+static Vec2 get_global_window_relative_mouse_pos(void) {
   Vec2I window_pos;
   SDL_GetWindowPosition(window, &window_pos.x, &window_pos.y);
   Vec2 abs_mouse_pos;
   SDL_GetGlobalMouseState(&abs_mouse_pos.x, &abs_mouse_pos.y);
-  Vec2 result = SubVec2(abs_mouse_pos, Vec2FromVec2I(window_pos));
-  return MousePosFromSDL(result);
+  Vec2 result = vec2_sub(abs_mouse_pos, vec2_from_vec2i(window_pos));
+  return mouse_pos_from_sdl(result);
 }
 
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
 
-  OnUIMousePos(GetGlobalWindowRelativeMousePos());
-  DoFrame();
+  ui_on_mouse_pos(get_global_window_relative_mouse_pos());
+  do_frame();
 
   if (!window_shown) {
     SDL_ShowWindow(window);
@@ -128,5 +128,5 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   (void)appstate, (void)result;
-  QuitUI();
+  ui_quit();
 }

@@ -1,9 +1,9 @@
 #ifndef ZTRACING_SRC_TYPES_H_
 #define ZTRACING_SRC_TYPES_H_
 
-#include <stdint.h>
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #include "src/config.h"
 
@@ -29,20 +29,20 @@ typedef ptrdiff_t isize;
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
 
-static inline usize MaxI32(i32 a, i32 b) {
+static inline usize i32_max(i32 a, i32 b) {
   usize result = MAX(a, b);
   return result;
 }
 
-static inline usize MaxUSize(usize a, usize b) {
+static inline usize usize_max(usize a, usize b) {
   usize result = MAX(a, b);
   return result;
 }
 
 #if COMPILER_MSVC
-#define thread_local __declspec(thread)
+#define THREAD_LOCAL __declspec(thread)
 #elif COMPILER_CLANG || COMPILER_GCC
-#define thread_local __thread
+#define THREAD_LOCAL __thread
 #endif
 
 #endif  // ZTRACING_SRC_TYPES_H_
