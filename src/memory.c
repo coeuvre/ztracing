@@ -5,8 +5,8 @@
 #include "src/assert.h"
 #include "src/types.h"
 
-#define kPageSize KB(4)
-#define kAlign 8
+#define PAGE_SIZE KB(4)
+#define ALIGN 8
 
 static inline usize usize_align_pow2(usize addr, usize align) {
   usize result = ((addr + align - 1) & (~(align - 1)));
@@ -32,10 +32,11 @@ usize memory_get_allocated_bytes(void) { return g_allocated_bytes; }
 
 // Allocate a memory block which is at least `size` bytes large.
 static MemoryBlock *memory_block_alloc(usize size) {
-  usize block_size = usize_align_pow2(sizeof(MemoryBlock) + size, kPageSize);
+  usize block_size = usize_align_pow2(sizeof(MemoryBlock) + size, PAGE_SIZE);
 
   MemoryBlock *block = (MemoryBlock *)memory_alloc(block_size);
   block->prev = 0;
+  block->next = 0;
   block->begin = (u8 *)(block + 1);
   block->end = (u8 *)block + block_size;
   block->pos = block->begin;
@@ -50,6 +51,9 @@ static inline void memory_block_free(MemoryBlock *block) {
 static void memory_block_free_last(Arena *arena) {
   MemoryBlock *block = arena->current_block;
   arena->current_block = block->prev;
+  if (arena->current_block) {
+    arena->current_block->next = 0;
+  }
   memory_block_free(block);
 }
 
@@ -65,41 +69,64 @@ void arena_free(Arena *arena) {
 }
 
 static void arena_pop_to(Arena *arena, MemoryBlock *block, u8 *pos) {
-  while (arena->current_block != block) {
-    memory_block_free_last(arena);
+  while (arena->current_block && arena->current_block != block) {
+    if (arena->current_block->prev == 0) {
+      break;
+    }
+    arena->current_block->pos = arena->current_block->begin;
+    arena->current_block = arena->current_block->prev;
   }
   if (arena->current_block) {
     DEBUG_ASSERT(arena->current_block->pos >= pos);
-    arena->current_block->pos = pos;
+    if (arena->current_block == block) {
+      arena->current_block->pos = pos;
+    } else {
+      arena->current_block->pos = arena->current_block->begin;
+    }
   }
 }
 
-void arena_reset(Arena *arena) { arena_pop_to(arena, 0, 0); }
+void arena_clear(Arena *arena) {
+  ASSERT(arena->temp_count == 0);
+  arena_pop_to(arena, 0, 0);
+}
 
 void *arena_push(Arena *arena, usize size, u32 flags) {
   u8 *result = 0;
 
   MemoryBlock *block = arena->current_block;
-  if (block) {
-    u8 *addr = (u8 *)usize_align_pow2((usize)block->pos, kAlign);
+  while (block) {
+    u8 *addr = (u8 *)usize_align_pow2((usize)block->pos, ALIGN);
     if (addr + size <= block->end) {
       result = addr;
+      break;
+    }
+    block->pos = block->end;
+
+    if (block->next) {
+      block = block->next;
+      arena->current_block = block;
+    } else {
+      block = 0;
     }
   }
 
   if (!result) {
     MemoryBlock *new_block = memory_block_alloc(size);
     new_block->prev = arena->current_block;
+    if (arena->current_block) {
+      arena->current_block->next = new_block;
+    }
     block = new_block;
     arena->current_block = block;
 
-    result = (u8 *)usize_align_pow2((usize)block->pos, kAlign);
+    result = (u8 *)usize_align_pow2((usize)block->pos, ALIGN);
   }
 
   DEBUG_ASSERT(result + size <= block->end);
   block->pos = result + size;
 
-  if (!(flags & kArenaPushNoZero)) {
+  if (!(flags & ARENA_PUSH_NO_ZERO)) {
     memory_zero(result, size);
   }
 
@@ -115,7 +142,8 @@ void arena_pop(Arena *arena, usize size) {
       break;
     } else {
       size -= block->pos - block->begin;
-      memory_block_free_last(arena);
+      block->pos = block->begin;
+      arena->current_block = block->prev;
     }
   }
 }

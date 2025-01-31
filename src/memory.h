@@ -19,6 +19,7 @@ usize memory_get_allocated_bytes(void);
 typedef struct MemoryBlock MemoryBlock;
 struct MemoryBlock {
   MemoryBlock *prev;
+  MemoryBlock *next;
 
   u8 *begin;
   u8 *end;
@@ -39,18 +40,18 @@ struct TempMemory {
 };
 
 enum ArenaPushFlag {
-  kArenaPushNoZero = (1 << 0),
+  ARENA_PUSH_NO_ZERO = (1 << 0),
 };
 
 void arena_free(Arena *arena);
-void arena_reset(Arena *arena);
+void arena_clear(Arena *arena);
 void *arena_push(Arena *arena, usize size, u32 flags);
 void arena_pop(Arena *arena, usize size);
 
 #define arena_push_array(arena, Type, len) \
   (Type *)arena_push(arena, sizeof(Type) * len, 0)
 #define arena_push_array_no_zero(arena, Type, len) \
-  (Type *)arena_push(arena, sizeof(Type) * len, kArenaPushNoZero)
+  (Type *)arena_push(arena, sizeof(Type) * len, ARENA_PUSH_NO_ZERO)
 
 TempMemory temp_memory_begin(Arena *arena);
 void temp_memory_end(TempMemory temp);

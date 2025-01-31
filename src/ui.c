@@ -138,7 +138,7 @@ void ui_begin_frame(Vec2 viewport_size) {
 
   UIFrame *frame = state->current_frame;
 
-  arena_reset(&frame->arena);
+  arena_clear(&frame->arena);
 
   frame->cache = (UIBoxCache){0};
   frame->cache.box_hash_slots_count = 4096;
@@ -1037,7 +1037,7 @@ void *ui_box_push_state(const char *type_name, usize size) {
             "The type pushed to this box (%s) is not the same as the last "
             "frame (%s)",
             type_name, last_box->state.type_name);
-    box->state.ptr = arena_push(&frame->arena, size, kArenaPushNoZero);
+    box->state.ptr = arena_push(&frame->arena, size, ARENA_PUSH_NO_ZERO);
     // Copy state from last frame
     memcpy(box->state.ptr, last_box->state.ptr, size);
   } else {
