@@ -51,18 +51,18 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   SDL_SetRenderVSync(renderer, 1);
 
   init_draw_sdl3(window, renderer);
-  ui_init();
+  // ui_init();
 
   return SDL_APP_CONTINUE;
 }
 
-static UIMouseButton g_sdl_button_to_ui_button[] = {
-    [SDL_BUTTON_LEFT] = kUIMouseButtonLeft,
-    [SDL_BUTTON_MIDDLE] = kUIMouseButtonMiddle,
-    [SDL_BUTTON_RIGHT] = kUIMouseButtonRight,
-    [SDL_BUTTON_X1] = kUIMouseButtonX1,
-    [SDL_BUTTON_X2] = kUIMouseButtonX2,
-};
+// static UIMouseButton g_sdl_button_to_ui_button[] = {
+//     [SDL_BUTTON_LEFT] = kUIMouseButtonLeft,
+//     [SDL_BUTTON_MIDDLE] = kUIMouseButtonMiddle,
+//     [SDL_BUTTON_RIGHT] = kUIMouseButtonRight,
+//     [SDL_BUTTON_X1] = kUIMouseButtonX1,
+//     [SDL_BUTTON_X2] = kUIMouseButtonX2,
+// };
 
 static Vec2 mouse_pos_from_sdl(Vec2 pos) {
   Vec2 result = pos;
@@ -82,19 +82,19 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     } break;
 
     case SDL_EVENT_MOUSE_BUTTON_UP: {
-      Vec2 mouse_pos = mouse_pos_from_sdl(v2(event->button.x, event->button.y));
-      ui_on_mouse_button_up(mouse_pos,
-                            g_sdl_button_to_ui_button[event->button.button]);
+      // Vec2 mouse_pos = mouse_pos_from_sdl(v2(event->button.x, event->button.y));
+      // ui_on_mouse_button_up(mouse_pos,
+      //                       g_sdl_button_to_ui_button[event->button.button]);
     } break;
 
     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
-      Vec2 mouse_pos = mouse_pos_from_sdl(v2(event->button.x, event->button.y));
-      ui_on_mouse_button_down(mouse_pos,
-                              g_sdl_button_to_ui_button[event->button.button]);
+      // Vec2 mouse_pos = mouse_pos_from_sdl(v2(event->button.x, event->button.y));
+      // ui_on_mouse_button_down(mouse_pos,
+      //                         g_sdl_button_to_ui_button[event->button.button]);
     } break;
 
     case SDL_EVENT_MOUSE_WHEEL: {
-      ui_on_mouse_wheel(v2(event->wheel.x, -event->wheel.y));
+      // ui_on_mouse_wheel(v2(event->wheel.x, -event->wheel.y));
     } break;
 
     default: {
@@ -115,7 +115,7 @@ static Vec2 get_global_window_relative_mouse_pos(void) {
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
 
-  ui_on_mouse_pos(get_global_window_relative_mouse_pos());
+  // ui_on_mouse_pos(get_global_window_relative_mouse_pos());
   do_frame();
 
   if (!window_shown) {
@@ -128,5 +128,5 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   (void)appstate, (void)result;
-  ui_quit();
+  // ui_quit();
 }

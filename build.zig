@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) void {
         "src/memory.c",
         "src/string.c",
         "src/ui.c",
-        "src/ui_widgets.c",
+        // "src/ui_widgets.c",
 
         "src/draw_sdl3.c",
         "src/log_sdl3.c",

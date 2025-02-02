@@ -9,11 +9,11 @@ const testing = std.testing;
 const log = std.log;
 
 const MainAxisOption = struct {
-    @"align": c.UIMainAxisAlign,
+    @"align": c.UIMainAxisAlignment,
     rel_pos: f32,
 };
 const CrossAxisOption = struct {
-    @"align": c.UICrossAxisAlign,
+    @"align": c.UICrossAxisAlignment,
     rel_pos: f32,
 };
 
@@ -331,14 +331,14 @@ test "Layout, aligns" {
     defer c.ui_quit();
 
     const main_axis_options: []const MainAxisOption = &.{
-        .{ .@"align" = c.kUIMainAxisAlignStart, .rel_pos = 0 },
-        .{ .@"align" = c.kUIMainAxisAlignCenter, .rel_pos = 25 },
-        .{ .@"align" = c.kUIMainAxisAlignEnd, .rel_pos = 50 },
+        .{ .@"align" = c.UI_MAIN_AXIS_ALIGNMENT_START, .rel_pos = 0 },
+        .{ .@"align" = c.UI_MAIN_AXIS_ALIGNMENT_CENTER, .rel_pos = 25 },
+        .{ .@"align" = c.UI_MAIN_AXIS_ALIGNMENT_END, .rel_pos = 50 },
     };
     const cross_axis_options: []const CrossAxisOption = &.{
-        .{ .@"align" = c.kUICrossAxisAlignStart, .rel_pos = 0 },
-        .{ .@"align" = c.kUICrossAxisAlignCenter, .rel_pos = 25 },
-        .{ .@"align" = c.kUICrossAxisAlignEnd, .rel_pos = 50 },
+        .{ .@"align" = c.UI_CROSS_AXIS_ALIGNMENT_START, .rel_pos = 0 },
+        .{ .@"align" = c.UI_CROSS_AXIS_ALIGNMENT_CENTER, .rel_pos = 25 },
+        .{ .@"align" = c.UI_CROSS_AXIS_ALIGNMENT_END, .rel_pos = 50 },
     };
 
     for (main_axis_options) |main_axis_option| {
@@ -371,14 +371,14 @@ test "Layout, padding" {
 
     const padding = c.ui_edge_insets_from_ltrb(1, 2, 3, 4);
     const main_axis_options: []const MainAxisOption = &.{
-        .{ .@"align" = c.kUIMainAxisAlignStart, .rel_pos = 1 },
-        .{ .@"align" = c.kUIMainAxisAlignCenter, .rel_pos = 24 },
-        .{ .@"align" = c.kUIMainAxisAlignEnd, .rel_pos = 47 },
+        .{ .@"align" = c.UI_MAIN_AXIS_ALIGNMENT_START, .rel_pos = 1 },
+        .{ .@"align" = c.UI_MAIN_AXIS_ALIGNMENT_CENTER, .rel_pos = 24 },
+        .{ .@"align" = c.UI_MAIN_AXIS_ALIGNMENT_END, .rel_pos = 47 },
     };
     const cross_axis_options: []const CrossAxisOption = &.{
-        .{ .@"align" = c.kUICrossAxisAlignStart, .rel_pos = 2 },
-        .{ .@"align" = c.kUICrossAxisAlignCenter, .rel_pos = 24 },
-        .{ .@"align" = c.kUICrossAxisAlignEnd, .rel_pos = 46 },
+        .{ .@"align" = c.UI_CROSS_AXIS_ALIGNMENT_START, .rel_pos = 2 },
+        .{ .@"align" = c.UI_CROSS_AXIS_ALIGNMENT_CENTER, .rel_pos = 24 },
+        .{ .@"align" = c.UI_CROSS_AXIS_ALIGNMENT_END, .rel_pos = 46 },
     };
 
     for (main_axis_options) |main_axis_option| {
@@ -528,8 +528,8 @@ test "Layout, main axis size, child has different main axis than parent" {
     defer c.ui_quit();
 
     const main_axis_sizes: []const c.UIMainAxisSize = &.{
-        c.kUIMainAxisSizeMin,
-        c.kUIMainAxisSizeMax,
+        c.UI_MAIN_AXIS_SIZE_MIN,
+        c.UI_MAIN_AXIS_SIZE_MAX,
     };
 
     for (main_axis_sizes) |main_axis_size| {
@@ -549,7 +549,7 @@ test "Layout, main axis size, child has different main axis than parent" {
         c.ui_box_end();
         c.ui_end_frame();
 
-        if (main_axis_size == c.kUIMainAxisSizeMin) {
+        if (main_axis_size == c.UI_MAIN_AXIS_SIZE_MIN) {
             try expectBoxSize(row, c.v2(30, 20));
         } else {
             try expectBoxSize(row, c.v2(100, 20));
@@ -562,8 +562,8 @@ test "Layout, main axis size, child has same main axis as parent" {
     defer c.ui_quit();
 
     const main_axis_sizes: []const c.UIMainAxisSize = &.{
-        c.kUIMainAxisSizeMin,
-        c.kUIMainAxisSizeMax,
+        c.UI_MAIN_AXIS_SIZE_MIN,
+        c.UI_MAIN_AXIS_SIZE_MAX,
     };
 
     for (main_axis_sizes) |main_axis_size| {
@@ -583,7 +583,7 @@ test "Layout, main axis size, child has same main axis as parent" {
         c.ui_box_end();
         c.ui_end_frame();
 
-        if (main_axis_size == c.kUIMainAxisSizeMin) {
+        if (main_axis_size == c.UI_MAIN_AXIS_SIZE_MIN) {
             try expectBoxSize(row, c.v2(20, 20));
         } else {
             try expectBoxSize(row, c.v2(100, 20));

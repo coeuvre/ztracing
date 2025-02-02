@@ -16,6 +16,10 @@ void *memory_alloc(usize size);
 void memory_free(void *ptr, usize size);
 usize memory_get_allocated_bytes(void);
 
+static inline void *memory_copy(void *dst, const void *src, usize size) {
+  return memcpy(dst, src, size);
+}
+
 typedef struct MemoryBlock MemoryBlock;
 struct MemoryBlock {
   MemoryBlock *prev;

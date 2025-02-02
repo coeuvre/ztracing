@@ -21,11 +21,8 @@ void ui_row_begin(UIRowProps props) {
                           .background_color = props.background_color,
                           .main_axis_align = props.main_axis_align,
                           .main_axis = kAxis2X,
-                          .main_axis_size = kUIMainAxisSizeMax,
-                          .cross_axis_align =
-                              props.cross_axis_align != kUICrossAxisAlignUnknown
-                                  ? props.cross_axis_align
-                                  : kUICrossAxisAlignCenter,
+                          .main_axis_size = UI_MAIN_AXIS_SIZE_MAX,
+                          .cross_axis_align = props.cross_axis_align,
                       });
 }
 
@@ -42,10 +39,8 @@ void ui_column_begin(UIColumnProps props) {
           .background_color = props.background_color,
           .main_axis_align = props.main_axis_align,
           .main_axis = kAxis2Y,
-          .main_axis_size = kUIMainAxisSizeMax,
-          .cross_axis_align = props.cross_axis_align != kUICrossAxisAlignUnknown
-                                  ? props.cross_axis_align
-                                  : kUICrossAxisAlignCenter,
+          .main_axis_size = UI_MAIN_AXIS_SIZE_MAX,
+          .cross_axis_align = props.cross_axis_align,
       });
 }
 

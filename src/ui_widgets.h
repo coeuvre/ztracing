@@ -16,8 +16,8 @@ typedef struct UIRowProps {
   UIBorder border;
   ColorU32 color;
   ColorU32 background_color;
-  UIMainAxisAlign main_axis_align;
-  UICrossAxisAlign cross_axis_align;
+  UIMainAxisAlignment main_axis_align;
+  UICrossAxisAlignment cross_axis_align;
 } UIRowProps;
 
 void ui_row_begin(UIRowProps props);
@@ -31,8 +31,8 @@ typedef struct UIColumnProps {
   UIBorder border;
   ColorU32 color;
   ColorU32 background_color;
-  UIMainAxisAlign main_axis_align;
-  UICrossAxisAlign cross_axis_align;
+  UIMainAxisAlignment main_axis_align;
+  UICrossAxisAlignment cross_axis_align;
 } UIColumnProps;
 
 void ui_column_begin(UIColumnProps props);
