@@ -7,5 +7,4 @@ CompileFlags:
   Add: [
     -I..,
     -Wall, -Wextra, -pedantic, -Wno-missing-braces, -Wno-microsoft-enum-forward-reference, -Wno-gnu-binary-literal, -Wno-gnu-anonymous-struct,
-    -DBUILD_DEBUG=1
   ]

@@ -115,6 +115,7 @@ void do_frame(void) {
 
   clear_draw();
 
+  ui_set_viewport_size(get_screen_size());
   // ui_set_delta_time(dt);
   ui_begin_frame();
   build_ui(dt, last_frame_time);

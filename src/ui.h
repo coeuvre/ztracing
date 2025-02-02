@@ -5,6 +5,8 @@
 #include "src/string.h"
 #include "src/types.h"
 
+void ui_set_viewport_size(Vec2 viewport_size);
+
 void ui_begin_frame(void);
 void ui_end_frame(void);
 
@@ -33,10 +35,48 @@ typedef struct UIWidgetHashLink {
   UIWidget *next;
 } UIWidgetHashLink;
 
-typedef void(UIWidgetRenderFn)(void *widget);
+typedef struct UIBoxConstraints {
+  Vec2 min;
+  Vec2 max;
+} UIBoxConstraints;
+
+/// Creates box constraints that is respected only by the given size.
+static inline UIBoxConstraints ui_box_constraints_make_tight(Vec2 size) {
+  return (UIBoxConstraints){
+      .min = size,
+      .max = size,
+  };
+}
+
+/// Creates box constraints that require the given width.
+static inline UIBoxConstraints ui_box_constraints_make_tight_width(f32 width) {
+  return (UIBoxConstraints){
+      .min = v2(width, 0),
+      .max = v2(width, F32_INFINITY),
+  };
+}
+
+/// Creates box constraints that require the given height.
+static inline UIBoxConstraints ui_box_constraints_make_tight_height(
+    f32 height) {
+  return (UIBoxConstraints){
+      .min = v2(0, height),
+      .max = v2(F32_INFINITY, height),
+  };
+}
+
+typedef struct UIFlexData {
+  i32 flex;
+} UIFlexData;
+
+typedef void(UIWidgetLayoutFn)(void *widget, UIBoxConstraints constraints);
+typedef UIFlexData(UIWidgetGetFlexDataFn)(void *widget);
 
 typedef struct UIWidgetVTable {
-  UIWidgetRenderFn *render;
+  UIWidgetLayoutFn *layout;
+
+  // Optional methods
+  UIWidgetGetFlexDataFn *get_flex_data;
 } UIWidgetVTable;
 
 struct UIWidget {
@@ -45,9 +85,14 @@ struct UIWidget {
   UIWidgetTreeLink tree;
 
   UIKey key;
-  u32 children_count;
+  u32 child_count;
   u32 seq;
   const char *tag;
+
+  // TODO: SliverWidget?
+
+  /// The size of this box computed during layout.
+  Vec2 size;
 };
 
 typedef enum UIAxis {

@@ -60,5 +60,8 @@
 #error Compiler not supported.
 #endif
 
-#endif  // ZTRACING_SRC_CONFIG_H_
+#if !defined(NDEBUG)
+#define BUILD_DEBUG 1
+#endif
 
+#endif  // ZTRACING_SRC_CONFIG_H_
