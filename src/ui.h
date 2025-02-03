@@ -114,25 +114,24 @@ typedef enum UIFlexFit {
   UI_FLEX_FIT_LOOSE,
 } UIFlexFit;
 
-typedef struct UIFlexParentData {
-  i32 flex;
-  UIFlexFit fit;
-} UIFlexParentData;
-
-typedef enum UIParentDataID {
-  UI_FLEX_PARENT_DATA = 1,
-} UIParentDataID;
-
 typedef void(UIWidgetLayoutFn)(void *widget, UIBoxConstraints constraints);
 typedef void(UIWidgetPaintFn)(void *widget, UIPaintingContext *context,
                               Vec2 offset);
-typedef bool(UIWidgetGetParentDataFn)(void *widget, i32 id, void *out);
 
-typedef struct UIWidgetVTable {
+typedef struct UIWidgetVTable UIWidgetVTable;
+struct UIWidgetVTable {
+  UIWidgetVTable *parent;
+  const char *name;
   UIWidgetLayoutFn *layout;
   UIWidgetPaintFn *paint;
-  UIWidgetGetParentDataFn *get_parent_data;
-} UIWidgetVTable;
+};
+
+typedef struct UIColor {
+  f32 r;
+  f32 g;
+  f32 b;
+  f32 a;
+} UIColor;
 
 struct UIWidget {
   UIWidgetVTable *vtable;
@@ -142,7 +141,6 @@ struct UIWidget {
   UIKey key;
   u32 child_count;
   u32 seq;
-  const char *tag;
 
   // TODO: SliverWidget?
 
@@ -151,6 +149,21 @@ struct UIWidget {
   /// The offset at which to paint the child in the parent's coordinate system.
   Vec2 offset;
 };
+
+typedef struct UIFlexible {
+  UIWidget widget;
+  i32 flex;
+  UIFlexFit fit;
+} UIFlexible;
+
+typedef struct UIFlexibleProps {
+  UIKey key;
+  i32 flex;
+  UIFlexFit fit;
+} UIFlexibleProps;
+
+void ui_flexible_begin(UIFlexibleProps props);
+void ui_flexible_end(void);
 
 typedef enum UIAxis {
   UI_AXIS_HORIZONTAL,
@@ -210,6 +223,7 @@ typedef struct UIColumn {
 } UIColumn;
 
 typedef struct UIColumnProps {
+  UIKey key;
   UIMainAxisAlignment main_axis_alignment;
   UIMainAxisSize main_axis_size;
   UICrossAxisAlignment cross_axis_alignment;

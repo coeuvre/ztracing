@@ -79,12 +79,38 @@ void ui_begin_frame(void) {
 }
 
 static void ui_widget_layout(UIWidget *widget, UIBoxConstraints constraints) {
-  widget->vtable->layout(widget, constraints);
+  UIWidgetVTable *vtable = widget->vtable;
+  while (vtable) {
+    if (vtable->layout) {
+      vtable->layout(widget, constraints);
+      break;
+    }
+    vtable = vtable->parent;
+  }
 }
 
 static void ui_widget_paint(UIWidget *widget, UIPaintingContext *context,
                             Vec2 offset) {
-  widget->vtable->paint(widget, context, offset);
+  UIWidgetVTable *vtable = widget->vtable;
+  while (vtable) {
+    if (vtable->paint) {
+      vtable->paint(widget, context, offset);
+      break;
+    }
+    vtable = vtable->parent;
+  }
+}
+
+static void *ui_is_instance_of(UIWidget *widget,
+                               UIWidgetVTable *target_vtable) {
+  UIWidgetVTable *vtable = widget->vtable;
+  while (vtable) {
+    if (vtable == target_vtable) {
+      return (void *)widget;
+    }
+    vtable = vtable->parent;
+  }
+  return 0;
 }
 
 void ui_end_frame(void) {
@@ -169,17 +195,9 @@ static void ui_widget_paint_default(void *widget, UIPaintingContext *context,
   }
 }
 
-static bool ui_widget_get_parent_data_default(void *widget, i32 id, void *out) {
-  (void)widget;
-  (void)id;
-  (void)out;
-  return false;
-}
-
 static UIWidgetVTable ui_widget_vtable = (UIWidgetVTable){
     .layout = &ui_widget_layout_default,
     .paint = &ui_widget_paint_default,
-    .get_parent_data = &ui_widget_get_parent_data_default,
 };
 
 static UIWidget *ui_widget_get(UIFrame *frame, UIKey key) {
@@ -209,7 +227,7 @@ static UIWidget *ui_widget_push(UIFrame *frame, usize size, UIKey key) {
   return widget;
 }
 
-static void *ui_widget_begin(const char *tag, usize size, UIKey key) {
+static void *ui_widget_begin(UIWidgetVTable *vtable, usize size, UIKey key) {
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
   UIFrame *last_frame = state->last_frame;
@@ -224,12 +242,12 @@ static void *ui_widget_begin(const char *tag, usize size, UIKey key) {
     if (parent) {
       seq = parent->child_count;
     }
-    key = ui_key_make_local(seed, seq, tag, str8_zero());
+    key = ui_key_make_local(seed, seq, vtable->name, str8_zero());
   }
 
   DEBUG_ASSERT(size >= sizeof(UIWidget));
   UIWidget *widget = ui_widget_push(frame, size, key);
-  widget->vtable = &ui_widget_vtable;
+  widget->vtable = vtable;
   if (parent) {
     DLL_APPEND(parent->tree.first, parent->tree.last, widget, tree.prev,
                tree.next);
@@ -238,15 +256,15 @@ static void *ui_widget_begin(const char *tag, usize size, UIKey key) {
   } else {
     frame->root = widget;
   }
-  widget->tag = tag;
 
   // Copy additional data from last frame
   usize additional_bytes = size - sizeof(UIWidget);
   if (additional_bytes > 0) {
     UIWidget *last_widget = ui_widget_get(last_frame, key);
     if (last_widget) {
-      ASSERTF(strcmp(last_widget->tag, tag) == 0,
-              "tag is changed from %s to %s", last_widget->tag, tag);
+      ASSERTF(strcmp(last_widget->vtable->name, vtable->name) == 0,
+              "tag is changed from %s to %s", last_widget->vtable->name,
+              vtable->name);
       memory_copy(widget + 1, last_widget + 1, additional_bytes);
     }
   }
@@ -256,16 +274,34 @@ static void *ui_widget_begin(const char *tag, usize size, UIKey key) {
   return widget;
 }
 
-static void ui_widget_end(const char *tag) {
+static void ui_widget_end(UIWidgetVTable *vtable) {
   UIFrame *frame = ui_frame_get();
   UIWidget *widget = frame->current;
   ASSERT(widget);
-  ASSERTF(strcmp(widget->tag, tag) == 0,
-          "Mismatched begin/end calls. Begin with %s, end with %s", widget->tag,
-          tag);
+  ASSERTF(strcmp(widget->vtable->name, vtable->name) == 0,
+          "Mismatched begin/end calls. Begin with %s, end with %s",
+          widget->vtable->name, vtable->name);
 
   frame->current = widget->tree.parent;
 }
+
+static UIWidgetVTable ui_flexible_vtable = (UIWidgetVTable){
+    .parent = &ui_widget_vtable,
+    .name = "Flexible",
+};
+
+static inline UIFlexible *ui_flexible_from_widget(UIWidget *widget) {
+  return ui_is_instance_of(widget, &ui_flexible_vtable);
+}
+
+void ui_flexible_begin(UIFlexibleProps props) {
+  UIFlexible *flexible =
+      ui_widget_begin(&ui_flexible_vtable, sizeof(UIFlexible), props.key);
+  flexible->flex = props.flex;
+  flexible->fit = props.fit;
+}
+
+void ui_flexible_end(void) { ui_widget_end(&ui_flexible_vtable); }
 
 static inline UIBoxConstraints ui_box_constraints_make_for_non_flex_child(
     UIFlex *flex, UIBoxConstraints constraints) {
@@ -304,11 +340,11 @@ static inline UIBoxConstraints ui_box_constraints_make_for_non_flex_child(
 
 static inline UIBoxConstraints ui_box_constraints_make_for_flex_child(
     UIFlex *flex, UIBoxConstraints constraints, f32 max_child_extent,
-    UIFlexParentData flex_parent_data) {
-  DEBUG_ASSERT(flex_parent_data.flex > 0);
+    UIFlexible *flexible) {
+  DEBUG_ASSERT(flexible->flex > 0);
   DEBUG_ASSERT(max_child_extent >= 0.0f);
   f32 min_child_extent = 0.0;
-  if (flex_parent_data.fit == UI_FLEX_FIT_TIGHT) {
+  if (flexible->fit == UI_FLEX_FIT_TIGHT) {
     min_child_extent = max_child_extent;
   }
   bool should_fill_cross_axis = false;
@@ -410,10 +446,9 @@ static UIFlexLayoutSize ui_flex_compute_size(UIFlex *flex,
        child = child->tree.next) {
     i32 child_flex = 0;
     if (can_flex) {
-      UIFlexParentData flex_parent_data;
-      if (child->vtable->get_parent_data(child, UI_FLEX_PARENT_DATA,
-                                         &flex_parent_data)) {
-        child_flex = flex_parent_data.flex;
+      UIFlexible *flexible = ui_flexible_from_widget(child);
+      if (flexible) {
+        child_flex = flexible->flex;
       }
     }
 
@@ -439,19 +474,17 @@ static UIFlexLayoutSize ui_flex_compute_size(UIFlex *flex,
   f32 space_per_flex = flex_space / total_flex;
   for (UIWidget *child = flex->widget.tree.first; child && total_flex > 0;
        child = child->tree.next) {
-    UIFlexParentData flex_parent_data = {0};
-    child->vtable->get_parent_data(child, UI_FLEX_PARENT_DATA,
-                                   &flex_parent_data);
-    if (flex_parent_data.flex <= 0) {
+    UIFlexible *flexible = ui_flexible_from_widget(child);
+    if (!flexible || flexible->flex <= 0) {
       continue;
     }
-    total_flex -= flex_parent_data.flex;
+    total_flex -= flexible->flex;
     DEBUG_ASSERT(f32_is_finite(space_per_flex));
-    f32 max_child_extent = space_per_flex * flex_parent_data.flex;
-    DEBUG_ASSERT(flex_parent_data.fit == UI_FLEX_FIT_LOOSE ||
+    f32 max_child_extent = space_per_flex * flexible->flex;
+    DEBUG_ASSERT(flexible->fit == UI_FLEX_FIT_LOOSE ||
                  max_child_extent < F32_INFINITY);
     UIBoxConstraints child_constraints = ui_box_constraints_make_for_flex_child(
-        flex, constraints, max_child_extent, flex_parent_data);
+        flex, constraints, max_child_extent, flexible);
     ui_widget_layout(child, child_constraints);
     AxisSize child_size = axis_size_from_size(child->size, flex->direction);
 
@@ -616,19 +649,43 @@ static void ui_flex_layout(void *widget, UIBoxConstraints constraints) {
 }
 
 static UIWidgetVTable ui_flex_vtable = (UIWidgetVTable){
+    .parent = &ui_widget_vtable,
+    .name = "Flex",
     .layout = &ui_flex_layout,
-    .paint = &ui_widget_paint_default,
-    .get_parent_data = &ui_widget_get_parent_data_default,
 };
 
-void ui_flex_begin(UIFlexProps props) {
-  UIFlex *flex = ui_widget_begin("Flex", sizeof(UIFlex), props.key);
-  flex->widget.vtable = &ui_flex_vtable;
+static void *ui_flex_begin_(UIWidgetVTable *vtable, usize size,
+                            UIFlexProps props) {
+  UIFlex *flex = ui_widget_begin(vtable, size, props.key);
   flex->direction = props.direction;
   flex->main_axis_alignment = props.main_axis_alignment;
   flex->main_axis_size = props.main_axis_size;
   flex->cross_axis_alignment = props.cross_axis_alignment;
   flex->spacing = props.spacing;
+  return flex;
 }
 
-void ui_flex_end(void) { ui_widget_end("Flex"); }
+void ui_flex_begin(UIFlexProps props) {
+  ui_flex_begin_(&ui_flex_vtable, sizeof(UIFlex), props);
+}
+
+void ui_flex_end(void) { ui_widget_end(&ui_flex_vtable); }
+
+static UIWidgetVTable ui_column_vtable = (UIWidgetVTable){
+    .parent = &ui_flex_vtable,
+    .name = "Column",
+};
+
+void ui_column_begin(UIColumnProps props) {
+  ui_flex_begin_(&ui_column_vtable, sizeof(UIColumn),
+                 (UIFlexProps){
+                     .key = props.key,
+                     .direction = UI_AXIS_VERTICAL,
+                     .main_axis_alignment = props.main_axis_alignment,
+                     .main_axis_size = props.main_axis_size,
+                     .cross_axis_alignment = props.cross_axis_alignment,
+                     .spacing = props.spacing,
+                 });
+}
+
+void ui_column_end(void) { ui_widget_end(&ui_column_vtable); }

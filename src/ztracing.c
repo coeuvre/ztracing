@@ -98,8 +98,10 @@
 // }
 
 static void build_ui(f32 dt, f32 frame_time) {
-  ui_flex_begin((UIFlexProps){});
-  ui_flex_end();
+  ui_column_begin((UIColumnProps){0});
+  ui_flexible_begin((UIFlexibleProps){.flex = 1});
+  ui_flexible_end();
+  ui_column_end();
 }
 
 void do_frame(void) {
