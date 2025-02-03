@@ -98,10 +98,10 @@
 // }
 
 static void build_ui(f32 dt, f32 frame_time) {
-  ui_column_begin((UIColumnProps){0});
-  ui_flexible_begin((UIFlexibleProps){.flex = 1});
-  ui_flexible_end();
-  ui_column_end();
+  ui_colored_box_begin((UIColoredBoxProps){
+      .color = (UIColor){1, 0, 0, 1},
+  });
+  ui_colored_box_end();
 }
 
 void do_frame(void) {

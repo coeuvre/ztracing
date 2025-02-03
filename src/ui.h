@@ -76,7 +76,7 @@ static inline f32 ui_box_constraints_constrain_width(
 /// possible to the given height.
 static inline f32 ui_box_constraints_constrain_height(
     UIBoxConstraints constraints, f32 height) {
-  return f32_clamp(height, constraints.min.x, constraints.max.x);
+  return f32_clamp(height, constraints.min.y, constraints.max.y);
 }
 
 /// Returns the size that both satisfies the constraints and is as close as
@@ -122,16 +122,10 @@ typedef struct UIWidgetVTable UIWidgetVTable;
 struct UIWidgetVTable {
   UIWidgetVTable *parent;
   const char *name;
+  usize size;
   UIWidgetLayoutFn *layout;
   UIWidgetPaintFn *paint;
 };
-
-typedef struct UIColor {
-  f32 r;
-  f32 g;
-  f32 b;
-  f32 a;
-} UIColor;
 
 struct UIWidget {
   UIWidgetVTable *vtable;
@@ -150,8 +144,28 @@ struct UIWidget {
   Vec2 offset;
 };
 
+typedef struct UIColor {
+  f32 r;
+  f32 g;
+  f32 b;
+  f32 a;
+} UIColor;
+
+typedef struct UIColoredBox {
+  UIWidget parent;
+  UIColor color;
+} UIColoredBox;
+
+typedef struct UIColoredBoxProps {
+  UIKey key;
+  UIColor color;
+} UIColoredBoxProps;
+
+void ui_colored_box_begin(UIColoredBoxProps props);
+void ui_colored_box_end(void);
+
 typedef struct UIFlexible {
-  UIWidget widget;
+  UIWidget parent;
   i32 flex;
   UIFlexFit fit;
 } UIFlexible;
@@ -194,7 +208,7 @@ typedef enum UICrossAxisAlignment {
 
 /// A widget that displays its children in a one-dimensional array.
 typedef struct UIFlex {
-  UIWidget widget;
+  UIWidget parent;
   UIAxis direction;
   UIMainAxisAlignment main_axis_alignment;
   UIMainAxisSize main_axis_size;
@@ -219,7 +233,7 @@ void ui_flex_end(void);
 
 /// A widget that displays its children in a vertical array.
 typedef struct UIColumn {
-  UIFlex flex;
+  UIFlex parent;
 } UIColumn;
 
 typedef struct UIColumnProps {
