@@ -5,7 +5,7 @@
 #include "src/string.h"
 #include "src/types.h"
 
-void ui_set_viewport_size(Vec2 viewport_size);
+void ui_set_viewport(Vec2 min, Vec2 max);
 
 void ui_begin_frame(void);
 void ui_end_frame(void);
@@ -102,6 +102,10 @@ static inline UIBoxConstraints ui_box_constraints_flip(
   };
 }
 
+typedef struct UIPaintingContext {
+  int placeholder;
+} UIPaintingContext;
+
 typedef enum UIFlexFit {
   /// The child is forced to fill the available space.
   UI_FLEX_FIT_TIGHT,
@@ -120,10 +124,13 @@ typedef enum UIParentDataID {
 } UIParentDataID;
 
 typedef void(UIWidgetLayoutFn)(void *widget, UIBoxConstraints constraints);
+typedef void(UIWidgetPaintFn)(void *widget, UIPaintingContext *context,
+                              Vec2 offset);
 typedef bool(UIWidgetGetParentDataFn)(void *widget, i32 id, void *out);
 
 typedef struct UIWidgetVTable {
   UIWidgetLayoutFn *layout;
+  UIWidgetPaintFn *paint;
   UIWidgetGetParentDataFn *get_parent_data;
 } UIWidgetVTable;
 

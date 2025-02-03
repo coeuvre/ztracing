@@ -36,7 +36,8 @@ typedef struct UIState {
   UIFrame *current_frame;
   UIFrame *last_frame;
 
-  Vec2 viewport_size;
+  Vec2 viewport_min;
+  Vec2 viewport_max;
 } UIState;
 
 THREAD_LOCAL UIState t_ui_state;
@@ -48,9 +49,10 @@ static inline UIFrame *ui_frame_get(void) {
   return state->current_frame;
 }
 
-void ui_set_viewport_size(Vec2 viewport_size) {
+void ui_set_viewport(Vec2 min, Vec2 max) {
   UIState *state = ui_state_get();
-  state->viewport_size = viewport_size;
+  state->viewport_min = min;
+  state->viewport_max = max;
 }
 
 void ui_begin_frame(void) {
@@ -80,15 +82,24 @@ static void ui_widget_layout(UIWidget *widget, UIBoxConstraints constraints) {
   widget->vtable->layout(widget, constraints);
 }
 
+static void ui_widget_paint(UIWidget *widget, UIPaintingContext *context,
+                            Vec2 offset) {
+  widget->vtable->paint(widget, context, offset);
+}
+
 void ui_end_frame(void) {
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
   ASSERTF(!frame->current, "Mismatched begin/end calls");
 
-  // Layout and render
+  // Layout and paint
   if (frame->root) {
-    ui_widget_layout(frame->root,
-                     ui_box_constraints_make_tight(state->viewport_size));
+    Vec2 viewport_size = vec2_sub(state->viewport_max, state->viewport_min);
+    ui_widget_layout(frame->root, ui_box_constraints_make_tight(viewport_size));
+    frame->root->offset = vec2_zero();
+
+    UIPaintingContext context = {0};
+    ui_widget_paint(frame->root, &context, state->viewport_min);
   }
 }
 
@@ -135,7 +146,8 @@ static UIKey ui_key_make_local(UIKey seed, u32 seq, const char *tag, Str8 id) {
   return key;
 }
 
-static void ui_widget_layout_stub(void *widget, UIBoxConstraints constraints) {
+static void ui_widget_layout_default(void *widget,
+                                     UIBoxConstraints constraints) {
   // The default layout just stacks children.
   Vec2 max_size = vec2_zero();
   UIWidget *w = widget;
@@ -143,13 +155,21 @@ static void ui_widget_layout_stub(void *widget, UIBoxConstraints constraints) {
     ui_widget_layout(child, constraints);
     child->offset = vec2_zero();
 
-    vec2_max(max_size, child->size);
+    max_size = vec2_max(max_size, child->size);
   }
 
   w->size = max_size;
 }
 
-static bool ui_widget_get_parent_data_stub(void *widget, i32 id, void *out) {
+static void ui_widget_paint_default(void *widget, UIPaintingContext *context,
+                                    Vec2 offset) {
+  UIWidget *w = widget;
+  for (UIWidget *child = w->tree.first; child; child = child->tree.next) {
+    ui_widget_paint(child, context, vec2_add(offset, child->offset));
+  }
+}
+
+static bool ui_widget_get_parent_data_default(void *widget, i32 id, void *out) {
   (void)widget;
   (void)id;
   (void)out;
@@ -157,8 +177,9 @@ static bool ui_widget_get_parent_data_stub(void *widget, i32 id, void *out) {
 }
 
 static UIWidgetVTable ui_widget_vtable = (UIWidgetVTable){
-    .layout = &ui_widget_layout_stub,
-    .get_parent_data = &ui_widget_get_parent_data_stub,
+    .layout = &ui_widget_layout_default,
+    .paint = &ui_widget_paint_default,
+    .get_parent_data = &ui_widget_get_parent_data_default,
 };
 
 static UIWidget *ui_widget_get(UIFrame *frame, UIKey key) {
@@ -596,6 +617,8 @@ static void ui_flex_layout(void *widget, UIBoxConstraints constraints) {
 
 static UIWidgetVTable ui_flex_vtable = (UIWidgetVTable){
     .layout = &ui_flex_layout,
+    .paint = &ui_widget_paint_default,
+    .get_parent_data = &ui_widget_get_parent_data_default,
 };
 
 void ui_flex_begin(UIFlexProps props) {
