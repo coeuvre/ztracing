@@ -65,18 +65,66 @@ static inline UIBoxConstraints ui_box_constraints_make_tight_height(
   };
 }
 
-typedef struct UIFlexData {
+/// Returns the width that both satisfies the constraints and is as close as
+/// possible to the given width.
+static inline f32 ui_box_constraints_constrain_width(
+    UIBoxConstraints constraints, f32 width) {
+  return f32_clamp(width, constraints.min.x, constraints.max.x);
+}
+
+/// Returns the height that both satisfies the constraints and is as close as
+/// possible to the given height.
+static inline f32 ui_box_constraints_constrain_height(
+    UIBoxConstraints constraints, f32 height) {
+  return f32_clamp(height, constraints.min.x, constraints.max.x);
+}
+
+/// Returns the size that both satisfies the constraints and is as close as
+/// possible to the given size.
+static inline Vec2 ui_box_constraints_constrain(UIBoxConstraints constraints,
+                                                Vec2 size) {
+  return v2(ui_box_constraints_constrain_width(constraints, size.x),
+            ui_box_constraints_constrain_height(constraints, size.y));
+}
+
+/// The biggest size that satisfies the constraints.
+static inline Vec2 ui_box_constraints_get_biggest(
+    UIBoxConstraints constraints) {
+  return v2(ui_box_constraints_constrain_width(constraints, F32_INFINITY),
+            ui_box_constraints_constrain_height(constraints, F32_INFINITY));
+}
+
+static inline UIBoxConstraints ui_box_constraints_flip(
+    UIBoxConstraints constraints) {
+  return (UIBoxConstraints){
+      .min = v2(constraints.min.y, constraints.min.x),
+      .max = v2(constraints.max.y, constraints.max.x),
+  };
+}
+
+typedef enum UIFlexFit {
+  /// The child is forced to fill the available space.
+  UI_FLEX_FIT_TIGHT,
+  /// The child can be at most as large as the available space (but is allowed
+  /// to be smaller).
+  UI_FLEX_FIT_LOOSE,
+} UIFlexFit;
+
+typedef struct UIFlexParentData {
   i32 flex;
-} UIFlexData;
+  UIFlexFit fit;
+} UIFlexParentData;
+
+typedef enum UIParentDataID {
+  UI_FLEX_PARENT_DATA = 1,
+} UIParentDataID;
 
 typedef void(UIWidgetLayoutFn)(void *widget, UIBoxConstraints constraints);
-typedef UIFlexData(UIWidgetGetFlexDataFn)(void *widget);
+typedef bool(UIWidgetGetParentDataFn)(void *widget, i32 id, void *out);
 
 typedef struct UIWidgetVTable {
   UIWidgetLayoutFn *layout;
-
-  // Optional methods
-  UIWidgetGetFlexDataFn *get_flex_data;
+  UIWidgetGetParentDataFn *get_parent_data;
 } UIWidgetVTable;
 
 struct UIWidget {
@@ -93,6 +141,8 @@ struct UIWidget {
 
   /// The size of this box computed during layout.
   Vec2 size;
+  /// The offset at which to paint the child in the parent's coordinate system.
+  Vec2 offset;
 };
 
 typedef enum UIAxis {

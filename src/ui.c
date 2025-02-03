@@ -136,13 +136,29 @@ static UIKey ui_key_make_local(UIKey seed, u32 seq, const char *tag, Str8 id) {
 }
 
 static void ui_widget_layout_stub(void *widget, UIBoxConstraints constraints) {
+  // The default layout just stacks children.
+  Vec2 max_size = vec2_zero();
+  UIWidget *w = widget;
+  for (UIWidget *child = w->tree.first; child; child = child->tree.next) {
+    ui_widget_layout(child, constraints);
+    child->offset = vec2_zero();
+
+    vec2_max(max_size, child->size);
+  }
+
+  w->size = max_size;
+}
+
+static bool ui_widget_get_parent_data_stub(void *widget, i32 id, void *out) {
   (void)widget;
-  (void)constraints;
-  ASSERTF(false, "You must override layout method.");
+  (void)id;
+  (void)out;
+  return false;
 }
 
 static UIWidgetVTable ui_widget_vtable = (UIWidgetVTable){
     .layout = &ui_widget_layout_stub,
+    .get_parent_data = &ui_widget_get_parent_data_stub,
 };
 
 static UIWidget *ui_widget_get(UIFrame *frame, UIKey key) {
@@ -230,27 +246,6 @@ static void ui_widget_end(const char *tag) {
   frame->current = widget->tree.parent;
 }
 
-/// Returns the width that both satisfies the constraints and is as close as
-/// possible to the given width.
-static inline f32 ui_box_constraints_constrain_width(
-    UIBoxConstraints constraints, f32 width) {
-  return f32_clamp(width, constraints.min.x, constraints.max.x);
-}
-
-/// Returns the height that both satisfies the constraints and is as close as
-/// possible to the given height.
-static inline f32 ui_box_constraints_constrain_height(
-    UIBoxConstraints constraints, f32 height) {
-  return f32_clamp(height, constraints.min.x, constraints.max.x);
-}
-
-/// The biggest size that satisfies the constraints.
-static inline Vec2 ui_box_constraints_get_biggest(
-    UIBoxConstraints constraints) {
-  return v2(ui_box_constraints_constrain_width(constraints, F32_INFINITY),
-            ui_box_constraints_constrain_height(constraints, F32_INFINITY));
-}
-
 static inline UIBoxConstraints ui_box_constraints_make_for_non_flex_child(
     UIFlex *flex, UIBoxConstraints constraints) {
   bool should_fill_cross_axis = false;
@@ -286,6 +281,36 @@ static inline UIBoxConstraints ui_box_constraints_make_for_non_flex_child(
   return result;
 }
 
+static inline UIBoxConstraints ui_box_constraints_make_for_flex_child(
+    UIFlex *flex, UIBoxConstraints constraints, f32 max_child_extent,
+    UIFlexParentData flex_parent_data) {
+  DEBUG_ASSERT(flex_parent_data.flex > 0);
+  DEBUG_ASSERT(max_child_extent >= 0.0f);
+  f32 min_child_extent = 0.0;
+  if (flex_parent_data.fit == UI_FLEX_FIT_TIGHT) {
+    min_child_extent = max_child_extent;
+  }
+  bool should_fill_cross_axis = false;
+  if (flex->cross_axis_alignment == UI_CROSS_AXIS_ALIGNMENT_STRETCH) {
+    should_fill_cross_axis = true;
+  }
+  UIBoxConstraints result;
+  if (flex->direction == UI_AXIS_HORIZONTAL) {
+    result = (UIBoxConstraints){
+        .min = v2(min_child_extent,
+                  should_fill_cross_axis ? constraints.max.y : 0),
+        .max = v2(max_child_extent, constraints.max.y),
+    };
+  } else {
+    result = (UIBoxConstraints){
+        .min = v2(should_fill_cross_axis ? constraints.max.x : 0,
+                  min_child_extent),
+        .max = v2(constraints.max.y, max_child_extent),
+    };
+  }
+  return result;
+}
+
 typedef struct AxisSize {
   f32 main;
   f32 cross;
@@ -313,15 +338,27 @@ static inline AxisSize axis_size_from_size(Vec2 size, UIAxis direction) {
   return axis_size_make(converted.x, converted.y);
 }
 
-static void ui_flex_layout(void *widget, UIBoxConstraints constraints) {
-  UIFlex *flex = widget;
+static AxisSize axis_size_constrains(AxisSize axis_size,
+                                     UIBoxConstraints constraints,
+                                     UIAxis direction) {
+  UIBoxConstraints effective_constraints = constraints;
+  if (direction != UI_AXIS_HORIZONTAL) {
+    effective_constraints = ui_box_constraints_flip(constraints);
+  }
+  Vec2 constrained_size = ui_box_constraints_constrain(
+      effective_constraints, v2(axis_size.main, axis_size.cross));
+  return axis_size_make(constrained_size.x, constrained_size.y);
+}
 
-  /// 1. Layout each child with a null or zero flex factor with unbounded main
-  ///    axis constraints and the incoming cross axis constraints. If the
-  ///    [crossAxisAlignment] is [CrossAxisAlignment.stretch], instead use tight
-  ///    cross axis constraints that match the incoming max extent in the cross
-  ///    axis.
+typedef struct UIFlexLayoutSize {
+  AxisSize axis_size;
+  f32 main_axis_free_space;
+  bool can_flex;
+  f32 space_per_flex;
+} UIFlexLayoutSize;
 
+static UIFlexLayoutSize ui_flex_compute_size(UIFlex *flex,
+                                             UIBoxConstraints constraints) {
   // Determine used flex factor, size inflexible items, calculate free space.
   f32 max_main_size;
   switch (flex->direction) {
@@ -344,16 +381,19 @@ static void ui_flex_layout(void *widget, UIBoxConstraints constraints) {
   // The first pass lays out non-flex children and computes total flex.
   i32 total_flex = 0;
   UIWidget *first_flex_child = 0;
-  // Initially, accumulatedSize is the sum of the spaces between children in the
-  // main axis.
+  // Initially, accumulated_size is the sum of the spaces between children in
+  // the main axis.
   AxisSize accumulated_size =
       axis_size_make(flex->spacing * (flex->widget.child_count - 1), 0.0f);
   for (UIWidget *child = flex->widget.tree.first; child;
        child = child->tree.next) {
     i32 child_flex = 0;
-    if (can_flex && child->vtable->get_flex_data) {
-      UIFlexData flex_data = child->vtable->get_flex_data(child);
-      child_flex = flex_data.flex;
+    if (can_flex) {
+      UIFlexParentData flex_parent_data;
+      if (child->vtable->get_parent_data(child, UI_FLEX_PARENT_DATA,
+                                         &flex_parent_data)) {
+        child_flex = flex_parent_data.flex;
+      }
     }
 
     if (child_flex > 0) {
@@ -374,9 +414,184 @@ static void ui_flex_layout(void *widget, UIBoxConstraints constraints) {
   DEBUG_ASSERT(first_flex_child == 0 || can_flex);
 
   // The second pass distributes free space to flexible children.
+  f32 flex_space = f32_max(0.0f, max_main_size - accumulated_size.main);
+  f32 space_per_flex = flex_space / total_flex;
+  for (UIWidget *child = flex->widget.tree.first; child && total_flex > 0;
+       child = child->tree.next) {
+    UIFlexParentData flex_parent_data = {0};
+    child->vtable->get_parent_data(child, UI_FLEX_PARENT_DATA,
+                                   &flex_parent_data);
+    if (flex_parent_data.flex <= 0) {
+      continue;
+    }
+    total_flex -= flex_parent_data.flex;
+    DEBUG_ASSERT(f32_is_finite(space_per_flex));
+    f32 max_child_extent = space_per_flex * flex_parent_data.flex;
+    DEBUG_ASSERT(flex_parent_data.fit == UI_FLEX_FIT_LOOSE ||
+                 max_child_extent < F32_INFINITY);
+    UIBoxConstraints child_constraints = ui_box_constraints_make_for_flex_child(
+        flex, constraints, max_child_extent, flex_parent_data);
+    ui_widget_layout(child, child_constraints);
+    AxisSize child_size = axis_size_from_size(child->size, flex->direction);
+
+    accumulated_size.main += child_size.main;
+    accumulated_size.cross += child_size.cross;
+  }
+  DEBUG_ASSERT(total_flex == 0);
+
+  f32 ideal_main_size;
+  if (flex->main_axis_size == UI_MAIN_AXIS_SIZE_MAX &&
+      f32_is_finite(max_main_size)) {
+    ideal_main_size = max_main_size;
+  } else {
+    ideal_main_size = accumulated_size.main;
+  }
+
+  AxisSize axis_size = axis_size_make(ideal_main_size, accumulated_size.cross);
+  AxisSize constrained_axis_size =
+      axis_size_constrains(axis_size, constraints, flex->direction);
+
+  return (UIFlexLayoutSize){
+      .axis_size = constrained_axis_size,
+      .main_axis_free_space =
+          constrained_axis_size.main - accumulated_size.main,
+      .can_flex = can_flex,
+      .space_per_flex = can_flex ? space_per_flex : 0,
+  };
+}
+
+static void ui_flex_distribute_space(UIMainAxisAlignment main_axis_alignment,
+                                     f32 free_space, u32 item_count,
+                                     bool flipped, f32 spacing,
+                                     f32 *leading_space, f32 *between_space) {
+  switch (main_axis_alignment) {
+    case UI_MAIN_AXIS_ALIGNMENT_START: {
+      if (flipped) {
+        *leading_space = free_space;
+      } else {
+        *leading_space = 0;
+      }
+      *between_space = spacing;
+    } break;
+
+    case UI_MAIN_AXIS_ALIGNMENT_END: {
+      ui_flex_distribute_space(UI_MAIN_AXIS_ALIGNMENT_START, free_space,
+                               item_count, !flipped, spacing, leading_space,
+                               between_space);
+    } break;
+
+    case UI_MAIN_AXIS_ALIGNMENT_SPACE_BETWEEN: {
+      if (item_count < 2) {
+        ui_flex_distribute_space(UI_MAIN_AXIS_ALIGNMENT_START, free_space,
+                                 item_count, flipped, spacing, leading_space,
+                                 between_space);
+      } else {
+        *leading_space = 0;
+        *between_space = free_space / (item_count - 1) + spacing;
+      }
+    } break;
+
+    case UI_MAIN_AXIS_ALIGNMENT_SPACE_AROUND: {
+      if (item_count == 0) {
+        ui_flex_distribute_space(UI_MAIN_AXIS_ALIGNMENT_START, free_space,
+                                 item_count, flipped, spacing, leading_space,
+                                 between_space);
+      } else {
+        *leading_space = free_space / item_count / 2;
+        *between_space = free_space / item_count + spacing;
+      }
+    } break;
+
+    case UI_MAIN_AXIS_ALIGNMENT_CENTER: {
+      *leading_space = free_space / 2.0f;
+      *between_space = spacing;
+    } break;
+
+    case UI_MAIN_AXIS_ALIGNMENT_SPACE_EVENLY: {
+      *leading_space = free_space / (item_count + 1);
+      *between_space = free_space / (item_count + 1) + spacing;
+    } break;
+
+    default:
+      UNREACHABLE;
+  }
+}
+
+static f32 ui_flex_get_child_cross_axis_offset(
+    UICrossAxisAlignment cross_axis_alignment, f32 free_space, bool flipped) {
+  switch (cross_axis_alignment) {
+    case UI_CROSS_AXIS_ALIGNMENT_STRETCH:
+    case UI_CROSS_AXIS_ALIGNMENT_BASELINE: {
+      return 0.0f;
+    } break;
+
+    case UI_CROSS_AXIS_ALIGNMENT_START: {
+      return flipped ? free_space : 0.0f;
+    } break;
+
+    case UI_CROSS_AXIS_ALIGNMENT_CENTER: {
+      return free_space / 2.0f;
+    } break;
+
+    case UI_CROSS_AXIS_ALIGNMENT_END: {
+      return ui_flex_get_child_cross_axis_offset(UI_CROSS_AXIS_ALIGNMENT_START,
+                                                 free_space, !flipped);
+    } break;
+
+    default:
+      UNREACHABLE;
+  }
+}
+
+static f32 ui_flex_get_cross_size(Vec2 size, UIAxis direction) {
+  if (direction == UI_AXIS_HORIZONTAL) {
+    return size.y;
+  } else {
+    return size.x;
+  }
+}
+
+static f32 ui_flex_get_main_size(Vec2 size, UIAxis direction) {
+  if (direction == UI_AXIS_HORIZONTAL) {
+    return size.x;
+  } else {
+    return size.y;
+  }
+}
+
+static void ui_flex_layout(void *widget, UIBoxConstraints constraints) {
+  UIFlex *flex = widget;
+
+  UIFlexLayoutSize sizes = ui_flex_compute_size(flex, constraints);
+  flex->widget.size = convert_size(
+      v2(sizes.axis_size.main, sizes.axis_size.cross), flex->direction);
+  // TODO: Handle overflow.
+
+  f32 remaining_space = f32_max(0.0f, sizes.main_axis_free_space);
+  // TODO: Handle text direction and vertical direction.
+  f32 leading_space;
+  f32 between_space;
+  ui_flex_distribute_space(flex->main_axis_alignment, remaining_space,
+                           flex->widget.child_count, /* flipped= */ false,
+                           flex->spacing, &leading_space, &between_space);
 
   // Position all children in visual order: starting from the top-left child and
   // work towards the child that's farthest away from the origin.
+  f32 child_main_position = leading_space;
+  for (UIWidget *child = flex->widget.tree.first; child;
+       child = child->tree.next) {
+    f32 child_cross_position = ui_flex_get_child_cross_axis_offset(
+        flex->cross_axis_alignment,
+        ui_flex_get_cross_size(child->size, flex->direction),
+        /* flipped= */ false);
+    if (flex->direction == UI_AXIS_HORIZONTAL) {
+      child->offset = v2(child_main_position, child_cross_position);
+    } else {
+      child->offset = v2(child_cross_position, child_main_position);
+    }
+    child_main_position +=
+        ui_flex_get_main_size(child->size, flex->direction) + between_space;
+  }
 }
 
 static UIWidgetVTable ui_flex_vtable = (UIWidgetVTable){
