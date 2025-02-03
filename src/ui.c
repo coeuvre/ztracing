@@ -129,7 +129,6 @@ void ui_end_frame(void) {
   if (frame->root) {
     Vec2 viewport_size = vec2_sub(state->viewport_max, state->viewport_min);
     ui_widget_layout(frame->root, ui_box_constraints_make_tight(viewport_size));
-    frame->root->offset = vec2_zero();
 
     UIPaintingContext context = {0};
     ui_widget_paint(frame->root, &context, state->viewport_min);
@@ -182,16 +181,15 @@ static UIKey ui_key_make_local(UIKey seed, u32 seq, const char *tag, Str8 id) {
 static void ui_widget_layout_default(void *widget,
                                      UIBoxConstraints constraints) {
   // The default layout just stacks children.
-  Vec2 max_size = vec2_zero();
+  Vec2 max_child_size = vec2_zero();
   UIWidget *w = widget;
   for (UIWidget *child = w->tree.first; child; child = child->tree.next) {
     ui_widget_layout(child, constraints);
-    child->offset = vec2_zero();
 
-    max_size = vec2_max(max_size, child->size);
+    max_child_size = vec2_max(max_child_size, child->size);
   }
 
-  w->size = ui_box_constraints_constrain(constraints, max_size);
+  w->size = ui_box_constraints_constrain(constraints, max_child_size);
 }
 
 static void ui_widget_paint_default(void *widget, UIPaintingContext *context,
@@ -202,7 +200,7 @@ static void ui_widget_paint_default(void *widget, UIPaintingContext *context,
   }
 }
 
-static UIWidgetVTable ui_widget_vtable = (UIWidgetVTable){
+UIWidgetVTable ui_widget_vtable = (UIWidgetVTable){
     .name = "Widget",
     .size = sizeof(UIWidget),
     .layout = &ui_widget_layout_default,
@@ -294,6 +292,59 @@ static void ui_widget_end(UIWidgetVTable *vtable) {
   frame->current = widget->tree.parent;
 }
 
+static UIBoxConstraints ui_limited_box_limit_constraints(
+    UILimitedBox *limited_box, UIBoxConstraints constraints) {
+  return (UIBoxConstraints){
+      .min = v2(constraints.min.x, constraints.min.y),
+      .max = v2(ui_box_constraints_has_bounded_width(constraints)
+                    ? constraints.max.x
+                    : ui_box_constraints_constrain_width(
+                          constraints, limited_box->max_width),
+                ui_box_constraints_has_bounded_height(constraints)
+                    ? constraints.max.y
+                    : ui_box_constraints_constrain_height(
+                          constraints, limited_box->max_height)),
+  };
+}
+
+void ui_limited_box_layout(void *widget, UIBoxConstraints constraints) {
+  UILimitedBox *limited_box = widget;
+  UIBoxConstraints limited_constraints =
+      ui_limited_box_limit_constraints(limited_box, constraints);
+
+  if (limited_box->parent.tree.first) {
+    Vec2 max_child_size = vec2_zero();
+    for (UIWidget *child = limited_box->parent.tree.first; child;
+         child = child->tree.next) {
+      ui_widget_layout(child, limited_constraints);
+
+      Vec2 size = ui_box_constraints_constrain(constraints, child->size);
+      max_child_size = vec2_max(max_child_size, size);
+    }
+    limited_box->parent.size =
+        ui_box_constraints_constrain(constraints, max_child_size);
+  } else {
+    limited_box->parent.size =
+        ui_box_constraints_constrain(limited_constraints, vec2_zero());
+  }
+}
+
+UIWidgetVTable ui_limited_box_vtable = (UIWidgetVTable){
+    .parent = &ui_widget_vtable,
+    .name = "LimitedBox",
+    .size = sizeof(UILimitedBox),
+    .layout = &ui_limited_box_layout,
+};
+
+void ui_limited_box_begin(UILimitedBoxProps props) {
+  UILimitedBox *limited_box =
+      ui_widget_begin(&ui_limited_box_vtable, props.key);
+  limited_box->max_width = props.max_width;
+  limited_box->max_height = props.max_height;
+}
+
+void ui_limited_box_end(void) { ui_widget_end(&ui_limited_box_vtable); }
+
 static void ui_colored_box_paint(void *widget, UIPaintingContext *context,
                                  Vec2 offset) {
   UIColoredBox *colored_box = widget;
@@ -314,7 +365,7 @@ static void ui_colored_box_paint(void *widget, UIPaintingContext *context,
   }
 }
 
-static UIWidgetVTable ui_colored_box_vtable = (UIWidgetVTable){
+UIWidgetVTable ui_colored_box_vtable = (UIWidgetVTable){
     .parent = &ui_widget_vtable,
     .name = "ColoredBox",
     .size = sizeof(UIColoredBox),
@@ -329,7 +380,7 @@ void ui_colored_box_begin(UIColoredBoxProps props) {
 
 void ui_colored_box_end(void) { ui_widget_end(&ui_colored_box_vtable); }
 
-static UIWidgetVTable ui_flexible_vtable = (UIWidgetVTable){
+UIWidgetVTable ui_flexible_vtable = (UIWidgetVTable){
     .parent = &ui_widget_vtable,
     .name = "Flexible",
     .size = sizeof(UIFlexible),
@@ -692,7 +743,7 @@ static void ui_flex_layout(void *widget, UIBoxConstraints constraints) {
   }
 }
 
-static UIWidgetVTable ui_flex_vtable = (UIWidgetVTable){
+UIWidgetVTable ui_flex_vtable = (UIWidgetVTable){
     .parent = &ui_widget_vtable,
     .name = "Flex",
     .size = sizeof(UIFlex),
@@ -715,7 +766,7 @@ void ui_flex_begin(UIFlexProps props) {
 
 void ui_flex_end(void) { ui_widget_end(&ui_flex_vtable); }
 
-static UIWidgetVTable ui_column_vtable = (UIWidgetVTable){
+UIWidgetVTable ui_column_vtable = (UIWidgetVTable){
     .parent = &ui_flex_vtable,
     .name = "Column",
     .size = sizeof(UIColumn),

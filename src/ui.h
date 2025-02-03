@@ -102,6 +102,16 @@ static inline UIBoxConstraints ui_box_constraints_flip(
   };
 }
 
+static inline bool ui_box_constraints_has_bounded_width(
+    UIBoxConstraints constraints) {
+  return constraints.max.x < F32_INFINITY;
+}
+
+static inline bool ui_box_constraints_has_bounded_height(
+    UIBoxConstraints constraints) {
+  return constraints.max.y < F32_INFINITY;
+}
+
 typedef struct UIPaintingContext {
   int placeholder;
 } UIPaintingContext;
@@ -144,6 +154,26 @@ struct UIWidget {
   Vec2 offset;
 };
 
+extern UIWidgetVTable ui_widget_vtable;
+
+/// A box that limits its size only when it's unconstrained.
+typedef struct UILimitedBox {
+  UIWidget parent;
+  f32 max_width;
+  f32 max_height;
+} UILimitedBox;
+
+extern UIWidgetVTable ui_limited_box_vtable;
+
+typedef struct UILimitedBoxProps {
+  UIKey key;
+  f32 max_width;
+  f32 max_height;
+} UILimitedBoxProps;
+
+void ui_limited_box_begin(UILimitedBoxProps props);
+void ui_limited_box_end(void);
+
 typedef struct UIColor {
   f32 r;
   f32 g;
@@ -155,6 +185,8 @@ typedef struct UIColoredBox {
   UIWidget parent;
   UIColor color;
 } UIColoredBox;
+
+extern UIWidgetVTable ui_colored_box_vtable;
 
 typedef struct UIColoredBoxProps {
   UIKey key;
@@ -169,6 +201,8 @@ typedef struct UIFlexible {
   i32 flex;
   UIFlexFit fit;
 } UIFlexible;
+
+extern UIWidgetVTable ui_flexible_vtable;
 
 typedef struct UIFlexibleProps {
   UIKey key;
@@ -219,6 +253,8 @@ typedef struct UIFlex {
   f32 spacing;
 } UIFlex;
 
+extern UIWidgetVTable ui_flex_vtable;
+
 typedef struct UIFlexProps {
   UIKey key;
   UIAxis direction;
@@ -235,6 +271,8 @@ void ui_flex_end(void);
 typedef struct UIColumn {
   UIFlex parent;
 } UIColumn;
+
+extern UIWidgetVTable ui_column_vtable;
 
 typedef struct UIColumnProps {
   UIKey key;

@@ -98,10 +98,12 @@
 // }
 
 static void build_ui(f32 dt, f32 frame_time) {
+  ui_limited_box_begin((UILimitedBoxProps){0});
   ui_colored_box_begin((UIColoredBoxProps){
       .color = (UIColor){1, 0, 0, 1},
   });
   ui_colored_box_end();
+  ui_limited_box_end();
 }
 
 void do_frame(void) {
