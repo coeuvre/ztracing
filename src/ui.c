@@ -189,11 +189,6 @@ static UIKey ui_key_make_local(UIKey seed, u32 seq, const char *tag, Str8 id) {
   return key;
 }
 
-static inline UIKey ui_widget_get_key(UIWidget *widget) {
-  UIKey *key_ptr = (UIKey *)widget->props;
-  return *key_ptr;
-}
-
 static UIWidget *ui_widget_get(UIFrame *frame, UIKey key) {
   UIWidget *result = 0;
   UIWidgetHashMap *cache = &frame->cache;
@@ -277,6 +272,7 @@ UIWidget *ui_widget_begin_(UIWidgetVTable *vtable, usize props_size,
   } else {
     frame->root = widget;
   }
+  widget->props_size = props_size;
   widget->props = arena_push(&frame->arena, props_size, ARENA_PUSH_NO_ZERO);
   memory_copy(widget->props, props, props_size);
   *(UIKey *)widget->props = key;
@@ -319,7 +315,8 @@ static UIBoxConstraints ui_limited_box_limit_constraints(
 
 static void ui_limited_box_layout(UIWidget *widget,
                                   UIBoxConstraints constraints) {
-  UILimitedBoxProps *limited_box = widget->props;
+  UILimitedBoxProps *limited_box =
+      ui_widget_get_props(widget, UILimitedBoxProps);
   UIBoxConstraints limited_constraints =
       ui_limited_box_limit_constraints(limited_box, constraints);
 
@@ -356,7 +353,8 @@ void ui_limited_box_end(void) { ui_widget_end(&ui_limited_box_vtable); }
 ///
 static void ui_colored_box_paint(UIWidget *widget, UIPaintingContext *context,
                                  Vec2 offset) {
-  UIColoredBoxProps *colored_box = widget->props;
+  UIColoredBoxProps *colored_box =
+      ui_widget_get_props(widget, UIColoredBoxProps);
   Vec2 size = widget->size;
   if (size.x > 0 && size.y > 0) {
     fill_rect(offset, vec2_add(offset, size),
@@ -390,7 +388,8 @@ void ui_colored_box_end(void) { ui_widget_end(&ui_colored_box_vtable); }
 ///
 static void ui_constrained_box_layout(UIWidget *widget,
                                       UIBoxConstraints constraints) {
-  UIConstrainedBoxProps *constrained_box = widget->props;
+  UIConstrainedBoxProps *constrained_box =
+      ui_widget_get_props(widget, UIConstrainedBoxProps);
 
   UIBoxConstraints enforced_constraints = ui_box_constraints_enforce(
       constrained_box->additional_constraints, constraints);
@@ -426,7 +425,7 @@ UIWidgetVTable ui_flexible_vtable = (UIWidgetVTable){
 
 static inline UIFlexibleProps *ui_flexible_props_from_widget(UIWidget *widget) {
   if (widget->vtable == &ui_flexible_vtable) {
-    return (UIFlexibleProps *)widget->props;
+    return ui_widget_get_props(widget, UIFlexibleProps);
   }
   return 0;
 }
@@ -758,7 +757,7 @@ static f32 ui_flex_get_main_size(Vec2 size, UIAxis direction) {
 }
 
 static void ui_flex_layout(UIWidget *widget, UIBoxConstraints constraints) {
-  UIFlexProps *flex = widget->props;
+  UIFlexProps *flex = ui_widget_get_props(widget, UIFlexProps);
 
   UIFlexLayoutSize sizes = ui_flex_compute_size(widget, flex, constraints);
   f32 cross_axis_extent = sizes.axis_size.cross;
@@ -799,12 +798,8 @@ static UIWidgetVTable ui_flex_vtable = (UIWidgetVTable){
     .paint = &ui_widget_paint_default,
 };
 
-static UIWidget *ui_flex_begin_(UIWidgetVTable *vtable, UIFlexProps props) {
-  return ui_widget_begin(vtable, props);
-}
-
 void ui_flex_begin(UIFlexProps props) {
-  ui_flex_begin_(&ui_flex_vtable, props);
+  ui_widget_begin(&ui_flex_vtable, props);
 }
 
 void ui_flex_end(void) { ui_widget_end(&ui_flex_vtable); }
@@ -819,15 +814,15 @@ UIWidgetVTable ui_column_vtable = (UIWidgetVTable){
 };
 
 void ui_column_begin(UIColumnProps props) {
-  ui_flex_begin_(&ui_column_vtable,
-                 (UIFlexProps){
-                     .key = props.key,
-                     .direction = UI_AXIS_VERTICAL,
-                     .main_axis_alignment = props.main_axis_alignment,
-                     .main_axis_size = props.main_axis_size,
-                     .cross_axis_alignment = props.cross_axis_alignment,
-                     .spacing = props.spacing,
-                 });
+  UIFlexProps flex = {
+      .key = props.key,
+      .direction = UI_AXIS_VERTICAL,
+      .main_axis_alignment = props.main_axis_alignment,
+      .main_axis_size = props.main_axis_size,
+      .cross_axis_alignment = props.cross_axis_alignment,
+      .spacing = props.spacing,
+  };
+  ui_widget_begin(&ui_column_vtable, flex);
 }
 
 void ui_column_end(void) { ui_widget_end(&ui_column_vtable); }
@@ -842,15 +837,15 @@ UIWidgetVTable ui_row_vtable = (UIWidgetVTable){
 };
 
 void ui_row_begin(UIRowProps props) {
-  ui_flex_begin_(&ui_row_vtable,
-                 (UIFlexProps){
-                     .key = props.key,
-                     .direction = UI_AXIS_HORIZONTAL,
-                     .main_axis_alignment = props.main_axis_alignment,
-                     .main_axis_size = props.main_axis_size,
-                     .cross_axis_alignment = props.cross_axis_alignment,
-                     .spacing = props.spacing,
-                 });
+  UIFlexProps flex = {
+      .key = props.key,
+      .direction = UI_AXIS_HORIZONTAL,
+      .main_axis_alignment = props.main_axis_alignment,
+      .main_axis_size = props.main_axis_size,
+      .cross_axis_alignment = props.cross_axis_alignment,
+      .spacing = props.spacing,
+  };
+  ui_widget_begin(&ui_row_vtable, flex);
 }
 
 void ui_row_end(void) { ui_widget_end(&ui_row_vtable); }

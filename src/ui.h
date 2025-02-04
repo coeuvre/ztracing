@@ -1,6 +1,7 @@
 #ifndef ZTRACING_SRC_UI_H_
 #define ZTRACING_SRC_UI_H_
 
+#include "src/assert.h"
 #include "src/math.h"
 #include "src/string.h"
 #include "src/types.h"
@@ -173,6 +174,7 @@ struct UIWidget {
   /// The offset at which to paint the child in the parent's coordinate system.
   Vec2 offset;
 
+  usize props_size;
   void *props;
 
   /// The state of the widget, kept across frames (by copying).
@@ -184,8 +186,24 @@ UIWidget *ui_widget_begin_(UIWidgetVTable *vtable, usize props_size,
                            void *props);
 #define ui_widget_begin(vtable, props) \
   ui_widget_begin_(vtable, sizeof(props), &props)
-void *ui_widget_push_state(UIWidget *widget, usize size);
+
 void ui_widget_end(UIWidgetVTable *vtable);
+
+void *ui_widget_push_state(UIWidget *widget, usize size);
+
+static inline UIKey ui_widget_get_key(UIWidget *widget) {
+  DEBUG_ASSERT(widget->props_size >= sizeof(UIKey));
+  UIKey *key_ptr = (UIKey *)widget->props;
+  return *key_ptr;
+}
+
+static inline void *ui_widget_get_props_(UIWidget *widget, usize props_size) {
+  DEBUG_ASSERT(widget->props_size == props_size);
+  return widget->props;
+}
+
+#define ui_widget_get_props(widget, Props) \
+  ((Props *)ui_widget_get_props_(widget, sizeof(Props)))
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
