@@ -109,6 +109,7 @@ static void build_ui(f32 dt, f32 frame_time) {
     ui_colored_box_end();
     ui_constrained_box_end();
 
+    ui_flexible_begin((UIFlexibleProps){.flex = 1});
     ui_constrained_box_begin((UIConstrainedBoxProps){
         .additional_constraints = ui_box_constraints_make_tight(50, 100),
     });
@@ -117,6 +118,7 @@ static void build_ui(f32 dt, f32 frame_time) {
     });
     ui_colored_box_end();
     ui_constrained_box_end();
+    ui_flexible_end();
 
     ui_constrained_box_begin((UIConstrainedBoxProps){
         .additional_constraints = ui_box_constraints_make_tight(50, 100),

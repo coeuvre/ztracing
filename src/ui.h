@@ -139,48 +139,53 @@ static inline UIBoxConstraints ui_box_constraints_enforce(
   };
 }
 
+typedef struct UIColor {
+  f32 r;
+  f32 g;
+  f32 b;
+  f32 a;
+} UIColor;
+
 typedef struct UIPaintingContext {
   int placeholder;
 } UIPaintingContext;
 
-typedef enum UIFlexFit {
-  /// The child is forced to fill the available space.
-  UI_FLEX_FIT_TIGHT,
-  /// The child can be at most as large as the available space (but is allowed
-  /// to be smaller).
-  UI_FLEX_FIT_LOOSE,
-} UIFlexFit;
-
-typedef void(UIWidgetLayoutFn)(void *widget, UIBoxConstraints constraints);
-typedef void(UIWidgetPaintFn)(void *widget, UIPaintingContext *context,
+typedef void(UIWidgetLayoutFn)(UIWidget *widget, UIBoxConstraints constraints);
+typedef void(UIWidgetPaintFn)(UIWidget *widget, UIPaintingContext *context,
                               Vec2 offset);
 
-typedef struct UIWidgetVTable UIWidgetVTable;
-struct UIWidgetVTable {
-  UIWidgetVTable *parent;
+typedef struct UIWidgetVTable {
   const char *name;
-  usize size;
   UIWidgetLayoutFn *layout;
   UIWidgetPaintFn *paint;
-};
+} UIWidgetVTable;
 
-extern UIWidgetVTable ui_widget_vtable;
 struct UIWidget {
   UIWidgetVTable *vtable;
   UIWidgetHashLink hash;
   UIWidgetTreeLink tree;
 
-  UIKey key;
   u32 child_count;
   u32 seq;
-
-  // TODO: SliverWidget?
 
   /// The size of this box computed during layout.
   Vec2 size;
   /// The offset at which to paint the child in the parent's coordinate system.
   Vec2 offset;
+
+  void *props;
+
+  /// The state of the widget, kept across frames (by copying).
+  usize state_size;
+  void *state;
 };
+
+UIWidget *ui_widget_begin_(UIWidgetVTable *vtable, usize props_size,
+                           void *props);
+#define ui_widget_begin(vtable, props) \
+  ui_widget_begin_(vtable, sizeof(props), &props)
+void *ui_widget_push_state(UIWidget *widget, usize size);
+void ui_widget_end(UIWidgetVTable *vtable);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -188,13 +193,6 @@ struct UIWidget {
 ///
 /// A box that limits its size only when it's unconstrained.
 ///
-extern UIWidgetVTable ui_limited_box_vtable;
-typedef struct UILimitedBox {
-  UIWidget widget;
-  f32 max_width;
-  f32 max_height;
-} UILimitedBox;
-
 typedef struct UILimitedBoxProps {
   UIKey key;
   f32 max_width;
@@ -211,19 +209,6 @@ void ui_limited_box_end(void);
 /// A widget that paints its area with a specified color and then draws its
 /// child on top of that color.
 ///
-typedef struct UIColor {
-  f32 r;
-  f32 g;
-  f32 b;
-  f32 a;
-} UIColor;
-
-extern UIWidgetVTable ui_colored_box_vtable;
-typedef struct UIColoredBox {
-  UIWidget widget;
-  UIColor color;
-} UIColoredBox;
-
 typedef struct UIColoredBoxProps {
   UIKey key;
   UIColor color;
@@ -237,12 +222,6 @@ void ui_colored_box_end(void);
 /// UIConstrainedBox
 ///
 /// A widget that imposes additional constraints on its child.
-extern UIWidgetVTable ui_constrained_box_vtable;
-typedef struct UIConstrainedBox {
-  UIWidget widget;
-  UIBoxConstraints additional_constraints;
-} UIConstrainedBox;
-
 typedef struct UIConstrainedBoxProps {
   UIKey key;
   UIBoxConstraints additional_constraints;
@@ -257,12 +236,13 @@ void ui_constrained_box_end(void);
 ///
 /// A widget that controls how a child of a UIRow, UIColumn, or UIFlex flexes.
 ///
-extern UIWidgetVTable ui_flexible_vtable;
-typedef struct UIFlexible {
-  UIWidget widget;
-  i32 flex;
-  UIFlexFit fit;
-} UIFlexible;
+typedef enum UIFlexFit {
+  /// The child is forced to fill the available space.
+  UI_FLEX_FIT_TIGHT,
+  /// The child can be at most as large as the available space (but is allowed
+  /// to be smaller).
+  UI_FLEX_FIT_LOOSE,
+} UIFlexFit;
 
 typedef struct UIFlexibleProps {
   UIKey key;
@@ -306,9 +286,8 @@ typedef enum UICrossAxisAlignment {
   UI_CROSS_AXIS_ALIGNMENT_BASELINE,
 } UICrossAxisAlignment;
 
-extern UIWidgetVTable ui_flex_vtable;
-typedef struct UIFlex {
-  UIWidget widget;
+typedef struct UIFlexProps {
+  UIKey key;
   UIAxis direction;
   UIMainAxisAlignment main_axis_alignment;
   UIMainAxisSize main_axis_size;
@@ -316,15 +295,6 @@ typedef struct UIFlex {
   // TODO: UITextDirection
   // TODO: UIVerticalDirection
   // TODO: UITextBaseline
-  f32 spacing;
-} UIFlex;
-
-typedef struct UIFlexProps {
-  UIKey key;
-  UIAxis direction;
-  UIMainAxisAlignment main_axis_alignment;
-  UIMainAxisSize main_axis_size;
-  UICrossAxisAlignment cross_axis_alignment;
   f32 spacing;
 } UIFlexProps;
 
@@ -337,11 +307,6 @@ void ui_flex_end(void);
 ///
 /// A widget that displays its children in a vertical array.
 ///
-extern UIWidgetVTable ui_column_vtable;
-typedef struct UIColumn {
-  UIFlex flex;
-} UIColumn;
-
 typedef struct UIColumnProps {
   UIKey key;
   UIMainAxisAlignment main_axis_alignment;
@@ -359,11 +324,6 @@ void ui_column_end(void);
 ///
 /// A widget that displays its children in a vertical array.
 ///
-extern UIWidgetVTable ui_row_vtable;
-typedef struct UIRow {
-  UIFlex flex;
-} UIRow;
-
 typedef struct UIRowProps {
   UIKey key;
   UIMainAxisAlignment main_axis_alignment;
