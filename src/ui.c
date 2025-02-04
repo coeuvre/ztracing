@@ -292,6 +292,10 @@ static void ui_widget_end(UIWidgetVTable *vtable) {
   frame->current = widget->tree.parent;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+///
+///  UILimitedBox
+///
 static UIBoxConstraints ui_limited_box_limit_constraints(
     UILimitedBox *limited_box, UIBoxConstraints constraints) {
   return (UIBoxConstraints){
@@ -307,24 +311,24 @@ static UIBoxConstraints ui_limited_box_limit_constraints(
   };
 }
 
-void ui_limited_box_layout(void *widget, UIBoxConstraints constraints) {
+static void ui_limited_box_layout(void *widget, UIBoxConstraints constraints) {
   UILimitedBox *limited_box = widget;
   UIBoxConstraints limited_constraints =
       ui_limited_box_limit_constraints(limited_box, constraints);
 
-  if (limited_box->parent.tree.first) {
+  if (limited_box->widget.tree.first) {
     Vec2 max_child_size = vec2_zero();
-    for (UIWidget *child = limited_box->parent.tree.first; child;
+    for (UIWidget *child = limited_box->widget.tree.first; child;
          child = child->tree.next) {
       ui_widget_layout(child, limited_constraints);
 
       Vec2 size = ui_box_constraints_constrain(constraints, child->size);
       max_child_size = vec2_max(max_child_size, size);
     }
-    limited_box->parent.size =
+    limited_box->widget.size =
         ui_box_constraints_constrain(constraints, max_child_size);
   } else {
-    limited_box->parent.size =
+    limited_box->widget.size =
         ui_box_constraints_constrain(limited_constraints, vec2_zero());
   }
 }
@@ -345,10 +349,14 @@ void ui_limited_box_begin(UILimitedBoxProps props) {
 
 void ui_limited_box_end(void) { ui_widget_end(&ui_limited_box_vtable); }
 
+////////////////////////////////////////////////////////////////////////////////
+///
+///  UIColoredBox
+///
 static void ui_colored_box_paint(void *widget, UIPaintingContext *context,
                                  Vec2 offset) {
   UIColoredBox *colored_box = widget;
-  Vec2 size = colored_box->parent.size;
+  Vec2 size = colored_box->widget.size;
   if (size.x > 0 && size.y > 0) {
     fill_rect(offset, vec2_add(offset, size),
               (ColorU32){
@@ -359,7 +367,7 @@ static void ui_colored_box_paint(void *widget, UIPaintingContext *context,
               });
   }
 
-  for (UIWidget *child = colored_box->parent.tree.first; child;
+  for (UIWidget *child = colored_box->widget.tree.first; child;
        child = child->tree.next) {
     ui_widget_paint_child(child, context, offset);
   }
@@ -380,6 +388,10 @@ void ui_colored_box_begin(UIColoredBoxProps props) {
 
 void ui_colored_box_end(void) { ui_widget_end(&ui_colored_box_vtable); }
 
+////////////////////////////////////////////////////////////////////////////////
+///
+///  UIFlexible
+///
 UIWidgetVTable ui_flexible_vtable = (UIWidgetVTable){
     .parent = &ui_widget_vtable,
     .name = "Flexible",
@@ -398,6 +410,10 @@ void ui_flexible_begin(UIFlexibleProps props) {
 
 void ui_flexible_end(void) { ui_widget_end(&ui_flexible_vtable); }
 
+////////////////////////////////////////////////////////////////////////////////
+///
+///  UIFlex
+///
 static inline UIBoxConstraints ui_box_constraints_make_for_non_flex_child(
     UIFlex *flex, UIBoxConstraints constraints) {
   bool should_fill_cross_axis = false;
@@ -536,8 +552,8 @@ static UIFlexLayoutSize ui_flex_compute_size(UIFlex *flex,
   // Initially, accumulated_size is the sum of the spaces between children in
   // the main axis.
   AxisSize accumulated_size =
-      axis_size_make(flex->spacing * (flex->parent.child_count - 1), 0.0f);
-  for (UIWidget *child = flex->parent.tree.first; child;
+      axis_size_make(flex->spacing * (flex->widget.child_count - 1), 0.0f);
+  for (UIWidget *child = flex->widget.tree.first; child;
        child = child->tree.next) {
     i32 child_flex = 0;
     if (can_flex) {
@@ -567,7 +583,7 @@ static UIFlexLayoutSize ui_flex_compute_size(UIFlex *flex,
   // The second pass distributes free space to flexible children.
   f32 flex_space = f32_max(0.0f, max_main_size - accumulated_size.main);
   f32 space_per_flex = flex_space / total_flex;
-  for (UIWidget *child = flex->parent.tree.first; child && total_flex > 0;
+  for (UIWidget *child = flex->widget.tree.first; child && total_flex > 0;
        child = child->tree.next) {
     UIFlexible *flexible = ui_flexible_from_widget(child);
     if (!flexible || flexible->flex <= 0) {
@@ -712,7 +728,7 @@ static void ui_flex_layout(void *widget, UIBoxConstraints constraints) {
   UIFlex *flex = widget;
 
   UIFlexLayoutSize sizes = ui_flex_compute_size(flex, constraints);
-  flex->parent.size = convert_size(
+  flex->widget.size = convert_size(
       v2(sizes.axis_size.main, sizes.axis_size.cross), flex->direction);
   // TODO: Handle overflow.
 
@@ -721,13 +737,13 @@ static void ui_flex_layout(void *widget, UIBoxConstraints constraints) {
   f32 leading_space;
   f32 between_space;
   ui_flex_distribute_space(flex->main_axis_alignment, remaining_space,
-                           flex->parent.child_count, /* flipped= */ false,
+                           flex->widget.child_count, /* flipped= */ false,
                            flex->spacing, &leading_space, &between_space);
 
   // Position all children in visual order: starting from the top-left child and
   // work towards the child that's farthest away from the origin.
   f32 child_main_position = leading_space;
-  for (UIWidget *child = flex->parent.tree.first; child;
+  for (UIWidget *child = flex->widget.tree.first; child;
        child = child->tree.next) {
     f32 child_cross_position = ui_flex_get_child_cross_axis_offset(
         flex->cross_axis_alignment,
@@ -766,6 +782,10 @@ void ui_flex_begin(UIFlexProps props) {
 
 void ui_flex_end(void) { ui_widget_end(&ui_flex_vtable); }
 
+////////////////////////////////////////////////////////////////////////////////
+///
+///  UIColumn
+///
 UIWidgetVTable ui_column_vtable = (UIWidgetVTable){
     .parent = &ui_flex_vtable,
     .name = "Column",

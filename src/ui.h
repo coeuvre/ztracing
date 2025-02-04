@@ -137,6 +137,7 @@ struct UIWidgetVTable {
   UIWidgetPaintFn *paint;
 };
 
+extern UIWidgetVTable ui_widget_vtable;
 struct UIWidget {
   UIWidgetVTable *vtable;
   UIWidgetHashLink hash;
@@ -154,16 +155,18 @@ struct UIWidget {
   Vec2 offset;
 };
 
-extern UIWidgetVTable ui_widget_vtable;
-
-/// A box that limits its size only when it's unconstrained.
+////////////////////////////////////////////////////////////////////////////////
+///
+///  UILimitedBox
+///
+///  A box that limits its size only when it's unconstrained.
+///
+extern UIWidgetVTable ui_limited_box_vtable;
 typedef struct UILimitedBox {
-  UIWidget parent;
+  UIWidget widget;
   f32 max_width;
   f32 max_height;
 } UILimitedBox;
-
-extern UIWidgetVTable ui_limited_box_vtable;
 
 typedef struct UILimitedBoxProps {
   UIKey key;
@@ -174,6 +177,13 @@ typedef struct UILimitedBoxProps {
 void ui_limited_box_begin(UILimitedBoxProps props);
 void ui_limited_box_end(void);
 
+////////////////////////////////////////////////////////////////////////////////
+///
+///  UIColoredBox
+///
+///  A widget that paints its area with a specified color and then draws its
+///  child on top of that color.
+///
 typedef struct UIColor {
   f32 r;
   f32 g;
@@ -181,12 +191,11 @@ typedef struct UIColor {
   f32 a;
 } UIColor;
 
+extern UIWidgetVTable ui_colored_box_vtable;
 typedef struct UIColoredBox {
-  UIWidget parent;
+  UIWidget widget;
   UIColor color;
 } UIColoredBox;
-
-extern UIWidgetVTable ui_colored_box_vtable;
 
 typedef struct UIColoredBoxProps {
   UIKey key;
@@ -196,13 +205,18 @@ typedef struct UIColoredBoxProps {
 void ui_colored_box_begin(UIColoredBoxProps props);
 void ui_colored_box_end(void);
 
+////////////////////////////////////////////////////////////////////////////////
+///
+///  UIFlexible
+///
+///  A widget that controls how a child of a UIRow, UIColumn, or UIFlex flexes.
+///
+extern UIWidgetVTable ui_flexible_vtable;
 typedef struct UIFlexible {
-  UIWidget parent;
+  UIWidget widget;
   i32 flex;
   UIFlexFit fit;
 } UIFlexible;
-
-extern UIWidgetVTable ui_flexible_vtable;
 
 typedef struct UIFlexibleProps {
   UIKey key;
@@ -213,6 +227,12 @@ typedef struct UIFlexibleProps {
 void ui_flexible_begin(UIFlexibleProps props);
 void ui_flexible_end(void);
 
+////////////////////////////////////////////////////////////////////////////////
+///
+///  UIFlex
+///
+///  A widget that displays its children in a one-dimensional array.
+///
 typedef enum UIAxis {
   UI_AXIS_HORIZONTAL,
   UI_AXIS_VERTICAL,
@@ -240,9 +260,9 @@ typedef enum UICrossAxisAlignment {
   UI_CROSS_AXIS_ALIGNMENT_BASELINE,
 } UICrossAxisAlignment;
 
-/// A widget that displays its children in a one-dimensional array.
+extern UIWidgetVTable ui_flex_vtable;
 typedef struct UIFlex {
-  UIWidget parent;
+  UIWidget widget;
   UIAxis direction;
   UIMainAxisAlignment main_axis_alignment;
   UIMainAxisSize main_axis_size;
@@ -252,8 +272,6 @@ typedef struct UIFlex {
   // TODO: UITextBaseline
   f32 spacing;
 } UIFlex;
-
-extern UIWidgetVTable ui_flex_vtable;
 
 typedef struct UIFlexProps {
   UIKey key;
@@ -267,12 +285,16 @@ typedef struct UIFlexProps {
 void ui_flex_begin(UIFlexProps props);
 void ui_flex_end(void);
 
-/// A widget that displays its children in a vertical array.
-typedef struct UIColumn {
-  UIFlex parent;
-} UIColumn;
-
+////////////////////////////////////////////////////////////////////////////////
+///
+///  UIColumn
+///
+///  A widget that displays its children in a vertical array.
+///
 extern UIWidgetVTable ui_column_vtable;
+typedef struct UIColumn {
+  UIFlex flex;
+} UIColumn;
 
 typedef struct UIColumnProps {
   UIKey key;
