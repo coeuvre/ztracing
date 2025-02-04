@@ -36,23 +36,30 @@ typedef struct UIWidgetHashLink {
 } UIWidgetHashLink;
 
 typedef struct UIBoxConstraints {
-  Vec2 min;
-  Vec2 max;
+  f32 min_width;
+  f32 max_width;
+  f32 min_height;
+  f32 max_height;
 } UIBoxConstraints;
 
 /// Creates box constraints that is respected only by the given size.
-static inline UIBoxConstraints ui_box_constraints_make_tight(Vec2 size) {
+static inline UIBoxConstraints ui_box_constraints_make_tight(f32 width,
+                                                             f32 height) {
   return (UIBoxConstraints){
-      .min = size,
-      .max = size,
+      .min_width = width,
+      .max_width = width,
+      .min_height = height,
+      .max_height = height,
   };
 }
 
 /// Creates box constraints that require the given width.
 static inline UIBoxConstraints ui_box_constraints_make_tight_width(f32 width) {
   return (UIBoxConstraints){
-      .min = v2(width, 0),
-      .max = v2(width, F32_INFINITY),
+      .min_width = width,
+      .max_width = width,
+      .min_height = 0,
+      .max_height = F32_INFINITY,
   };
 }
 
@@ -60,8 +67,10 @@ static inline UIBoxConstraints ui_box_constraints_make_tight_width(f32 width) {
 static inline UIBoxConstraints ui_box_constraints_make_tight_height(
     f32 height) {
   return (UIBoxConstraints){
-      .min = v2(0, height),
-      .max = v2(F32_INFINITY, height),
+      .min_width = 0,
+      .max_width = F32_INFINITY,
+      .min_height = height,
+      .max_height = height,
   };
 }
 
@@ -69,14 +78,14 @@ static inline UIBoxConstraints ui_box_constraints_make_tight_height(
 /// possible to the given width.
 static inline f32 ui_box_constraints_constrain_width(
     UIBoxConstraints constraints, f32 width) {
-  return f32_clamp(width, constraints.min.x, constraints.max.x);
+  return f32_clamp(width, constraints.min_width, constraints.max_width);
 }
 
 /// Returns the height that both satisfies the constraints and is as close as
 /// possible to the given height.
 static inline f32 ui_box_constraints_constrain_height(
     UIBoxConstraints constraints, f32 height) {
-  return f32_clamp(height, constraints.min.y, constraints.max.y);
+  return f32_clamp(height, constraints.min_height, constraints.max_height);
 }
 
 /// Returns the size that both satisfies the constraints and is as close as
@@ -97,19 +106,37 @@ static inline Vec2 ui_box_constraints_get_biggest(
 static inline UIBoxConstraints ui_box_constraints_flip(
     UIBoxConstraints constraints) {
   return (UIBoxConstraints){
-      .min = v2(constraints.min.y, constraints.min.x),
-      .max = v2(constraints.max.y, constraints.max.x),
+      .min_width = constraints.min_height,
+      .max_width = constraints.max_height,
+      .min_height = constraints.min_width,
+      .max_height = constraints.max_width,
   };
 }
 
 static inline bool ui_box_constraints_has_bounded_width(
     UIBoxConstraints constraints) {
-  return constraints.max.x < F32_INFINITY;
+  return constraints.max_width < F32_INFINITY;
 }
 
 static inline bool ui_box_constraints_has_bounded_height(
     UIBoxConstraints constraints) {
-  return constraints.max.y < F32_INFINITY;
+  return constraints.max_height < F32_INFINITY;
+}
+
+/// Returns new box constraints that respect the given constraints while being
+/// as close as possible to the original constraints.
+static inline UIBoxConstraints ui_box_constraints_enforce(
+    UIBoxConstraints self, UIBoxConstraints constraints) {
+  return (UIBoxConstraints){
+      .min_width = f32_clamp(self.min_width, constraints.min_width,
+                             constraints.max_width),
+      .max_width = f32_clamp(self.max_width, constraints.min_width,
+                             constraints.max_width),
+      .min_height = f32_clamp(self.min_height, constraints.min_height,
+                              constraints.max_height),
+      .max_height = f32_clamp(self.max_height, constraints.min_height,
+                              constraints.max_height),
+  };
 }
 
 typedef struct UIPaintingContext {
@@ -157,9 +184,9 @@ struct UIWidget {
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-///  UILimitedBox
+/// UILimitedBox
 ///
-///  A box that limits its size only when it's unconstrained.
+/// A box that limits its size only when it's unconstrained.
 ///
 extern UIWidgetVTable ui_limited_box_vtable;
 typedef struct UILimitedBox {
@@ -179,10 +206,10 @@ void ui_limited_box_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-///  UIColoredBox
+/// UIColoredBox
 ///
-///  A widget that paints its area with a specified color and then draws its
-///  child on top of that color.
+/// A widget that paints its area with a specified color and then draws its
+/// child on top of that color.
 ///
 typedef struct UIColor {
   f32 r;
@@ -207,9 +234,28 @@ void ui_colored_box_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-///  UIFlexible
+/// UIConstrainedBox
 ///
-///  A widget that controls how a child of a UIRow, UIColumn, or UIFlex flexes.
+/// A widget that imposes additional constraints on its child.
+extern UIWidgetVTable ui_constrained_box_vtable;
+typedef struct UIConstrainedBox {
+  UIWidget widget;
+  UIBoxConstraints additional_constraints;
+} UIConstrainedBox;
+
+typedef struct UIConstrainedBoxProps {
+  UIKey key;
+  UIBoxConstraints additional_constraints;
+} UIConstrainedBoxProps;
+
+void ui_constrained_box_begin(UIConstrainedBoxProps props);
+void ui_constrained_box_end(void);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIFlexible
+///
+/// A widget that controls how a child of a UIRow, UIColumn, or UIFlex flexes.
 ///
 extern UIWidgetVTable ui_flexible_vtable;
 typedef struct UIFlexible {
@@ -229,9 +275,9 @@ void ui_flexible_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-///  UIFlex
+/// UIFlex
 ///
-///  A widget that displays its children in a one-dimensional array.
+/// A widget that displays its children in a one-dimensional array.
 ///
 typedef enum UIAxis {
   UI_AXIS_HORIZONTAL,
@@ -287,9 +333,9 @@ void ui_flex_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-///  UIColumn
+/// UIColumn
 ///
-///  A widget that displays its children in a vertical array.
+/// A widget that displays its children in a vertical array.
 ///
 extern UIWidgetVTable ui_column_vtable;
 typedef struct UIColumn {
@@ -306,5 +352,27 @@ typedef struct UIColumnProps {
 
 void ui_column_begin(UIColumnProps props);
 void ui_column_end(void);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIRow
+///
+/// A widget that displays its children in a vertical array.
+///
+extern UIWidgetVTable ui_row_vtable;
+typedef struct UIRow {
+  UIFlex flex;
+} UIRow;
+
+typedef struct UIRowProps {
+  UIKey key;
+  UIMainAxisAlignment main_axis_alignment;
+  UIMainAxisSize main_axis_size;
+  UICrossAxisAlignment cross_axis_alignment;
+  f32 spacing;
+} UIRowProps;
+
+void ui_row_begin(UIRowProps props);
+void ui_row_end(void);
 
 #endif  // ZTRACING_SRC_UI_H_

@@ -128,7 +128,8 @@ void ui_end_frame(void) {
   // Layout and paint
   if (frame->root) {
     Vec2 viewport_size = vec2_sub(state->viewport_max, state->viewport_min);
-    ui_widget_layout(frame->root, ui_box_constraints_make_tight(viewport_size));
+    ui_widget_layout(frame->root, ui_box_constraints_make_tight(
+                                      viewport_size.x, viewport_size.y));
 
     UIPaintingContext context = {0};
     ui_widget_paint(frame->root, &context, state->viewport_min);
@@ -294,20 +295,21 @@ static void ui_widget_end(UIWidgetVTable *vtable) {
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-///  UILimitedBox
+/// UILimitedBox
 ///
 static UIBoxConstraints ui_limited_box_limit_constraints(
     UILimitedBox *limited_box, UIBoxConstraints constraints) {
   return (UIBoxConstraints){
-      .min = v2(constraints.min.x, constraints.min.y),
-      .max = v2(ui_box_constraints_has_bounded_width(constraints)
-                    ? constraints.max.x
-                    : ui_box_constraints_constrain_width(
-                          constraints, limited_box->max_width),
-                ui_box_constraints_has_bounded_height(constraints)
-                    ? constraints.max.y
-                    : ui_box_constraints_constrain_height(
-                          constraints, limited_box->max_height)),
+      .min_width = constraints.min_width,
+      .max_width = ui_box_constraints_has_bounded_width(constraints)
+                       ? constraints.max_width
+                       : ui_box_constraints_constrain_width(
+                             constraints, limited_box->max_width),
+      .min_height = constraints.min_height,
+      .max_height = ui_box_constraints_has_bounded_height(constraints)
+                        ? constraints.max_height
+                        : ui_box_constraints_constrain_height(
+                              constraints, limited_box->max_height),
   };
 }
 
@@ -351,7 +353,7 @@ void ui_limited_box_end(void) { ui_widget_end(&ui_limited_box_vtable); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-///  UIColoredBox
+/// UIColoredBox
 ///
 static void ui_colored_box_paint(void *widget, UIPaintingContext *context,
                                  Vec2 offset) {
@@ -390,7 +392,44 @@ void ui_colored_box_end(void) { ui_widget_end(&ui_colored_box_vtable); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-///  UIFlexible
+/// UIConstrainedBox
+///
+static void ui_constrained_box_layout(void *widget,
+                                      UIBoxConstraints constraints) {
+  UIConstrainedBox *constrained_box = widget;
+
+  UIBoxConstraints enforced_constraints = ui_box_constraints_enforce(
+      constrained_box->additional_constraints, constraints);
+
+  Vec2 max_child_size = vec2_zero();
+  for (UIWidget *child = constrained_box->widget.tree.first; child;
+       child = child->tree.next) {
+    ui_widget_layout(child, enforced_constraints);
+    max_child_size = vec2_max(max_child_size, child->size);
+  }
+
+  constrained_box->widget.size =
+      ui_box_constraints_constrain(enforced_constraints, max_child_size);
+}
+
+UIWidgetVTable ui_constrained_box_vtable = (UIWidgetVTable){
+    .parent = &ui_widget_vtable,
+    .name = "ConstrainedBox",
+    .size = sizeof(UIConstrainedBox),
+    .layout = &ui_constrained_box_layout,
+};
+
+void ui_constrained_box_begin(UIConstrainedBoxProps props) {
+  UIConstrainedBox *constrained_box =
+      ui_widget_begin(&ui_constrained_box_vtable, props.key);
+  constrained_box->additional_constraints = props.additional_constraints;
+}
+
+void ui_constrained_box_end(void) { ui_widget_end(&ui_constrained_box_vtable); }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIFlexible
 ///
 UIWidgetVTable ui_flexible_vtable = (UIWidgetVTable){
     .parent = &ui_widget_vtable,
@@ -412,7 +451,7 @@ void ui_flexible_end(void) { ui_widget_end(&ui_flexible_vtable); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-///  UIFlex
+/// UIFlex
 ///
 static inline UIBoxConstraints ui_box_constraints_make_for_non_flex_child(
     UIFlex *flex, UIBoxConstraints constraints) {
@@ -425,21 +464,25 @@ static inline UIBoxConstraints ui_box_constraints_make_for_non_flex_child(
   switch (flex->direction) {
     case UI_AXIS_HORIZONTAL: {
       if (should_fill_cross_axis) {
-        result = ui_box_constraints_make_tight_height(constraints.max.y);
+        result = ui_box_constraints_make_tight_height(constraints.max_height);
       } else {
         result = (UIBoxConstraints){
-            .min = v2(0, 0),
-            .max = v2(F32_INFINITY, constraints.max.y),
+            .min_width = 0,
+            .max_width = F32_INFINITY,
+            .min_height = 0,
+            .max_height = constraints.max_height,
         };
       }
     } break;
     case UI_AXIS_VERTICAL: {
       if (should_fill_cross_axis) {
-        result = ui_box_constraints_make_tight_width(constraints.max.x);
+        result = ui_box_constraints_make_tight_width(constraints.max_width);
       } else {
         result = (UIBoxConstraints){
-            .min = v2(0, 0),
-            .max = v2(constraints.max.x, F32_INFINITY),
+            .min_width = 0,
+            .max_width = constraints.max_width,
+            .min_height = 0,
+            .max_height = F32_INFINITY,
         };
       }
     } break;
@@ -465,15 +508,17 @@ static inline UIBoxConstraints ui_box_constraints_make_for_flex_child(
   UIBoxConstraints result;
   if (flex->direction == UI_AXIS_HORIZONTAL) {
     result = (UIBoxConstraints){
-        .min = v2(min_child_extent,
-                  should_fill_cross_axis ? constraints.max.y : 0),
-        .max = v2(max_child_extent, constraints.max.y),
+        .min_width = min_child_extent,
+        .max_width = max_child_extent,
+        .min_height = should_fill_cross_axis ? constraints.max_height : 0,
+        .max_height = constraints.max_height,
     };
   } else {
     result = (UIBoxConstraints){
-        .min = v2(should_fill_cross_axis ? constraints.max.x : 0,
-                  min_child_extent),
-        .max = v2(constraints.max.y, max_child_extent),
+        .min_width = should_fill_cross_axis ? constraints.max_width : 0,
+        .max_width = constraints.max_width,
+        .min_height = min_child_extent,
+        .max_height = max_child_extent,
     };
   }
   return result;
@@ -728,6 +773,7 @@ static void ui_flex_layout(void *widget, UIBoxConstraints constraints) {
   UIFlex *flex = widget;
 
   UIFlexLayoutSize sizes = ui_flex_compute_size(flex, constraints);
+  f32 cross_axis_extent = sizes.axis_size.cross;
   flex->widget.size = convert_size(
       v2(sizes.axis_size.main, sizes.axis_size.cross), flex->direction);
   // TODO: Handle overflow.
@@ -747,7 +793,8 @@ static void ui_flex_layout(void *widget, UIBoxConstraints constraints) {
        child = child->tree.next) {
     f32 child_cross_position = ui_flex_get_child_cross_axis_offset(
         flex->cross_axis_alignment,
-        ui_flex_get_cross_size(child->size, flex->direction),
+        cross_axis_extent -
+            ui_flex_get_cross_size(child->size, flex->direction),
         /* flipped= */ false);
     if (flex->direction == UI_AXIS_HORIZONTAL) {
       child->offset = v2(child_main_position, child_cross_position);
@@ -784,7 +831,7 @@ void ui_flex_end(void) { ui_widget_end(&ui_flex_vtable); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-///  UIColumn
+/// UIColumn
 ///
 UIWidgetVTable ui_column_vtable = (UIWidgetVTable){
     .parent = &ui_flex_vtable,
@@ -805,3 +852,27 @@ void ui_column_begin(UIColumnProps props) {
 }
 
 void ui_column_end(void) { ui_widget_end(&ui_column_vtable); }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIRow
+///
+UIWidgetVTable ui_row_vtable = (UIWidgetVTable){
+    .parent = &ui_flex_vtable,
+    .name = "Row",
+    .size = sizeof(UIRow),
+};
+
+void ui_row_begin(UIRowProps props) {
+  ui_flex_begin_(&ui_row_vtable,
+                 (UIFlexProps){
+                     .key = props.key,
+                     .direction = UI_AXIS_HORIZONTAL,
+                     .main_axis_alignment = props.main_axis_alignment,
+                     .main_axis_size = props.main_axis_size,
+                     .cross_axis_alignment = props.cross_axis_alignment,
+                     .spacing = props.spacing,
+                 });
+}
+
+void ui_row_end(void) { ui_widget_end(&ui_row_vtable); }
