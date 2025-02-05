@@ -25,24 +25,6 @@ static inline bool ui_key_is_equal(UIKey a, UIKey b) {
 
 typedef struct UIWidget UIWidget;
 
-typedef struct UIWidgetTreeLink {
-  /// Previous sibling of this widget.
-  UIWidget *prev;
-  /// Next sibling of this widget.
-  UIWidget *next;
-  /// First child of this widget.
-  UIWidget *first;
-  /// Last child of this widget.
-  UIWidget *last;
-  /// Parent of this widget.
-  UIWidget *parent;
-} UIWidgetTreeLink;
-
-typedef struct UIWidgetHashLink {
-  UIWidget *prev;
-  UIWidget *next;
-} UIWidgetHashLink;
-
 typedef struct UIBoxConstraints {
   bool present;
   f32 min_width;
@@ -214,11 +196,18 @@ typedef struct UIWidgetClass {
 
 struct UIWidget {
   UIWidgetClass *klass;
-  UIWidgetHashLink hash;
-  UIWidgetTreeLink tree;
+  /// Previous sibling of this widget.
+  UIWidget *prev;
+  /// Next sibling of this widget.
+  UIWidget *next;
+  /// First child of this widget.
+  UIWidget *first;
+  /// Last child of this widget.
+  UIWidget *last;
+  /// Parent of this widget.
+  UIWidget *parent;
 
   u32 child_count;
-  u32 seq;
 
   /// The size of this box computed during layout.
   Vec2 size;
