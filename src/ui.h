@@ -24,10 +24,15 @@ static inline bool ui_key_is_equal(UIKey a, UIKey b) {
 typedef struct UIWidget UIWidget;
 
 typedef struct UIWidgetTreeLink {
+  /// Previous sibling of this widget.
   UIWidget *prev;
+  /// Next sibling of this widget.
   UIWidget *next;
+  /// First child of this widget.
   UIWidget *first;
+  /// Last child of this widget.
   UIWidget *last;
+  /// Parent of this widget.
   UIWidget *parent;
 } UIWidgetTreeLink;
 
@@ -410,6 +415,66 @@ typedef struct UICenterProps {
 
 void ui_center_begin(UICenterProps *props);
 void ui_center_end(void);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIPadding
+///
+/// A widget that insets its child by the given padding.
+typedef struct UIEdgeInsetsDirectional {
+  f32 start;
+  f32 end;
+  f32 top;
+  f32 bottom;
+} UIEdgeInsetsDirectional;
+
+static inline UIEdgeInsetsDirectional ui_edge_insets_all(f32 val) {
+  return (UIEdgeInsetsDirectional){
+      .start = val,
+      .end = val,
+      .top = val,
+      .bottom = val,
+  };
+}
+
+typedef struct UIEdgeInsets {
+  f32 left;
+  f32 right;
+  f32 top;
+  f32 bottom;
+} UIEdgeInsets;
+
+static inline f32 ui_edge_insets_get_horizontal(UIEdgeInsets edge_insets) {
+  return edge_insets.left + edge_insets.right;
+}
+
+static inline f32 ui_edge_insets_get_vertical(UIEdgeInsets edge_insets) {
+  return edge_insets.top + edge_insets.bottom;
+}
+
+static inline UIBoxConstraints ui_box_constraints_deflate(
+    UIBoxConstraints constraints, UIEdgeInsets edge_insets) {
+  f32 horizontal = ui_edge_insets_get_horizontal(edge_insets);
+  f32 vertical = ui_edge_insets_get_vertical(edge_insets);
+  f32 deflated_min_width = f32_max(0, constraints.min_width - horizontal);
+  f32 deflated_min_height = f32_max(0, constraints.min_height - vertical);
+  return (UIBoxConstraints){
+      .min_width = deflated_min_width,
+      .max_width =
+          f32_max(deflated_min_width, constraints.max_width - horizontal),
+      .min_height = deflated_min_height,
+      .max_height =
+          f32_max(deflated_min_height, constraints.max_height - vertical),
+  };
+}
+
+typedef struct UIPaddingProps {
+  UIKey key;
+  UIEdgeInsetsDirectional padding;
+} UIPaddingProps;
+
+void ui_padding_begin(UIPaddingProps *props);
+void ui_padding_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///

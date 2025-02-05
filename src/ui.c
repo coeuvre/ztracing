@@ -556,8 +556,6 @@ void ui_align_end(void) { ui_widget_end(&ui_align_class); }
 ///
 /// UICenter
 ///
-/// A widget that centers its child within itself.
-
 static i32 ui_center_callback(UIWidget *widget, UIWidgetMessage *message) {
   i32 result = 0;
   switch (message->type) {
@@ -591,6 +589,71 @@ void ui_center_begin(UICenterProps *props) {
 }
 
 void ui_center_end(void) { ui_widget_end(&ui_center_class); }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIPadding
+///
+
+static void ui_padding_layout(UIWidget *widget, UIPaddingProps *padding,
+                              UIBoxConstraints constraints) {
+  // TODO: UITextDirection
+  UIEdgeInsets resolved_padding = {
+      .left = padding->padding.start,
+      .right = padding->padding.end,
+      .top = padding->padding.top,
+      .bottom = padding->padding.bottom,
+  };
+  f32 horizontal = ui_edge_insets_get_horizontal(resolved_padding);
+  f32 vertical = ui_edge_insets_get_vertical(resolved_padding);
+  if (widget->tree.first) {
+    UIBoxConstraints inner_constraints =
+        ui_box_constraints_deflate(constraints, resolved_padding);
+    Vec2 max_child_size = vec2_zero();
+
+    for (UIWidget *child = widget->tree.first; child;
+         child = child->tree.next) {
+      ui_widget_layout(child, inner_constraints);
+      child->offset = v2(resolved_padding.left, resolved_padding.top);
+
+      max_child_size = vec2_max(max_child_size, child->size);
+    }
+
+    widget->size = ui_box_constraints_constrain(
+        constraints,
+        v2(horizontal + max_child_size.x, vertical + max_child_size.y));
+  } else {
+    widget->size =
+        ui_box_constraints_constrain(constraints, v2(horizontal, vertical));
+  }
+}
+
+static i32 ui_padding_callback(UIWidget *widget, UIWidgetMessage *message) {
+  i32 result = 0;
+  switch (message->type) {
+    case UI_WIDGET_MESSAGE_LAYOUT: {
+      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+      ui_padding_layout(widget, ui_widget_get_props(widget, UIPaddingProps),
+                        layout->constraints);
+    } break;
+    default: {
+      result = ui_widget_callback_default(widget, message);
+    } break;
+  }
+  return result;
+}
+
+static UIWidgetClass ui_padding_class = {
+    .name = "Padding",
+    .props_size = sizeof(UIPaddingProps),
+    .callback = &ui_padding_callback,
+};
+
+void ui_padding_begin(UIPaddingProps *props) {
+  ui_widget_begin(&ui_padding_class, props);
+}
+
+void ui_padding_end(void) { ui_widget_end(&ui_padding_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
