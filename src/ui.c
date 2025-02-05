@@ -475,18 +475,19 @@ void ui_constrained_box_end(void) { ui_widget_end(&ui_constrained_box_class); }
 ///
 static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
                             UIBoxConstraints constraints) {
-  if (align->has_width_factor) {
-    ASSERTF(align->width_factor >= 0, "widget_factor must be positive, got %f",
-            align->width_factor);
+  UISizeFactor factor = align->factor;
+  if (factor.width_present) {
+    ASSERTF(align->factor.width >= 0, "factor.widget must be positive, got %f",
+            align->factor.width);
   }
-  if (align->has_height_factor) {
-    ASSERTF(align->height_factor >= 0, "height_factor must be positive, got %f",
-            align->height_factor);
+  if (factor.height_present) {
+    ASSERTF(factor.height >= 0, "height_factor must be positive, got %f",
+            factor.height);
   }
   bool should_shrink_wrap_width =
-      align->has_width_factor || f32_is_infinity(constraints.max_width);
+      factor.width_present || f32_is_infinity(constraints.max_width);
   bool should_shrink_wrap_height =
-      align->has_height_factor || f32_is_infinity(constraints.max_height);
+      factor.height_present || f32_is_infinity(constraints.max_height);
   UIBoxConstraints child_constraints = ui_box_constraints_loosen(constraints);
 
   if (widget->tree.first) {
@@ -496,15 +497,13 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
          child = child->tree.next) {
       ui_widget_layout(child, child_constraints);
 
-      Vec2 wrap_size =
-          v2(should_shrink_wrap_width
-                 ? (child->size.x *
-                    (align->has_width_factor ? align->width_factor : 1.0f))
-                 : F32_INFINITY,
-             should_shrink_wrap_height
-                 ? (child->size.y *
-                    (align->has_height_factor ? align->height_factor : 1.0f))
-                 : F32_INFINITY);
+      Vec2 wrap_size = v2(
+          should_shrink_wrap_width
+              ? (child->size.x * (factor.width_present ? factor.width : 1.0f))
+              : F32_INFINITY,
+          should_shrink_wrap_height
+              ? (child->size.y * (factor.height_present ? factor.height : 1.0f))
+              : F32_INFINITY);
 
       max_child_size = vec2_max(max_child_size, wrap_size);
     }
@@ -564,10 +563,7 @@ static i32 ui_center_callback(UIWidget *widget, UIWidgetMessage *message) {
       UICenterProps *center = ui_widget_get_props(widget, UICenterProps);
       UIAlignProps align = {
           .key = center->key,
-          .has_width_factor = center->has_width_factor,
-          .has_height_factor = center->has_height_factor,
-          .width_factor = center->width_factor,
-          .height_factor = center->height_factor,
+          .factor = center->factor,
       };
       ui_align_layout(widget, &align, layout->constraints);
     } break;
