@@ -100,19 +100,18 @@
 static void build_ui(f32 dt, f32 frame_time) {
   ui_center_begin(&(UICenterProps){0});
   {
-    ui_colored_box_begin(
-        &(UIColoredBoxProps){.color = ui_color_make(0, 1, 0, 1)});
-    ui_padding_begin(&(UIPaddingProps){.padding = ui_edge_insets_all(20)});
+    ui_container_begin(&(UIContainerProps){
+        .color = ui_color_make(0, 1, 0, 1),
+        .padding = ui_edge_insets_all(20),
+    });
 
-    ui_constrained_box_begin(&(UIConstrainedBoxProps){
-        .additional_constraints = ui_box_constraints_make_tight(30, 30)});
-    ui_colored_box_begin(
-        &(UIColoredBoxProps){.color = ui_color_make(1, 0, 0, 1)});
-    ui_colored_box_end();
-    ui_constrained_box_end();
+    ui_container_begin(&(UIContainerProps){
+        .constraints = ui_box_constraints_make_tight(30, 30),
+        .color = ui_color_make(1, 0, 0, 1),
+    });
+    ui_container_end();
 
-    ui_padding_end();
-    ui_colored_box_end();
+    ui_container_end();
   }
   ui_center_end();
 }

@@ -45,7 +45,7 @@ THREAD_LOCAL UIState t_ui_state;
 
 static inline UIState *ui_state_get(void) { return &t_ui_state; }
 
-static inline UIFrame *ui_frame_get(void) {
+static inline UIFrame *ui_frame_current(void) {
   UIState *state = ui_state_get();
   return state->current_frame;
 }
@@ -289,7 +289,7 @@ void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props) {
 }
 
 void ui_widget_end(UIWidgetClass *klass) {
-  UIFrame *frame = ui_frame_get();
+  UIFrame *frame = ui_frame_current();
   UIWidget *widget = frame->current;
   ASSERT(widget);
   ASSERTF(widget->klass == klass,
@@ -297,6 +297,11 @@ void ui_widget_end(UIWidgetClass *klass) {
           widget->klass->name, klass->name);
 
   frame->current = widget->tree.parent;
+}
+
+UIWidget *ui_widget_current(void) {
+  UIFrame *frame = ui_frame_current();
+  return frame->current;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -427,8 +432,8 @@ void ui_colored_box_end(void) { ui_widget_end(&ui_colored_box_class); }
 static void ui_constrained_box_layout(UIWidget *widget,
                                       UIConstrainedBoxProps *constrained_box,
                                       UIBoxConstraints constraints) {
-  UIBoxConstraints enforced_constraints = ui_box_constraints_enforce(
-      constrained_box->additional_constraints, constraints);
+  UIBoxConstraints enforced_constraints =
+      ui_box_constraints_enforce(constrained_box->constraints, constraints);
 
   Vec2 max_child_size = vec2_zero();
   for (UIWidget *child = widget->tree.first; child; child = child->tree.next) {
@@ -650,6 +655,87 @@ void ui_padding_begin(UIPaddingProps *props) {
 }
 
 void ui_padding_end(void) { ui_widget_end(&ui_padding_class); }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIContainer
+///
+
+static UIWidgetClass ui_container_class = {
+    .name = "Container",
+    .props_size = sizeof(UIContainerProps),
+    .callback = &ui_widget_callback_default,
+};
+
+void ui_container_begin(UIContainerProps *props) {
+  if (props->margin.present) {
+    ui_padding_begin(&(UIPaddingProps){
+        .padding = props->margin,
+    });
+  }
+
+  if (props->constraints.present) {
+    ui_constrained_box_begin(&(UIConstrainedBoxProps){
+        .constraints = props->constraints,
+    });
+  }
+
+  if (props->color.present) {
+    ui_colored_box_begin(&(UIColoredBoxProps){
+        .color = props->color,
+    });
+  }
+
+  if (props->padding.present) {
+    ui_padding_begin(&(UIPaddingProps){
+        .padding = props->padding,
+    });
+  }
+
+  if (props->alignment.present) {
+    ui_align_begin(&(UIAlignProps){
+        .alignment = props->alignment,
+    });
+  }
+
+  ui_widget_begin(&ui_container_class, props);
+}
+
+void ui_container_end(void) {
+  UIWidget *widget = ui_widget_current();
+  UIContainerProps *props = ui_widget_get_props(widget, UIContainerProps);
+  ui_widget_end(&ui_container_class);
+
+  if (!widget->tree.first && !ui_box_constraints_is_tight(props->constraints)) {
+    ui_limited_box_begin(&(UILimitedBoxProps){0});
+    ui_constrained_box_begin(&(UIConstrainedBoxProps){
+        .constraints = ui_box_constraints_make(F32_INFINITY, F32_INFINITY,
+                                               F32_INFINITY, F32_INFINITY),
+    });
+    ui_constrained_box_end();
+    ui_limited_box_end();
+  }
+
+  if (props->alignment.present) {
+    ui_align_end();
+  }
+
+  if (props->padding.present) {
+    ui_padding_end();
+  }
+
+  if (props->color.present) {
+    ui_colored_box_end();
+  }
+
+  if (props->constraints.present) {
+    ui_constrained_box_end();
+  }
+
+  if (props->margin.present) {
+    ui_padding_end();
+  }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///

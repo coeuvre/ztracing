@@ -145,6 +145,12 @@ static inline UIBoxConstraints ui_box_constraints_loosen(
                                  constraints.max_height);
 }
 
+static inline bool ui_box_constraints_is_tight(UIBoxConstraints constraints) {
+  return constraints.present &&
+         constraints.min_width >= constraints.max_width &&
+         constraints.min_height >= constraints.max_height;
+}
+
 typedef struct UIColor {
   bool present;
   f32 r;
@@ -226,6 +232,7 @@ void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props);
 #define ui_widget_begin(klass, props) \
   ui_widget_begin_(klass, sizeof(*props), props)
 void ui_widget_end(UIWidgetClass *klass);
+UIWidget *ui_widget_current(void);
 
 static inline UIKey ui_widget_get_key(UIWidget *widget) {
   DEBUG_ASSERT(widget->klass->props_size >= sizeof(UIKey));
@@ -278,7 +285,7 @@ void ui_colored_box_end(void);
 /// A widget that imposes additional constraints on its child.
 typedef struct UIConstrainedBoxProps {
   UIKey key;
-  UIBoxConstraints additional_constraints;
+  UIBoxConstraints constraints;
 } UIConstrainedBoxProps;
 
 void ui_constrained_box_begin(UIConstrainedBoxProps *props);
@@ -463,6 +470,32 @@ typedef struct UIPaddingProps {
 
 void ui_padding_begin(UIPaddingProps *props);
 void ui_padding_end(void);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIContainer
+///
+/// A convenience widget that combines common painting, positioning, and sizing
+/// widgets.
+///
+typedef struct UIContainerProps {
+  UIKey key;
+
+  UIAlignment alignment;
+  UIEdgeInsetsDirectional padding;
+  /// The color to paint behind the children.
+  UIColor color;
+
+  // TODO: Decoration
+
+  /// Additional constraints to apply to the children.
+  UIBoxConstraints constraints;
+  /// Empty space to surround the decoration and children.
+  UIEdgeInsetsDirectional margin;
+} UIContainerProps;
+
+void ui_container_begin(UIContainerProps *props);
+void ui_container_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
