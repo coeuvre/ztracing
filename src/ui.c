@@ -475,10 +475,18 @@ void ui_constrained_box_end(void) { ui_widget_end(&ui_constrained_box_class); }
 ///
 static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
                             UIBoxConstraints constraints) {
+  if (align->has_width_factor) {
+    ASSERTF(align->width_factor >= 0, "widget_factor must be positive, got %f",
+            align->width_factor);
+  }
+  if (align->has_height_factor) {
+    ASSERTF(align->height_factor >= 0, "height_factor must be positive, got %f",
+            align->height_factor);
+  }
   bool should_shrink_wrap_width =
-      align->width_factor > 0 || f32_is_infinity(constraints.max_width);
+      align->has_width_factor || f32_is_infinity(constraints.max_width);
   bool should_shrink_wrap_height =
-      align->height_factor > 0 || f32_is_infinity(constraints.max_height);
+      align->has_height_factor || f32_is_infinity(constraints.max_height);
   UIBoxConstraints child_constraints = ui_box_constraints_loosen(constraints);
 
   if (widget->tree.first) {
@@ -491,11 +499,11 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
       Vec2 wrap_size =
           v2(should_shrink_wrap_width
                  ? (child->size.x *
-                    (align->width_factor > 0 ? align->width_factor : 1.0f))
+                    (align->has_width_factor ? align->width_factor : 1.0f))
                  : F32_INFINITY,
              should_shrink_wrap_height
                  ? (child->size.y *
-                    (align->height_factor > 0 ? align->height_factor : 1.0f))
+                    (align->has_height_factor ? align->height_factor : 1.0f))
                  : F32_INFINITY);
 
       max_child_size = vec2_max(max_child_size, wrap_size);
@@ -543,6 +551,46 @@ void ui_align_begin(UIAlignProps props) {
 }
 
 void ui_align_end(void) { ui_widget_end(&ui_align_class); }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UICenter
+///
+/// A widget that centers its child within itself.
+
+static i32 ui_center_callback(UIWidget *widget, UIWidgetMessage *message) {
+  i32 result = 0;
+  switch (message->type) {
+    case UI_WIDGET_MESSAGE_LAYOUT: {
+      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+      UICenterProps *center = ui_widget_get_props(widget, UICenterProps);
+      UIAlignProps align = {
+          .key = center->key,
+          .has_width_factor = center->has_width_factor,
+          .has_height_factor = center->has_height_factor,
+          .width_factor = center->width_factor,
+          .height_factor = center->height_factor,
+      };
+      ui_align_layout(widget, &align, layout->constraints);
+    } break;
+    default: {
+      result = ui_widget_callback_default(widget, message);
+    } break;
+  }
+  return result;
+}
+
+static UIWidgetClass ui_center_class = {
+    .name = "Center",
+    .props_size = sizeof(UICenterProps),
+    .callback = &ui_center_callback,
+};
+
+void ui_center_begin(UICenterProps props) {
+  ui_widget_begin(&ui_center_class, props);
+}
+
+void ui_center_end(void) { ui_widget_end(&ui_center_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///

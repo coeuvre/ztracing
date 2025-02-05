@@ -386,12 +386,30 @@ static inline UIAlignment ui_alignment_bottom_right(void) {
 typedef struct UIAlignProps {
   UIKey key;
   UIAlignment alignment;
+  bool has_width_factor;
+  bool has_height_factor;
   f32 width_factor;
   f32 height_factor;
 } UIAlignProps;
 
 void ui_align_begin(UIAlignProps props);
 void ui_align_end(void);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UICenter
+///
+/// A widget that centers its child within itself.
+typedef struct UICenterProps {
+  UIKey key;
+  bool has_width_factor;
+  bool has_height_factor;
+  f32 width_factor;
+  f32 height_factor;
+} UICenterProps;
+
+void ui_center_begin(UICenterProps props);
+void ui_center_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///

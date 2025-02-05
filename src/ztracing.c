@@ -98,7 +98,7 @@
 // }
 
 static void build_ui(f32 dt, f32 frame_time) {
-  ui_align_begin((UIAlignProps){.alignment = ui_alignment_bottom_right()});
+  ui_center_begin((UICenterProps){0});
   {
     ui_constrained_box_begin((UIConstrainedBoxProps){
         .additional_constraints = ui_box_constraints_make_tight(50, 100),
@@ -109,7 +109,7 @@ static void build_ui(f32 dt, f32 frame_time) {
     ui_colored_box_end();
     ui_constrained_box_end();
   }
-  ui_align_end();
+  ui_center_end();
 }
 
 void do_frame(void) {
