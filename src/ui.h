@@ -218,7 +218,7 @@ struct UIWidget {
 
 void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props);
 #define ui_widget_begin(klass, props) \
-  ui_widget_begin_(klass, sizeof(props), &props)
+  ui_widget_begin_(klass, sizeof(*props), props)
 void ui_widget_end(UIWidgetClass *klass);
 
 static inline UIKey ui_widget_get_key(UIWidget *widget) {
@@ -247,7 +247,7 @@ typedef struct UILimitedBoxProps {
   f32 max_height;
 } UILimitedBoxProps;
 
-void ui_limited_box_begin(UILimitedBoxProps props);
+void ui_limited_box_begin(UILimitedBoxProps *props);
 void ui_limited_box_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -262,7 +262,7 @@ typedef struct UIColoredBoxProps {
   UIColor color;
 } UIColoredBoxProps;
 
-void ui_colored_box_begin(UIColoredBoxProps props);
+void ui_colored_box_begin(UIColoredBoxProps *props);
 void ui_colored_box_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -275,7 +275,7 @@ typedef struct UIConstrainedBoxProps {
   UIBoxConstraints additional_constraints;
 } UIConstrainedBoxProps;
 
-void ui_constrained_box_begin(UIConstrainedBoxProps props);
+void ui_constrained_box_begin(UIConstrainedBoxProps *props);
 void ui_constrained_box_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -392,7 +392,7 @@ typedef struct UIAlignProps {
   f32 height_factor;
 } UIAlignProps;
 
-void ui_align_begin(UIAlignProps props);
+void ui_align_begin(UIAlignProps *props);
 void ui_align_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -408,7 +408,7 @@ typedef struct UICenterProps {
   f32 height_factor;
 } UICenterProps;
 
-void ui_center_begin(UICenterProps props);
+void ui_center_begin(UICenterProps *props);
 void ui_center_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -431,7 +431,7 @@ typedef struct UIFlexibleProps {
   UIFlexFit fit;
 } UIFlexibleProps;
 
-void ui_flexible_begin(UIFlexibleProps props);
+void ui_flexible_begin(UIFlexibleProps *props);
 void ui_flexible_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -484,7 +484,7 @@ typedef struct UIFlexProps {
   f32 spacing;
 } UIFlexProps;
 
-void ui_flex_begin(UIFlexProps props);
+void ui_flex_begin(UIFlexProps *props);
 void ui_flex_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -501,7 +501,7 @@ typedef struct UIColumnProps {
   f32 spacing;
 } UIColumnProps;
 
-void ui_column_begin(UIColumnProps props);
+void ui_column_begin(UIColumnProps *props);
 void ui_column_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -518,7 +518,7 @@ typedef struct UIRowProps {
   f32 spacing;
 } UIRowProps;
 
-void ui_row_begin(UIRowProps props);
+void ui_row_begin(UIRowProps *props);
 void ui_row_end(void);
 
 #endif  // ZTRACING_SRC_UI_H_

@@ -98,12 +98,12 @@
 // }
 
 static void build_ui(f32 dt, f32 frame_time) {
-  ui_center_begin((UICenterProps){0});
+  ui_center_begin(&(UICenterProps){0});
   {
-    ui_constrained_box_begin((UIConstrainedBoxProps){
+    ui_constrained_box_begin(&(UIConstrainedBoxProps){
         .additional_constraints = ui_box_constraints_make_tight(50, 100),
     });
-    ui_colored_box_begin((UIColoredBoxProps){
+    ui_colored_box_begin(&(UIColoredBoxProps){
         .color = (UIColor){1, 0, 0, 1},
     });
     ui_colored_box_end();

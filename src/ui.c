@@ -363,7 +363,7 @@ static UIWidgetClass ui_limited_box_class = {
     .callback = &ui_limited_box_callback,
 };
 
-void ui_limited_box_begin(UILimitedBoxProps props) {
+void ui_limited_box_begin(UILimitedBoxProps *props) {
   ui_widget_begin(&ui_limited_box_class, props);
 }
 
@@ -414,7 +414,7 @@ static UIWidgetClass ui_colored_box_class = {
     .callback = &ui_colored_box_callback,
 };
 
-void ui_colored_box_begin(UIColoredBoxProps props) {
+void ui_colored_box_begin(UIColoredBoxProps *props) {
   ui_widget_begin(&ui_colored_box_class, props);
 }
 
@@ -463,7 +463,7 @@ static UIWidgetClass ui_constrained_box_class = {
     .callback = &ui_constrained_box_callback,
 };
 
-void ui_constrained_box_begin(UIConstrainedBoxProps props) {
+void ui_constrained_box_begin(UIConstrainedBoxProps *props) {
   ui_widget_begin(&ui_constrained_box_class, props);
 }
 
@@ -546,7 +546,7 @@ static UIWidgetClass ui_align_class = {
     .callback = &ui_align_callback,
 };
 
-void ui_align_begin(UIAlignProps props) {
+void ui_align_begin(UIAlignProps *props) {
   ui_widget_begin(&ui_align_class, props);
 }
 
@@ -586,7 +586,7 @@ static UIWidgetClass ui_center_class = {
     .callback = &ui_center_callback,
 };
 
-void ui_center_begin(UICenterProps props) {
+void ui_center_begin(UICenterProps *props) {
   ui_widget_begin(&ui_center_class, props);
 }
 
@@ -626,7 +626,7 @@ UIWidgetClass ui_flexible_vtable = {
     .callback = &ui_flexible_callback,
 };
 
-void ui_flexible_begin(UIFlexibleProps props) {
+void ui_flexible_begin(UIFlexibleProps *props) {
   ui_widget_begin(&ui_flexible_vtable, props);
 }
 
@@ -1010,7 +1010,7 @@ static UIWidgetClass ui_flex_class = {
     .callback = &ui_flex_callback,
 };
 
-void ui_flex_begin(UIFlexProps props) {
+void ui_flex_begin(UIFlexProps *props) {
   ui_widget_begin(&ui_flex_class, props);
 }
 
@@ -1049,7 +1049,7 @@ static UIWidgetClass ui_column_class = {
     .callback = &ui_column_callback,
 };
 
-void ui_column_begin(UIColumnProps props) {
+void ui_column_begin(UIColumnProps *props) {
   ui_widget_begin(&ui_column_class, props);
 }
 
@@ -1088,6 +1088,6 @@ static UIWidgetClass ui_row_vtable = {
     .callback = &ui_row_callback,
 };
 
-void ui_row_begin(UIRowProps props) { ui_widget_begin(&ui_row_vtable, props); }
+void ui_row_begin(UIRowProps *props) { ui_widget_begin(&ui_row_vtable, props); }
 
 void ui_row_end(void) { ui_widget_end(&ui_row_vtable); }
