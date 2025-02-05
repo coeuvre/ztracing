@@ -140,6 +140,16 @@ static inline UIBoxConstraints ui_box_constraints_enforce(
   };
 }
 
+static inline UIBoxConstraints ui_box_constraints_loosen(
+    UIBoxConstraints constraints) {
+  return (UIBoxConstraints){
+      .min_width = 0,
+      .max_width = constraints.max_width,
+      .min_height = 0,
+      .max_height = constraints.max_height,
+  };
+}
+
 typedef struct UIColor {
   f32 r;
   f32 g;
@@ -270,6 +280,121 @@ typedef struct UIConstrainedBoxProps {
 
 void ui_constrained_box_begin(UIConstrainedBoxProps props);
 void ui_constrained_box_end(void);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIAlign
+///
+/// A widget that aligns its child within itself and optionally sizes itself
+/// based on the child's size.
+
+/// A point within a rectangle.
+///
+/// `Alignment(0.0, 0.0)` represents the center of the rectangle. The distance
+/// from -1.0 to +1.0 is the distance from one side of the rectangle to the
+/// other side of the rectangle. Therefore, 2.0 units horizontally (or
+/// vertically) is equivalent to the width (or height) of the rectangle.
+///
+/// `Alignment(-1.0, -1.0)` represents the top left of the rectangle.
+///
+/// `Alignment(1.0, 1.0)` represents the bottom right of the rectangle.
+///
+/// `Alignment(0.0, 3.0)` represents a point that is horizontally centered with
+/// respect to the rectangle and vertically below the bottom of the rectangle by
+/// the height of the rectangle.
+///
+/// `Alignment(0.0, -0.5)` represents a point that is horizontally centered with
+/// respect to the rectangle and vertically half way between the top edge and
+/// the center.
+///
+/// `Alignment(x, y)` in a rectangle with height h and width w describes
+/// the point (x * w/2 + w/2, y * h/2 + h/2) in the coordinate system of the
+/// rectangle.
+typedef struct UIAlignment {
+  f32 x;
+  f32 y;
+} UIAlignment;
+
+static inline Vec2 ui_alignment_align_offset(UIAlignment alignment,
+                                             Vec2 offset) {
+  f32 center_x = offset.x / 2.0f;
+  f32 center_y = offset.y / 2.0f;
+  return v2(center_x + alignment.x * center_x,
+            center_y + alignment.y * center_y);
+}
+
+static inline UIAlignment ui_alignment_top_left(void) {
+  return (UIAlignment){
+      .x = -1.0f,
+      .y = -1.0f,
+  };
+}
+
+static inline UIAlignment ui_alignment_top_center(void) {
+  return (UIAlignment){
+      .x = 0.0f,
+      .y = -1.0f,
+  };
+}
+
+static inline UIAlignment ui_alignment_top_right(void) {
+  return (UIAlignment){
+      .x = 0.0f,
+      .y = 1.0f,
+  };
+}
+
+static inline UIAlignment ui_alignment_center_left(void) {
+  return (UIAlignment){
+      .x = -1.0f,
+      .y = 0.0f,
+  };
+}
+
+static inline UIAlignment ui_alignment_center(void) {
+  return (UIAlignment){
+      .x = 0.0f,
+      .y = 0.0f,
+  };
+}
+
+static inline UIAlignment ui_alignment_center_right(void) {
+  return (UIAlignment){
+      .x = 1.0f,
+      .y = 0.0f,
+  };
+}
+
+static inline UIAlignment ui_alignment_bottom_left(void) {
+  return (UIAlignment){
+      .x = -1.0f,
+      .y = 1.0f,
+  };
+}
+
+static inline UIAlignment ui_alignment_bottom_center(void) {
+  return (UIAlignment){
+      .x = 0.0f,
+      .y = 1.0f,
+  };
+}
+
+static inline UIAlignment ui_alignment_bottom_right(void) {
+  return (UIAlignment){
+      .x = 1.0f,
+      .y = 1.0f,
+  };
+}
+
+typedef struct UIAlignProps {
+  UIKey key;
+  UIAlignment alignment;
+  f32 width_factor;
+  f32 height_factor;
+} UIAlignProps;
+
+void ui_align_begin(UIAlignProps props);
+void ui_align_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///

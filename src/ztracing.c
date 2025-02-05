@@ -98,7 +98,7 @@
 // }
 
 static void build_ui(f32 dt, f32 frame_time) {
-  ui_row_begin((UIRowProps){0});
+  ui_align_begin((UIAlignProps){.alignment = ui_alignment_bottom_right()});
   {
     ui_constrained_box_begin((UIConstrainedBoxProps){
         .additional_constraints = ui_box_constraints_make_tight(50, 100),
@@ -108,28 +108,8 @@ static void build_ui(f32 dt, f32 frame_time) {
     });
     ui_colored_box_end();
     ui_constrained_box_end();
-
-    ui_flexible_begin((UIFlexibleProps){.flex = 1});
-    ui_constrained_box_begin((UIConstrainedBoxProps){
-        .additional_constraints = ui_box_constraints_make_tight(50, 100),
-    });
-    ui_colored_box_begin((UIColoredBoxProps){
-        .color = (UIColor){0, 1, 0, 1},
-    });
-    ui_colored_box_end();
-    ui_constrained_box_end();
-    ui_flexible_end();
-
-    ui_constrained_box_begin((UIConstrainedBoxProps){
-        .additional_constraints = ui_box_constraints_make_tight(50, 100),
-    });
-    ui_colored_box_begin((UIColoredBoxProps){
-        .color = (UIColor){0, 0, 1, 1},
-    });
-    ui_colored_box_end();
-    ui_constrained_box_end();
   }
-  ui_row_end();
+  ui_align_end();
 }
 
 void do_frame(void) {

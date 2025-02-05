@@ -476,6 +476,80 @@ void ui_constrained_box_end(void) { ui_widget_end(&ui_constrained_box_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
+/// UIAlign
+///
+static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
+                            UIBoxConstraints constraints) {
+  bool should_shrink_wrap_width =
+      align->width_factor > 0 || f32_is_infinity(constraints.max_width);
+  bool should_shrink_wrap_height =
+      align->height_factor > 0 || f32_is_infinity(constraints.max_height);
+  UIBoxConstraints child_constraints = ui_box_constraints_loosen(constraints);
+
+  if (widget->tree.first) {
+    Vec2 max_child_size = vec2_zero();
+
+    for (UIWidget *child = widget->tree.first; child;
+         child = child->tree.next) {
+      ui_widget_layout(child, child_constraints);
+
+      Vec2 wrap_size =
+          v2(should_shrink_wrap_width
+                 ? (child->size.x *
+                    (align->width_factor > 0 ? align->width_factor : 1.0f))
+                 : F32_INFINITY,
+             should_shrink_wrap_height
+                 ? (child->size.y *
+                    (align->height_factor > 0 ? align->height_factor : 1.0f))
+                 : F32_INFINITY);
+
+      max_child_size = vec2_max(max_child_size, wrap_size);
+    }
+
+    widget->size = ui_box_constraints_constrain(constraints, max_child_size);
+
+    // TODO: UITextDirection
+    UIAlignment alignment = align->alignment;
+    for (UIWidget *child = widget->tree.first; child;
+         child = child->tree.next) {
+      child->offset = ui_alignment_align_offset(
+          alignment, vec2_sub(widget->size, child->size));
+    }
+  } else {
+    Vec2 size = v2(should_shrink_wrap_width ? 0 : F32_INFINITY,
+                   should_shrink_wrap_height ? 0 : F32_INFINITY);
+    widget->size = ui_box_constraints_constrain(constraints, size);
+  }
+}
+
+static i32 ui_align_callback(UIWidget *widget, UIWidgetMessage *message) {
+  i32 result = 0;
+  switch (message->type) {
+    case UI_WIDGET_MESSAGE_LAYOUT: {
+      ui_align_layout(widget, ui_widget_get_props(widget, UIAlignProps),
+                      message->layout.constraints);
+    } break;
+    default: {
+      result = ui_widget_callback_default(widget, message);
+    } break;
+  }
+  return result;
+}
+
+static UIWidgetClass ui_align_class = {
+    .name = "Align",
+    .props_size = sizeof(UIAlignProps),
+    .callback = &ui_align_callback,
+};
+
+void ui_align_begin(UIAlignProps props) {
+  ui_widget_begin(&ui_align_class, props);
+}
+
+void ui_align_end(void) { ui_widget_end(&ui_align_class); }
+
+////////////////////////////////////////////////////////////////////////////////
+///
 /// UIFlexible
 ///
 static i32 ui_flexible_callback(UIWidget *widget, UIWidgetMessage *message) {

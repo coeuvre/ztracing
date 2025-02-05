@@ -10,6 +10,7 @@
 #define F32_INFINITY ((f32)(INFINITY))
 
 static inline bool f32_is_finite(f32 a) { return a != F32_INFINITY; }
+static inline bool f32_is_infinity(f32 a) { return a == F32_INFINITY; }
 
 static inline f32 f32_pow(f32 a, f32 b) {
   f32 result = powf(a, b);
