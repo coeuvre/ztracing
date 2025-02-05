@@ -80,40 +80,31 @@ void ui_begin_frame(void) {
 }
 
 static void ui_widget_layout(UIWidget *widget, UIBoxConstraints constraints) {
-  UIWidgetMessage message = {
-      .layout =
-          {
-              .type = UI_WIDGET_MESSAGE_LAYOUT,
-              .constraints = constraints,
-          },
+  UIWidgetMessageLayout message = {
+      .type = UI_WIDGET_MESSAGE_LAYOUT,
+      .constraints = constraints,
   };
-  widget->klass->callback(widget, &message);
+  widget->klass->callback(widget, (UIWidgetMessage *)&message);
 }
 
 static void ui_widget_paint(UIWidget *widget, UIPaintingContext *context,
                             Vec2 offset) {
-  UIWidgetMessage message = {
-      .paint =
-          {
-              .type = UI_WIDGET_MESSAGE_PAINT,
-              .context = context,
-              .offset = offset,
-          },
+  UIWidgetMessagePaint message = {
+      .type = UI_WIDGET_MESSAGE_PAINT,
+      .context = context,
+      .offset = offset,
   };
-  widget->klass->callback(widget, &message);
+  widget->klass->callback(widget, (UIWidgetMessage *)&message);
 }
 
 static bool ui_widget_get_parent_data(UIWidget *widget, u32 parent_data_id,
                                       void *parent_data) {
-  UIWidgetMessage message = {
-      .get_parent_data =
-          {
-              .type = UI_WIDGET_MESSAGE_GET_PARENT_DATA,
-              .parent_data_id = parent_data_id,
-              .parent_data = parent_data,
-          },
+  UIWidgetMessageGetParentData message = {
+      .type = UI_WIDGET_MESSAGE_GET_PARENT_DATA,
+      .parent_data_id = parent_data_id,
+      .parent_data = parent_data,
   };
-  return widget->klass->callback(widget, &message);
+  return widget->klass->callback(widget, (UIWidgetMessage *)&message);
 }
 
 static void ui_widget_layout_default(UIWidget *widget,
@@ -146,12 +137,13 @@ static i32 ui_widget_callback_default(UIWidget *widget,
   i32 result = 0;
   switch (message->type) {
     case UI_WIDGET_MESSAGE_LAYOUT: {
-      ui_widget_layout_default(widget, message->layout.constraints);
+      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+      ui_widget_layout_default(widget, layout->constraints);
     } break;
 
     case UI_WIDGET_MESSAGE_PAINT: {
-      ui_widget_paint_default(widget, message->paint.context,
-                              message->paint.offset);
+      UIWidgetMessagePaint *paint = (UIWidgetMessagePaint *)message;
+      ui_widget_paint_default(widget, paint->context, paint->offset);
     } break;
   }
   return result;
@@ -353,9 +345,10 @@ static i32 ui_limited_box_callback(UIWidget *widget, UIWidgetMessage *message) {
   i32 result = 0;
   switch (message->type) {
     case UI_WIDGET_MESSAGE_LAYOUT: {
+      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
       ui_limited_box_layout(widget,
                             ui_widget_get_props(widget, UILimitedBoxProps),
-                            message->layout.constraints);
+                            layout->constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -403,9 +396,10 @@ static i32 ui_colored_box_callback(UIWidget *widget, UIWidgetMessage *message) {
   i32 result = 0;
   switch (message->type) {
     case UI_WIDGET_MESSAGE_PAINT: {
+      UIWidgetMessagePaint *paint = (UIWidgetMessagePaint *)message;
       ui_colored_box_paint(widget,
                            ui_widget_get_props(widget, UIColoredBoxProps),
-                           message->paint.context, message->paint.offset);
+                           paint->context, paint->offset);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -451,9 +445,10 @@ static i32 ui_constrained_box_callback(UIWidget *widget,
   i32 result = 0;
   switch (message->type) {
     case UI_WIDGET_MESSAGE_LAYOUT: {
+      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
       ui_constrained_box_layout(
           widget, ui_widget_get_props(widget, UIConstrainedBoxProps),
-          message->layout.constraints);
+          layout->constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -526,8 +521,9 @@ static i32 ui_align_callback(UIWidget *widget, UIWidgetMessage *message) {
   i32 result = 0;
   switch (message->type) {
     case UI_WIDGET_MESSAGE_LAYOUT: {
+      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
       ui_align_layout(widget, ui_widget_get_props(widget, UIAlignProps),
-                      message->layout.constraints);
+                      layout->constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -556,11 +552,12 @@ static i32 ui_flexible_callback(UIWidget *widget, UIWidgetMessage *message) {
   i32 result = 0;
   switch (message->type) {
     case UI_WIDGET_MESSAGE_GET_PARENT_DATA: {
-      if (message->get_parent_data.parent_data_id ==
-          UI_WIDGET_PARENT_DATA_FLEX) {
+      UIWidgetMessageGetParentData *get_parent_data =
+          (UIWidgetMessageGetParentData *)message;
+      if (get_parent_data->parent_data_id == UI_WIDGET_PARENT_DATA_FLEX) {
         UIFlexibleProps *flexible =
             ui_widget_get_props(widget, UIFlexibleProps);
-        UIWidgetParentDataFlex *data = message->get_parent_data.parent_data;
+        UIWidgetParentDataFlex *data = get_parent_data->parent_data;
         *data = (UIWidgetParentDataFlex){
             .flex = flexible->flex,
             .fit = flexible->fit,
@@ -948,8 +945,9 @@ static i32 ui_flex_callback(UIWidget *widget, UIWidgetMessage *message) {
   i32 result = 0;
   switch (message->type) {
     case UI_WIDGET_MESSAGE_LAYOUT: {
+      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
       ui_flex_layout(widget, ui_widget_get_props(widget, UIFlexProps),
-                     message->layout.constraints);
+                     layout->constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -978,6 +976,7 @@ static i32 ui_column_callback(UIWidget *widget, UIWidgetMessage *message) {
   i32 result = 0;
   switch (message->type) {
     case UI_WIDGET_MESSAGE_LAYOUT: {
+      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
       UIColumnProps *column = ui_widget_get_props(widget, UIColumnProps);
       UIFlexProps flex = {
           .key = column->key,
@@ -987,7 +986,7 @@ static i32 ui_column_callback(UIWidget *widget, UIWidgetMessage *message) {
           .cross_axis_alignment = column->cross_axis_alignment,
           .spacing = column->spacing,
       };
-      ui_flex_layout(widget, &flex, message->layout.constraints);
+      ui_flex_layout(widget, &flex, layout->constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -1016,6 +1015,7 @@ static i32 ui_row_callback(UIWidget *widget, UIWidgetMessage *message) {
   i32 result = 0;
   switch (message->type) {
     case UI_WIDGET_MESSAGE_LAYOUT: {
+      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
       UIRowProps *row = ui_widget_get_props(widget, UIRowProps);
       UIFlexProps flex = {
           .key = row->key,
@@ -1025,7 +1025,7 @@ static i32 ui_row_callback(UIWidget *widget, UIWidgetMessage *message) {
           .cross_axis_alignment = row->cross_axis_alignment,
           .spacing = row->spacing,
       };
-      ui_flex_layout(widget, &flex, message->layout.constraints);
+      ui_flex_layout(widget, &flex, layout->constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);

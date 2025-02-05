@@ -167,6 +167,10 @@ enum {
   UI_WIDGET_MESSAGE_GET_PARENT_DATA,
 };
 
+typedef struct UIWidgetMessage {
+  u32 type;
+} UIWidgetMessage;
+
 typedef struct UIWidgetMessageLayout {
   u32 type;  // UI_WIDGET_MESSAGE_LAYOUT
   UIBoxConstraints constraints;
@@ -183,17 +187,10 @@ enum {
 };
 
 typedef struct UIWidgetMessageGetParentData {
-  u32 type;  // UI_WIDGET_MESSAGE_GET_PARENT_DATA,
+  u32 type;  // UI_WIDGET_MESSAGE_GET_PARENT_DATA
   u32 parent_data_id;
   void *parent_data;
 } UIWidgetMessageGetParentData;
-
-typedef union UIWidgetMessage {
-  u32 type;
-  UIWidgetMessageLayout layout;
-  UIWidgetMessagePaint paint;
-  UIWidgetMessageGetParentData get_parent_data;
-} UIWidgetMessage;
 
 typedef i32(UIWidgetCallback)(UIWidget *widget, UIWidgetMessage *message);
 
