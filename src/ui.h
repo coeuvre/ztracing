@@ -151,18 +151,50 @@ typedef struct UIPaintingContext {
   int placeholder;
 } UIPaintingContext;
 
-typedef void(UIWidgetLayoutFn)(UIWidget *widget, UIBoxConstraints constraints);
-typedef void(UIWidgetPaintFn)(UIWidget *widget, UIPaintingContext *context,
-                              Vec2 offset);
+enum {
+  UI_WIDGET_MESSAGE_LAYOUT = 1,
+  UI_WIDGET_MESSAGE_PAINT,
+  UI_WIDGET_MESSAGE_GET_PARENT_DATA,
+};
 
-typedef struct UIWidgetVTable {
+typedef struct UIWidgetMessageLayout {
+  u32 type;  // UI_WIDGET_MESSAGE_LAYOUT
+  UIBoxConstraints constraints;
+} UIWidgetMessageLayout;
+
+typedef struct UIWidgetMessagePaint {
+  u32 type;  // UI_WIDGET_MESSAGE_PAINT
+  UIPaintingContext *context;
+  Vec2 offset;
+} UIWidgetMessagePaint;
+
+enum {
+  UI_WIDGET_PARENT_DATA_FLEX = 1,
+};
+
+typedef struct UIWidgetMessageGetParentData {
+  u32 type;  // UI_WIDGET_MESSAGE_GET_PARENT_DATA,
+  u32 parent_data_id;
+  void *parent_data;
+} UIWidgetMessageGetParentData;
+
+typedef union UIWidgetMessage {
+  u32 type;
+  UIWidgetMessageLayout layout;
+  UIWidgetMessagePaint paint;
+  UIWidgetMessageGetParentData get_parent_data;
+} UIWidgetMessage;
+
+typedef i32(UIWidgetCallback)(UIWidget *widget, UIWidgetMessage *message);
+
+typedef struct UIWidgetClass {
   const char *name;
-  UIWidgetLayoutFn *layout;
-  UIWidgetPaintFn *paint;
-} UIWidgetVTable;
+  usize props_size;
+  UIWidgetCallback *callback;
+} UIWidgetClass;
 
 struct UIWidget {
-  UIWidgetVTable *vtable;
+  UIWidgetClass *klass;
   UIWidgetHashLink hash;
   UIWidgetTreeLink tree;
 
@@ -174,32 +206,23 @@ struct UIWidget {
   /// The offset at which to paint the child in the parent's coordinate system.
   Vec2 offset;
 
-  usize props_size;
-  void *props;
-
-  /// The state of the widget, kept across frames (by copying).
-  usize state_size;
   void *state;
 };
 
-UIWidget *ui_widget_begin_(UIWidgetVTable *vtable, usize props_size,
-                           void *props);
-#define ui_widget_begin(vtable, props) \
-  ui_widget_begin_(vtable, sizeof(props), &props)
-
-void ui_widget_end(UIWidgetVTable *vtable);
-
-void *ui_widget_push_state(UIWidget *widget, usize size);
+void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props);
+#define ui_widget_begin(klass, props) \
+  ui_widget_begin_(klass, sizeof(props), &props)
+void ui_widget_end(UIWidgetClass *klass);
 
 static inline UIKey ui_widget_get_key(UIWidget *widget) {
-  DEBUG_ASSERT(widget->props_size >= sizeof(UIKey));
-  UIKey *key_ptr = (UIKey *)widget->props;
+  DEBUG_ASSERT(widget->klass->props_size >= sizeof(UIKey));
+  UIKey *key_ptr = (UIKey *)(widget + 1);
   return *key_ptr;
 }
 
 static inline void *ui_widget_get_props_(UIWidget *widget, usize props_size) {
-  DEBUG_ASSERT(widget->props_size == props_size);
-  return widget->props;
+  DEBUG_ASSERT(widget->klass->props_size == props_size);
+  return widget + 1;
 }
 
 #define ui_widget_get_props(widget, Props) \
@@ -277,6 +300,11 @@ void ui_flexible_end(void);
 ///
 /// A widget that displays its children in a one-dimensional array.
 ///
+typedef struct UIWidgetParentDataFlex {
+  i32 flex;
+  UIFlexFit fit;
+} UIWidgetParentDataFlex;
+
 typedef enum UIAxis {
   UI_AXIS_HORIZONTAL,
   UI_AXIS_VERTICAL,
