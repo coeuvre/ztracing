@@ -773,13 +773,11 @@ void ui_container_begin(UIContainerProps *props) {
 void ui_container_end(void) {
   Arena *arena = ui_get_build_arena();
   arena_pop(arena, sizeof(UIContainerProps));
-  UIContainerProps *props = arena_seek(arena, 0);
-
-  TempMemory scratch = scratch_begin(0, 0);
-  props = arena_dup_struct(scratch.arena, props);
+  UIContainerProps *props_ = arena_seek(arena, 0);
+  UIContainerProps props = *props_;
 
   UIWidget *widget = ui_widget_get_current();
-  if (!widget->first && !ui_box_constraints_is_tight(props->constraints)) {
+  if (!widget->first && !ui_box_constraints_is_tight(props.constraints)) {
     ui_limited_box_begin(&(UILimitedBoxProps){0});
     ui_constrained_box_begin(&(UIConstrainedBoxProps){
         .constraints = ui_box_constraints_make(F32_INFINITY, F32_INFINITY,
@@ -789,27 +787,25 @@ void ui_container_end(void) {
     ui_limited_box_end();
   }
 
-  if (props->alignment.present) {
+  if (props.alignment.present) {
     ui_align_end();
   }
 
-  if (props->padding.present) {
+  if (props.padding.present) {
     ui_padding_end();
   }
 
-  if (props->color.present) {
+  if (props.color.present) {
     ui_colored_box_end();
   }
 
-  if (props->constraints.present) {
+  if (props.constraints.present) {
     ui_constrained_box_end();
   }
 
-  if (props->margin.present) {
+  if (props.margin.present) {
     ui_padding_end();
   }
-
-  scratch_end(scratch);
 
   ui_widget_end(&ui_container_class);
 }
