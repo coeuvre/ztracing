@@ -219,7 +219,13 @@ void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props);
 #define ui_widget_begin(klass, props) \
   ui_widget_begin_(klass, sizeof(*props), props)
 void ui_widget_end(UIWidgetClass *klass);
-UIWidget *ui_widget_current(void);
+UIWidget *ui_widget_get_current(void);
+
+/// Get an arena for storing temporary data that needs to keep across begin and
+/// end.
+///
+/// Allocations MUST be freed before exiting `end` in a FILO (stack) order.
+Arena *ui_get_build_arena(void);
 
 static inline UIKey ui_widget_get_key(UIWidget *widget) {
   DEBUG_ASSERT(widget->klass->props_size >= sizeof(UIKey));

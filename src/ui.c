@@ -36,6 +36,7 @@ typedef struct UIFrame {
 
 typedef struct UIWidgetStackEntry {
   UIWidget *widget;
+  const u8 *build_arena_top;
 } UIWidgetStackEntry;
 
 typedef struct UIWidgetStack {
@@ -59,19 +60,36 @@ static bool ui_widget_stack_is_empty(UIWidgetStack *stack) {
   return stack->arena.current_block->pos == stack->arena.current_block->begin;
 }
 
-static void ui_widget_stack_push(UIWidgetStack *stack, UIWidget *widget) {
+static void ui_widget_stack_push(UIWidgetStack *stack, Arena *build_arena,
+                                 UIWidget *widget) {
   UIWidgetStackEntry *entry =
       arena_push_array(&stack->arena, UIWidgetStackEntry, 1);
   entry->widget = widget;
+  if (build_arena->current_block) {
+    entry->build_arena_top = build_arena->current_block->pos;
+  } else {
+    entry->build_arena_top = 0;
+  }
   stack->current = entry;
 }
 
-static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack) {
+static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack, Arena *build_arena) {
   ASSERT(stack->current);
   UIWidgetStackEntry *entry = stack->current;
   arena_pop(&stack->arena, sizeof(UIWidgetStackEntry));
   ASSERT(entry == arena_seek(&stack->arena, 0));
   stack->current = arena_seek(&stack->arena, sizeof(UIWidgetStackEntry));
+  if (entry->build_arena_top) {
+    ASSERTF(build_arena->current_block &&
+                build_arena->current_block->pos == entry->build_arena_top,
+            "build arena was not cleaned up properly by the widget");
+  } else {
+    ASSERTF(
+        !build_arena->current_block || (!build_arena->current_block->prev &&
+                                        build_arena->current_block->pos ==
+                                            build_arena->current_block->begin),
+        "build arena was not cleaned up properly by the widget");
+  }
   return entry->widget;
 }
 
@@ -82,6 +100,7 @@ typedef struct UIState {
   UIFrame *last_frame;
 
   UIWidgetStack widget_stack;
+  Arena build_arena;
 
   Vec2 viewport_min;
   Vec2 viewport_max;
@@ -330,24 +349,30 @@ void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props) {
     widget->state = last_widget->state;
   }
 
-  ui_widget_stack_push(&state->widget_stack, widget);
+  ui_widget_stack_push(&state->widget_stack, &state->build_arena, widget);
 }
 
 void ui_widget_end(UIWidgetClass *klass) {
   UIState *state = ui_state_get();
-  UIWidget *widget = ui_widget_stack_pop(&state->widget_stack);
+  UIWidget *widget =
+      ui_widget_stack_pop(&state->widget_stack, &state->build_arena);
   ASSERTF(widget->klass == klass,
           "Mismatched begin/end calls. Begin with %s, end with %s",
           widget->klass->name, klass->name);
 }
 
-UIWidget *ui_widget_current(void) {
+UIWidget *ui_widget_get_current(void) {
   UIState *state = ui_state_get();
   UIWidget *result = 0;
   if (state->widget_stack.current) {
     result = state->widget_stack.current->widget;
   }
   return result;
+}
+
+Arena *ui_get_build_arena(void) {
+  UIState *state = ui_state_get();
+  return &state->build_arena;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -702,14 +727,15 @@ void ui_padding_end(void) { ui_widget_end(&ui_padding_class); }
 ///
 /// UIContainer
 ///
-
 static UIWidgetClass ui_container_class = {
     .name = "Container",
-    .props_size = sizeof(UIContainerProps),
+    .props_size = sizeof(UIKey),
     .callback = &ui_widget_callback_default,
 };
 
 void ui_container_begin(UIContainerProps *props) {
+  ui_widget_begin(&ui_container_class, &props->key);
+
   if (props->margin.present) {
     ui_padding_begin(&(UIPaddingProps){
         .padding = props->margin,
@@ -740,14 +766,19 @@ void ui_container_begin(UIContainerProps *props) {
     });
   }
 
-  ui_widget_begin(&ui_container_class, props);
+  Arena *arena = ui_get_build_arena();
+  arena_dup_struct(arena, props);
 }
 
 void ui_container_end(void) {
-  UIWidget *widget = ui_widget_current();
-  UIContainerProps *props = ui_widget_get_props(widget, UIContainerProps);
-  ui_widget_end(&ui_container_class);
+  Arena *arena = ui_get_build_arena();
+  arena_pop(arena, sizeof(UIContainerProps));
+  UIContainerProps *props = arena_seek(arena, 0);
 
+  TempMemory scratch = scratch_begin(0, 0);
+  props = arena_dup_struct(scratch.arena, props);
+
+  UIWidget *widget = ui_widget_get_current();
   if (!widget->first && !ui_box_constraints_is_tight(props->constraints)) {
     ui_limited_box_begin(&(UILimitedBoxProps){0});
     ui_constrained_box_begin(&(UIConstrainedBoxProps){
@@ -777,6 +808,10 @@ void ui_container_end(void) {
   if (props->margin.present) {
     ui_padding_end();
   }
+
+  scratch_end(scratch);
+
+  ui_widget_end(&ui_container_class);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

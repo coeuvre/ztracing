@@ -59,6 +59,18 @@ void *arena_seek(Arena *arena, usize size);
 #define arena_push_array_no_zero(arena, Type, len) \
   (Type *)arena_push(arena, sizeof(Type) * len, ARENA_PUSH_NO_ZERO)
 
+#define arena_push_struct(arena, Type) arena_push_array(arena, Type, 1)
+#define arena_push_struct_no_zero(arena, Type) \
+  arena_push_array_no_zero(arena, Type, 1)
+
+static inline void *arena_dup(Arena *arena, void *src, usize size) {
+  void *dst = arena_push(arena, size, ARENA_PUSH_NO_ZERO);
+  memory_copy(dst, src, size);
+  return dst;
+}
+
+#define arena_dup_struct(arena, src) arena_dup(arena, src, sizeof(*(src)))
+
 TempMemory temp_memory_begin(Arena *arena);
 void temp_memory_end(TempMemory temp);
 
