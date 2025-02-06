@@ -204,8 +204,6 @@ struct UIWidget {
   UIWidget *first;
   /// Last child of this widget.
   UIWidget *last;
-  /// Parent of this widget.
-  UIWidget *parent;
 
   u32 child_count;
 

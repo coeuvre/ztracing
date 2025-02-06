@@ -51,6 +51,8 @@ void arena_free(Arena *arena);
 void arena_clear(Arena *arena);
 void *arena_push(Arena *arena, usize size, u32 flags);
 void arena_pop(Arena *arena, usize size);
+// Get a pointer from the stack that is `size` down away from the current top.
+void *arena_seek(Arena *arena, usize size);
 
 #define arena_push_array(arena, Type, len) \
   (Type *)arena_push(arena, sizeof(Type) * len, 0)

@@ -32,14 +32,56 @@ typedef struct UIFrame {
   Arena arena;
   UIWidgetHashMap cache;
   UIWidget *root;
-  UIWidget *current;
 } UIFrame;
+
+typedef struct UIWidgetStackEntry {
+  UIWidget *widget;
+} UIWidgetStackEntry;
+
+typedef struct UIWidgetStack {
+  Arena arena;
+  UIWidgetStackEntry *current;
+} UIWidgetStack;
+
+static bool ui_widget_stack_is_empty(UIWidgetStack *stack) {
+  if (stack->current) {
+    return false;
+  }
+
+  if (!stack->arena.current_block) {
+    return true;
+  }
+
+  if (stack->arena.current_block->prev) {
+    return false;
+  }
+
+  return stack->arena.current_block->pos == stack->arena.current_block->begin;
+}
+
+static void ui_widget_stack_push(UIWidgetStack *stack, UIWidget *widget) {
+  UIWidgetStackEntry *entry =
+      arena_push_array(&stack->arena, UIWidgetStackEntry, 1);
+  entry->widget = widget;
+  stack->current = entry;
+}
+
+static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack) {
+  ASSERT(stack->current);
+  UIWidgetStackEntry *entry = stack->current;
+  arena_pop(&stack->arena, sizeof(UIWidgetStackEntry));
+  ASSERT(entry == arena_seek(&stack->arena, 0));
+  stack->current = arena_seek(&stack->arena, sizeof(UIWidgetStackEntry));
+  return entry->widget;
+}
 
 typedef struct UIState {
   UIFrame frames[2];
   u64 frame_index;
   UIFrame *current_frame;
   UIFrame *last_frame;
+
+  UIWidgetStack widget_stack;
 
   Vec2 viewport_min;
   Vec2 viewport_max;
@@ -49,11 +91,6 @@ THREAD_LOCAL UIState t_ui_state;
 
 static inline UIState *ui_state_get(void) { return &t_ui_state; }
 
-static inline UIFrame *ui_frame_current(void) {
-  UIState *state = ui_state_get();
-  return state->current_frame;
-}
-
 void ui_set_viewport(Vec2 min, Vec2 max) {
   UIState *state = ui_state_get();
   state->viewport_min = min;
@@ -62,9 +99,7 @@ void ui_set_viewport(Vec2 min, Vec2 max) {
 
 void ui_begin_frame(void) {
   UIState *state = ui_state_get();
-  if (state->current_frame) {
-    ASSERT(!state->current_frame->current);
-  }
+  ASSERT(ui_widget_stack_is_empty(&state->widget_stack));
 
   state->frame_index += 1;
   state->current_frame =
@@ -80,7 +115,7 @@ void ui_begin_frame(void) {
   frame->cache.slots_count = 4096;
   frame->cache.slots = arena_push_array(&frame->arena, UIWidgetHashSlot,
                                         frame->cache.slots_count);
-  frame->root = frame->current = 0;
+  frame->root = 0;
 }
 
 static void ui_widget_layout(UIWidget *widget, UIBoxConstraints constraints) {
@@ -156,8 +191,9 @@ static i32 ui_widget_callback_default(UIWidget *widget,
 void ui_end_frame(void) {
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
-  ASSERTF(!frame->current, "Mismatched begin/end calls, last begin: %s",
-          frame->current->klass->name);
+  ASSERTF(!state->widget_stack.current,
+          "Mismatched begin/end calls, last begin: %s",
+          state->widget_stack.current->widget->klass->name);
 
   // Layout and paint
   if (frame->root) {
@@ -251,7 +287,10 @@ void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props) {
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
   UIFrame *last_frame = state->last_frame;
-  UIWidget *parent = frame->current;
+  UIWidget *parent = 0;
+  if (state->widget_stack.current) {
+    parent = state->widget_stack.current->widget;
+  }
 
   ASSERTF(klass->props_size >= sizeof(UIKey),
           "The first field of props must be a UIKey");
@@ -278,7 +317,6 @@ void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props) {
   if (parent) {
     DLL_APPEND(parent->first, parent->last, widget, prev, next);
     ++parent->child_count;
-    widget->parent = parent;
   } else {
     frame->root = widget;
   }
@@ -292,23 +330,24 @@ void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props) {
     widget->state = last_widget->state;
   }
 
-  frame->current = widget;
+  ui_widget_stack_push(&state->widget_stack, widget);
 }
 
 void ui_widget_end(UIWidgetClass *klass) {
-  UIFrame *frame = ui_frame_current();
-  UIWidget *widget = frame->current;
-  ASSERT(widget);
+  UIState *state = ui_state_get();
+  UIWidget *widget = ui_widget_stack_pop(&state->widget_stack);
   ASSERTF(widget->klass == klass,
           "Mismatched begin/end calls. Begin with %s, end with %s",
           widget->klass->name, klass->name);
-
-  frame->current = widget->parent;
 }
 
 UIWidget *ui_widget_current(void) {
-  UIFrame *frame = ui_frame_current();
-  return frame->current;
+  UIState *state = ui_state_get();
+  UIWidget *result = 0;
+  if (state->widget_stack.current) {
+    result = state->widget_stack.current->widget;
+  }
+  return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

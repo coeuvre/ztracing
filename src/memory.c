@@ -148,6 +148,16 @@ void arena_pop(Arena *arena, usize size) {
   }
 }
 
+void *arena_seek(Arena *arena, usize size) {
+  for (MemoryBlock *block = arena->current_block; block; block = block->prev) {
+    if (block->pos - size >= block->begin) {
+      return (void *)(block->pos - size);
+    }
+    size -= block->pos - block->begin;
+  }
+  return 0;
+}
+
 TempMemory temp_memory_begin(Arena *arena) {
   TempMemory temp;
   temp.arena = arena;
