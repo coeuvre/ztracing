@@ -28,9 +28,32 @@ typedef struct UIWidgetHashMap {
   UIWidgetHashSlot *slots;
 } UIWidgetHashMap;
 
+static void ui_widget_hash_map_put(UIWidgetHashMap *map, Arena *arena,
+                                   UIWidget *widget) {
+  UIKey key = ui_widget_get_key(widget);
+  UIWidgetHashNode *node = arena_push(arena, sizeof(UIWidgetHashNode), 0);
+  UIWidgetHashSlot *slot = map->slots + (key.hash % map->slots_count);
+  DLL_APPEND(slot->first, slot->last, node, prev, next);
+  map->total_count += 1;
+}
+
+static UIWidget *ui_widget_hash_map_get(UIWidgetHashMap *map, UIKey key) {
+  UIWidget *result = 0;
+  if (!ui_key_is_zero(key) && map->slots) {
+    UIWidgetHashSlot *slot = map->slots + (key.hash % map->slots_count);
+    for (UIWidgetHashNode *node = slot->first; node; node = node->next) {
+      UIWidget *widget = (UIWidget *)(node + 1);
+      if (ui_key_is_equal(ui_widget_get_key(widget), key)) {
+        result = widget;
+        break;
+      }
+    }
+  }
+  return result;
+}
+
 typedef struct UIFrame {
   Arena arena;
-  UIWidgetHashMap cache;
   UIWidget *root;
 } UIFrame;
 
@@ -93,6 +116,13 @@ static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack, Arena *build_arena) {
   return entry->widget;
 }
 
+static inline UIWidget *ui_widget_stack_get_top_widget(UIWidgetStack *stack) {
+  if (stack->current) {
+    return stack->current->widget;
+  }
+  return 0;
+}
+
 typedef struct UIState {
   UIFrame frames[2];
   u64 frame_index;
@@ -128,12 +158,6 @@ void ui_begin_frame(void) {
 
   UIFrame *frame = state->current_frame;
   arena_clear(&frame->arena);
-
-  frame->cache = (UIWidgetHashMap){0};
-  // TODO: Adjust the number of slots based on last frame.
-  frame->cache.slots_count = 4096;
-  frame->cache.slots = arena_push_array(&frame->arena, UIWidgetHashSlot,
-                                        frame->cache.slots_count);
   frame->root = 0;
 }
 
@@ -268,85 +292,49 @@ static UIKey ui_key_make_local(UIKey seed, u32 seq, const char *tag, Str8 id) {
   return key;
 }
 
-static UIWidget *ui_widget_get(UIFrame *frame, UIKey key) {
-  UIWidget *result = 0;
-  UIWidgetHashMap *cache = &frame->cache;
-  if (!ui_key_is_zero(key) && cache->slots) {
-    UIWidgetHashSlot *slot = cache->slots + (key.hash % cache->slots_count);
-    for (UIWidgetHashNode *node = slot->first; node; node = node->next) {
-      UIWidget *widget = (UIWidget *)(node + 1);
-      if (ui_key_is_equal(ui_widget_get_key(widget), key)) {
-        result = widget;
-        break;
-      }
-    }
-  }
-  return result;
-}
-
-static UIWidget *ui_widget_push(UIFrame *frame, UIWidgetClass *klass,
-                                UIKey key) {
-  UIWidgetHashNode *node = arena_push(
-      &frame->arena,
-      sizeof(UIWidgetHashNode) + sizeof(UIWidget) + klass->props_size,
-      ARENA_PUSH_NO_ZERO);
-  UIWidget *widget = (UIWidget *)(node + 1);
-  memory_zero(widget, sizeof(UIWidget));
-  widget->klass = klass;
-
-  UIWidgetHashSlot *slot =
-      frame->cache.slots + (key.hash % frame->cache.slots_count);
-  DLL_APPEND(slot->first, slot->last, node, prev, next);
-  ++frame->cache.total_count;
-
-  return widget;
-}
-
-void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props) {
+/// Allocate a UIWidget in current frame's arena.
+static UIWidget *ui_widget_alloc(UIWidgetClass *klass, usize props_size,
+                                 void *props) {
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
-  UIFrame *last_frame = state->last_frame;
-  UIWidget *parent = 0;
-  if (state->widget_stack.current) {
-    parent = state->widget_stack.current->widget;
-  }
-
   ASSERTF(klass->props_size >= sizeof(UIKey),
           "The first field of props must be a UIKey");
-  ASSERTF(klass->props_size == props_size,
-          "props_size (%d) does not equal to klass.props_size (%d)",
-          (int)props_size, (int)klass->props_size);
-  if (!klass->callback) {
-    klass->callback = ui_widget_callback_default;
-  }
   UIKey key = *(UIKey *)props;
-  if (ui_key_is_zero(key)) {
-    UIKey seed = key;
-    if (parent) {
-      seed = ui_widget_get_key(parent);
-    }
-    u32 seq = 0;
-    if (parent) {
-      seq = parent->child_count;
-    }
-    key = ui_key_make_local(seed, seq, klass->name, str8_zero());
-  }
 
-  UIWidget *widget = ui_widget_push(frame, klass, key);
-  if (parent) {
-    DLL_APPEND(parent->first, parent->last, widget, prev, next);
-    ++parent->child_count;
-  } else {
-    frame->root = widget;
-  }
+  UIWidget *widget = arena_push(
+      &frame->arena, sizeof(UIWidget) + klass->props_size, ARENA_PUSH_NO_ZERO);
+  memory_zero(widget, sizeof(UIWidget));
+  widget->klass = klass;
   void *widget_props = widget + 1;
   memory_copy(widget_props, props, props_size);
   *(UIKey *)widget_props = key;
 
-  UIWidget *last_widget = ui_widget_get(last_frame, key);
-  // Copy state from last frame
-  if (last_widget) {
-    widget->state = last_widget->state;
+  return widget;
+}
+
+/// Append `child` as a child to `parent`.
+static void ui_widget_append(UIWidget *parent, UIWidget *child) {
+  DLL_APPEND(parent->first, parent->last, child, prev, next);
+  ++parent->child_count;
+}
+
+void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props) {
+  ASSERTF(klass->props_size == props_size,
+          "props_size (%d) does not equal to klass.props_size (%d)",
+          (int)props_size, (int)klass->props_size);
+  ASSERTF(klass->callback, "%s doesn't have callback.", klass->name);
+
+  UIWidget *widget = ui_widget_alloc(klass, props_size, props);
+
+  UIState *state = ui_state_get();
+  UIFrame *frame = state->current_frame;
+
+  UIWidget *parent = ui_widget_stack_get_top_widget(&state->widget_stack);
+  if (parent) {
+    ui_widget_append(parent, widget);
+  } else {
+    ASSERTF(!frame->root, "root widget already exists.");
+    frame->root = widget;
   }
 
   ui_widget_stack_push(&state->widget_stack, &state->build_arena, widget);
