@@ -490,16 +490,34 @@ void ui_widget_end(UIWidgetClass *klass) {
           widget->klass->name, klass->name);
 }
 
-UIWidget *ui_widget_get_current(UIWidgetClass *klass) {
+UIWidget *ui_widget_get_current(void) {
   UIState *state = ui_state_get();
   UIWidget *result = 0;
   if (state->widget_stack.current) {
     result = state->widget_stack.current->widget;
-    ASSERTF(result->klass == klass,
-            "failed to get current widget: expect %s, got %s", klass->name,
-            result->klass->name);
   }
   return result;
+}
+
+static UIWidget *ui_widget_assert_current(UIWidgetClass *klass) {
+  UIWidget *current = ui_widget_get_current();
+  ASSERTF(current, "expected widget %s, got null", klass->name);
+  ASSERTF(current->klass == klass, "expected widget %s, got %s", klass->name,
+          current->klass->name);
+  return current;
+}
+
+UIWidget *ui_widget_get_root(void) {
+  UIState *state = ui_state_get();
+  return state->current_frame->root;
+}
+
+UIWidget *ui_widget_get_last_child(void) {
+  UIWidget *current = ui_widget_get_current();
+  if (current) {
+    return current->last;
+  }
+  return 0;
 }
 
 Arena *ui_get_build_arena(void) {
@@ -869,7 +887,7 @@ void ui_container_begin(UIContainerProps *props) {
 }
 
 void ui_container_end(void) {
-  UIWidget *container = ui_widget_get_current(&ui_container_class);
+  UIWidget *container = ui_widget_assert_current(&ui_container_class);
   UIContainerProps *props = ui_widget_get_props(container, UIContainerProps);
   if (!container->first && !ui_box_constraints_is_tight(props->constraints)) {
     ui_limited_box_begin(&(UILimitedBoxProps){0});

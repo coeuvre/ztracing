@@ -235,7 +235,9 @@ struct UIWidget {
 
 void ui_widget_begin(UIWidgetClass *klass, void *props);
 void ui_widget_end(UIWidgetClass *klass);
-UIWidget *ui_widget_get_current(UIWidgetClass *klass);
+UIWidget *ui_widget_get_current(void);
+UIWidget *ui_widget_get_root(void);
+UIWidget *ui_widget_get_last_child(void);
 
 /// Get an arena for storing temporary data that needs to keep across begin and
 /// end.
@@ -361,7 +363,7 @@ static inline UIAlignment ui_alignment_top_center(void) {
 }
 
 static inline UIAlignment ui_alignment_top_right(void) {
-  return ui_alignment_make(0, 1);
+  return ui_alignment_make(1, -1);
 }
 
 static inline UIAlignment ui_alignment_center_left(void) {
