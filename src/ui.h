@@ -215,9 +215,7 @@ struct UIWidget {
   void *state;
 };
 
-void ui_widget_begin_(UIWidgetClass *klass, usize props_size, void *props);
-#define ui_widget_begin(klass, props) \
-  ui_widget_begin_(klass, sizeof(*props), props)
+void ui_widget_begin(UIWidgetClass *klass, void *props);
 void ui_widget_end(UIWidgetClass *klass);
 UIWidget *ui_widget_get_current(void);
 
@@ -228,13 +226,14 @@ UIWidget *ui_widget_get_current(void);
 Arena *ui_get_build_arena(void);
 
 static inline UIKey ui_widget_get_key(UIWidget *widget) {
-  DEBUG_ASSERT(widget->klass->props_size >= sizeof(UIKey));
   UIKey *key_ptr = (UIKey *)(widget + 1);
   return *key_ptr;
 }
 
 static inline void *ui_widget_get_props_(UIWidget *widget, usize props_size) {
-  DEBUG_ASSERT(widget->klass->props_size == props_size);
+  ASSERTF(props_size == widget->klass->props_size,
+          "%s: klass.props_size (%d) doesn't match requested props_size (%d)",
+          widget->klass->name, (int)props_size, (int)widget->klass->props_size);
   return widget + 1;
 }
 
