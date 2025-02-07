@@ -201,6 +201,24 @@ void ui_begin_frame(void) {
   frame->root = 0;
 }
 
+static void ui_widget_mount(UIWidget *widget) {
+  ASSERT(widget->status == UI_WIDGET_STATUS_UNMOUNTED);
+  UIWidgetMessageMount message = {
+      .type = UI_WIDGET_MESSAGE_MOUNT,
+  };
+  widget->klass->callback(widget, (UIWidgetMessage *)&message);
+  widget->status = UI_WIDGET_STATUS_MOUNTED;
+}
+
+static void ui_widget_unmount(UIWidget *widget) {
+  ASSERT(widget->status == UI_WIDGET_STATUS_MOUNTED);
+  UIWidgetMessageUnmount message = {
+      .type = UI_WIDGET_MESSAGE_UNMOUNT,
+  };
+  widget->klass->callback(widget, (UIWidgetMessage *)&message);
+  widget->status = UI_WIDGET_STATUS_UNMOUNTED;
+}
+
 static void ui_widget_layout(UIWidget *widget, UIBoxConstraints constraints) {
   UIWidgetMessageLayout message = {
       .type = UI_WIDGET_MESSAGE_LAYOUT,
@@ -271,6 +289,97 @@ static i32 ui_widget_callback_default(UIWidget *widget,
   return result;
 }
 
+/// Get nth child of the `widget`, starting from 0.
+static UIWidget *ui_widget_get_child(UIWidget *parent, usize n) {
+  UIWidget *child = parent->first;
+  while (child && n > 0) {
+    child = child->next;
+    n--;
+  }
+  return child;
+}
+
+static UIWidget *ui_widget_get_child_by_key(UIWidget *parent, UIKey key) {
+  UIWidget *result = 0;
+  if (!ui_key_is_zero(key)) {
+    // TODO: Use hash map to speed up the search.
+    for (UIWidget *child = parent->first; child; child = child->next) {
+      if (ui_key_is_equal(ui_widget_get_key(child), key)) {
+        result = child;
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+static bool ui_widget_is_equal(UIWidget *a, UIWidget *b) {
+  if (!a || !b) {
+    return false;
+  }
+
+  if (a->klass != b->klass) {
+    return false;
+  }
+
+  return ui_key_is_equal(ui_widget_get_key(a), ui_widget_get_key(b));
+}
+
+static void mount_widget_dfs(UIWidget *widget) {
+  ui_widget_mount(widget);
+  for (UIWidget *child = widget->first; child; child = child->next) {
+    mount_widget_dfs(child);
+  }
+}
+
+static void maybe_mount_widgets(UIWidget *current, UIWidget *last) {
+  if (!ui_widget_is_equal(current, last)) {
+    mount_widget_dfs(current);
+    return;
+  }
+
+  ASSERT(last && last->status == UI_WIDGET_STATUS_MOUNTED);
+  current->state = last->state;
+  current->status = UI_WIDGET_STATUS_MOUNTED;
+  // The state is transfered into current, effectively make last unmounted.
+  last->status = UI_WIDGET_STATUS_UNMOUNTED;
+
+  UIWidget *current_child = current->first;
+  UIWidget *last_child = last->first;
+  for (; current_child; last_child = last_child ? last_child->next : 0,
+                        current_child = current->next) {
+    UIKey key = ui_widget_get_key(current_child);
+
+    // TODO: Check for last child from global key
+
+    UIWidget *last_child_by_key = ui_widget_get_child_by_key(last, key);
+    if (last_child_by_key &&
+        last_child_by_key->status == UI_WIDGET_STATUS_UNMOUNTED) {
+      last_child_by_key = 0;
+    }
+
+    if (last_child_by_key) {
+      maybe_mount_widgets(current_child, last_child_by_key);
+    } else {
+      maybe_mount_widgets(current_child, last_child);
+    }
+  }
+}
+
+static void unmount_widgets_if_not(UIWidget *widget) {
+  if (!widget) {
+    return;
+  }
+
+  for (UIWidget *child = widget->first; child; child = child->next) {
+    unmount_widgets_if_not(child);
+  }
+
+  if (widget->status != UI_WIDGET_STATUS_UNMOUNTED) {
+    ui_widget_unmount(widget);
+  }
+}
+
 void ui_end_frame(void) {
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
@@ -280,6 +389,9 @@ void ui_end_frame(void) {
 
   // Layout and paint
   if (frame->root) {
+    maybe_mount_widgets(frame->root, state->last_frame->root);
+    unmount_widgets_if_not(state->last_frame->root);
+
     Vec2 viewport_size = vec2_sub(state->viewport_max, state->viewport_min);
     ui_widget_layout(frame->root, ui_box_constraints_make_tight(
                                       viewport_size.x, viewport_size.y));
@@ -374,15 +486,18 @@ void ui_widget_end(UIWidgetClass *klass) {
   UIWidget *widget =
       ui_widget_stack_pop(&state->widget_stack, &state->build_arena);
   ASSERTF(widget->klass == klass,
-          "Mismatched begin/end calls. Begin with %s, end with %s",
+          "mismatched begin/end calls. Begin with %s, end with %s",
           widget->klass->name, klass->name);
 }
 
-UIWidget *ui_widget_get_current(void) {
+UIWidget *ui_widget_get_current(UIWidgetClass *klass) {
   UIState *state = ui_state_get();
   UIWidget *result = 0;
   if (state->widget_stack.current) {
     result = state->widget_stack.current->widget;
+    ASSERTF(result->klass == klass,
+            "failed to get current widget: expect %s, got %s", klass->name,
+            result->klass->name);
   }
   return result;
 }
@@ -754,7 +869,7 @@ void ui_container_begin(UIContainerProps *props) {
 }
 
 void ui_container_end(void) {
-  UIWidget *container = ui_widget_get_current();
+  UIWidget *container = ui_widget_get_current(&ui_container_class);
   UIContainerProps *props = ui_widget_get_props(container, UIContainerProps);
   if (!container->first && !ui_box_constraints_is_tight(props->constraints)) {
     ui_limited_box_begin(&(UILimitedBoxProps){0});

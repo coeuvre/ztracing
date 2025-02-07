@@ -156,7 +156,10 @@ typedef struct UIPaintingContext {
 } UIPaintingContext;
 
 enum {
-  UI_WIDGET_MESSAGE_LAYOUT = 1,
+  UI_WIDGET_MESSAGE_UNKNOWN,
+  UI_WIDGET_MESSAGE_MOUNT,
+  UI_WIDGET_MESSAGE_UNMOUNT,
+  UI_WIDGET_MESSAGE_LAYOUT,
   UI_WIDGET_MESSAGE_PAINT,
   UI_WIDGET_MESSAGE_GET_PARENT_DATA,
 };
@@ -164,6 +167,14 @@ enum {
 typedef struct UIWidgetMessage {
   u32 type;
 } UIWidgetMessage;
+
+typedef struct UIWidgetMessageMount {
+  u32 type;  // UI_WIDGET_MESSAGE_MOUNT
+} UIWidgetMessageMount;
+
+typedef struct UIWidgetMessageUnmount {
+  u32 type;  // UI_WIDGET_MESSAGE_UNMOUNT
+} UIWidgetMessageUnmount;
 
 typedef struct UIWidgetMessageLayout {
   u32 type;  // UI_WIDGET_MESSAGE_LAYOUT
@@ -194,6 +205,11 @@ typedef struct UIWidgetClass {
   UIWidgetCallback *callback;
 } UIWidgetClass;
 
+typedef enum UIWidgetStatus {
+  UI_WIDGET_STATUS_UNMOUNTED,
+  UI_WIDGET_STATUS_MOUNTED,
+} UIWidgetStatus;
+
 struct UIWidget {
   UIWidgetClass *klass;
   /// Previous sibling of this widget.
@@ -204,6 +220,8 @@ struct UIWidget {
   UIWidget *first;
   /// Last child of this widget.
   UIWidget *last;
+
+  UIWidgetStatus status;
 
   u32 child_count;
 
@@ -217,7 +235,7 @@ struct UIWidget {
 
 void ui_widget_begin(UIWidgetClass *klass, void *props);
 void ui_widget_end(UIWidgetClass *klass);
-UIWidget *ui_widget_get_current(void);
+UIWidget *ui_widget_get_current(UIWidgetClass *klass);
 
 /// Get an arena for storing temporary data that needs to keep across begin and
 /// end.
