@@ -707,11 +707,11 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
 
       Vec2 wrap_size =
           vec2(should_shrink_wrap_width
-                 ? (child->size.x * (width.present ? width.value : 1.0f))
-                 : F32_INFINITY,
-             should_shrink_wrap_height
-                 ? (child->size.y * (height.present ? height.value : 1.0f))
-                 : F32_INFINITY);
+                   ? (child->size.x * (width.present ? width.value : 1.0f))
+                   : F32_INFINITY,
+               should_shrink_wrap_height
+                   ? (child->size.y * (height.present ? height.value : 1.0f))
+                   : F32_INFINITY);
 
       max_child_size = vec2_max(max_child_size, wrap_size);
     }
@@ -726,7 +726,7 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
     }
   } else {
     Vec2 size = vec2(should_shrink_wrap_width ? 0 : F32_INFINITY,
-                   should_shrink_wrap_height ? 0 : F32_INFINITY);
+                     should_shrink_wrap_height ? 0 : F32_INFINITY);
     widget->size = ui_box_constraints_constrain(constraints, size);
   }
 }
@@ -786,17 +786,47 @@ UIWidgetClass ui_center_class = {
 ///
 /// UIPadding
 ///
+typedef struct UIResolvedEdgeInsets {
+  f32 left;
+  f32 right;
+  f32 top;
+  f32 bottom;
+} UIResolvedEdgeInsets;
+
+static inline f32 ui_resolved_edge_insets_get_horizontal(
+    UIResolvedEdgeInsets edge_insets) {
+  return edge_insets.left + edge_insets.right;
+}
+
+static inline f32 ui_resolved_edge_insets_get_vertical(
+    UIResolvedEdgeInsets edge_insets) {
+  return edge_insets.top + edge_insets.bottom;
+}
+
+static inline UIBoxConstraints ui_box_constraints_deflate(
+    UIBoxConstraints constraints, UIResolvedEdgeInsets edge_insets) {
+  f32 horizontal = ui_resolved_edge_insets_get_horizontal(edge_insets);
+  f32 vertical = ui_resolved_edge_insets_get_vertical(edge_insets);
+  f32 deflated_min_width = f32_max(0, constraints.min_width - horizontal);
+  f32 deflated_min_height = f32_max(0, constraints.min_height - vertical);
+  return ui_box_constraints(
+      deflated_min_width,
+      f32_max(deflated_min_width, constraints.max_width - horizontal),
+      deflated_min_height,
+      f32_max(deflated_min_height, constraints.max_height - vertical));
+}
+
 static void ui_padding_layout(UIWidget *widget, UIPaddingProps *padding,
                               UIBoxConstraints constraints) {
   // TODO: UITextDirection
-  UIEdgeInsets resolved_padding = {
+  UIResolvedEdgeInsets resolved_padding = {
       .left = padding->padding.start,
       .right = padding->padding.end,
       .top = padding->padding.top,
       .bottom = padding->padding.bottom,
   };
-  f32 horizontal = ui_edge_insets_get_horizontal(resolved_padding);
-  f32 vertical = ui_edge_insets_get_vertical(resolved_padding);
+  f32 horizontal = ui_resolved_edge_insets_get_horizontal(resolved_padding);
+  f32 vertical = ui_resolved_edge_insets_get_vertical(resolved_padding);
   if (widget->first) {
     UIBoxConstraints inner_constraints =
         ui_box_constraints_deflate(constraints, resolved_padding);

@@ -79,14 +79,14 @@ static inline f32 ui_box_constraints_constrain_height(
 static inline Vec2 ui_box_constraints_constrain(UIBoxConstraints constraints,
                                                 Vec2 size) {
   return vec2(ui_box_constraints_constrain_width(constraints, size.x),
-            ui_box_constraints_constrain_height(constraints, size.y));
+              ui_box_constraints_constrain_height(constraints, size.y));
 }
 
 /// The biggest size that satisfies the constraints.
 static inline Vec2 ui_box_constraints_get_biggest(
     UIBoxConstraints constraints) {
   return vec2(ui_box_constraints_constrain_width(constraints, F32_INFINITY),
-            ui_box_constraints_constrain_height(constraints, F32_INFINITY));
+              ui_box_constraints_constrain_height(constraints, F32_INFINITY));
 }
 
 static inline UIBoxConstraints ui_box_constraints_flip(
@@ -370,7 +370,7 @@ static inline Vec2 ui_alignment_align_offset(UIAlignment alignment,
   f32 center_x = offset.x / 2.0f;
   f32 center_y = offset.y / 2.0f;
   return vec2(center_x + alignment.x * center_x,
-            center_y + alignment.y * center_y);
+              center_y + alignment.y * center_y);
 }
 
 static inline UIAlignment ui_alignment_top_left(void) {
@@ -448,21 +448,18 @@ static inline void ui_center_end(void) { ui_widget_end(&ui_center_class); }
 /// A widget that insets its child by the given padding.
 extern UIWidgetClass ui_padding_class;
 
-typedef struct UIEdgeInsetsDirectional {
+typedef struct UIEdgeInsets {
   f32 start;
   f32 end;
   f32 top;
   f32 bottom;
-} UIEdgeInsetsDirectional;
+} UIEdgeInsets;
 
-OPTIONAL_TYPE(UIEdgeInsetsDirectionalO, UIEdgeInsetsDirectional,
-              ui_edge_insets);
+OPTIONAL_TYPE(UIEdgeInsetsO, UIEdgeInsets, ui_edge_insets);
 
-static inline UIEdgeInsetsDirectional ui_edge_insets_directional(f32 start,
-                                                                 f32 end,
-                                                                 f32 top,
-                                                                 f32 bottom) {
-  UIEdgeInsetsDirectional result;
+static inline UIEdgeInsets ui_edge_insets(f32 start, f32 end, f32 top,
+                                          f32 bottom) {
+  UIEdgeInsets result;
   result.start = start;
   result.end = end;
   result.top = top;
@@ -470,41 +467,13 @@ static inline UIEdgeInsetsDirectional ui_edge_insets_directional(f32 start,
   return result;
 }
 
-static inline UIEdgeInsetsDirectional ui_edge_insets_all(f32 val) {
-  return ui_edge_insets_directional(val, val, val, val);
-}
-
-typedef struct UIEdgeInsets {
-  f32 left;
-  f32 right;
-  f32 top;
-  f32 bottom;
-} UIEdgeInsets;
-
-static inline f32 ui_edge_insets_get_horizontal(UIEdgeInsets edge_insets) {
-  return edge_insets.left + edge_insets.right;
-}
-
-static inline f32 ui_edge_insets_get_vertical(UIEdgeInsets edge_insets) {
-  return edge_insets.top + edge_insets.bottom;
-}
-
-static inline UIBoxConstraints ui_box_constraints_deflate(
-    UIBoxConstraints constraints, UIEdgeInsets edge_insets) {
-  f32 horizontal = ui_edge_insets_get_horizontal(edge_insets);
-  f32 vertical = ui_edge_insets_get_vertical(edge_insets);
-  f32 deflated_min_width = f32_max(0, constraints.min_width - horizontal);
-  f32 deflated_min_height = f32_max(0, constraints.min_height - vertical);
-  return ui_box_constraints(
-      deflated_min_width,
-      f32_max(deflated_min_width, constraints.max_width - horizontal),
-      deflated_min_height,
-      f32_max(deflated_min_height, constraints.max_height - vertical));
+static inline UIEdgeInsets ui_edge_insets_all(f32 val) {
+  return ui_edge_insets(val, val, val, val);
 }
 
 typedef struct UIPaddingProps {
   UIKey key;
-  UIEdgeInsetsDirectional padding;
+  UIEdgeInsets padding;
 } UIPaddingProps;
 
 static inline void ui_padding_begin(const UIPaddingProps *props) {
@@ -526,7 +495,7 @@ typedef struct UIContainerProps {
   UIKey key;
 
   UIAlignmentO alignment;
-  UIEdgeInsetsDirectionalO padding;
+  UIEdgeInsetsO padding;
   /// The color to paint behind the children.
   UIColorO color;
 
@@ -535,7 +504,7 @@ typedef struct UIContainerProps {
   /// Additional constraints to apply to the children.
   UIBoxConstraintsO constraints;
   /// Empty space to surround the decoration and children.
-  UIEdgeInsetsDirectionalO margin;
+  UIEdgeInsetsO margin;
 } UIContainerProps;
 
 static inline void ui_container_begin(const UIContainerProps *props) {
