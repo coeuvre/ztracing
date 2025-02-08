@@ -124,9 +124,34 @@ static inline UIBoxConstraints ui_box_constraints_loosen(
                             constraints.max_height);
 }
 
-static inline bool ui_box_constraints_is_tight(UIBoxConstraints constraints) {
-  return constraints.min_width >= constraints.max_width &&
-         constraints.min_height >= constraints.max_height;
+static inline bool ui_box_constraints_is_tight(UIBoxConstraints self) {
+  return self.min_width >= self.max_width && self.min_height >= self.max_height;
+}
+
+/// Creates box constraints that require the given width or height.
+static inline UIBoxConstraints ui_box_constraints_tight_for(f32o width,
+                                                            f32o height) {
+  return ui_box_constraints(width.present ? width.value : 0,
+                            width.present ? width.value : F32_INFINITY,
+                            height.present ? height.value : 0,
+                            height.present ? height.value : F32_INFINITY);
+}
+
+/// Returns new box constraints with a tight width and/or height as close to
+/// the given width and height as possible while still respecting the original
+/// box constraints.
+static inline UIBoxConstraints ui_box_constraints_tighten(UIBoxConstraints self,
+                                                          f32o width,
+                                                          f32o height) {
+  return ui_box_constraints(
+      width.present ? f32_clamp(width.value, self.min_width, self.max_width)
+                    : self.min_width,
+      width.present ? f32_clamp(width.value, self.min_width, self.max_width)
+                    : self.max_width,
+      height.present ? f32_clamp(height.value, self.min_height, self.max_height)
+                     : self.min_height,
+      height.present ? f32_clamp(height.value, self.min_height, self.max_height)
+                     : self.max_height);
 }
 
 typedef struct UIColor {
@@ -493,6 +518,9 @@ extern UIWidgetClass ui_container_class;
 
 typedef struct UIContainerProps {
   UIKey key;
+
+  f32o width;
+  f32o height;
 
   UIAlignmentO alignment;
   UIEdgeInsetsO padding;

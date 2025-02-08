@@ -882,6 +882,17 @@ UIWidgetClass ui_container_class = {
 void ui_container_end(void) {
   UIWidget *container = ui_widget_assert_current(&ui_container_class);
   UIContainerProps *props = ui_widget_get_props(container, UIContainerProps);
+
+  if (props->width.present || props->height.present) {
+    if (props->constraints.present) {
+      props->constraints = ui_box_constraints_some(ui_box_constraints_tighten(
+          props->constraints.value, props->width, props->height));
+    } else {
+      props->constraints = ui_box_constraints_some(
+          ui_box_constraints_tight_for(props->width, props->height));
+    }
+  }
+
   if (!container->first &&
       (props->constraints.present &&
        !ui_box_constraints_is_tight(props->constraints.value))) {

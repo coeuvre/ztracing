@@ -344,7 +344,8 @@ test "Layout, alignment" {
         });
         {
             c.ui_container_begin(&.{
-                .constraints = c.ui_box_constraints_some(c.ui_box_constraints_tight(50, 50)),
+                .width = c.f32_some(50),
+                .height = c.f32_some(50),
             });
             c.ui_container_end();
             container = c.ui_widget_get_last_child();
