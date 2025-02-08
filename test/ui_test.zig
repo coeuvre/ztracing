@@ -501,6 +501,40 @@ test "UIConstrainedBox - apply additional constraints (3)" {
     try expect_widget_size(container, c.vec2(60, 70));
 }
 
+test "UIUnconstrainedBox - child is small" {
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
+
+    c.ui_begin_frame();
+    c.ui_unconstrained_box_begin(&.{});
+    c.ui_container_begin(&.{
+        .width = c.f32_some(10),
+        .height = c.f32_some(10),
+    });
+    c.ui_container_end();
+    const container = c.ui_widget_get_last_child();
+    c.ui_unconstrained_box_end();
+    c.ui_end_frame();
+
+    try expect_widget_size(container, c.vec2(10, 10));
+}
+
+test "UIUnconstrainedBox - child is large" {
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
+
+    c.ui_begin_frame();
+    c.ui_unconstrained_box_begin(&.{});
+    c.ui_container_begin(&.{
+        .width = c.f32_some(1000),
+        .height = c.f32_some(10),
+    });
+    c.ui_container_end();
+    const container = c.ui_widget_get_last_child();
+    c.ui_unconstrained_box_end();
+    c.ui_end_frame();
+
+    try expect_widget_size(container, c.vec2(1000, 10));
+}
+
 // test "Layout, with one child, size around it" {
 //     c.ui_init();
 //     defer c.ui_quit();

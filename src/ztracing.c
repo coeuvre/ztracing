@@ -98,12 +98,9 @@
 // }
 
 static void build_ui(f32 dt, f32 frame_time) {
-  ui_center_begin(&(UICenterProps){0});
-  {
-    ui_container_begin(&(UIContainerProps){
-        .color = ui_color_some(ui_color(0, 1, 0, 1)),
-        .padding = ui_edge_insets_some(ui_edge_insets_all(20)),
-    });
+  // ui_center_begin(&(UICenterProps){0});
+  // {
+    ui_unconstrained_box_begin(&(UIUnconstrainedBoxProps){0});
 
     ui_container_begin(&(UIContainerProps){
         .width = f32_some(30),
@@ -112,9 +109,9 @@ static void build_ui(f32 dt, f32 frame_time) {
     });
     ui_container_end();
 
-    ui_container_end();
-  }
-  ui_center_end();
+    ui_unconstrained_box_end();
+  // }
+  // ui_center_end();
 }
 
 void do_frame(void) {

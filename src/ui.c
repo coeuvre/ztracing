@@ -247,16 +247,20 @@ static bool ui_widget_get_parent_data(UIWidget *widget, u32 parent_data_id,
   return widget->klass->callback(widget, (UIWidgetMessage *)&message);
 }
 
-static void ui_widget_layout_default(UIWidget *widget,
-                                     UIBoxConstraints constraints) {
-  // The default layout just stacks children.
+static Vec2 ui_widget_layout_stack_children(UIWidget *widget,
+                                            UIBoxConstraints constraints) {
   Vec2 max_child_size = vec2_zero();
   for (UIWidget *child = widget->first; child; child = child->next) {
     ui_widget_layout(child, constraints);
-
     max_child_size = vec2_max(max_child_size, child->size);
   }
+  return max_child_size;
+}
 
+static void ui_widget_layout_default(UIWidget *widget,
+                                     UIBoxConstraints constraints) {
+  // The default layout just stacks children.
+  Vec2 max_child_size = ui_widget_layout_stack_children(widget, constraints);
   widget->size = ui_box_constraints_constrain(constraints, max_child_size);
 }
 
@@ -552,13 +556,8 @@ static void ui_limited_box_layout(UIWidget *widget,
       ui_limited_box_limit_constraints(limited_box, constraints);
 
   if (widget->first) {
-    Vec2 max_child_size = vec2_zero();
-    for (UIWidget *child = widget->first; child; child = child->next) {
-      ui_widget_layout(child, limited_constraints);
-
-      Vec2 size = ui_box_constraints_constrain(constraints, child->size);
-      max_child_size = vec2_max(max_child_size, size);
-    }
+    Vec2 max_child_size =
+        ui_widget_layout_stack_children(widget, limited_constraints);
     widget->size = ui_box_constraints_constrain(constraints, max_child_size);
   } else {
     widget->size =
@@ -642,13 +641,8 @@ static void ui_constrained_box_layout(UIWidget *widget,
                                       UIBoxConstraints constraints) {
   UIBoxConstraints enforced_constraints =
       ui_box_constraints_enforce(constrained_box->constraints, constraints);
-
-  Vec2 max_child_size = vec2_zero();
-  for (UIWidget *child = widget->first; child; child = child->next) {
-    ui_widget_layout(child, enforced_constraints);
-    max_child_size = vec2_max(max_child_size, child->size);
-  }
-
+  Vec2 max_child_size =
+      ui_widget_layout_stack_children(widget, enforced_constraints);
   widget->size =
       ui_box_constraints_constrain(enforced_constraints, max_child_size);
 }
@@ -680,6 +674,14 @@ UIWidgetClass ui_constrained_box_class = {
 ///
 /// UIAlign
 ///
+static void ui_widget_align_children(UIWidget *widget, UIAlignment alignment) {
+  // TODO: UITextDirection
+  for (UIWidget *child = widget->first; child; child = child->next) {
+    child->offset = ui_alignment_align_offset(
+        alignment, vec2_sub(widget->size, child->size));
+  }
+}
+
 static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
                             UIBoxConstraints constraints) {
   f32o width = align->width;
@@ -718,12 +720,7 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
 
     widget->size = ui_box_constraints_constrain(constraints, max_child_size);
 
-    // TODO: UITextDirection
-    UIAlignment alignment = align->alignment;
-    for (UIWidget *child = widget->first; child; child = child->next) {
-      child->offset = ui_alignment_align_offset(
-          alignment, vec2_sub(widget->size, child->size));
-    }
+    ui_widget_align_children(widget, align->alignment);
   } else {
     Vec2 size = vec2(should_shrink_wrap_width ? 0 : F32_INFINITY,
                      should_shrink_wrap_height ? 0 : F32_INFINITY);
@@ -750,6 +747,49 @@ UIWidgetClass ui_align_class = {
     .name = "Align",
     .props_size = sizeof(UIAlignProps),
     .callback = &ui_align_callback,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIUnconstrainedBox
+///
+/// A widget that imposes no constraints on its child, allowing it to render
+/// at its "natural" size.
+static void ui_unconstrained_box_layout(
+    UIWidget *widget, UIUnconstrainedBoxProps *unconstrained_box,
+    UIBoxConstraints constraints) {
+  (void)constraints;
+
+  UIBoxConstraints child_constraints =
+      ui_box_constraints(0, F32_INFINITY, 0, F32_INFINITY);
+  Vec2 max_child_size =
+      ui_widget_layout_stack_children(widget, child_constraints);
+  widget->size = ui_box_constraints_constrain(constraints, max_child_size);
+
+  ui_widget_align_children(widget, unconstrained_box->alignment);
+}
+
+static i32 ui_unconstrained_box_callback(UIWidget *widget,
+                                         UIWidgetMessage *message) {
+  i32 result = 0;
+  switch (message->type) {
+    case UI_WIDGET_MESSAGE_LAYOUT: {
+      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+      ui_unconstrained_box_layout(
+          widget, ui_widget_get_props(widget, UIUnconstrainedBoxProps),
+          layout->constraints);
+    } break;
+    default: {
+      result = ui_widget_callback_default(widget, message);
+    } break;
+  }
+  return result;
+}
+
+UIWidgetClass ui_unconstrained_box_class = {
+    .name = "UnconstrainedBox",
+    .props_size = sizeof(UIUnconstrainedBoxProps),
+    .callback = &ui_unconstrained_box_callback,
 };
 
 ////////////////////////////////////////////////////////////////////////////////

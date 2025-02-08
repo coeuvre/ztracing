@@ -445,6 +445,28 @@ static inline void ui_align_end(void) { ui_widget_end(&ui_align_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
+/// UIUnconstrainedBox
+///
+/// A widget that imposes no constraints on its child, allowing it to render
+/// at its "natural" size.
+extern UIWidgetClass ui_unconstrained_box_class;
+
+typedef struct UIUnconstrainedBoxProps {
+  UIKey key;
+  UIAlignment alignment;
+} UIUnconstrainedBoxProps;
+
+static inline void ui_unconstrained_box_begin(
+    const UIUnconstrainedBoxProps *props) {
+  ui_widget_begin(&ui_unconstrained_box_class, props);
+}
+
+static inline void ui_unconstrained_box_end(void) {
+  ui_widget_end(&ui_unconstrained_box_class);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
 /// UICenter
 ///
 /// A widget that centers its child within itself.
