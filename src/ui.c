@@ -393,8 +393,8 @@ void ui_end_frame(void) {
     unmount_widgets_if_not(state->last_frame->root);
 
     Vec2 viewport_size = vec2_sub(state->viewport_max, state->viewport_min);
-    ui_widget_layout(frame->root, ui_box_constraints_make_tight(
-                                      viewport_size.x, viewport_size.y));
+    ui_widget_layout(frame->root, ui_box_constraints_tight(viewport_size.x,
+                                                           viewport_size.y));
 
     UIPaintingContext context = {0};
     ui_widget_paint(frame->root, &context, state->viewport_min);
@@ -432,7 +432,7 @@ static UIKey ui_key_from_u32(UIKey seed, u32 num) {
 }
 
 // TODO: Global Key
-static UIKey ui_key_make_local(UIKey seed, u32 seq, const char *tag, Str8 id) {
+static UIKey ui_key_local(UIKey seed, u32 seq, const char *tag, Str8 id) {
   // key = seed + tag + (id || seq)
   UIKey key = seed;
   key = ui_key_from_str8(key, str8_from_cstr(tag));
@@ -682,19 +682,21 @@ UIWidgetClass ui_constrained_box_class = {
 ///
 static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
                             UIBoxConstraints constraints) {
-  UISizeFactor factor = align->factor;
-  if (factor.width_present) {
-    ASSERTF(align->factor.width >= 0, "factor.widget must be positive, got %f",
-            align->factor.width);
+  f32o width = align->width;
+  f32o height = align->height;
+
+  if (width.present) {
+    ASSERTF(width.value >= 0, "factor.widget must be positive, got %f",
+            width.value);
   }
-  if (factor.height_present) {
-    ASSERTF(factor.height >= 0, "height_factor must be positive, got %f",
-            factor.height);
+  if (height.present) {
+    ASSERTF(align->height.value >= 0, "height_factor must be positive, got %f",
+            align->height.value);
   }
   bool should_shrink_wrap_width =
-      factor.width_present || f32_is_infinity(constraints.max_width);
+      width.present || f32_is_infinity(constraints.max_width);
   bool should_shrink_wrap_height =
-      factor.height_present || f32_is_infinity(constraints.max_height);
+      height.present || f32_is_infinity(constraints.max_height);
   UIBoxConstraints child_constraints = ui_box_constraints_loosen(constraints);
 
   if (widget->first) {
@@ -703,13 +705,13 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
     for (UIWidget *child = widget->first; child; child = child->next) {
       ui_widget_layout(child, child_constraints);
 
-      Vec2 wrap_size = v2(
-          should_shrink_wrap_width
-              ? (child->size.x * (factor.width_present ? factor.width : 1.0f))
-              : F32_INFINITY,
-          should_shrink_wrap_height
-              ? (child->size.y * (factor.height_present ? factor.height : 1.0f))
-              : F32_INFINITY);
+      Vec2 wrap_size =
+          v2(should_shrink_wrap_width
+                 ? (child->size.x * (width.present ? width.value : 1.0f))
+                 : F32_INFINITY,
+             should_shrink_wrap_height
+                 ? (child->size.y * (height.present ? height.value : 1.0f))
+                 : F32_INFINITY);
 
       max_child_size = vec2_max(max_child_size, wrap_size);
     }
@@ -762,7 +764,8 @@ static i32 ui_center_callback(UIWidget *widget, UIWidgetMessage *message) {
       UICenterProps *center = ui_widget_get_props(widget, UICenterProps);
       UIAlignProps align = {
           .key = center->key,
-          .factor = center->factor,
+          .width = center->width,
+          .height = center->height,
       };
       ui_align_layout(widget, &align, layout->constraints);
     } break;
@@ -849,18 +852,20 @@ UIWidgetClass ui_container_class = {
 void ui_container_end(void) {
   UIWidget *container = ui_widget_assert_current(&ui_container_class);
   UIContainerProps *props = ui_widget_get_props(container, UIContainerProps);
-  if (!container->first && !ui_box_constraints_is_tight(props->constraints)) {
+  if (!container->first &&
+      (props->constraints.present &&
+       !ui_box_constraints_is_tight(props->constraints.value))) {
     ui_limited_box_begin(&(UILimitedBoxProps){0});
     ui_constrained_box_begin(&(UIConstrainedBoxProps){
-        .constraints = ui_box_constraints_make(F32_INFINITY, F32_INFINITY,
-                                               F32_INFINITY, F32_INFINITY),
+        .constraints = ui_box_constraints(F32_INFINITY, F32_INFINITY,
+                                          F32_INFINITY, F32_INFINITY),
     });
     ui_constrained_box_end();
     ui_limited_box_end();
   } else if (props->alignment.present) {
     UIWidgetStash stash = {0};
     ui_widget_stash_save(&stash, container);
-    ui_align_begin(&(UIAlignProps){.alignment = props->alignment});
+    ui_align_begin(&(UIAlignProps){.alignment = props->alignment.value});
     ui_align_end();
     ui_widget_stash_apply(&stash, ui_widget_find_first_leaf(container));
   }
@@ -869,7 +874,7 @@ void ui_container_end(void) {
     UIWidgetStash stash = {0};
     ui_widget_stash_save(&stash, container);
     ui_padding_begin(&(UIPaddingProps){
-        .padding = props->padding,
+        .padding = props->padding.value,
     });
     ui_padding_end();
     ui_widget_stash_apply(&stash, ui_widget_find_first_leaf(container));
@@ -879,7 +884,7 @@ void ui_container_end(void) {
     UIWidgetStash stash = {0};
     ui_widget_stash_save(&stash, container);
     ui_colored_box_begin(&(UIColoredBoxProps){
-        .color = props->color,
+        .color = props->color.value,
     });
     ui_colored_box_end();
     ui_widget_stash_apply(&stash, ui_widget_find_first_leaf(container));
@@ -889,7 +894,7 @@ void ui_container_end(void) {
     UIWidgetStash stash = {0};
     ui_widget_stash_save(&stash, container);
     ui_constrained_box_begin(&(UIConstrainedBoxProps){
-        .constraints = props->constraints,
+        .constraints = props->constraints.value,
     });
     ui_constrained_box_end();
     ui_widget_stash_apply(&stash, ui_widget_find_first_leaf(container));
@@ -899,7 +904,7 @@ void ui_container_end(void) {
     UIWidgetStash stash = {0};
     ui_widget_stash_save(&stash, container);
     ui_padding_begin(&(UIPaddingProps){
-        .padding = props->margin,
+        .padding = props->margin.value,
     });
     ui_padding_end();
     ui_widget_stash_apply(&stash, ui_widget_find_first_leaf(container));
@@ -946,7 +951,7 @@ UIWidgetClass ui_flexible_vtable = {
 ///
 /// UIFlex
 ///
-static inline UIBoxConstraints ui_box_constraints_make_for_non_flex_child(
+static inline UIBoxConstraints ui_box_constraints_for_non_flex_child(
     UIFlexProps *flex, UIBoxConstraints constraints) {
   bool should_fill_cross_axis = false;
   if (flex->cross_axis_alignment == UI_CROSS_AXIS_ALIGNMENT_STRETCH) {
@@ -957,7 +962,7 @@ static inline UIBoxConstraints ui_box_constraints_make_for_non_flex_child(
   switch (flex->direction) {
     case UI_AXIS_HORIZONTAL: {
       if (should_fill_cross_axis) {
-        result = ui_box_constraints_make_tight_height(constraints.max_height);
+        result = ui_box_constraints_tight_height(constraints.max_height);
       } else {
         result = (UIBoxConstraints){
             .min_width = 0,
@@ -969,7 +974,7 @@ static inline UIBoxConstraints ui_box_constraints_make_for_non_flex_child(
     } break;
     case UI_AXIS_VERTICAL: {
       if (should_fill_cross_axis) {
-        result = ui_box_constraints_make_tight_width(constraints.max_width);
+        result = ui_box_constraints_tight_width(constraints.max_width);
       } else {
         result = (UIBoxConstraints){
             .min_width = 0,
@@ -985,7 +990,7 @@ static inline UIBoxConstraints ui_box_constraints_make_for_non_flex_child(
   return result;
 }
 
-static inline UIBoxConstraints ui_box_constraints_make_for_flex_child(
+static inline UIBoxConstraints ui_box_constraints_for_flex_child(
     UIFlexProps *flex, UIBoxConstraints constraints, f32 max_child_extent,
     UIWidgetParentDataFlex data) {
   DEBUG_ASSERT(data.flex > 0);
@@ -1022,7 +1027,7 @@ typedef struct AxisSize {
   f32 cross;
 } AxisSize;
 
-static inline AxisSize axis_size_make(f32 main, f32 cross) {
+static inline AxisSize axis_size(f32 main, f32 cross) {
   return (AxisSize){.main = main, .cross = cross};
 }
 
@@ -1041,10 +1046,10 @@ static inline Vec2 convert_size(Vec2 size, UIAxis direction) {
 
 static inline AxisSize axis_size_from_size(Vec2 size, UIAxis direction) {
   Vec2 converted = convert_size(size, direction);
-  return axis_size_make(converted.x, converted.y);
+  return axis_size(converted.x, converted.y);
 }
 
-static AxisSize axis_size_constrains(AxisSize axis_size,
+static AxisSize axis_size_constrains(AxisSize size,
                                      UIBoxConstraints constraints,
                                      UIAxis direction) {
   UIBoxConstraints effective_constraints = constraints;
@@ -1052,12 +1057,12 @@ static AxisSize axis_size_constrains(AxisSize axis_size,
     effective_constraints = ui_box_constraints_flip(constraints);
   }
   Vec2 constrained_size = ui_box_constraints_constrain(
-      effective_constraints, v2(axis_size.main, axis_size.cross));
-  return axis_size_make(constrained_size.x, constrained_size.y);
+      effective_constraints, v2(size.main, size.cross));
+  return axis_size(constrained_size.x, constrained_size.y);
 }
 
 typedef struct UIFlexLayoutSize {
-  AxisSize axis_size;
+  AxisSize size;
   f32 main_axis_free_space;
   bool can_flex;
   f32 space_per_flex;
@@ -1082,7 +1087,7 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
   }
   bool can_flex = f32_is_finite(max_main_size);
   UIBoxConstraints non_flex_child_constraints =
-      ui_box_constraints_make_for_non_flex_child(flex, constraints);
+      ui_box_constraints_for_non_flex_child(flex, constraints);
   // TODO: Baseline aligned
 
   // The first pass lays out non-flex children and computes total flex.
@@ -1091,7 +1096,7 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
   // Initially, accumulated_size is the sum of the spaces between children in
   // the main axis.
   AxisSize accumulated_size =
-      axis_size_make(flex->spacing * (widget->child_count - 1), 0.0f);
+      axis_size(flex->spacing * (widget->child_count - 1), 0.0f);
   for (UIWidget *child = widget->first; child; child = child->next) {
     i32 child_flex = 0;
     if (can_flex) {
@@ -1134,7 +1139,7 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
     f32 max_child_extent = space_per_flex * data.flex;
     DEBUG_ASSERT(data.fit == UI_FLEX_FIT_LOOSE ||
                  max_child_extent < F32_INFINITY);
-    UIBoxConstraints child_constraints = ui_box_constraints_make_for_flex_child(
+    UIBoxConstraints child_constraints = ui_box_constraints_for_flex_child(
         flex, constraints, max_child_extent, data);
     ui_widget_layout(child, child_constraints);
     AxisSize child_size = axis_size_from_size(child->size, flex->direction);
@@ -1152,14 +1157,13 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
     ideal_main_size = accumulated_size.main;
   }
 
-  AxisSize axis_size = axis_size_make(ideal_main_size, accumulated_size.cross);
-  AxisSize constrained_axis_size =
-      axis_size_constrains(axis_size, constraints, flex->direction);
+  AxisSize size = axis_size(ideal_main_size, accumulated_size.cross);
+  AxisSize constrained_size =
+      axis_size_constrains(size, constraints, flex->direction);
 
   return (UIFlexLayoutSize){
-      .axis_size = constrained_axis_size,
-      .main_axis_free_space =
-          constrained_axis_size.main - accumulated_size.main,
+      .size = constrained_size,
+      .main_axis_free_space = constrained_size.main - accumulated_size.main,
       .can_flex = can_flex,
       .space_per_flex = can_flex ? space_per_flex : 0,
   };
@@ -1267,9 +1271,9 @@ static f32 ui_flex_get_main_size(Vec2 size, UIAxis direction) {
 static void ui_flex_layout(UIWidget *widget, UIFlexProps *flex,
                            UIBoxConstraints constraints) {
   UIFlexLayoutSize sizes = ui_flex_compute_size(widget, flex, constraints);
-  f32 cross_axis_extent = sizes.axis_size.cross;
-  widget->size = convert_size(v2(sizes.axis_size.main, sizes.axis_size.cross),
-                              flex->direction);
+  f32 cross_axis_extent = sizes.size.cross;
+  widget->size =
+      convert_size(v2(sizes.size.main, sizes.size.cross), flex->direction);
   // TODO: Handle overflow.
 
   f32 remaining_space = f32_max(0.0f, sizes.main_axis_free_space);

@@ -45,4 +45,16 @@ static inline usize usize_max(usize a, usize b) {
 #define THREAD_LOCAL __thread
 #endif
 
+#define OPTIONAL_TYPE(Name, Type, prefix)           \
+  typedef struct Name {                             \
+    bool present;                                   \
+    Type value;                                     \
+  } Name;                                           \
+                                                    \
+  static inline Name prefix##_some(Type value) {    \
+    return (Name){.present = true, .value = value}; \
+  }                                                 \
+                                                    \
+  static inline Name prefix##_none(void) { return (Name){0}; }
+
 #endif  // ZTRACING_SRC_TYPES_H_

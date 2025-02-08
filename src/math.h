@@ -9,6 +9,8 @@
 
 #define F32_INFINITY ((f32)(INFINITY))
 
+OPTIONAL_TYPE(f32o, f32, f32);
+
 static inline bool f32_is_finite(f32 a) { return a != F32_INFINITY; }
 static inline bool f32_is_infinity(f32 a) { return a == F32_INFINITY; }
 

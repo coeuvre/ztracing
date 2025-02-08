@@ -303,9 +303,9 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 test "Layout, root has the same size as the screen" {
     c.ui_set_viewport(c.v2(0, 0), c.v2(100, 100));
 
-    const constraints: []const c.UIBoxConstraints = &.{
-        .{},
-        c.ui_box_constraints_make_tight(100, 100),
+    const constraints: []const c.UIBoxConstraintsO = &.{
+        c.ui_box_constraints_none(),
+        c.ui_box_constraints_some(c.ui_box_constraints_tight(100, 100)),
     };
 
     for (constraints) |con| {
@@ -344,7 +344,7 @@ test "Layout, alignment" {
         });
         {
             c.ui_container_begin(&.{
-                .constraints = c.ui_box_constraints_make_tight(50, 50),
+                .constraints = c.ui_box_constraints_some(c.ui_box_constraints_tight(50, 50)),
             });
             c.ui_container_end();
             container = c.ui_widget_get_last_child();

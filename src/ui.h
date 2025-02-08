@@ -26,19 +26,18 @@ static inline bool ui_key_is_equal(UIKey a, UIKey b) {
 typedef struct UIWidget UIWidget;
 
 typedef struct UIBoxConstraints {
-  bool present;
   f32 min_width;
   f32 max_width;
   f32 min_height;
   f32 max_height;
 } UIBoxConstraints;
 
-static inline UIBoxConstraints ui_box_constraints_make(f32 min_width,
-                                                       f32 max_width,
-                                                       f32 min_height,
-                                                       f32 max_height) {
+OPTIONAL_TYPE(UIBoxConstraintsO, UIBoxConstraints, ui_box_constraints);
+
+static inline UIBoxConstraints ui_box_constraints(f32 min_width, f32 max_width,
+                                                  f32 min_height,
+                                                  f32 max_height) {
   UIBoxConstraints result;
-  result.present = true;
   result.min_width = min_width;
   result.max_width = max_width;
   result.min_height = min_height;
@@ -47,20 +46,18 @@ static inline UIBoxConstraints ui_box_constraints_make(f32 min_width,
 }
 
 /// Creates box constraints that is respected only by the given size.
-static inline UIBoxConstraints ui_box_constraints_make_tight(f32 width,
-                                                             f32 height) {
-  return ui_box_constraints_make(width, width, height, height);
+static inline UIBoxConstraints ui_box_constraints_tight(f32 width, f32 height) {
+  return ui_box_constraints(width, width, height, height);
 }
 
 /// Creates box constraints that require the given width.
-static inline UIBoxConstraints ui_box_constraints_make_tight_width(f32 width) {
-  return ui_box_constraints_make(width, width, 0, F32_INFINITY);
+static inline UIBoxConstraints ui_box_constraints_tight_width(f32 width) {
+  return ui_box_constraints(width, width, 0, F32_INFINITY);
 }
 
 /// Creates box constraints that require the given height.
-static inline UIBoxConstraints ui_box_constraints_make_tight_height(
-    f32 height) {
-  return ui_box_constraints_make(0, F32_INFINITY, height, height);
+static inline UIBoxConstraints ui_box_constraints_tight_height(f32 height) {
+  return ui_box_constraints(0, F32_INFINITY, height, height);
 }
 
 /// Returns the width that both satisfies the constraints and is as close as
@@ -94,8 +91,8 @@ static inline Vec2 ui_box_constraints_get_biggest(
 
 static inline UIBoxConstraints ui_box_constraints_flip(
     UIBoxConstraints constraints) {
-  return ui_box_constraints_make(constraints.min_height, constraints.max_height,
-                                 constraints.min_width, constraints.max_width);
+  return ui_box_constraints(constraints.min_height, constraints.max_height,
+                            constraints.min_width, constraints.max_width);
 }
 
 static inline bool ui_box_constraints_has_bounded_width(
@@ -112,7 +109,7 @@ static inline bool ui_box_constraints_has_bounded_height(
 /// as close as possible to the original constraints.
 static inline UIBoxConstraints ui_box_constraints_enforce(
     UIBoxConstraints self, UIBoxConstraints constraints) {
-  return ui_box_constraints_make(
+  return ui_box_constraints(
       f32_clamp(self.min_width, constraints.min_width, constraints.max_width),
       f32_clamp(self.max_width, constraints.min_width, constraints.max_width),
       f32_clamp(self.min_height, constraints.min_height,
@@ -123,27 +120,26 @@ static inline UIBoxConstraints ui_box_constraints_enforce(
 
 static inline UIBoxConstraints ui_box_constraints_loosen(
     UIBoxConstraints constraints) {
-  return ui_box_constraints_make(0, constraints.max_width, 0,
-                                 constraints.max_height);
+  return ui_box_constraints(0, constraints.max_width, 0,
+                            constraints.max_height);
 }
 
 static inline bool ui_box_constraints_is_tight(UIBoxConstraints constraints) {
-  return constraints.present &&
-         constraints.min_width >= constraints.max_width &&
+  return constraints.min_width >= constraints.max_width &&
          constraints.min_height >= constraints.max_height;
 }
 
 typedef struct UIColor {
-  bool present;
   f32 r;
   f32 g;
   f32 b;
   f32 a;
 } UIColor;
 
-static inline UIColor ui_color_make(f32 r, f32 g, f32 b, f32 a) {
+OPTIONAL_TYPE(UIColorO, UIColor, ui_color);
+
+static inline UIColor ui_color(f32 r, f32 g, f32 b, f32 a) {
   UIColor color;
-  color.present = true;
   color.r = r;
   color.g = g;
   color.b = b;
@@ -356,14 +352,14 @@ extern UIWidgetClass ui_align_class;
 /// the point (x * w/2 + w/2, y * h/2 + h/2) in the coordinate system of the
 /// rectangle.
 typedef struct UIAlignment {
-  bool present;
   f32 x;
   f32 y;
 } UIAlignment;
 
-static inline UIAlignment ui_alignment_make(f32 x, f32 y) {
+OPTIONAL_TYPE(UIAlignmentO, UIAlignment, ui_alignment);
+
+static inline UIAlignment ui_alignment(f32 x, f32 y) {
   UIAlignment alignment;
-  alignment.present = true;
   alignment.x = x;
   alignment.y = y;
   return alignment;
@@ -378,52 +374,46 @@ static inline Vec2 ui_alignment_align_offset(UIAlignment alignment,
 }
 
 static inline UIAlignment ui_alignment_top_left(void) {
-  return ui_alignment_make(-1, -1);
+  return ui_alignment(-1, -1);
 }
 
 static inline UIAlignment ui_alignment_top_center(void) {
-  return ui_alignment_make(0, -1);
+  return ui_alignment(0, -1);
 }
 
 static inline UIAlignment ui_alignment_top_right(void) {
-  return ui_alignment_make(1, -1);
+  return ui_alignment(1, -1);
 }
 
 static inline UIAlignment ui_alignment_center_left(void) {
-  return ui_alignment_make(-1, 0);
+  return ui_alignment(-1, 0);
 }
 
 static inline UIAlignment ui_alignment_center(void) {
-  return ui_alignment_make(0, 0);
+  return ui_alignment(0, 0);
 }
 
 static inline UIAlignment ui_alignment_center_right(void) {
-  return ui_alignment_make(1, 0);
+  return ui_alignment(1, 0);
 }
 
 static inline UIAlignment ui_alignment_bottom_left(void) {
-  return ui_alignment_make(-1, 1);
+  return ui_alignment(-1, 1);
 }
 
 static inline UIAlignment ui_alignment_bottom_center(void) {
-  return ui_alignment_make(0, 1);
+  return ui_alignment(0, 1);
 }
 
 static inline UIAlignment ui_alignment_bottom_right(void) {
-  return ui_alignment_make(1, 1);
+  return ui_alignment(1, 1);
 }
-
-typedef struct UISizeFactor {
-  bool width_present;
-  bool height_present;
-  f32 width;
-  f32 height;
-} UISizeFactor;
 
 typedef struct UIAlignProps {
   UIKey key;
   UIAlignment alignment;
-  UISizeFactor factor;
+  f32o width;
+  f32o height;
 } UIAlignProps;
 
 static inline void ui_align_begin(const UIAlignProps *props) {
@@ -441,7 +431,8 @@ extern UIWidgetClass ui_center_class;
 
 typedef struct UICenterProps {
   UIKey key;
-  UISizeFactor factor;
+  f32o width;
+  f32o height;
 } UICenterProps;
 
 static inline void ui_center_begin(const UICenterProps *props) {
@@ -458,17 +449,20 @@ static inline void ui_center_end(void) { ui_widget_end(&ui_center_class); }
 extern UIWidgetClass ui_padding_class;
 
 typedef struct UIEdgeInsetsDirectional {
-  bool present;
   f32 start;
   f32 end;
   f32 top;
   f32 bottom;
 } UIEdgeInsetsDirectional;
 
-static inline UIEdgeInsetsDirectional ui_edge_insets_directional_make(
-    f32 start, f32 end, f32 top, f32 bottom) {
+OPTIONAL_TYPE(UIEdgeInsetsDirectionalO, UIEdgeInsetsDirectional,
+              ui_edge_insets);
+
+static inline UIEdgeInsetsDirectional ui_edge_insets_directional(f32 start,
+                                                                 f32 end,
+                                                                 f32 top,
+                                                                 f32 bottom) {
   UIEdgeInsetsDirectional result;
-  result.present = true;
   result.start = start;
   result.end = end;
   result.top = top;
@@ -477,7 +471,7 @@ static inline UIEdgeInsetsDirectional ui_edge_insets_directional_make(
 }
 
 static inline UIEdgeInsetsDirectional ui_edge_insets_all(f32 val) {
-  return ui_edge_insets_directional_make(val, val, val, val);
+  return ui_edge_insets_directional(val, val, val, val);
 }
 
 typedef struct UIEdgeInsets {
@@ -501,7 +495,7 @@ static inline UIBoxConstraints ui_box_constraints_deflate(
   f32 vertical = ui_edge_insets_get_vertical(edge_insets);
   f32 deflated_min_width = f32_max(0, constraints.min_width - horizontal);
   f32 deflated_min_height = f32_max(0, constraints.min_height - vertical);
-  return ui_box_constraints_make(
+  return ui_box_constraints(
       deflated_min_width,
       f32_max(deflated_min_width, constraints.max_width - horizontal),
       deflated_min_height,
@@ -531,17 +525,17 @@ extern UIWidgetClass ui_container_class;
 typedef struct UIContainerProps {
   UIKey key;
 
-  UIAlignment alignment;
-  UIEdgeInsetsDirectional padding;
+  UIAlignmentO alignment;
+  UIEdgeInsetsDirectionalO padding;
   /// The color to paint behind the children.
-  UIColor color;
+  UIColorO color;
 
   // TODO: Decoration
 
   /// Additional constraints to apply to the children.
-  UIBoxConstraints constraints;
+  UIBoxConstraintsO constraints;
   /// Empty space to surround the decoration and children.
-  UIEdgeInsetsDirectional margin;
+  UIEdgeInsetsDirectionalO margin;
 } UIContainerProps;
 
 static inline void ui_container_begin(const UIContainerProps *props) {
