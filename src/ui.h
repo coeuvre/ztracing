@@ -62,47 +62,44 @@ static inline UIBoxConstraints ui_box_constraints_tight_height(f32 height) {
 
 /// Returns the width that both satisfies the constraints and is as close as
 /// possible to the given width.
-static inline f32 ui_box_constraints_constrain_width(
-    UIBoxConstraints constraints, f32 width) {
-  return f32_clamp(width, constraints.min_width, constraints.max_width);
+static inline f32 ui_box_constraints_constrain_width(UIBoxConstraints self,
+                                                     f32 width) {
+  return f32_clamp(width, self.min_width, self.max_width);
 }
 
 /// Returns the height that both satisfies the constraints and is as close as
 /// possible to the given height.
-static inline f32 ui_box_constraints_constrain_height(
-    UIBoxConstraints constraints, f32 height) {
-  return f32_clamp(height, constraints.min_height, constraints.max_height);
+static inline f32 ui_box_constraints_constrain_height(UIBoxConstraints self,
+                                                      f32 height) {
+  return f32_clamp(height, self.min_height, self.max_height);
 }
 
 /// Returns the size that both satisfies the constraints and is as close as
 /// possible to the given size.
-static inline Vec2 ui_box_constraints_constrain(UIBoxConstraints constraints,
+static inline Vec2 ui_box_constraints_constrain(UIBoxConstraints self,
                                                 Vec2 size) {
-  return vec2(ui_box_constraints_constrain_width(constraints, size.x),
-              ui_box_constraints_constrain_height(constraints, size.y));
+  return vec2(ui_box_constraints_constrain_width(self, size.x),
+              ui_box_constraints_constrain_height(self, size.y));
 }
 
 /// The biggest size that satisfies the constraints.
-static inline Vec2 ui_box_constraints_get_biggest(
-    UIBoxConstraints constraints) {
-  return vec2(ui_box_constraints_constrain_width(constraints, F32_INFINITY),
-              ui_box_constraints_constrain_height(constraints, F32_INFINITY));
+static inline Vec2 ui_box_constraints_get_biggest(UIBoxConstraints self) {
+  return vec2(ui_box_constraints_constrain_width(self, F32_INFINITY),
+              ui_box_constraints_constrain_height(self, F32_INFINITY));
 }
 
-static inline UIBoxConstraints ui_box_constraints_flip(
-    UIBoxConstraints constraints) {
-  return ui_box_constraints(constraints.min_height, constraints.max_height,
-                            constraints.min_width, constraints.max_width);
+static inline UIBoxConstraints ui_box_constraints_flip(UIBoxConstraints self) {
+  return ui_box_constraints(self.min_height, self.max_height, self.min_width,
+                            self.max_width);
 }
 
-static inline bool ui_box_constraints_has_bounded_width(
-    UIBoxConstraints constraints) {
-  return constraints.max_width < F32_INFINITY;
+static inline bool ui_box_constraints_has_bounded_width(UIBoxConstraints self) {
+  return self.max_width < F32_INFINITY;
 }
 
 static inline bool ui_box_constraints_has_bounded_height(
-    UIBoxConstraints constraints) {
-  return constraints.max_height < F32_INFINITY;
+    UIBoxConstraints self) {
+  return self.max_height < F32_INFINITY;
 }
 
 /// Returns new box constraints that respect the given constraints while being
@@ -119,9 +116,8 @@ static inline UIBoxConstraints ui_box_constraints_enforce(
 }
 
 static inline UIBoxConstraints ui_box_constraints_loosen(
-    UIBoxConstraints constraints) {
-  return ui_box_constraints(0, constraints.max_width, 0,
-                            constraints.max_height);
+    UIBoxConstraints self) {
+  return ui_box_constraints(0, self.max_width, 0, self.max_height);
 }
 
 static inline bool ui_box_constraints_is_tight(UIBoxConstraints self) {
