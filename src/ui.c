@@ -894,7 +894,7 @@ void ui_container_end(void) {
   }
 
   if (!container->first &&
-      (props->constraints.present &&
+      (!props->constraints.present ||
        !ui_box_constraints_is_tight(props->constraints.value))) {
     ui_limited_box_begin(&(UILimitedBoxProps){0});
     ui_constrained_box_begin(&(UIConstrainedBoxProps){

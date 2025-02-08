@@ -300,7 +300,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 // }
 //
 
-test "Layout, root has the same size as the screen" {
+test "root has the same size as the screen" {
     c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
 
     const constraints: []const c.UIBoxConstraintsO = &.{
@@ -321,7 +321,7 @@ test "Layout, root has the same size as the screen" {
     }
 }
 
-test "Layout, alignment" {
+test "UIAlign" {
     const options: []const AlignmentOption = &.{
         .{ .alignment = c.ui_alignment_top_left(), .offset = c.vec2(0, 0) },
         .{ .alignment = c.ui_alignment_top_center(), .offset = c.vec2(25, 0) },
@@ -358,89 +358,149 @@ test "Layout, alignment" {
     }
 }
 
-// test "Layout, padding" {
-//     c.ui_init();
-//     defer c.ui_quit();
-//
-//     const padding = c.ui_edge_insets_from_ltrb(1, 2, 3, 4);
-//     const main_axis_options: []const MainAxisOption = &.{
-//         .{ .@"align" = c.UI_MAIN_AXIS_ALIGNMENT_START, .rel_pos = 1 },
-//         .{ .@"align" = c.UI_MAIN_AXIS_ALIGNMENT_CENTER, .rel_pos = 24 },
-//         .{ .@"align" = c.UI_MAIN_AXIS_ALIGNMENT_END, .rel_pos = 47 },
-//     };
-//     const cross_axis_options: []const CrossAxisOption = &.{
-//         .{ .@"align" = c.UI_CROSS_AXIS_ALIGNMENT_START, .rel_pos = 2 },
-//         .{ .@"align" = c.UI_CROSS_AXIS_ALIGNMENT_CENTER, .rel_pos = 24 },
-//         .{ .@"align" = c.UI_CROSS_AXIS_ALIGNMENT_END, .rel_pos = 46 },
-//     };
-//
-//     for (main_axis_options) |main_axis_option| {
-//         for (cross_axis_options) |cross_axis_option| {
-//             var container: [*c]c.UIBox = undefined;
-//
-//             c.ui_begin_frame(c.vec2(100, 100));
-//             _ = c.ui_box_begin(.{
-//                 .size = c.vec2(100, 100),
-//                 .main_axis_align = main_axis_option.@"align",
-//                 .cross_axis_align = cross_axis_option.@"align",
-//                 .padding = padding,
-//             });
-//             {
-//                 c.ui_box_begin(.{});
-//                 {
-//                     container = c.ui_box_get_current();
-//                     _ = c.ui_box_begin(.{ .size = c.vec2(50, 50) });
-//                     c.ui_box_end();
-//                 }
-//                 c.ui_box_end();
-//             }
-//             c.ui_box_end();
-//             c.ui_end_frame();
-//
-//             try expectBoxRelPos(container, c.vec2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
-//             try expectBoxSize(container, c.vec2(50, 50));
-//         }
-//     }
-// }
-//
-// test "Layout, no children, no fixed size, as small as possible" {
-//     c.ui_init();
-//     defer c.ui_quit();
-//
-//     var container: [*c]c.UIBox = undefined;
-//
-//     c.ui_begin_frame(c.vec2(100, 100));
-//     _ = c.ui_box_begin(.{});
-//     {
-//         c.ui_box_begin(.{});
-//         container = c.ui_box_get_current();
-//         c.ui_box_end();
-//     }
-//     c.ui_box_end();
-//     c.ui_end_frame();
-//
-//     try expectBoxSize(container, c.vec2(0, 0));
-// }
-//
-// test "Layout, no children, no fixed size, flex, main axis is as big as possible" {
-//     c.ui_init();
-//     defer c.ui_quit();
-//
-//     var container: [*c]c.UIBox = undefined;
-//
-//     c.ui_begin_frame(c.vec2(100, 100));
-//     _ = c.ui_box_begin(.{});
-//     {
-//         c.ui_box_begin(.{ .flex = 1 });
-//         container = c.ui_box_get_current();
-//         c.ui_box_end();
-//     }
-//     c.ui_box_end();
-//     c.ui_end_frame();
-//
-//     try expectBoxSize(container, c.vec2(100, 0));
-// }
-//
+test "UIContainer - no child and no size, as big as possible" {
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
+
+    c.ui_begin_frame();
+    c.ui_center_begin(&.{});
+    {
+        c.ui_container_begin(&.{});
+        c.ui_container_end();
+    }
+    const container = c.ui_widget_get_last_child();
+    c.ui_center_end();
+    c.ui_end_frame();
+
+    try expect_widget_size(container, c.vec2(100, 100));
+}
+
+test "UIContainer - no size but has a child, same size as its child" {
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
+
+    c.ui_begin_frame();
+    c.ui_center_begin(&.{});
+    {
+        c.ui_container_begin(&.{});
+        c.ui_container_begin(&.{
+            .width = c.f32_some(30),
+            .height = c.f32_some(30),
+        });
+        c.ui_container_end();
+        c.ui_container_end();
+    }
+    const container = c.ui_widget_get_last_child();
+    c.ui_center_end();
+    c.ui_end_frame();
+
+    try expect_widget_size(container, c.vec2(30, 30));
+}
+
+test "UIPadding" {
+    const padding = c.ui_edge_insets(1, 2, 3, 4);
+
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
+    c.ui_begin_frame();
+    _ = c.ui_center_begin(&.{});
+    {
+        c.ui_container_begin(&.{
+            .padding = c.ui_edge_insets_some(padding),
+        });
+        c.ui_container_begin(&.{
+            .width = c.f32_some(30),
+            .height = c.f32_some(30),
+        });
+        c.ui_container_end();
+        c.ui_container_end();
+    }
+    const container = c.ui_widget_get_last_child();
+    c.ui_center_end();
+    c.ui_end_frame();
+
+    try expect_widget_size(container, c.vec2(33, 37));
+}
+
+test "UIConstrainedBox - respect parent constraints" {
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
+
+    c.ui_begin_frame();
+    c.ui_constrained_box_begin(&.{
+        .constraints = c.ui_box_constraints(50, 150, 50, 150),
+    });
+    c.ui_container_begin(&.{
+        .width = c.f32_some(10),
+        .height = c.f32_some(10),
+    });
+    c.ui_container_end();
+    const container = c.ui_widget_get_last_child();
+    c.ui_constrained_box_end();
+    c.ui_end_frame();
+
+    try expect_widget_size(container, c.vec2(100, 100));
+}
+
+test "UIConstrainedBox - apply additional constraints (1)" {
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
+
+    c.ui_begin_frame();
+    c.ui_center_begin(&.{});
+    c.ui_constrained_box_begin(&.{
+        .constraints = c.ui_box_constraints(50, 150, 50, 150),
+    });
+    c.ui_container_begin(&.{
+        .width = c.f32_some(10),
+        .height = c.f32_some(10),
+    });
+    c.ui_container_end();
+    const container = c.ui_widget_get_last_child();
+    c.ui_constrained_box_end();
+    c.ui_center_end();
+    c.ui_end_frame();
+
+    try expect_widget_size(container, c.vec2(50, 50));
+}
+
+test "UIConstrainedBox - apply additional constraints (2)" {
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
+
+    c.ui_begin_frame();
+    c.ui_center_begin(&.{});
+    c.ui_constrained_box_begin(&.{
+        .constraints = c.ui_box_constraints(50, 80, 50, 80),
+    });
+    c.ui_container_begin(&.{
+        .width = c.f32_some(1000),
+        .height = c.f32_some(1000),
+    });
+    c.ui_container_end();
+    const container = c.ui_widget_get_last_child();
+    c.ui_constrained_box_end();
+    c.ui_center_end();
+    c.ui_end_frame();
+
+    try expect_widget_size(container, c.vec2(80, 80));
+}
+
+test "UIConstrainedBox - apply additional constraints (3)" {
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
+
+    c.ui_begin_frame();
+    c.ui_center_begin(&.{});
+    c.ui_constrained_box_begin(&.{
+        .constraints = c.ui_box_constraints(50, 80, 50, 80),
+    });
+    c.ui_container_begin(&.{
+        .width = c.f32_some(60),
+        .height = c.f32_some(70),
+    });
+    c.ui_container_end();
+    const container = c.ui_widget_get_last_child();
+    c.ui_constrained_box_end();
+    c.ui_center_end();
+    c.ui_end_frame();
+
+    try expect_widget_size(container, c.vec2(60, 70));
+}
+
 // test "Layout, with one child, size around it" {
 //     c.ui_init();
 //     defer c.ui_quit();
