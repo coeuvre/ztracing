@@ -233,7 +233,7 @@ struct UIWidget {
   void *state;
 };
 
-void ui_widget_begin(UIWidgetClass *klass, void *props);
+void ui_widget_begin(UIWidgetClass *klass, const void *props);
 void ui_widget_end(UIWidgetClass *klass);
 UIWidget *ui_widget_get_current(void);
 UIWidget *ui_widget_get_root(void);
@@ -266,14 +266,21 @@ static inline void *ui_widget_get_props_(UIWidget *widget, usize props_size) {
 ///
 /// A box that limits its size only when it's unconstrained.
 ///
+extern UIWidgetClass ui_limited_box_class;
+
 typedef struct UILimitedBoxProps {
   UIKey key;
   f32 max_width;
   f32 max_height;
 } UILimitedBoxProps;
 
-void ui_limited_box_begin(UILimitedBoxProps *props);
-void ui_limited_box_end(void);
+static inline void ui_limited_box_begin(const UILimitedBoxProps *props) {
+  ui_widget_begin(&ui_limited_box_class, props);
+}
+
+static inline void ui_limited_box_end(void) {
+  ui_widget_end(&ui_limited_box_class);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -282,26 +289,41 @@ void ui_limited_box_end(void);
 /// A widget that paints its area with a specified color and then draws its
 /// child on top of that color.
 ///
+extern UIWidgetClass ui_colored_box_class;
+
 typedef struct UIColoredBoxProps {
   UIKey key;
   UIColor color;
 } UIColoredBoxProps;
 
-void ui_colored_box_begin(UIColoredBoxProps *props);
-void ui_colored_box_end(void);
+static inline void ui_colored_box_begin(const UIColoredBoxProps *props) {
+  ui_widget_begin(&ui_colored_box_class, props);
+}
+
+static inline void ui_colored_box_end(void) {
+  ui_widget_end(&ui_colored_box_class);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIConstrainedBox
 ///
 /// A widget that imposes additional constraints on its child.
+extern UIWidgetClass ui_constrained_box_class;
+
 typedef struct UIConstrainedBoxProps {
   UIKey key;
   UIBoxConstraints constraints;
 } UIConstrainedBoxProps;
 
-void ui_constrained_box_begin(UIConstrainedBoxProps *props);
-void ui_constrained_box_end(void);
+static inline void ui_constrained_box_begin(
+    const UIConstrainedBoxProps *props) {
+  ui_widget_begin(&ui_constrained_box_class, props);
+}
+
+static inline void ui_constrained_box_end(void) {
+  ui_widget_end(&ui_constrained_box_class);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -309,6 +331,7 @@ void ui_constrained_box_end(void);
 ///
 /// A widget that aligns its child within itself and optionally sizes itself
 /// based on the child's size.
+extern UIWidgetClass ui_align_class;
 
 /// A point within a rectangle.
 ///
@@ -403,27 +426,37 @@ typedef struct UIAlignProps {
   UISizeFactor factor;
 } UIAlignProps;
 
-void ui_align_begin(UIAlignProps *props);
-void ui_align_end(void);
+static inline void ui_align_begin(const UIAlignProps *props) {
+  ui_widget_begin(&ui_align_class, props);
+}
+
+static inline void ui_align_end(void) { ui_widget_end(&ui_align_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UICenter
 ///
 /// A widget that centers its child within itself.
+extern UIWidgetClass ui_center_class;
+
 typedef struct UICenterProps {
   UIKey key;
   UISizeFactor factor;
 } UICenterProps;
 
-void ui_center_begin(UICenterProps *props);
-void ui_center_end(void);
+static inline void ui_center_begin(const UICenterProps *props) {
+  ui_widget_begin(&ui_center_class, props);
+}
+
+static inline void ui_center_end(void) { ui_widget_end(&ui_center_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIPadding
 ///
 /// A widget that insets its child by the given padding.
+extern UIWidgetClass ui_padding_class;
+
 typedef struct UIEdgeInsetsDirectional {
   bool present;
   f32 start;
@@ -480,8 +513,11 @@ typedef struct UIPaddingProps {
   UIEdgeInsetsDirectional padding;
 } UIPaddingProps;
 
-void ui_padding_begin(UIPaddingProps *props);
-void ui_padding_end(void);
+static inline void ui_padding_begin(const UIPaddingProps *props) {
+  ui_widget_begin(&ui_padding_class, props);
+}
+
+static inline void ui_padding_end(void) { ui_widget_end(&ui_padding_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -490,6 +526,8 @@ void ui_padding_end(void);
 /// A convenience widget that combines common painting, positioning, and sizing
 /// widgets.
 ///
+extern UIWidgetClass ui_container_class;
+
 typedef struct UIContainerProps {
   UIKey key;
 
@@ -506,7 +544,10 @@ typedef struct UIContainerProps {
   UIEdgeInsetsDirectional margin;
 } UIContainerProps;
 
-void ui_container_begin(UIContainerProps *props);
+static inline void ui_container_begin(const UIContainerProps *props) {
+  ui_widget_begin(&ui_container_class, props);
+}
+
 void ui_container_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -515,6 +556,8 @@ void ui_container_end(void);
 ///
 /// A widget that controls how a child of a UIRow, UIColumn, or UIFlex flexes.
 ///
+extern UIWidgetClass ui_flexible_vtable;
+
 typedef enum UIFlexFit {
   /// The child is forced to fill the available space.
   UI_FLEX_FIT_TIGHT,
@@ -529,8 +572,11 @@ typedef struct UIFlexibleProps {
   UIFlexFit fit;
 } UIFlexibleProps;
 
-void ui_flexible_begin(UIFlexibleProps *props);
-void ui_flexible_end(void);
+static inline void ui_flexible_begin(const UIFlexibleProps *props) {
+  ui_widget_begin(&ui_flexible_vtable, props);
+}
+
+static inline void ui_flexible_end(void) { ui_widget_end(&ui_flexible_vtable); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -538,6 +584,8 @@ void ui_flexible_end(void);
 ///
 /// A widget that displays its children in a one-dimensional array.
 ///
+extern UIWidgetClass ui_flex_class;
+
 typedef struct UIWidgetParentDataFlex {
   i32 flex;
   UIFlexFit fit;
@@ -582,8 +630,11 @@ typedef struct UIFlexProps {
   f32 spacing;
 } UIFlexProps;
 
-void ui_flex_begin(UIFlexProps *props);
-void ui_flex_end(void);
+static inline void ui_flex_begin(const UIFlexProps *props) {
+  ui_widget_begin(&ui_flex_class, props);
+}
+
+static inline void ui_flex_end(void) { ui_widget_end(&ui_flex_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -591,6 +642,8 @@ void ui_flex_end(void);
 ///
 /// A widget that displays its children in a vertical array.
 ///
+extern UIWidgetClass ui_column_class;
+
 typedef struct UIColumnProps {
   UIKey key;
   UIMainAxisAlignment main_axis_alignment;
@@ -599,8 +652,11 @@ typedef struct UIColumnProps {
   f32 spacing;
 } UIColumnProps;
 
-void ui_column_begin(UIColumnProps *props);
-void ui_column_end(void);
+static inline void ui_column_begin(const UIColumnProps *props) {
+  ui_widget_begin(&ui_column_class, props);
+}
+
+static inline void ui_column_end(void) { ui_widget_end(&ui_column_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -608,6 +664,8 @@ void ui_column_end(void);
 ///
 /// A widget that displays its children in a vertical array.
 ///
+extern UIWidgetClass ui_row_class;
+
 typedef struct UIRowProps {
   UIKey key;
   UIMainAxisAlignment main_axis_alignment;
@@ -616,7 +674,10 @@ typedef struct UIRowProps {
   f32 spacing;
 } UIRowProps;
 
-void ui_row_begin(UIRowProps *props);
-void ui_row_end(void);
+static inline void ui_row_begin(const UIRowProps *props) {
+  ui_widget_begin(&ui_row_class, props);
+}
+
+static inline void ui_row_end(void) { ui_widget_end(&ui_row_class); }
 
 #endif  // ZTRACING_SRC_UI_H_

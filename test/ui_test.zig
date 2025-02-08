@@ -310,9 +310,9 @@ test "Layout, root has the same size as the screen" {
 
     for (constraints) |con| {
         c.ui_begin_frame();
-        c.ui_container_begin(@constCast(&c.UIContainerProps{
+        c.ui_container_begin(&.{
             .constraints = con,
-        }));
+        });
         c.ui_container_end();
         c.ui_end_frame();
 
@@ -339,13 +339,13 @@ test "Layout, alignment" {
         var container: [*c]c.UIWidget = undefined;
 
         c.ui_begin_frame();
-        c.ui_align_begin(@constCast(&c.UIAlignProps{
+        c.ui_align_begin(&.{
             .alignment = option.alignment,
-        }));
+        });
         {
-            c.ui_container_begin(@constCast(&c.UIContainerProps{
+            c.ui_container_begin(&.{
                 .constraints = c.ui_box_constraints_make_tight(50, 50),
-            }));
+            });
             c.ui_container_end();
             container = c.ui_widget_get_last_child();
         }

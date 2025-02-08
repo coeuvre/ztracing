@@ -445,7 +445,7 @@ static UIKey ui_key_make_local(UIKey seed, u32 seq, const char *tag, Str8 id) {
 }
 
 /// Allocate a UIWidget in current frame's arena.
-static UIWidget *ui_widget_alloc(UIWidgetClass *klass, void *props) {
+static UIWidget *ui_widget_alloc(UIWidgetClass *klass, const void *props) {
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
   UIWidget *widget = arena_push(
@@ -462,7 +462,7 @@ static void ui_widget_append(UIWidget *parent, UIWidget *child) {
   ++parent->child_count;
 }
 
-void ui_widget_begin(UIWidgetClass *klass, void *props) {
+void ui_widget_begin(UIWidgetClass *klass, const void *props) {
   ASSERTF(klass->props_size >= sizeof(UIKey),
           "The first field of props must be a UIKey");
   ASSERTF(klass->callback, "%s doesn't have callback.", klass->name);
@@ -582,17 +582,11 @@ static i32 ui_limited_box_callback(UIWidget *widget, UIWidgetMessage *message) {
   return result;
 }
 
-static UIWidgetClass ui_limited_box_class = {
+UIWidgetClass ui_limited_box_class = {
     .name = "LimitedBox",
     .props_size = sizeof(UILimitedBoxProps),
     .callback = &ui_limited_box_callback,
 };
-
-void ui_limited_box_begin(UILimitedBoxProps *props) {
-  ui_widget_begin(&ui_limited_box_class, props);
-}
-
-void ui_limited_box_end(void) { ui_widget_end(&ui_limited_box_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -633,17 +627,11 @@ static i32 ui_colored_box_callback(UIWidget *widget, UIWidgetMessage *message) {
   return result;
 }
 
-static UIWidgetClass ui_colored_box_class = {
+UIWidgetClass ui_colored_box_class = {
     .name = "ColoredBox",
     .props_size = sizeof(UIColoredBoxProps),
     .callback = &ui_colored_box_callback,
 };
-
-void ui_colored_box_begin(UIColoredBoxProps *props) {
-  ui_widget_begin(&ui_colored_box_class, props);
-}
-
-void ui_colored_box_end(void) { ui_widget_end(&ui_colored_box_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -682,17 +670,11 @@ static i32 ui_constrained_box_callback(UIWidget *widget,
   return result;
 }
 
-static UIWidgetClass ui_constrained_box_class = {
+UIWidgetClass ui_constrained_box_class = {
     .name = "ConstrainedBox",
     .props_size = sizeof(UIConstrainedBoxProps),
     .callback = &ui_constrained_box_callback,
 };
-
-void ui_constrained_box_begin(UIConstrainedBoxProps *props) {
-  ui_widget_begin(&ui_constrained_box_class, props);
-}
-
-void ui_constrained_box_end(void) { ui_widget_end(&ui_constrained_box_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -762,17 +744,11 @@ static i32 ui_align_callback(UIWidget *widget, UIWidgetMessage *message) {
   return result;
 }
 
-static UIWidgetClass ui_align_class = {
+UIWidgetClass ui_align_class = {
     .name = "Align",
     .props_size = sizeof(UIAlignProps),
     .callback = &ui_align_callback,
 };
-
-void ui_align_begin(UIAlignProps *props) {
-  ui_widget_begin(&ui_align_class, props);
-}
-
-void ui_align_end(void) { ui_widget_end(&ui_align_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -797,17 +773,11 @@ static i32 ui_center_callback(UIWidget *widget, UIWidgetMessage *message) {
   return result;
 }
 
-static UIWidgetClass ui_center_class = {
+UIWidgetClass ui_center_class = {
     .name = "Center",
     .props_size = sizeof(UICenterProps),
     .callback = &ui_center_callback,
 };
-
-void ui_center_begin(UICenterProps *props) {
-  ui_widget_begin(&ui_center_class, props);
-}
-
-void ui_center_end(void) { ui_widget_end(&ui_center_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -860,31 +830,21 @@ static i32 ui_padding_callback(UIWidget *widget, UIWidgetMessage *message) {
   return result;
 }
 
-static UIWidgetClass ui_padding_class = {
+UIWidgetClass ui_padding_class = {
     .name = "Padding",
     .props_size = sizeof(UIPaddingProps),
     .callback = &ui_padding_callback,
 };
 
-void ui_padding_begin(UIPaddingProps *props) {
-  ui_widget_begin(&ui_padding_class, props);
-}
-
-void ui_padding_end(void) { ui_widget_end(&ui_padding_class); }
-
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIContainer
 ///
-static UIWidgetClass ui_container_class = {
+UIWidgetClass ui_container_class = {
     .name = "Container",
     .props_size = sizeof(UIContainerProps),
     .callback = &ui_widget_callback_default,
 };
-
-void ui_container_begin(UIContainerProps *props) {
-  ui_widget_begin(&ui_container_class, props);
-}
 
 void ui_container_end(void) {
   UIWidget *container = ui_widget_assert_current(&ui_container_class);
@@ -981,12 +941,6 @@ UIWidgetClass ui_flexible_vtable = {
     .props_size = sizeof(UIFlexibleProps),
     .callback = &ui_flexible_callback,
 };
-
-void ui_flexible_begin(UIFlexibleProps *props) {
-  ui_widget_begin(&ui_flexible_vtable, props);
-}
-
-void ui_flexible_end(void) { ui_widget_end(&ui_flexible_vtable); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -1360,17 +1314,11 @@ static i32 ui_flex_callback(UIWidget *widget, UIWidgetMessage *message) {
   return result;
 }
 
-static UIWidgetClass ui_flex_class = {
+UIWidgetClass ui_flex_class = {
     .name = "Flex",
     .props_size = sizeof(UIFlexProps),
     .callback = &ui_flex_callback,
 };
-
-void ui_flex_begin(UIFlexProps *props) {
-  ui_widget_begin(&ui_flex_class, props);
-}
-
-void ui_flex_end(void) { ui_widget_end(&ui_flex_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -1399,17 +1347,11 @@ static i32 ui_column_callback(UIWidget *widget, UIWidgetMessage *message) {
   return result;
 }
 
-static UIWidgetClass ui_column_class = {
+UIWidgetClass ui_column_class = {
     .name = "Column",
     .props_size = sizeof(UIColumnProps),
     .callback = &ui_column_callback,
 };
-
-void ui_column_begin(UIColumnProps *props) {
-  ui_widget_begin(&ui_column_class, props);
-}
-
-void ui_column_end(void) { ui_widget_end(&ui_column_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -1438,12 +1380,8 @@ static i32 ui_row_callback(UIWidget *widget, UIWidgetMessage *message) {
   return result;
 }
 
-static UIWidgetClass ui_row_vtable = {
+UIWidgetClass ui_row_class = {
     .name = "Row",
     .props_size = sizeof(UIRowProps),
     .callback = &ui_row_callback,
 };
-
-void ui_row_begin(UIRowProps *props) { ui_widget_begin(&ui_row_vtable, props); }
-
-void ui_row_end(void) { ui_widget_end(&ui_row_vtable); }
