@@ -71,7 +71,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //     c.ui_init();
 //     defer c.ui_quit();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{});
@@ -91,7 +91,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{});
@@ -116,7 +116,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //     c.ui_init();
 //     defer c.ui_quit();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{ .key = c.str8_lit("Key0") });
@@ -136,7 +136,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{ .key = c.str8_lit("Key1") });
@@ -161,7 +161,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //     c.ui_init();
 //     defer c.ui_quit();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{});
@@ -181,7 +181,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_tag_begin("Tag", .{});
@@ -206,7 +206,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //     c.ui_init();
 //     defer c.ui_quit();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{});
@@ -226,7 +226,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{});
@@ -239,7 +239,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{});
@@ -264,7 +264,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //     c.ui_init();
 //     defer c.ui_quit();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         _ = c.ui_box_begin(.{});
@@ -281,7 +281,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         _ = c.ui_tag_begin("Tag", .{});
@@ -301,7 +301,7 @@ fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
 //
 
 test "Layout, root has the same size as the screen" {
-    c.ui_set_viewport(c.v2(0, 0), c.v2(100, 100));
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
 
     const constraints: []const c.UIBoxConstraintsO = &.{
         c.ui_box_constraints_none(),
@@ -317,24 +317,24 @@ test "Layout, root has the same size as the screen" {
         c.ui_end_frame();
 
         const root = c.ui_widget_get_root();
-        try expect_widget_size(root, c.v2(100, 100));
+        try expect_widget_size(root, c.vec2(100, 100));
     }
 }
 
 test "Layout, alignment" {
     const options: []const AlignmentOption = &.{
-        .{ .alignment = c.ui_alignment_top_left(), .offset = c.v2(0, 0) },
-        .{ .alignment = c.ui_alignment_top_center(), .offset = c.v2(25, 0) },
-        .{ .alignment = c.ui_alignment_top_right(), .offset = c.v2(50, 0) },
-        .{ .alignment = c.ui_alignment_center_left(), .offset = c.v2(0, 25) },
-        .{ .alignment = c.ui_alignment_center(), .offset = c.v2(25, 25) },
-        .{ .alignment = c.ui_alignment_center_right(), .offset = c.v2(50, 25) },
-        .{ .alignment = c.ui_alignment_bottom_left(), .offset = c.v2(0, 50) },
-        .{ .alignment = c.ui_alignment_bottom_center(), .offset = c.v2(25, 50) },
-        .{ .alignment = c.ui_alignment_bottom_right(), .offset = c.v2(50, 50) },
+        .{ .alignment = c.ui_alignment_top_left(), .offset = c.vec2(0, 0) },
+        .{ .alignment = c.ui_alignment_top_center(), .offset = c.vec2(25, 0) },
+        .{ .alignment = c.ui_alignment_top_right(), .offset = c.vec2(50, 0) },
+        .{ .alignment = c.ui_alignment_center_left(), .offset = c.vec2(0, 25) },
+        .{ .alignment = c.ui_alignment_center(), .offset = c.vec2(25, 25) },
+        .{ .alignment = c.ui_alignment_center_right(), .offset = c.vec2(50, 25) },
+        .{ .alignment = c.ui_alignment_bottom_left(), .offset = c.vec2(0, 50) },
+        .{ .alignment = c.ui_alignment_bottom_center(), .offset = c.vec2(25, 50) },
+        .{ .alignment = c.ui_alignment_bottom_right(), .offset = c.vec2(50, 50) },
     };
 
-    c.ui_set_viewport(c.v2(0, 0), c.v2(100, 100));
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
     for (options) |option| {
         var container: [*c]c.UIWidget = undefined;
 
@@ -353,7 +353,7 @@ test "Layout, alignment" {
         c.ui_end_frame();
 
         try expect_widget_offset(container, option.offset);
-        try expect_widget_size(container, c.v2(50, 50));
+        try expect_widget_size(container, c.vec2(50, 50));
     }
 }
 
@@ -377,9 +377,9 @@ test "Layout, alignment" {
 //         for (cross_axis_options) |cross_axis_option| {
 //             var container: [*c]c.UIBox = undefined;
 //
-//             c.ui_begin_frame(c.v2(100, 100));
+//             c.ui_begin_frame(c.vec2(100, 100));
 //             _ = c.ui_box_begin(.{
-//                 .size = c.v2(100, 100),
+//                 .size = c.vec2(100, 100),
 //                 .main_axis_align = main_axis_option.@"align",
 //                 .cross_axis_align = cross_axis_option.@"align",
 //                 .padding = padding,
@@ -388,7 +388,7 @@ test "Layout, alignment" {
 //                 c.ui_box_begin(.{});
 //                 {
 //                     container = c.ui_box_get_current();
-//                     _ = c.ui_box_begin(.{ .size = c.v2(50, 50) });
+//                     _ = c.ui_box_begin(.{ .size = c.vec2(50, 50) });
 //                     c.ui_box_end();
 //                 }
 //                 c.ui_box_end();
@@ -396,8 +396,8 @@ test "Layout, alignment" {
 //             c.ui_box_end();
 //             c.ui_end_frame();
 //
-//             try expectBoxRelPos(container, c.v2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
-//             try expectBoxSize(container, c.v2(50, 50));
+//             try expectBoxRelPos(container, c.vec2(main_axis_option.rel_pos, cross_axis_option.rel_pos));
+//             try expectBoxSize(container, c.vec2(50, 50));
 //         }
 //     }
 // }
@@ -408,7 +408,7 @@ test "Layout, alignment" {
 //
 //     var container: [*c]c.UIBox = undefined;
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{});
@@ -418,7 +418,7 @@ test "Layout, alignment" {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     try expectBoxSize(container, c.v2(0, 0));
+//     try expectBoxSize(container, c.vec2(0, 0));
 // }
 //
 // test "Layout, no children, no fixed size, flex, main axis is as big as possible" {
@@ -427,7 +427,7 @@ test "Layout, alignment" {
 //
 //     var container: [*c]c.UIBox = undefined;
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{ .flex = 1 });
@@ -437,7 +437,7 @@ test "Layout, alignment" {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     try expectBoxSize(container, c.v2(100, 0));
+//     try expectBoxSize(container, c.vec2(100, 0));
 // }
 //
 // test "Layout, with one child, size around it" {
@@ -446,12 +446,12 @@ test "Layout, alignment" {
 //
 //     var container: [*c]c.UIBox = undefined;
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         _ = c.ui_box_begin(.{});
 //         {
-//             c.ui_box_begin(.{ .size = c.v2(50, 50) });
+//             c.ui_box_begin(.{ .size = c.vec2(50, 50) });
 //             container = c.ui_box_get_current();
 //             c.ui_box_end();
 //         }
@@ -460,7 +460,7 @@ test "Layout, alignment" {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     try expectBoxSize(container, c.v2(50, 50));
+//     try expectBoxSize(container, c.vec2(50, 50));
 // }
 //
 // test "Layout, with fixed size" {
@@ -470,13 +470,13 @@ test "Layout, alignment" {
 //     var container: [*c]c.UIBox = undefined;
 //     var child: [*c]c.UIBox = undefined;
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
-//         c.ui_box_begin(.{ .size = c.v2(30, 20) });
+//         c.ui_box_begin(.{ .size = c.vec2(30, 20) });
 //         {
 //             container = c.ui_box_get_current();
-//             c.ui_box_begin(.{ .size = c.v2(50, 40) });
+//             c.ui_box_begin(.{ .size = c.vec2(50, 40) });
 //             child = c.ui_box_get_current();
 //             c.ui_box_end();
 //         }
@@ -485,8 +485,8 @@ test "Layout, alignment" {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     try expectBoxSize(container, c.v2(30, 20));
-//     try expectBoxSize(child, c.v2(30, 20));
+//     try expectBoxSize(container, c.vec2(30, 20));
+//     try expectBoxSize(child, c.vec2(30, 20));
 // }
 //
 // test "Layout, with fixed size, negative" {
@@ -496,13 +496,13 @@ test "Layout, alignment" {
 //     var container: [*c]c.UIBox = undefined;
 //     var child: [*c]c.UIBox = undefined;
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
-//         c.ui_box_begin(.{ .size = c.v2(30, -20) });
+//         c.ui_box_begin(.{ .size = c.vec2(30, -20) });
 //         {
 //             container = c.ui_box_get_current();
-//             c.ui_box_begin(.{ .size = c.v2(50, 50) });
+//             c.ui_box_begin(.{ .size = c.vec2(50, 50) });
 //             child = c.ui_box_get_current();
 //             c.ui_box_end();
 //         }
@@ -511,8 +511,8 @@ test "Layout, alignment" {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     try expectBoxSize(container, c.v2(30, 0));
-//     try expectBoxSize(child, c.v2(30, 0));
+//     try expectBoxSize(container, c.vec2(30, 0));
+//     try expectBoxSize(child, c.vec2(30, 0));
 // }
 //
 // test "Layout, main axis size, child has different main axis than parent" {
@@ -527,13 +527,13 @@ test "Layout, alignment" {
 //     for (main_axis_sizes) |main_axis_size| {
 //         var row: [*c]c.UIBox = undefined;
 //
-//         c.ui_begin_frame(c.v2(100, 100));
+//         c.ui_begin_frame(c.vec2(100, 100));
 //         _ = c.ui_box_begin(.{ .main_axis = c.kAxis2Y });
 //         {
 //             c.ui_box_begin(.{ .main_axis_size = main_axis_size });
 //             {
 //                 row = c.ui_box_get_current();
-//                 _ = c.ui_box_begin(.{ .size = c.v2(30, 20) });
+//                 _ = c.ui_box_begin(.{ .size = c.vec2(30, 20) });
 //                 c.ui_box_end();
 //             }
 //             c.ui_box_end();
@@ -542,9 +542,9 @@ test "Layout, alignment" {
 //         c.ui_end_frame();
 //
 //         if (main_axis_size == c.UI_MAIN_AXIS_SIZE_MIN) {
-//             try expectBoxSize(row, c.v2(30, 20));
+//             try expectBoxSize(row, c.vec2(30, 20));
 //         } else {
-//             try expectBoxSize(row, c.v2(100, 20));
+//             try expectBoxSize(row, c.vec2(100, 20));
 //         }
 //     }
 // }
@@ -561,13 +561,13 @@ test "Layout, alignment" {
 //     for (main_axis_sizes) |main_axis_size| {
 //         var row: [*c]c.UIBox = undefined;
 //
-//         c.ui_begin_frame(c.v2(100, 100));
+//         c.ui_begin_frame(c.vec2(100, 100));
 //         _ = c.ui_box_begin(.{});
 //         {
 //             c.ui_box_begin(.{ .main_axis_size = main_axis_size });
 //             {
 //                 row = c.ui_box_get_current();
-//                 _ = c.ui_box_begin(.{ .size = c.v2(20, 20) });
+//                 _ = c.ui_box_begin(.{ .size = c.vec2(20, 20) });
 //                 c.ui_box_end();
 //             }
 //             c.ui_box_end();
@@ -576,9 +576,9 @@ test "Layout, alignment" {
 //         c.ui_end_frame();
 //
 //         if (main_axis_size == c.UI_MAIN_AXIS_SIZE_MIN) {
-//             try expectBoxSize(row, c.v2(20, 20));
+//             try expectBoxSize(row, c.vec2(20, 20));
 //         } else {
-//             try expectBoxSize(row, c.v2(100, 20));
+//             try expectBoxSize(row, c.vec2(100, 20));
 //         }
 //     }
 // }
@@ -591,7 +591,7 @@ test "Layout, alignment" {
 //
 //     var text: [*c]c.UIBox = undefined;
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{ .text = c.ui_push_str8f("text") });
@@ -611,17 +611,17 @@ test "Layout, alignment" {
 //
 //     var text: [*c]c.UIBox = undefined;
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
-//         c.ui_box_begin(.{ .size = c.v2(2, 2), .text = c.ui_push_str8f("Text") });
+//         c.ui_box_begin(.{ .size = c.vec2(2, 2), .text = c.ui_push_str8f("Text") });
 //         text = c.ui_box_get_current();
 //         c.ui_box_end();
 //     }
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     try expectBoxSize(text, c.v2(2, 2));
+//     try expectBoxSize(text, c.vec2(2, 2));
 // }
 //
 // test "Layout, row, no constraints on children" {
@@ -631,7 +631,7 @@ test "Layout, alignment" {
 //     var c0: [*c]c.UIBox = undefined;
 //     var c1: [*c]c.UIBox = undefined;
 //
-//     c.ui_begin_frame(c.v2(1000, 100));
+//     c.ui_begin_frame(c.vec2(1000, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{ .text = c.ui_push_str8f("Hello!") });
@@ -650,9 +650,9 @@ test "Layout, alignment" {
 //
 //     try testing.expect(c0_text_size.x + c1_text_size.x < 1000);
 //     try expectBoxSize(c0, c0_text_size);
-//     try expectBoxRelPos(c0, c.v2(0, 0));
+//     try expectBoxRelPos(c0, c.vec2(0, 0));
 //     try expectBoxSize(c1, c1_text_size);
-//     try expectBoxRelPos(c1, c.v2(c0_text_size.x, 0));
+//     try expectBoxRelPos(c1, c.vec2(c0_text_size.x, 0));
 // }
 //
 // test "Layout, row, no constraints on children, but truncate" {
@@ -662,7 +662,7 @@ test "Layout, alignment" {
 //     var c0: [*c]c.UIBox = undefined;
 //     var c1: [*c]c.UIBox = undefined;
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{ .text = c.ui_push_str8f("Hello!") });
@@ -681,9 +681,9 @@ test "Layout, alignment" {
 //
 //     try testing.expect(c0_text_size.x + c1_text_size.x > 100);
 //     try expectBoxSize(c0, c0_text_size);
-//     try expectBoxRelPos(c0, c.v2(0, 0));
-//     try expectBoxSize(c1, c.v2(100 - c0_text_size.x, c1_text_size.y));
-//     try expectBoxRelPos(c1, c.v2(c0_text_size.x, 0));
+//     try expectBoxRelPos(c0, c.vec2(0, 0));
+//     try expectBoxSize(c1, c.vec2(100 - c0_text_size.x, c1_text_size.y));
+//     try expectBoxRelPos(c1, c.vec2(c0_text_size.x, 0));
 // }
 //
 // test "Layout, row, constraint flex" {
@@ -693,7 +693,7 @@ test "Layout, alignment" {
 //     var c0: [*c]c.UIBox = undefined;
 //     var c1: [*c]c.UIBox = undefined;
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
 //         c.ui_box_begin(.{
@@ -714,10 +714,10 @@ test "Layout, alignment" {
 //     const c1_text_size = c.get_text_metrics_str8(c.str8_lit("Goodbye!"), c.kUIFontSizeDefault).size;
 //
 //     try testing.expect(c0_text_size.x > 100);
-//     try expectBoxSize(c0, c.v2(100 - c1_text_size.x, c0_text_size.y));
-//     try expectBoxRelPos(c0, c.v2(0, 0));
+//     try expectBoxSize(c0, c.vec2(100 - c1_text_size.x, c0_text_size.y));
+//     try expectBoxRelPos(c0, c.vec2(0, 0));
 //     try expectBoxSize(c1, c1_text_size);
-//     try expectBoxRelPos(c1, c.v2(100 - c1_text_size.x, 0));
+//     try expectBoxRelPos(c1, c.vec2(100 - c1_text_size.x, 0));
 // }
 //
 // test "Layout, main axis unbounded" {
@@ -727,19 +727,19 @@ test "Layout, alignment" {
 //     var container: [*c]c.UIBox = undefined;
 //     var child: [*c]c.UIBox = undefined;
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
-//         c.ui_box_begin(.{ .size = c.v2(c.kUISizeInfinity, c.kUISizeUndefined) });
+//         c.ui_box_begin(.{ .size = c.vec2(c.kUISizeInfinity, c.kUISizeUndefined) });
 //         {
 //             container = c.ui_box_get_current();
 //             c.ui_box_begin(.{});
 //             {
 //                 child = c.ui_box_get_current();
-//                 _ = c.ui_box_begin(.{ .size = c.v2(100000, 10) });
+//                 _ = c.ui_box_begin(.{ .size = c.vec2(100000, 10) });
 //                 c.ui_box_end();
 //
-//                 _ = c.ui_box_begin(.{ .size = c.v2(100000, 20) });
+//                 _ = c.ui_box_begin(.{ .size = c.vec2(100000, 20) });
 //                 c.ui_box_end();
 //             }
 //             c.ui_box_end();
@@ -749,20 +749,20 @@ test "Layout, alignment" {
 //     c.ui_box_end();
 //     c.ui_end_frame();
 //
-//     try expectBoxSize(container, c.v2(100, 20));
-//     try expectBoxSize(child, c.v2(200000, 20));
+//     try expectBoxSize(container, c.vec2(100, 20));
+//     try expectBoxSize(child, c.vec2(200000, 20));
 // }
 //
 // test "Layout, main axis unbounded, with unbounded content" {
 //     c.ui_init();
 //     defer c.ui_quit();
 //
-//     c.ui_begin_frame(c.v2(100, 100));
+//     c.ui_begin_frame(c.vec2(100, 100));
 //     _ = c.ui_box_begin(.{});
 //     {
-//         _ = c.ui_box_begin(.{ .size = c.v2(c.kUISizeInfinity, c.kUISizeUndefined) });
+//         _ = c.ui_box_begin(.{ .size = c.vec2(c.kUISizeInfinity, c.kUISizeUndefined) });
 //         {
-//             _ = c.ui_box_begin(.{ .size = c.v2(c.kUISizeInfinity, c.kUISizeUndefined) });
+//             _ = c.ui_box_begin(.{ .size = c.vec2(c.kUISizeInfinity, c.kUISizeUndefined) });
 //             c.ui_box_end();
 //         }
 //         c.ui_box_end();

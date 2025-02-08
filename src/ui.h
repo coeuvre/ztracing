@@ -78,14 +78,14 @@ static inline f32 ui_box_constraints_constrain_height(
 /// possible to the given size.
 static inline Vec2 ui_box_constraints_constrain(UIBoxConstraints constraints,
                                                 Vec2 size) {
-  return v2(ui_box_constraints_constrain_width(constraints, size.x),
+  return vec2(ui_box_constraints_constrain_width(constraints, size.x),
             ui_box_constraints_constrain_height(constraints, size.y));
 }
 
 /// The biggest size that satisfies the constraints.
 static inline Vec2 ui_box_constraints_get_biggest(
     UIBoxConstraints constraints) {
-  return v2(ui_box_constraints_constrain_width(constraints, F32_INFINITY),
+  return vec2(ui_box_constraints_constrain_width(constraints, F32_INFINITY),
             ui_box_constraints_constrain_height(constraints, F32_INFINITY));
 }
 
@@ -369,7 +369,7 @@ static inline Vec2 ui_alignment_align_offset(UIAlignment alignment,
                                              Vec2 offset) {
   f32 center_x = offset.x / 2.0f;
   f32 center_y = offset.y / 2.0f;
-  return v2(center_x + alignment.x * center_x,
+  return vec2(center_x + alignment.x * center_x,
             center_y + alignment.y * center_y);
 }
 

@@ -706,7 +706,7 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
       ui_widget_layout(child, child_constraints);
 
       Vec2 wrap_size =
-          v2(should_shrink_wrap_width
+          vec2(should_shrink_wrap_width
                  ? (child->size.x * (width.present ? width.value : 1.0f))
                  : F32_INFINITY,
              should_shrink_wrap_height
@@ -725,7 +725,7 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
           alignment, vec2_sub(widget->size, child->size));
     }
   } else {
-    Vec2 size = v2(should_shrink_wrap_width ? 0 : F32_INFINITY,
+    Vec2 size = vec2(should_shrink_wrap_width ? 0 : F32_INFINITY,
                    should_shrink_wrap_height ? 0 : F32_INFINITY);
     widget->size = ui_box_constraints_constrain(constraints, size);
   }
@@ -804,17 +804,17 @@ static void ui_padding_layout(UIWidget *widget, UIPaddingProps *padding,
 
     for (UIWidget *child = widget->first; child; child = child->next) {
       ui_widget_layout(child, inner_constraints);
-      child->offset = v2(resolved_padding.left, resolved_padding.top);
+      child->offset = vec2(resolved_padding.left, resolved_padding.top);
 
       max_child_size = vec2_max(max_child_size, child->size);
     }
 
     widget->size = ui_box_constraints_constrain(
         constraints,
-        v2(horizontal + max_child_size.x, vertical + max_child_size.y));
+        vec2(horizontal + max_child_size.x, vertical + max_child_size.y));
   } else {
     widget->size =
-        ui_box_constraints_constrain(constraints, v2(horizontal, vertical));
+        ui_box_constraints_constrain(constraints, vec2(horizontal, vertical));
   }
 }
 
@@ -1037,7 +1037,7 @@ static inline Vec2 convert_size(Vec2 size, UIAxis direction) {
       return size;
     } break;
     case UI_AXIS_VERTICAL: {
-      return v2(size.y, size.x);
+      return vec2(size.y, size.x);
     } break;
     default:
       UNREACHABLE;
@@ -1057,7 +1057,7 @@ static AxisSize axis_size_constrains(AxisSize size,
     effective_constraints = ui_box_constraints_flip(constraints);
   }
   Vec2 constrained_size = ui_box_constraints_constrain(
-      effective_constraints, v2(size.main, size.cross));
+      effective_constraints, vec2(size.main, size.cross));
   return axis_size(constrained_size.x, constrained_size.y);
 }
 
@@ -1273,7 +1273,7 @@ static void ui_flex_layout(UIWidget *widget, UIFlexProps *flex,
   UIFlexLayoutSize sizes = ui_flex_compute_size(widget, flex, constraints);
   f32 cross_axis_extent = sizes.size.cross;
   widget->size =
-      convert_size(v2(sizes.size.main, sizes.size.cross), flex->direction);
+      convert_size(vec2(sizes.size.main, sizes.size.cross), flex->direction);
   // TODO: Handle overflow.
 
   f32 remaining_space = f32_max(0.0f, sizes.main_axis_free_space);
@@ -1294,9 +1294,9 @@ static void ui_flex_layout(UIWidget *widget, UIFlexProps *flex,
             ui_flex_get_cross_size(child->size, flex->direction),
         /* flipped= */ false);
     if (flex->direction == UI_AXIS_HORIZONTAL) {
-      child->offset = v2(child_main_position, child_cross_position);
+      child->offset = vec2(child_main_position, child_cross_position);
     } else {
-      child->offset = v2(child_cross_position, child_main_position);
+      child->offset = vec2(child_cross_position, child_main_position);
     }
     child_main_position +=
         ui_flex_get_main_size(child->size, flex->direction) + between_space;

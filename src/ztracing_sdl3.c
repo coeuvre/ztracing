@@ -82,19 +82,19 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     } break;
 
     case SDL_EVENT_MOUSE_BUTTON_UP: {
-      // Vec2 mouse_pos = mouse_pos_from_sdl(v2(event->button.x, event->button.y));
+      // Vec2 mouse_pos = mouse_pos_from_sdl(vec2(event->button.x, event->button.y));
       // ui_on_mouse_button_up(mouse_pos,
       //                       g_sdl_button_to_ui_button[event->button.button]);
     } break;
 
     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
-      // Vec2 mouse_pos = mouse_pos_from_sdl(v2(event->button.x, event->button.y));
+      // Vec2 mouse_pos = mouse_pos_from_sdl(vec2(event->button.x, event->button.y));
       // ui_on_mouse_button_down(mouse_pos,
       //                         g_sdl_button_to_ui_button[event->button.button]);
     } break;
 
     case SDL_EVENT_MOUSE_WHEEL: {
-      // ui_on_mouse_wheel(v2(event->wheel.x, -event->wheel.y));
+      // ui_on_mouse_wheel(vec2(event->wheel.x, -event->wheel.y));
     } break;
 
     default: {

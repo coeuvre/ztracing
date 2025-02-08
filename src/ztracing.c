@@ -78,7 +78,7 @@
 //
 //         for (u32 item_index = 0; item_index < item_count; ++item_index) {
 //           ui_row_begin((UIRowProps){
-//               .size = v2(kUISizeUndefined, item_size),
+//               .size = vec2(kUISizeUndefined, item_size),
 //               .background_color = color_u32_from_srgb_not_premultiplied(
 //                   0, 0, item_index % 255, 255),
 //           });

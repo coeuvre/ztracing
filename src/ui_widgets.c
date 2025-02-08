@@ -220,7 +220,7 @@ void ui_scrollable_begin(UIScrollableProps props) {
                  (UIProps){
                      .flex = 1,
                      .main_axis = kAxis2Y,
-                     .size = v2(kUISizeUndefined, kUISizeInfinity),
+                     .size = vec2(kUISizeUndefined, kUISizeInfinity),
                  });
     {
       UIBox *scroll_area = ui_box_get_current();
@@ -234,7 +234,7 @@ void ui_scrollable_begin(UIScrollableProps props) {
       UIBox *scroll_content = ui_box_get_current();
       f32 total_item_size = scroll_content->computed.size.y;
 
-      state->head_size = v2(10, 0);
+      state->head_size = vec2(10, 0);
       state->scroll_max = f32_max(total_item_size - state->scroll_area_size, 0);
       // Assume first frame if scroll_max is 0
       if (state->scroll_max) {
@@ -299,7 +299,7 @@ static void ui_scrollable_scroll_bar(UIScrollableState *state) {
     ColorU32 background_color = color_u32_from_hex(0xF5F5F5);
 
     ui_box_begin((UIProps){
-        .size = v2(state->head_size.x, state->control_offset),
+        .size = vec2(state->head_size.x, state->control_offset),
         .background_color = background_color,
     });
     ui_box_end();
@@ -325,7 +325,7 @@ static void ui_scrollable_scroll_bar(UIScrollableState *state) {
       }
 
       ui_box_begin((UIProps){
-          .size = v2(state->head_size.x, state->control_size),
+          .size = vec2(state->head_size.x, state->control_size),
           .background_color = control_background_color,
       });
       ui_box_end();
@@ -333,7 +333,7 @@ static void ui_scrollable_scroll_bar(UIScrollableState *state) {
     ui_box_end();
 
     ui_box_begin((UIProps){
-        .size = v2(state->head_size.x, kUISizeUndefined),
+        .size = vec2(state->head_size.x, kUISizeUndefined),
         .flex = 1,
         .background_color = background_color,
     });
@@ -491,8 +491,8 @@ void ui_debug_layer(UIDebugLayerProps props) {
   ASSERTF(props.arena, "Must provide an arena");
 
   f32 resize_handle_size = 16;
-  Vec2 default_frame_size = v2(400, 500);
-  Vec2 min_frame_size = v2(resize_handle_size * 2, resize_handle_size * 2);
+  Vec2 default_frame_size = vec2(400, 500);
+  Vec2 min_frame_size = vec2(resize_handle_size * 2, resize_handle_size * 2);
 
   ui_tag_begin("DebugLayer", (UIProps){
                                  .z_index = kUIDebugLayerZIndex,
@@ -501,7 +501,7 @@ void ui_debug_layer(UIDebugLayerProps props) {
   if (!state->init) {
     if (vec2_is_zero(vec2_sub(state->max, state->min))) {
       state->max =
-          vec2_add(state->min, v2(default_frame_size.x + resize_handle_size,
+          vec2_add(state->min, vec2(default_frame_size.x + resize_handle_size,
                                   default_frame_size.y + resize_handle_size));
     }
     state->arena = props.arena;
@@ -586,7 +586,7 @@ void ui_debug_layer(UIDebugLayerProps props) {
           .default_background_color = 1,
           .position = kUIposition_absolute,
           .offset = ui_edge_insets_from_rb(1, 1),
-          .size = v2(resize_handle_size, resize_handle_size),
+          .size = vec2(resize_handle_size, resize_handle_size),
       });
       {
         if (ui_is_mouse_button_pressed(kUIMouseButtonLeft)) {
@@ -607,7 +607,7 @@ void ui_debug_layer(UIDebugLayerProps props) {
     ui_tag_begin("Highlight", (UIProps){
                                   .z_index = -1,
                                   .position = kUIPositionFixed,
-                                  .size = v2(kUISizeInfinity, kUISizeInfinity),
+                                  .size = vec2(kUISizeInfinity, kUISizeInfinity),
                               });
     if (rect2_get_area(state->hoverred_rect) > 0) {
       Rect2 hoverred_rect = state->hoverred_rect;

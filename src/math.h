@@ -77,7 +77,7 @@ static inline void vec2_set(Vec2 *v, usize index, f32 value) {
   ((f32 *)v)[index] = value;
 }
 
-static inline Vec2 v2(f32 x, f32 y) {
+static inline Vec2 vec2(f32 x, f32 y) {
   Vec2 result = {x, y};
   return result;
 }
@@ -101,7 +101,7 @@ static inline b32 vec2_is_equal(Vec2 a, Vec2 b) {
 static inline Vec2 vec2_from_intersection(Vec2 a, Vec2 b) {
   DEBUG_ASSERT(a.x <= a.y && b.x <= b.y);
 
-  Vec2 result = v2(0, 0);
+  Vec2 result = vec2(0, 0);
   if (f32_contains(b.x, a.x, a.y)) {
     result.x = b.x;
     result.y = f32_min(a.y, b.y);
@@ -287,9 +287,9 @@ static inline Rect2 rect2_zero(void) {
 
 static inline Rect2 rect2_from_intersection(Rect2 a, Rect2 b) {
   Vec2 x_axis =
-      vec2_from_intersection(v2(a.min.x, a.max.x), v2(b.min.x, b.max.x));
+      vec2_from_intersection(vec2(a.min.x, a.max.x), vec2(b.min.x, b.max.x));
   Vec2 y_axis =
-      vec2_from_intersection(v2(a.min.y, a.max.y), v2(b.min.y, b.max.y));
+      vec2_from_intersection(vec2(a.min.y, a.max.y), vec2(b.min.y, b.max.y));
   Rect2 result;
   result.min.x = x_axis.x;
   result.max.x = x_axis.y;

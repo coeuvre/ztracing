@@ -75,7 +75,7 @@ void ui_init(void) {
 
   state->init = 1;
   state->input.dt = 1.0f / 60.0f;  // Assume 60 FPS by default.
-  state->input.mouse.pos = v2(-1, -1);
+  state->input.mouse.pos = vec2(-1, -1);
 }
 
 void ui_quit(void) {
@@ -442,7 +442,7 @@ static Vec2 should_children_flex(UIFrame *frame, UIBox *box, Vec2 max_size,
     }
   }
 
-  Vec2 children_size = v2(0, 0);
+  Vec2 children_size = vec2(0, 0);
   vec2_set(&children_size, main_axis, child_main_axis_size);
   vec2_set(&children_size, cross_axis, child_cross_axis_size);
   return children_size;
@@ -460,7 +460,7 @@ static Vec2 layout_children(UIFrame *frame, UIBox *box, Vec2 max_size,
       continue;
     }
 
-    layout_box(frame, child, v2(0, 0), frame->viewport_size);
+    layout_box(frame, child, vec2(0, 0), frame->viewport_size);
   }
 
   return result;
@@ -511,7 +511,7 @@ static void build_stacking_context(UIFrame *frame, UIBox *box) {
 
 static void layout_box(UIFrame *frame, UIBox *box, Vec2 min_size,
                        Vec2 max_size) {
-  ASSERTF(vec2_contains_including_end(min_size, v2(0, 0), max_size),
+  ASSERTF(vec2_contains_including_end(min_size, vec2(0, 0), max_size),
           "min_size=(%.2f, %.2f), max_size=(%.2f, %.2f)", min_size.x,
           min_size.y, max_size.x, max_size.y);
 
@@ -565,7 +565,7 @@ static void layout_box(UIFrame *frame, UIBox *box, Vec2 min_size,
 
   Axis2 main_axis = box->props.main_axis;
   Axis2 cross_axis = (main_axis + 1) % kAxis2Count;
-  Vec2 children_size = v2(0, 0);
+  Vec2 children_size = vec2(0, 0);
   if (box->build.first) {
     if (!str8_is_empty(box->props.text)) {
       ui_push_build_errorf(frame,
@@ -637,28 +637,28 @@ static void render_box(UIState *state, UIBox *box) {
     }
 
     if (box->props.border.left.width > 0) {
-      fill_rect(min, v2(min.x + box->props.border.left.width, max.y),
+      fill_rect(min, vec2(min.x + box->props.border.left.width, max.y),
                 box->props.border.left.color);
     }
 
     if (box->props.border.top.width > 0) {
-      fill_rect(min, v2(max.x, min.y + box->props.border.top.width),
+      fill_rect(min, vec2(max.x, min.y + box->props.border.top.width),
                 box->props.border.top.color);
     }
 
     if (box->props.border.right.width > 0) {
-      fill_rect(v2(max.x - box->props.border.right.width, min.y), max,
+      fill_rect(vec2(max.x - box->props.border.right.width, min.y), max,
                 box->props.border.right.color);
     }
 
     if (box->props.border.bottom.width > 0) {
-      fill_rect(v2(min.x, max.y - box->props.border.bottom.width), max,
+      fill_rect(vec2(min.x, max.y - box->props.border.bottom.width), max,
                 box->props.border.bottom.color);
     }
 
     if (!str8_is_empty(box->props.text)) {
       draw_text_str8(
-          v2(min.x + box->props.border.left.width + box->props.padding.left,
+          vec2(min.x + box->props.border.left.width + box->props.padding.left,
              min.y + box->props.border.top.width + box->props.padding.top),
           box->props.text, box->computed.font_size,
           get_first_non_zero_color(box));
@@ -781,7 +781,7 @@ static void process_input(UIState *state, UIFrame *frame) {
 
     state->input.mouse.buttons[button].transition_count = 0;
   }
-  state->input.mouse.wheel = v2(0, 0);
+  state->input.mouse.wheel = vec2(0, 0);
 }
 
 static Vec2 position_absolute(Vec2 min, Vec2 max, UIEdgeInsets offset,
@@ -815,7 +815,7 @@ static void position_box(UIFrame *frame, UIBox *box, Vec2 parent_min,
   bool ignore_parent_clip_rect = false;
   switch (box->props.position) {
     case kUIPositionRelative: {
-      Vec2 offset = v2(box->props.offset.left - box->props.offset.right,
+      Vec2 offset = vec2(box->props.offset.left - box->props.offset.right,
                        box->props.offset.top - box->props.offset.bottom);
       min = vec2_add(vec2_add(parent_min, box->computed.rel_pos), offset);
       max = vec2_add(min, box->computed.size);
@@ -831,7 +831,7 @@ static void position_box(UIFrame *frame, UIBox *box, Vec2 parent_min,
 
     case kUIPositionFixed: {
       Vec2 size = box->computed.size;
-      min = position_absolute(v2(0, 0), frame->viewport_size, box->props.offset,
+      min = position_absolute(vec2(0, 0), frame->viewport_size, box->props.offset,
                               size, box->props.margin);
       max = vec2_add(min, size);
       ignore_parent_clip_rect = true;
@@ -865,13 +865,13 @@ void ui_end_frame(void) {
   ASSERTF(!frame->current_build, "Mismatched BeginBox/EndBox calls");
 
   Vec2 size = frame->viewport_size;
-  layout_box(frame, frame->root, v2(0, 0), size);
-  frame->root->computed.rel_pos = v2(0, 0);
+  layout_box(frame, frame->root, vec2(0, 0), size);
+  frame->root->computed.rel_pos = vec2(0, 0);
 
   build_stacking_context(frame, frame->root);
   ASSERT(!frame->current_stack);
 
-  position_box(frame, frame->root, v2(0, 0), size, r2(v2(0, 0), size));
+  position_box(frame, frame->root, vec2(0, 0), size, r2(vec2(0, 0), size));
 
   process_input(state, frame);
   ui_debug_print(state);
@@ -1057,7 +1057,7 @@ void *ui_box_get_state(const char *type_name, usize size) {
 Vec2 ui_get_mouse_rel_pos(void) {
   UIState *state = ui_state_get();
   UIBox *box = ui_box_get_current();
-  Vec2 result = v2(0, 0);
+  Vec2 result = vec2(0, 0);
   if (box) {
     result = vec2_sub(state->input.mouse.pos, box->computed.screen_rect.min);
   }
