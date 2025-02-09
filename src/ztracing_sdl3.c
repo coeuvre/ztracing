@@ -115,7 +115,8 @@ static Vec2 get_global_window_relative_mouse_pos(void) {
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
 
-  // ui_on_mouse_pos(get_global_window_relative_mouse_pos());
+  ui_set_viewport(vec2_zero(), get_screen_size());
+  ui_on_pointer_move(get_global_window_relative_mouse_pos());
   do_frame();
 
   if (!window_shown) {

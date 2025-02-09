@@ -163,6 +163,10 @@ static UIWidget *ui_widget_find_first_leaf(UIWidget *widget) {
   return widget;
 }
 
+typedef struct UIInputState {
+  Vec2 last_pointer_pos;
+} UIInputState;
+
 typedef struct UIState {
   UIFrame frames[2];
   u64 frame_index;
@@ -174,6 +178,8 @@ typedef struct UIState {
 
   Vec2 viewport_min;
   Vec2 viewport_max;
+
+  UIInputState input;
 } UIState;
 
 THREAD_LOCAL UIState t_ui_state;
@@ -247,6 +253,58 @@ static bool ui_widget_get_parent_data(UIWidget *widget, u32 parent_data_id,
   return widget->klass->callback(widget, (UIWidgetMessage *)&message);
 }
 
+static bool ui_widget_hit_test(UIWidget *widget, UIHitTestResult *result,
+                               Vec2 local_position) {
+  UIWidgetMessageHitTest message = {
+      .type = UI_WIDGET_MESSAGE_HIT_TEST,
+      .result = result,
+      .local_position = local_position,
+  };
+  return widget->klass->callback(widget, (UIWidgetMessage *)&message);
+}
+
+static void ui_widget_handle_event(UIWidget *widget, UIPointerEvent *event) {
+  UIWidgetMessageHandleEvent message = {
+      .type = UI_WIDGET_MESSAGE_HANDLE_EVENT,
+      .event = event,
+  };
+  widget->klass->callback(widget, (UIWidgetMessage *)&message);
+}
+
+void ui_on_pointer_move(Vec2 pos) {
+  UIState *state = ui_state_get();
+  if (vec2_is_equal(state->input.last_pointer_pos, pos)) {
+    return;
+  }
+  state->input.last_pointer_pos = pos;
+
+  UIWidget *root = 0;
+  if (state->current_frame) {
+    root = state->current_frame->root;
+  }
+  if (!root) {
+    return;
+  }
+
+  TempMemory scratch = scratch_begin(0, 0);
+  UIHitTestResult result = {
+      .arena = scratch.arena,
+  };
+  ui_widget_hit_test(root, &result, pos);
+  for (UIHitTestResultEntry *entry = result.first; entry; entry = entry->next) {
+    ui_widget_handle_event(entry->widget,
+                           &(UIPointerEvent){
+                               .move =
+                                   {
+                                       .type = UI_POINTER_MOVE_EVENT,
+                                       .position = pos,
+                                       .local_position = entry->local_position,
+                                   },
+                           });
+  }
+  scratch_end(scratch);
+}
+
 static Vec2 ui_widget_layout_stack_children(UIWidget *widget,
                                             UIBoxConstraints constraints) {
   Vec2 max_child_size = vec2_zero();
@@ -264,16 +322,51 @@ static void ui_widget_layout_default(UIWidget *widget,
   widget->size = ui_box_constraints_constrain(constraints, max_child_size);
 }
 
-static void ui_widget_paint_child(UIWidget *child, UIPaintingContext *context,
-                                  Vec2 offset) {
+static void ui_widget_paint_child_default(UIWidget *child,
+                                          UIPaintingContext *context,
+                                          Vec2 offset) {
   ui_widget_paint(child, context, vec2_add(offset, child->offset));
 }
 
 static void ui_widget_paint_default(UIWidget *widget,
                                     UIPaintingContext *context, Vec2 offset) {
   for (UIWidget *child = widget->first; child; child = child->next) {
-    ui_widget_paint_child(child, context, offset);
+    ui_widget_paint_child_default(child, context, offset);
   }
+}
+
+static bool ui_widget_hit_test_children_default(UIWidget *widget,
+                                                UIHitTestResult *result,
+                                                Vec2 local_position) {
+  for (UIWidget *child = widget->last; child; child = child->prev) {
+    if (ui_widget_hit_test(child, result,
+                           vec2_sub(local_position, child->offset))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void ui_hit_test_result_add(UIHitTestResult *result, UIWidget *widget,
+                            Vec2 local_position) {
+  UIHitTestResultEntry *entry =
+      arena_push_struct(result->arena, UIHitTestResultEntry);
+  entry->widget = widget;
+  entry->local_position = local_position;
+  DLL_APPEND(result->first, result->last, entry, prev, next);
+}
+
+static bool ui_widget_hit_test_default(UIWidget *widget,
+                                       UIHitTestResult *result,
+                                       Vec2 local_position) {
+  if (!vec2_contains(local_position, vec2_zero(), widget->size)) {
+    return false;
+  }
+
+  ui_widget_hit_test_children_default(widget, result, local_position);
+
+  ui_hit_test_result_add(result, widget, local_position);
+  return true;
 }
 
 static i32 ui_widget_callback_default(UIWidget *widget,
@@ -288,6 +381,12 @@ static i32 ui_widget_callback_default(UIWidget *widget,
     case UI_WIDGET_MESSAGE_PAINT: {
       UIWidgetMessagePaint *paint = (UIWidgetMessagePaint *)message;
       ui_widget_paint_default(widget, paint->context, paint->offset);
+    } break;
+
+    case UI_WIDGET_MESSAGE_HIT_TEST: {
+      UIWidgetMessageHitTest *hit_test = (UIWidgetMessageHitTest *)message;
+      result = ui_widget_hit_test_default(widget, hit_test->result,
+                                          hit_test->local_position);
     } break;
   }
   return result;
@@ -466,7 +565,7 @@ static void ui_widget_append(UIWidget *parent, UIWidget *child) {
   ++parent->child_count;
 }
 
-void ui_widget_begin(UIWidgetClass *klass, const void *props) {
+UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
   ASSERTF(klass->props_size >= sizeof(UIKey),
           "The first field of props must be a UIKey");
   ASSERTF(klass->callback, "%s doesn't have callback.", klass->name);
@@ -483,6 +582,7 @@ void ui_widget_begin(UIWidgetClass *klass, const void *props) {
   }
 
   ui_widget_stack_push(&state->widget_stack, &state->build_arena, widget);
+  return widget;
 }
 
 void ui_widget_end(UIWidgetClass *klass) {
@@ -606,7 +706,7 @@ static void ui_colored_box_paint(UIWidget *widget,
   }
 
   for (UIWidget *child = widget->first; child; child = child->next) {
-    ui_widget_paint_child(child, context, offset);
+    ui_widget_paint_child_default(child, context, offset);
   }
 }
 
@@ -1470,3 +1570,55 @@ UIWidgetClass ui_row_class = {
     .props_size = sizeof(UIRowProps),
     .callback = &ui_row_callback,
 };
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIPointerListener
+///
+typedef struct UIPointerListenerState {
+  UIPointerMoveEventO move;
+} UIPointerListenerState;
+
+static i32 ui_pointer_listener_callback(UIWidget *widget,
+                                        UIWidgetMessage *message) {
+  i32 result = 0;
+  switch (message->type) {
+    case UI_WIDGET_MESSAGE_MOUNT: {
+      widget->state = memory_alloc(sizeof(UIPointerListenerState));
+    } break;
+
+    case UI_WIDGET_MESSAGE_UNMOUNT: {
+      memory_free(widget->state, sizeof(UIPointerListenerState));
+    } break;
+
+    case UI_WIDGET_MESSAGE_HANDLE_EVENT: {
+      UIPointerListenerState *state = (UIPointerListenerState *)widget->state;
+
+      UIWidgetMessageHandleEvent *handle_event =
+          (UIWidgetMessageHandleEvent *)message;
+      UIPointerEvent *event = handle_event->event;
+      switch (event->type) {
+        case UI_POINTER_MOVE_EVENT: {
+          state->move = ui_pointer_move_event_some(event->move);
+        } break;
+        default: {
+        } break;
+      }
+    } break;
+    default: {
+      result = ui_widget_callback_default(widget, message);
+    } break;
+  }
+  return result;
+}
+
+UIWidgetClass ui_pointer_listener_class = {
+    .name = "PointerListener",
+    .props_size = sizeof(UIPointerListenerProps),
+    .callback = &ui_pointer_listener_callback,
+};
+
+void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
+  ui_widget_begin(&ui_pointer_listener_class, props);
+  // TODO: Access state before returning.
+}

@@ -9,6 +9,7 @@
 #include "src/types.h"
 
 void ui_set_viewport(Vec2 min, Vec2 max);
+void ui_on_pointer_move(Vec2 pos);
 
 void ui_begin_frame(void);
 void ui_end_frame(void);
@@ -179,6 +180,10 @@ enum {
   UI_WIDGET_MESSAGE_LAYOUT,
   UI_WIDGET_MESSAGE_PAINT,
   UI_WIDGET_MESSAGE_GET_PARENT_DATA,
+
+  // EVENT HANDLING
+  UI_WIDGET_MESSAGE_HIT_TEST,
+  UI_WIDGET_MESSAGE_HANDLE_EVENT,
 };
 
 typedef struct UIWidgetMessage {
@@ -208,11 +213,65 @@ enum {
   UI_WIDGET_PARENT_DATA_FLEX = 1,
 };
 
+/// Callback should return true there is parent data.
 typedef struct UIWidgetMessageGetParentData {
   u32 type;  // UI_WIDGET_MESSAGE_GET_PARENT_DATA
   u32 parent_data_id;
   void *parent_data;
 } UIWidgetMessageGetParentData;
+
+typedef struct UIHitTestResultEntry UIHitTestResultEntry;
+struct UIHitTestResultEntry {
+  UIHitTestResultEntry *prev;
+  UIHitTestResultEntry *next;
+
+  UIWidget *widget;
+  Vec2 local_position;
+};
+
+typedef struct UIHitTestResult {
+  Arena *arena;
+  UIHitTestResultEntry *first;
+  UIHitTestResultEntry *last;
+} UIHitTestResult;
+
+void ui_hit_test_result_add(UIHitTestResult *result, UIWidget *widget,
+                            Vec2 local_position);
+
+/// Callback should return true if hit.
+typedef struct UIWidgetMessageHitTest {
+  u32 type;  // UI_WIDGET_MESSAGE_HIT_TEST
+  UIHitTestResult *result;
+  /// Position relative to UIWidget's local coordinate system. (0, 0) is the
+  /// top-left of the box.
+  Vec2 local_position;
+} UIWidgetMessageHitTest;
+
+typedef enum UIPointerEventType {
+  UI_POINTER_MOVE_EVENT,
+} UIPointerEventType;
+
+typedef struct UIPointerMoveEvent {
+  UIPointerEventType type;
+  /// Coordinate of the position of the pointer, in logical pixels in the global
+  /// coordinate space.
+  Vec2 position;
+  /// The position transformed into the event receiver's local coordinate
+  /// system.
+  Vec2 local_position;
+} UIPointerMoveEvent;
+
+OPTIONAL_TYPE(UIPointerMoveEventO, UIPointerMoveEvent, ui_pointer_move_event);
+
+typedef union UIPointerEvent {
+  UIPointerEventType type;
+  UIPointerMoveEvent move;
+} UIPointerEvent;
+
+typedef struct UIWidgetMessageHandleEvent {
+  u32 type;  // UI_WIDGET_MESSAGE_HANDLE_EVENT
+  UIPointerEvent *event;
+} UIWidgetMessageHandleEvent;
 
 typedef i32(UIWidgetCallback)(UIWidget *widget, UIWidgetMessage *message);
 
@@ -250,7 +309,7 @@ struct UIWidget {
   void *state;
 };
 
-void ui_widget_begin(UIWidgetClass *klass, const void *props);
+UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props);
 void ui_widget_end(UIWidgetClass *klass);
 UIWidget *ui_widget_get_current(void);
 UIWidget *ui_widget_get_root(void);
@@ -688,5 +747,23 @@ static inline void ui_row_begin(const UIRowProps *props) {
 }
 
 static inline void ui_row_end(void) { ui_widget_end(&ui_row_class); }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIPointerListener
+///
+/// A widget that listens to common pointer events.
+///
+extern UIWidgetClass ui_pointer_listener_class;
+
+typedef struct UIPointerListenerProps {
+  UIKey key;
+  UIPointerMoveEvent **move;
+} UIPointerListenerProps;
+
+void ui_pointer_listener_begin(const UIPointerListenerProps *props);
+static inline void ui_pointer_listener_end(void) {
+  ui_widget_end(&ui_pointer_listener_class);
+}
 
 #endif  // ZTRACING_SRC_UI_H_
