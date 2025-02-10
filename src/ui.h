@@ -174,51 +174,47 @@ typedef struct UIPaintingContext {
 } UIPaintingContext;
 
 enum {
-  UI_WIDGET_MESSAGE_UNKNOWN,
-  UI_WIDGET_MESSAGE_MOUNT,
-  UI_WIDGET_MESSAGE_UNMOUNT,
-  UI_WIDGET_MESSAGE_LAYOUT,
-  UI_WIDGET_MESSAGE_PAINT,
-  UI_WIDGET_MESSAGE_GET_PARENT_DATA,
+  UI_MESSAGE_UNKNOWN,
+  UI_MESSAGE_MOUNT,
+  UI_MESSAGE_UNMOUNT,
+  UI_MESSAGE_LAYOUT,
+  UI_MESSAGE_PAINT,
+  UI_MESSAGE_GET_PARENT_DATA,
 
   // EVENT HANDLING
-  UI_WIDGET_MESSAGE_HIT_TEST,
-  UI_WIDGET_MESSAGE_HANDLE_EVENT,
+  UI_MESSAGE_HIT_TEST,
+  UI_MESSAGE_HANDLE_EVENT,
 };
 
-typedef struct UIWidgetMessage {
-  u32 type;
-} UIWidgetMessage;
+typedef struct UIMessageMount {
+  u32 type;  // UI_MESSAGE_MOUNT
+} UIMessageMount;
 
-typedef struct UIWidgetMessageMount {
-  u32 type;  // UI_WIDGET_MESSAGE_MOUNT
-} UIWidgetMessageMount;
+typedef struct UIMessageUnmount {
+  u32 type;  // UI_MESSAGE_UNMOUNT
+} UIMessageUnmount;
 
-typedef struct UIWidgetMessageUnmount {
-  u32 type;  // UI_WIDGET_MESSAGE_UNMOUNT
-} UIWidgetMessageUnmount;
-
-typedef struct UIWidgetMessageLayout {
-  u32 type;  // UI_WIDGET_MESSAGE_LAYOUT
+typedef struct UIMessageLayout {
+  u32 type;  // UI_MESSAGE_LAYOUT
   UIBoxConstraints constraints;
-} UIWidgetMessageLayout;
+} UIMessageLayout;
 
-typedef struct UIWidgetMessagePaint {
-  u32 type;  // UI_WIDGET_MESSAGE_PAINT
+typedef struct UIMessagePaint {
+  u32 type;  // UI_MESSAGE_PAINT
   UIPaintingContext *context;
   Vec2 offset;
-} UIWidgetMessagePaint;
+} UIMessagePaint;
 
 enum {
   UI_WIDGET_PARENT_DATA_FLEX = 1,
 };
 
 /// Callback should return true there is parent data.
-typedef struct UIWidgetMessageGetParentData {
-  u32 type;  // UI_WIDGET_MESSAGE_GET_PARENT_DATA
+typedef struct UIMessageGetParentData {
+  u32 type;  // UI_MESSAGE_GET_PARENT_DATA
   u32 parent_data_id;
   void *parent_data;
-} UIWidgetMessageGetParentData;
+} UIMessageGetParentData;
 
 typedef struct UIHitTestResultEntry UIHitTestResultEntry;
 struct UIHitTestResultEntry {
@@ -239,19 +235,19 @@ void ui_hit_test_result_add(UIHitTestResult *result, UIWidget *widget,
                             Vec2 local_position);
 
 /// Callback should return true if hit.
-typedef struct UIWidgetMessageHitTest {
-  u32 type;  // UI_WIDGET_MESSAGE_HIT_TEST
+typedef struct UIMessageHitTest {
+  u32 type;  // UI_MESSAGE_HIT_TEST
   UIHitTestResult *result;
   /// Position relative to UIWidget's local coordinate system. (0, 0) is the
   /// top-left of the box.
   Vec2 local_position;
-} UIWidgetMessageHitTest;
+} UIMessageHitTest;
 
 typedef enum UIPointerEventType {
-  UI_POINTER_MOVE_EVENT,
+  UI_POINTER_EVENT_MOVE,
 } UIPointerEventType;
 
-typedef struct UIPointerMoveEvent {
+typedef struct UIPointerEventMove {
   UIPointerEventType type;
   /// Coordinate of the position of the pointer, in logical pixels in the global
   /// coordinate space.
@@ -259,21 +255,32 @@ typedef struct UIPointerMoveEvent {
   /// The position transformed into the event receiver's local coordinate
   /// system.
   Vec2 local_position;
-} UIPointerMoveEvent;
+} UIPointerEventMove;
 
-OPTIONAL_TYPE(UIPointerMoveEventO, UIPointerMoveEvent, ui_pointer_move_event);
+OPTIONAL_TYPE(UIPointerEventMoveO, UIPointerEventMove, ui_pointer_move_event);
 
 typedef union UIPointerEvent {
   UIPointerEventType type;
-  UIPointerMoveEvent move;
+  UIPointerEventMove move;
 } UIPointerEvent;
 
-typedef struct UIWidgetMessageHandleEvent {
-  u32 type;  // UI_WIDGET_MESSAGE_HANDLE_EVENT
+typedef struct UIMessageHandleEvent {
+  u32 type;  // UI_MESSAGE_HANDLE_EVENT
   UIPointerEvent *event;
-} UIWidgetMessageHandleEvent;
+} UIMessageHandleEvent;
 
-typedef i32(UIWidgetCallback)(UIWidget *widget, UIWidgetMessage *message);
+typedef union UIMessage {
+  u32 type;
+  UIMessageMount mount;
+  UIMessageMount umount;
+  UIMessageLayout layout;
+  UIMessagePaint paint;
+  UIMessageGetParentData get_parent_data;
+  UIMessageHitTest hit_test;
+  UIMessageHandleEvent handle_event;
+} UIMessage;
+
+typedef i32(UIWidgetCallback)(UIWidget *widget, UIMessage *message);
 
 typedef struct UIWidgetClass {
   const char *name;
@@ -297,10 +304,9 @@ struct UIWidget {
   UIWidget *first;
   /// Last child of this widget.
   UIWidget *last;
+  u32 child_count;
 
   UIWidgetStatus status;
-
-  u32 child_count;
 
   /// The size of this box computed during layout.
   Vec2 size;
@@ -756,7 +762,7 @@ extern UIWidgetClass ui_pointer_listener_class;
 
 typedef struct UIPointerListenerProps {
   UIKey key;
-  UIPointerMoveEvent *move;
+  UIPointerEventMove *move;
 } UIPointerListenerProps;
 
 void ui_pointer_listener_begin(const UIPointerListenerProps *props);

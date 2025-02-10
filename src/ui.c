@@ -168,66 +168,89 @@ void ui_begin_frame(void) {
 
 static void ui_widget_mount(UIWidget *widget) {
   ASSERT(widget->status == UI_WIDGET_STATUS_UNMOUNTED);
-  UIWidgetMessageMount message = {
-      .type = UI_WIDGET_MESSAGE_MOUNT,
+  UIMessage message = {
+      .mount =
+          {
+
+              .type = UI_MESSAGE_MOUNT,
+          },
   };
-  widget->klass->callback(widget, (UIWidgetMessage *)&message);
+  widget->klass->callback(widget, &message);
   widget->status = UI_WIDGET_STATUS_MOUNTED;
 }
 
 static void ui_widget_unmount(UIWidget *widget) {
   ASSERT(widget->status == UI_WIDGET_STATUS_MOUNTED);
-  UIWidgetMessageUnmount message = {
-      .type = UI_WIDGET_MESSAGE_UNMOUNT,
+  UIMessage message = {
+      .umount =
+          {
+              .type = UI_MESSAGE_UNMOUNT,
+          },
   };
-  widget->klass->callback(widget, (UIWidgetMessage *)&message);
+  widget->klass->callback(widget, &message);
   widget->status = UI_WIDGET_STATUS_UNMOUNTED;
 }
 
 static void ui_widget_layout(UIWidget *widget, UIBoxConstraints constraints) {
-  UIWidgetMessageLayout message = {
-      .type = UI_WIDGET_MESSAGE_LAYOUT,
-      .constraints = constraints,
+  UIMessage message = {
+      .layout =
+          {
+              .type = UI_MESSAGE_LAYOUT,
+              .constraints = constraints,
+          },
   };
-  widget->klass->callback(widget, (UIWidgetMessage *)&message);
+  widget->klass->callback(widget, &message);
 }
 
 static void ui_widget_paint(UIWidget *widget, UIPaintingContext *context,
                             Vec2 offset) {
-  UIWidgetMessagePaint message = {
-      .type = UI_WIDGET_MESSAGE_PAINT,
-      .context = context,
-      .offset = offset,
+  UIMessage message = {
+      .paint =
+          {
+              .type = UI_MESSAGE_PAINT,
+              .context = context,
+              .offset = offset,
+          },
   };
-  widget->klass->callback(widget, (UIWidgetMessage *)&message);
+  widget->klass->callback(widget, &message);
 }
 
 static bool ui_widget_get_parent_data(UIWidget *widget, u32 parent_data_id,
                                       void *parent_data) {
-  UIWidgetMessageGetParentData message = {
-      .type = UI_WIDGET_MESSAGE_GET_PARENT_DATA,
-      .parent_data_id = parent_data_id,
-      .parent_data = parent_data,
+  UIMessage message = {
+      .get_parent_data =
+          {
+              .type = UI_MESSAGE_GET_PARENT_DATA,
+              .parent_data_id = parent_data_id,
+              .parent_data = parent_data,
+          },
   };
-  return widget->klass->callback(widget, (UIWidgetMessage *)&message);
+  return widget->klass->callback(widget, &message);
 }
 
 static bool ui_widget_hit_test(UIWidget *widget, UIHitTestResult *result,
                                Vec2 local_position) {
-  UIWidgetMessageHitTest message = {
-      .type = UI_WIDGET_MESSAGE_HIT_TEST,
-      .result = result,
-      .local_position = local_position,
+  UIMessage message = {
+      .hit_test =
+          {
+
+              .type = UI_MESSAGE_HIT_TEST,
+              .result = result,
+              .local_position = local_position,
+          },
   };
-  return widget->klass->callback(widget, (UIWidgetMessage *)&message);
+  return widget->klass->callback(widget, &message);
 }
 
 static void ui_widget_handle_event(UIWidget *widget, UIPointerEvent *event) {
-  UIWidgetMessageHandleEvent message = {
-      .type = UI_WIDGET_MESSAGE_HANDLE_EVENT,
-      .event = event,
+  UIMessage message = {
+      .handle_event =
+          {
+              .type = UI_MESSAGE_HANDLE_EVENT,
+              .event = event,
+          },
   };
-  widget->klass->callback(widget, (UIWidgetMessage *)&message);
+  widget->klass->callback(widget, &message);
 }
 
 void ui_on_pointer_move(Vec2 pos) {
@@ -255,7 +278,7 @@ void ui_on_pointer_move(Vec2 pos) {
                            &(UIPointerEvent){
                                .move =
                                    {
-                                       .type = UI_POINTER_MOVE_EVENT,
+                                       .type = UI_POINTER_EVENT_MOVE,
                                        .position = pos,
                                        .local_position = entry->local_position,
                                    },
@@ -328,24 +351,21 @@ static bool ui_widget_hit_test_default(UIWidget *widget,
   return true;
 }
 
-static i32 ui_widget_callback_default(UIWidget *widget,
-                                      UIWidgetMessage *message) {
+static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_LAYOUT: {
-      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
-      ui_widget_layout_default(widget, layout->constraints);
+    case UI_MESSAGE_LAYOUT: {
+      ui_widget_layout_default(widget, message->layout.constraints);
     } break;
 
-    case UI_WIDGET_MESSAGE_PAINT: {
-      UIWidgetMessagePaint *paint = (UIWidgetMessagePaint *)message;
-      ui_widget_paint_default(widget, paint->context, paint->offset);
+    case UI_MESSAGE_PAINT: {
+      ui_widget_paint_default(widget, message->paint.context,
+                              message->paint.offset);
     } break;
 
-    case UI_WIDGET_MESSAGE_HIT_TEST: {
-      UIWidgetMessageHitTest *hit_test = (UIWidgetMessageHitTest *)message;
-      result = ui_widget_hit_test_default(widget, hit_test->result,
-                                          hit_test->local_position);
+    case UI_MESSAGE_HIT_TEST: {
+      result = ui_widget_hit_test_default(widget, message->hit_test.result,
+                                          message->hit_test.local_position);
     } break;
   }
   return result;
@@ -612,14 +632,13 @@ static void ui_limited_box_layout(UIWidget *widget,
   }
 }
 
-static i32 ui_limited_box_callback(UIWidget *widget, UIWidgetMessage *message) {
+static i32 ui_limited_box_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_LAYOUT: {
-      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+    case UI_MESSAGE_LAYOUT: {
       ui_limited_box_layout(widget,
                             ui_widget_get_props(widget, UILimitedBoxProps),
-                            layout->constraints);
+                            message->layout.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -657,14 +676,13 @@ static void ui_colored_box_paint(UIWidget *widget,
   }
 }
 
-static i32 ui_colored_box_callback(UIWidget *widget, UIWidgetMessage *message) {
+static i32 ui_colored_box_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_PAINT: {
-      UIWidgetMessagePaint *paint = (UIWidgetMessagePaint *)message;
+    case UI_MESSAGE_PAINT: {
       ui_colored_box_paint(widget,
                            ui_widget_get_props(widget, UIColoredBoxProps),
-                           paint->context, paint->offset);
+                           message->paint.context, message->paint.offset);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -694,15 +712,13 @@ static void ui_constrained_box_layout(UIWidget *widget,
       ui_box_constraints_constrain(enforced_constraints, max_child_size);
 }
 
-static i32 ui_constrained_box_callback(UIWidget *widget,
-                                       UIWidgetMessage *message) {
+static i32 ui_constrained_box_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_LAYOUT: {
-      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+    case UI_MESSAGE_LAYOUT: {
       ui_constrained_box_layout(
           widget, ui_widget_get_props(widget, UIConstrainedBoxProps),
-          layout->constraints);
+          message->layout.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -775,13 +791,12 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
   }
 }
 
-static i32 ui_align_callback(UIWidget *widget, UIWidgetMessage *message) {
+static i32 ui_align_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_LAYOUT: {
-      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+    case UI_MESSAGE_LAYOUT: {
       ui_align_layout(widget, ui_widget_get_props(widget, UIAlignProps),
-                      layout->constraints);
+                      message->layout.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -816,15 +831,13 @@ static void ui_unconstrained_box_layout(
   ui_widget_align_children(widget, unconstrained_box->alignment);
 }
 
-static i32 ui_unconstrained_box_callback(UIWidget *widget,
-                                         UIWidgetMessage *message) {
+static i32 ui_unconstrained_box_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_LAYOUT: {
-      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+    case UI_MESSAGE_LAYOUT: {
       ui_unconstrained_box_layout(
           widget, ui_widget_get_props(widget, UIUnconstrainedBoxProps),
-          layout->constraints);
+          message->layout.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -843,18 +856,17 @@ UIWidgetClass ui_unconstrained_box_class = {
 ///
 /// UICenter
 ///
-static i32 ui_center_callback(UIWidget *widget, UIWidgetMessage *message) {
+static i32 ui_center_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_LAYOUT: {
-      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+    case UI_MESSAGE_LAYOUT: {
       UICenterProps *center = ui_widget_get_props(widget, UICenterProps);
       UIAlignProps align = {
           .key = center->key,
           .width = center->width,
           .height = center->height,
       };
-      ui_align_layout(widget, &align, layout->constraints);
+      ui_align_layout(widget, &align, message->layout.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -935,13 +947,12 @@ static void ui_padding_layout(UIWidget *widget, UIPaddingProps *padding,
   }
 }
 
-static i32 ui_padding_callback(UIWidget *widget, UIWidgetMessage *message) {
+static i32 ui_padding_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_LAYOUT: {
-      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+    case UI_MESSAGE_LAYOUT: {
       ui_padding_layout(widget, ui_widget_get_props(widget, UIPaddingProps),
-                        layout->constraints);
+                        message->layout.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -1015,6 +1026,7 @@ void ui_container_end(void) {
   UIWidget *current = ui_widget_get_current();
   UIWidget *widget =
       ui_widget_find_first_ancestor(current, &ui_container_class);
+  ASSERT(widget);
   UIContainerProps *props = ui_widget_get_props(widget, UIContainerProps);
 
   if (!current->first &&
@@ -1056,16 +1068,15 @@ void ui_container_end(void) {
 ///
 /// UIFlexible
 ///
-static i32 ui_flexible_callback(UIWidget *widget, UIWidgetMessage *message) {
+static i32 ui_flexible_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_GET_PARENT_DATA: {
-      UIWidgetMessageGetParentData *get_parent_data =
-          (UIWidgetMessageGetParentData *)message;
-      if (get_parent_data->parent_data_id == UI_WIDGET_PARENT_DATA_FLEX) {
+    case UI_MESSAGE_GET_PARENT_DATA: {
+      if (message->get_parent_data.parent_data_id ==
+          UI_WIDGET_PARENT_DATA_FLEX) {
         UIFlexibleProps *flexible =
             ui_widget_get_props(widget, UIFlexibleProps);
-        UIWidgetParentDataFlex *data = get_parent_data->parent_data;
+        UIWidgetParentDataFlex *data = message->get_parent_data.parent_data;
         *data = (UIWidgetParentDataFlex){
             .flex = flexible->flex,
             .fit = flexible->fit,
@@ -1442,13 +1453,12 @@ static void ui_flex_layout(UIWidget *widget, UIFlexProps *flex,
   }
 }
 
-static i32 ui_flex_callback(UIWidget *widget, UIWidgetMessage *message) {
+static i32 ui_flex_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_LAYOUT: {
-      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+    case UI_MESSAGE_LAYOUT: {
       ui_flex_layout(widget, ui_widget_get_props(widget, UIFlexProps),
-                     layout->constraints);
+                     message->layout.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -1467,11 +1477,10 @@ UIWidgetClass ui_flex_class = {
 ///
 /// UIColumn
 ///
-static i32 ui_column_callback(UIWidget *widget, UIWidgetMessage *message) {
+static i32 ui_column_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_LAYOUT: {
-      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+    case UI_MESSAGE_LAYOUT: {
       UIColumnProps *column = ui_widget_get_props(widget, UIColumnProps);
       UIFlexProps flex = {
           .key = column->key,
@@ -1481,7 +1490,7 @@ static i32 ui_column_callback(UIWidget *widget, UIWidgetMessage *message) {
           .cross_axis_alignment = column->cross_axis_alignment,
           .spacing = column->spacing,
       };
-      ui_flex_layout(widget, &flex, layout->constraints);
+      ui_flex_layout(widget, &flex, message->layout.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -1500,11 +1509,10 @@ UIWidgetClass ui_column_class = {
 ///
 /// UIRow
 ///
-static i32 ui_row_callback(UIWidget *widget, UIWidgetMessage *message) {
+static i32 ui_row_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_LAYOUT: {
-      UIWidgetMessageLayout *layout = (UIWidgetMessageLayout *)message;
+    case UI_MESSAGE_LAYOUT: {
       UIRowProps *row = ui_widget_get_props(widget, UIRowProps);
       UIFlexProps flex = {
           .key = row->key,
@@ -1514,7 +1522,7 @@ static i32 ui_row_callback(UIWidget *widget, UIWidgetMessage *message) {
           .cross_axis_alignment = row->cross_axis_alignment,
           .spacing = row->spacing,
       };
-      ui_flex_layout(widget, &flex, layout->constraints);
+      ui_flex_layout(widget, &flex, message->layout.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -1534,29 +1542,25 @@ UIWidgetClass ui_row_class = {
 /// UIPointerListener
 ///
 typedef struct UIPointerListenerState {
-  UIPointerMoveEventO move;
+  UIPointerEventMoveO move;
 } UIPointerListenerState;
 
-static i32 ui_pointer_listener_callback(UIWidget *widget,
-                                        UIWidgetMessage *message) {
+static i32 ui_pointer_listener_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_WIDGET_MESSAGE_MOUNT: {
+    case UI_MESSAGE_MOUNT: {
       widget->state = memory_alloc(sizeof(UIPointerListenerState));
     } break;
 
-    case UI_WIDGET_MESSAGE_UNMOUNT: {
+    case UI_MESSAGE_UNMOUNT: {
       memory_free(widget->state, sizeof(UIPointerListenerState));
     } break;
 
-    case UI_WIDGET_MESSAGE_HANDLE_EVENT: {
+    case UI_MESSAGE_HANDLE_EVENT: {
       UIPointerListenerState *state = (UIPointerListenerState *)widget->state;
-
-      UIWidgetMessageHandleEvent *handle_event =
-          (UIWidgetMessageHandleEvent *)message;
-      UIPointerEvent *event = handle_event->event;
+      UIPointerEvent *event = message->handle_event.event;
       switch (event->type) {
-        case UI_POINTER_MOVE_EVENT: {
+        case UI_POINTER_EVENT_MOVE: {
           state->move = ui_pointer_move_event_some(event->move);
         } break;
         default: {

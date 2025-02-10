@@ -100,7 +100,7 @@
 static void build_ui(f32 dt, f32 frame_time) {
   ui_center_begin(&(UICenterProps){0});
   {
-    UIPointerMoveEvent *move = 0;
+    UIPointerEventMove* move = 0;
     ui_pointer_listener_begin(&(UIPointerListenerProps){.move = &move});
     ui_container_begin(&(UIContainerProps){
         .width = f32_some(30),
