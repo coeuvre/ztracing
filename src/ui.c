@@ -123,46 +123,6 @@ static inline UIWidget *ui_widget_stack_get_top_widget(UIWidgetStack *stack) {
   return 0;
 }
 
-typedef struct UIWidgetStash {
-  UIWidget *first;
-  UIWidget *last;
-  u32 child_count;
-} UIWidgetStash;
-
-/// Save children of `widget` into the stash, make it a leaf node.
-static void ui_widget_stash_save(UIWidgetStash *stash, UIWidget *widget) {
-  ASSERTF(!stash->first || !stash->last || !stash->child_count,
-          "stash is not empty");
-
-  stash->first = widget->first;
-  stash->last = widget->last;
-  stash->child_count = widget->child_count;
-
-  widget->first = 0;
-  widget->last = 0;
-  widget->child_count = 0;
-}
-
-/// Append widgets in the stash to `widget` which must be a leaf node.
-static void ui_widget_stash_apply(UIWidgetStash *stash, UIWidget *widget) {
-  ASSERTF(!widget->first || !widget->last || !widget->child_count,
-          "widget is not leaf");
-
-  widget->first = stash->first;
-  widget->last = stash->last;
-  widget->child_count = stash->child_count;
-
-  *stash = (UIWidgetStash){0};
-}
-
-// Find the first leaf node of `widget`.
-static UIWidget *ui_widget_find_first_leaf(UIWidget *widget) {
-  while (widget->first) {
-    widget = widget->first;
-  }
-  return widget;
-}
-
 typedef struct UIInputState {
   Vec2 last_pointer_pos;
 } UIInputState;
@@ -561,6 +521,7 @@ static UIWidget *ui_widget_alloc(UIWidgetClass *klass, const void *props) {
 
 /// Append `child` as a child to `parent`.
 static void ui_widget_append(UIWidget *parent, UIWidget *child) {
+  child->parent = parent;
   DLL_APPEND(parent->first, parent->last, child, prev, next);
   ++parent->child_count;
 }
@@ -603,12 +564,12 @@ UIWidget *ui_widget_get_current(void) {
   return result;
 }
 
-static UIWidget *ui_widget_assert_current(UIWidgetClass *klass) {
-  UIWidget *current = ui_widget_get_current();
-  ASSERTF(current, "expected widget %s, got null", klass->name);
-  ASSERTF(current->klass == klass, "expected widget %s, got %s", klass->name,
-          current->klass->name);
-  return current;
+static UIWidget *ui_widget_find_first_ancestor(UIWidget *widget,
+                                               UIWidgetClass *klass) {
+  while (widget && widget->klass != klass) {
+    widget = widget->parent;
+  }
+  return widget;
 }
 
 UIWidget *ui_widget_get_root(void) {
@@ -1019,9 +980,9 @@ UIWidgetClass ui_container_class = {
     .callback = &ui_widget_callback_default,
 };
 
-void ui_container_end(void) {
-  UIWidget *container = ui_widget_assert_current(&ui_container_class);
-  UIContainerProps *props = ui_widget_get_props(container, UIContainerProps);
+void ui_container_begin(const UIContainerProps *props_) {
+  UIWidget *widget = ui_widget_begin(&ui_container_class, props_);
+  UIContainerProps *props = ui_widget_get_props(widget, UIContainerProps);
 
   if (props->width.present || props->height.present) {
     if (props->constraints.present) {
@@ -1033,7 +994,44 @@ void ui_container_end(void) {
     }
   }
 
-  if (!container->first &&
+  if (props->margin.present) {
+    ui_padding_begin(&(UIPaddingProps){
+        .padding = props->margin.value,
+    });
+  }
+
+  if (props->constraints.present) {
+    ui_constrained_box_begin(&(UIConstrainedBoxProps){
+        .constraints = props->constraints.value,
+    });
+  }
+
+  if (props->color.present) {
+    ui_colored_box_begin(&(UIColoredBoxProps){
+        .color = props->color.value,
+    });
+  }
+
+  if (props->padding.present) {
+    ui_padding_begin(&(UIPaddingProps){
+        .padding = props->padding.value,
+    });
+  }
+
+  if (props->alignment.present) {
+    ui_align_begin(&(UIAlignProps){
+        .alignment = props->alignment.value,
+    });
+  }
+}
+
+void ui_container_end(void) {
+  UIWidget *current = ui_widget_get_current();
+  UIWidget *widget =
+      ui_widget_find_first_ancestor(current, &ui_container_class);
+  UIContainerProps *props = ui_widget_get_props(widget, UIContainerProps);
+
+  if (!current->first &&
       (!props->constraints.present ||
        !ui_box_constraints_is_tight(props->constraints.value))) {
     ui_limited_box_begin(&(UILimitedBoxProps){0});
@@ -1043,52 +1041,26 @@ void ui_container_end(void) {
     });
     ui_constrained_box_end();
     ui_limited_box_end();
-  } else if (props->alignment.present) {
-    UIWidgetStash stash = {0};
-    ui_widget_stash_save(&stash, container);
-    ui_align_begin(&(UIAlignProps){.alignment = props->alignment.value});
+  }
+
+  if (props->alignment.present) {
     ui_align_end();
-    ui_widget_stash_apply(&stash, ui_widget_find_first_leaf(container));
   }
 
   if (props->padding.present) {
-    UIWidgetStash stash = {0};
-    ui_widget_stash_save(&stash, container);
-    ui_padding_begin(&(UIPaddingProps){
-        .padding = props->padding.value,
-    });
     ui_padding_end();
-    ui_widget_stash_apply(&stash, ui_widget_find_first_leaf(container));
   }
 
   if (props->color.present) {
-    UIWidgetStash stash = {0};
-    ui_widget_stash_save(&stash, container);
-    ui_colored_box_begin(&(UIColoredBoxProps){
-        .color = props->color.value,
-    });
     ui_colored_box_end();
-    ui_widget_stash_apply(&stash, ui_widget_find_first_leaf(container));
   }
 
   if (props->constraints.present) {
-    UIWidgetStash stash = {0};
-    ui_widget_stash_save(&stash, container);
-    ui_constrained_box_begin(&(UIConstrainedBoxProps){
-        .constraints = props->constraints.value,
-    });
     ui_constrained_box_end();
-    ui_widget_stash_apply(&stash, ui_widget_find_first_leaf(container));
   }
 
   if (props->margin.present) {
-    UIWidgetStash stash = {0};
-    ui_widget_stash_save(&stash, container);
-    ui_padding_begin(&(UIPaddingProps){
-        .padding = props->margin.value,
-    });
     ui_padding_end();
-    ui_widget_stash_apply(&stash, ui_widget_find_first_leaf(container));
   }
 
   ui_widget_end(&ui_container_class);

@@ -288,6 +288,7 @@ typedef enum UIWidgetStatus {
 
 struct UIWidget {
   UIWidgetClass *klass;
+  UIWidget *parent;
   /// Previous sibling of this widget.
   UIWidget *prev;
   /// Next sibling of this widget.
@@ -612,10 +613,7 @@ typedef struct UIContainerProps {
   UIEdgeInsetsO margin;
 } UIContainerProps;
 
-static inline void ui_container_begin(const UIContainerProps *props) {
-  ui_widget_begin(&ui_container_class, props);
-}
-
+void ui_container_begin(const UIContainerProps *props);
 void ui_container_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////

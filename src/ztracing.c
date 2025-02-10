@@ -98,27 +98,23 @@
 // }
 
 static void build_ui(f32 dt, f32 frame_time) {
-  // ui_center_begin(&(UICenterProps){0});
-  // {
-  ui_unconstrained_box_begin(&(UIUnconstrainedBoxProps){0});
+  ui_center_begin(&(UICenterProps){0});
+  {
+    UIPointerMoveEvent *move = 0;
+    ui_pointer_listener_begin(&(UIPointerListenerProps){.move = &move});
+    ui_container_begin(&(UIContainerProps){
+        .width = f32_some(30),
+        .height = f32_some(30),
+        .color = ui_color_some(ui_color(1, 0, 0, 1)),
+    });
+    ui_container_end();
+    ui_pointer_listener_end();
 
-  UIPointerMoveEvent *move = 0;
-  ui_pointer_listener_begin(&(UIPointerListenerProps){.move = &move});
-  ui_container_begin(&(UIContainerProps){
-      .width = f32_some(30),
-      .height = f32_some(30),
-      .color = ui_color_some(ui_color(1, 0, 0, 1)),
-  });
-  ui_container_end();
-  ui_pointer_listener_end();
-
-  if (move) {
-    INFO("Pointer moved over container");
+    if (move) {
+      INFO("Pointer moved over container");
+    }
   }
-
-  ui_unconstrained_box_end();
-  // }
-  // ui_center_end();
+  ui_center_end();
 }
 
 void do_frame(void) {
