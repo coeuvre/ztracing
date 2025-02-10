@@ -13,6 +13,7 @@
 static inline void memory_zero(void *ptr, usize size) { memset(ptr, 0, size); }
 
 void *memory_alloc(usize size);
+void *memory_alloc_no_zero(usize size);
 void memory_free(void *ptr, usize size);
 usize memory_get_allocated_bytes(void);
 

@@ -17,15 +17,29 @@ static inline usize usize_align_pow2(usize addr, usize align) {
 static usize g_allocated_bytes;
 
 void *memory_alloc(usize size) {
-  g_allocated_bytes += size;
-  void *result = malloc(size);
-  ASSERT(result);
+  void *result = memory_alloc_no_zero(size);
+  memory_zero(result, size);
   return result;
 }
 
+void *memory_alloc_no_zero(usize size) {
+  usize total_size = size + sizeof(usize);
+  g_allocated_bytes += total_size;
+  usize *result = malloc(total_size);
+  ASSERT(result);
+  *result = size;
+  return result + 1;
+}
+
 void memory_free(void *ptr, usize size) {
-  g_allocated_bytes -= size;
-  free(ptr);
+  usize total_size = size + sizeof(usize);
+  g_allocated_bytes -= total_size;
+
+  usize *result = ((usize *)ptr) - 1;
+  ASSERTF(*result == size,
+          "free size doesn't match allocation size: frees %d, but allocated %d",
+          (int)*result, size);
+  free(result);
 }
 
 usize memory_get_allocated_bytes(void) { return g_allocated_bytes; }
@@ -34,7 +48,7 @@ usize memory_get_allocated_bytes(void) { return g_allocated_bytes; }
 static MemoryBlock *memory_block_alloc(usize size) {
   usize block_size = usize_align_pow2(sizeof(MemoryBlock) + size, PAGE_SIZE);
 
-  MemoryBlock *block = (MemoryBlock *)memory_alloc(block_size);
+  MemoryBlock *block = (MemoryBlock *)memory_alloc_no_zero(block_size);
   block->prev = 0;
   block->next = 0;
   block->begin = (u8 *)(block + 1);

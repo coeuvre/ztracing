@@ -63,7 +63,7 @@ static PackedFont pack_font(Arena *arena, stbtt_fontinfo *info, f32 font_size) {
   result.font = info;
   result.width = 1024;
   result.height = 1024;
-  result.pixels_u8 = (u8 *)memory_alloc(result.width * result.height);
+  result.pixels_u8 = (u8 *)memory_alloc_no_zero(result.width * result.height);
   stbtt_pack_context spc;
   ASSERT(stbtt_PackBegin(&spc, result.pixels_u8, result.width, result.height, 0,
                          1, 0) == 1);
