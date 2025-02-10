@@ -59,6 +59,8 @@ typedef struct UIFrame {
 
 typedef struct UIWidgetStackEntry {
   UIWidget *widget;
+  UIWidget *last_widget;
+  UIWidget *last_child;
   const u8 *build_arena_top;
 } UIWidgetStackEntry;
 
@@ -84,10 +86,14 @@ static bool ui_widget_stack_is_empty(UIWidgetStack *stack) {
 }
 
 static void ui_widget_stack_push(UIWidgetStack *stack, Arena *build_arena,
-                                 UIWidget *widget) {
+                                 UIWidget *widget, UIWidget *last_widget) {
   UIWidgetStackEntry *entry =
       arena_push_array(&stack->arena, UIWidgetStackEntry, 1);
   entry->widget = widget;
+  entry->last_widget = last_widget;
+  if (last_widget) {
+    entry->last_child = last_widget->first;
+  }
   if (build_arena->current_block) {
     entry->build_arena_top = build_arena->current_block->pos;
   } else {
@@ -114,13 +120,6 @@ static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack, Arena *build_arena) {
         "build arena was not cleaned up properly by the widget");
   }
   return entry->widget;
-}
-
-static inline UIWidget *ui_widget_stack_get_top_widget(UIWidgetStack *stack) {
-  if (stack->current) {
-    return stack->current->widget;
-  }
-  return 0;
 }
 
 typedef struct UIInputState {
@@ -352,16 +351,6 @@ static i32 ui_widget_callback_default(UIWidget *widget,
   return result;
 }
 
-/// Get nth child of the `widget`, starting from 0.
-static UIWidget *ui_widget_get_child(UIWidget *parent, usize n) {
-  UIWidget *child = parent->first;
-  while (child && n > 0) {
-    child = child->next;
-    n--;
-  }
-  return child;
-}
-
 static UIWidget *ui_widget_get_child_by_key(UIWidget *parent, UIKey key) {
   UIWidget *result = 0;
   if (!ui_key_is_zero(key)) {
@@ -388,47 +377,6 @@ static bool ui_widget_is_equal(UIWidget *a, UIWidget *b) {
   return ui_key_is_equal(ui_widget_get_key(a), ui_widget_get_key(b));
 }
 
-static void mount_widget_dfs(UIWidget *widget) {
-  ui_widget_mount(widget);
-  for (UIWidget *child = widget->first; child; child = child->next) {
-    mount_widget_dfs(child);
-  }
-}
-
-static void maybe_mount_widgets(UIWidget *current, UIWidget *last) {
-  if (!ui_widget_is_equal(current, last)) {
-    mount_widget_dfs(current);
-    return;
-  }
-
-  ASSERT(last && last->status == UI_WIDGET_STATUS_MOUNTED);
-  current->state = last->state;
-  current->status = UI_WIDGET_STATUS_MOUNTED;
-  // The state is transfered into current, effectively make last unmounted.
-  last->status = UI_WIDGET_STATUS_UNMOUNTED;
-
-  UIWidget *current_child = current->first;
-  UIWidget *last_child = last->first;
-  for (; current_child; last_child = last_child ? last_child->next : 0,
-                        current_child = current->next) {
-    UIKey key = ui_widget_get_key(current_child);
-
-    // TODO: Check for last child from global key
-
-    UIWidget *last_child_by_key = ui_widget_get_child_by_key(last, key);
-    if (last_child_by_key &&
-        last_child_by_key->status == UI_WIDGET_STATUS_UNMOUNTED) {
-      last_child_by_key = 0;
-    }
-
-    if (last_child_by_key) {
-      maybe_mount_widgets(current_child, last_child_by_key);
-    } else {
-      maybe_mount_widgets(current_child, last_child);
-    }
-  }
-}
-
 static void unmount_widgets_if_not(UIWidget *widget) {
   if (!widget) {
     return;
@@ -452,7 +400,6 @@ void ui_end_frame(void) {
 
   // Layout and paint
   if (frame->root) {
-    maybe_mount_widgets(frame->root, state->last_frame->root);
     unmount_widgets_if_not(state->last_frame->root);
 
     Vec2 viewport_size = vec2_sub(state->viewport_max, state->viewport_min);
@@ -508,11 +455,10 @@ static UIKey ui_key_local(UIKey seed, u32 seq, const char *tag, Str8 id) {
 }
 
 /// Allocate a UIWidget in current frame's arena.
-static UIWidget *ui_widget_alloc(UIWidgetClass *klass, const void *props) {
-  UIState *state = ui_state_get();
-  UIFrame *frame = state->current_frame;
-  UIWidget *widget = arena_push(
-      &frame->arena, sizeof(UIWidget) + klass->props_size, ARENA_PUSH_NO_ZERO);
+static UIWidget *ui_widget_alloc(Arena *arena, UIWidgetClass *klass,
+                                 const void *props) {
+  UIWidget *widget = arena_push(arena, sizeof(UIWidget) + klass->props_size,
+                                ARENA_PUSH_NO_ZERO);
   memory_zero(widget, sizeof(UIWidget));
   widget->klass = klass;
   memory_copy(widget + 1, props, klass->props_size);
@@ -526,23 +472,63 @@ static void ui_widget_append(UIWidget *parent, UIWidget *child) {
   ++parent->child_count;
 }
 
+static inline bool can_reuse_widget(UIWidget *widget, UIWidget *last_widget) {
+  return last_widget && last_widget->status == UI_WIDGET_STATUS_MOUNTED &&
+         ui_widget_is_equal(widget, last_widget);
+}
+
 UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
   ASSERTF(klass->props_size >= sizeof(UIKey),
           "The first field of props must be a UIKey");
   ASSERTF(klass->callback, "%s doesn't have callback.", klass->name);
-  UIWidget *widget = ui_widget_alloc(klass, props);
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
 
-  UIWidget *parent = ui_widget_stack_get_top_widget(&state->widget_stack);
+  UIWidget *widget = ui_widget_alloc(&frame->arena, klass, props);
+  UIWidget *last_widget = 0;
+
+  UIWidgetStackEntry *parent = state->widget_stack.current;
   if (parent) {
-    ui_widget_append(parent, widget);
+    if (parent->last_widget) {
+      UIKey key = ui_widget_get_key(widget);
+
+      // TODO: Check for global key
+      last_widget = ui_widget_get_child_by_key(parent->last_widget, key);
+      if (!can_reuse_widget(widget, last_widget)) {
+        last_widget = 0;
+      }
+
+      if (!last_widget) {
+        last_widget = parent->last_child;
+        if (!can_reuse_widget(widget, last_widget)) {
+          last_widget = 0;
+        }
+      }
+    }
+
+    ui_widget_append(parent->widget, widget);
+    if (parent->last_child) {
+      parent->last_child = parent->last_child->next;
+    }
   } else {
     ASSERTF(!frame->root, "root widget already exists.");
     frame->root = widget;
+    last_widget = state->last_frame->root;
   }
 
-  ui_widget_stack_push(&state->widget_stack, &state->build_arena, widget);
+  if (last_widget) {
+    ASSERT(last_widget->status == UI_WIDGET_STATUS_MOUNTED);
+    widget->state = last_widget->state;
+    widget->status = UI_WIDGET_STATUS_MOUNTED;
+    last_widget->state = 0;
+    // The state is transfered into current, effectively make last unmounted.
+    last_widget->status = UI_WIDGET_STATUS_UNMOUNTED;
+  } else {
+    ui_widget_mount(widget);
+  }
+
+  ui_widget_stack_push(&state->widget_stack, &state->build_arena, widget,
+                       last_widget);
   return widget;
 }
 
