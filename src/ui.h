@@ -756,7 +756,7 @@ extern UIWidgetClass ui_pointer_listener_class;
 
 typedef struct UIPointerListenerProps {
   UIKey key;
-  UIPointerMoveEvent **move;
+  UIPointerMoveEvent *move;
 } UIPointerListenerProps;
 
 void ui_pointer_listener_begin(const UIPointerListenerProps *props);

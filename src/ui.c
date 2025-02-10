@@ -1577,6 +1577,11 @@ UIWidgetClass ui_pointer_listener_class = {
 };
 
 void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
-  ui_widget_begin(&ui_pointer_listener_class, props);
-  // TODO: Access state before returning.
+  UIWidget *widget = ui_widget_begin(&ui_pointer_listener_class, props);
+  ASSERT(widget->state);
+  UIPointerListenerState *state = widget->state;
+  if (props->move && state->move.present) {
+    *props->move = state->move.value;
+  }
+  *state = (UIPointerListenerState){0};
 }
