@@ -59,6 +59,7 @@ typedef struct UIFrame {
 
 typedef struct UIWidgetStackEntry {
   UIWidget *widget;
+  UIHitTestEntry *hit_test_entry;
   UIWidget *last_widget;
   UIWidget *last_child;
   const u8 *build_arena_top;
@@ -86,7 +87,8 @@ static bool ui_widget_stack_is_empty(UIWidgetStack *stack) {
 }
 
 static void ui_widget_stack_push(UIWidgetStack *stack, Arena *build_arena,
-                                 UIWidget *widget, UIWidget *last_widget) {
+                                 UIWidget *widget, UIWidget *last_widget,
+                                 UIHitTestEntry *hit_test_entry) {
   UIWidgetStackEntry *entry =
       arena_push_array(&stack->arena, UIWidgetStackEntry, 1);
   entry->widget = widget;
@@ -94,6 +96,7 @@ static void ui_widget_stack_push(UIWidgetStack *stack, Arena *build_arena,
   if (last_widget) {
     entry->last_child = last_widget->first;
   }
+  entry->hit_test_entry = hit_test_entry;
   if (build_arena->current_block) {
     entry->build_arena_top = build_arena->current_block->pos;
   } else {
@@ -124,6 +127,9 @@ static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack, Arena *build_arena) {
 
 typedef struct UIInputState {
   Vec2 last_pointer_pos;
+
+  Arena hit_test_arena;
+  UIHitTestResult *hit_test_result;
 } UIInputState;
 
 typedef struct UIState {
@@ -229,13 +235,13 @@ static bool ui_widget_get_parent_data(UIWidget *widget, u32 parent_data_id,
 }
 
 static bool ui_widget_hit_test(UIWidget *widget, UIHitTestResult *result,
-                               Vec2 local_position) {
+                               Arena *arena, Vec2 local_position) {
   UIMessage message = {
       .hit_test =
           {
-
               .type = UI_MESSAGE_HIT_TEST,
               .result = result,
+              .arena = arena,
               .local_position = local_position,
           },
   };
@@ -253,38 +259,118 @@ static void ui_widget_handle_event(UIWidget *widget, UIPointerEvent *event) {
   widget->klass->callback(widget, &message);
 }
 
-void ui_on_pointer_move(Vec2 pos) {
+void ui_on_mouse_button_down(Vec2 pos, u32 button) {
+  UIState *state = ui_state_get();
+  if (state->input.hit_test_result) {
+    ui_on_mouse_button_up(pos, button);
+  }
+
+  ASSERT(!state->input.hit_test_result);
+
+  UIWidget *root = ui_widget_get_root();
+  if (!root) {
+    return;
+  }
+
+  Arena *hit_test_arena = &state->input.hit_test_arena;
+  state->input.hit_test_result =
+      arena_push_struct(hit_test_arena, UIHitTestResult);
+  if (ui_widget_hit_test(root, state->input.hit_test_result, hit_test_arena,
+                         pos)) {
+    for (UIHitTestEntry *entry = state->input.hit_test_result->first; entry;
+         entry = entry->next) {
+      ui_widget_handle_event(entry->widget,
+                             &(UIPointerEvent){
+                                 .type = UI_POINTER_EVENT_DOWN,
+                                 .button = button,
+                                 .position = pos,
+                                 .local_position = entry->local_position,
+                             });
+    }
+  } else {
+    state->input.hit_test_result = 0;
+    arena_clear(hit_test_arena);
+  }
+}
+
+void ui_on_mouse_button_up(Vec2 pos, u32 button) {
+  UIState *state = ui_state_get();
+  if (!state->input.hit_test_result) {
+    return;
+  }
+
+  for (UIHitTestEntry *entry = state->input.hit_test_result->first; entry;
+       entry = entry->next) {
+    ui_widget_handle_event(entry->widget,
+                           &(UIPointerEvent){
+                               .type = UI_POINTER_EVENT_UP,
+                               .button = button,
+                               .position = pos,
+                               .local_position = entry->local_position,
+                           });
+  }
+
+  state->input.hit_test_result = 0;
+  arena_clear(&state->input.hit_test_arena);
+}
+
+void ui_on_mouse_move(Vec2 pos) {
   UIState *state = ui_state_get();
   if (vec2_is_equal(state->input.last_pointer_pos, pos)) {
     return;
   }
   state->input.last_pointer_pos = pos;
 
-  UIWidget *root = 0;
-  if (state->current_frame) {
-    root = state->current_frame->root;
+  if (state->input.hit_test_result) {
+    for (UIHitTestEntry *entry = state->input.hit_test_result->first; entry;
+         entry = entry->next) {
+      ui_widget_handle_event(entry->widget,
+                             &(UIPointerEvent){
+                                 .type = UI_POINTER_EVENT_MOVE,
+                                 .position = pos,
+                                 .local_position = entry->local_position,
+                             });
+    }
+  } else {
+    UIWidget *root = ui_widget_get_root();
+    if (!root) {
+      return;
+    }
+
+    Scratch scratch = scratch_begin(0, 0);
+    UIHitTestResult result = {0};
+    if (ui_widget_hit_test(root, &result, scratch.arena, pos)) {
+      for (UIHitTestEntry *entry = result.first; entry; entry = entry->next) {
+        ui_widget_handle_event(entry->widget,
+                               &(UIPointerEvent){
+                                   .type = UI_POINTER_EVENT_HOVER,
+                                   .position = pos,
+                                   .local_position = entry->local_position,
+                               });
+      }
+    }
+    scratch_end(scratch);
   }
-  if (!root) {
+}
+
+void ui_on_focus_lost(Vec2 pos) {
+  UIState *state = ui_state_get();
+  if (!state->input.hit_test_result) {
     return;
   }
 
-  TempMemory scratch = scratch_begin(0, 0);
-  UIHitTestResult result = {
-      .arena = scratch.arena,
-  };
-  ui_widget_hit_test(root, &result, pos);
-  for (UIHitTestResultEntry *entry = result.first; entry; entry = entry->next) {
+  for (UIHitTestEntry *entry = state->input.hit_test_result->first; entry;
+       entry = entry->next) {
     ui_widget_handle_event(entry->widget,
                            &(UIPointerEvent){
-                               .move =
-                                   {
-                                       .type = UI_POINTER_EVENT_MOVE,
-                                       .position = pos,
-                                       .local_position = entry->local_position,
-                                   },
+                               .type = UI_POINTER_EVENT_CANCEL,
+                               .position = pos,
+                               .local_position = entry->local_position,
                            });
   }
-  scratch_end(scratch);
+
+  state->input.hit_test_result = 0;
+  arena_clear(&state->input.hit_test_arena);
 }
 
 static Vec2 ui_widget_layout_stack_children(UIWidget *widget,
@@ -319,9 +405,10 @@ static void ui_widget_paint_default(UIWidget *widget,
 
 static bool ui_widget_hit_test_children_default(UIWidget *widget,
                                                 UIHitTestResult *result,
+                                                Arena *arena,
                                                 Vec2 local_position) {
   for (UIWidget *child = widget->last; child; child = child->prev) {
-    if (ui_widget_hit_test(child, result,
+    if (ui_widget_hit_test(child, result, arena,
                            vec2_sub(local_position, child->offset))) {
       return true;
     }
@@ -329,25 +416,40 @@ static bool ui_widget_hit_test_children_default(UIWidget *widget,
   return false;
 }
 
-void ui_hit_test_result_add(UIHitTestResult *result, UIWidget *widget,
-                            Vec2 local_position) {
-  UIHitTestResultEntry *entry =
-      arena_push_struct(result->arena, UIHitTestResultEntry);
+void ui_hit_test_result_add(UIHitTestResult *self, Arena *arena,
+                            UIWidget *widget, Vec2 local_position) {
+  UIHitTestEntry *entry = arena_push_struct(arena, UIHitTestEntry);
   entry->widget = widget;
   entry->local_position = local_position;
-  DLL_APPEND(result->first, result->last, entry, prev, next);
+  DLL_APPEND(self->first, self->last, entry, prev, next);
 }
 
-static bool ui_widget_hit_test_default(UIWidget *widget,
-                                       UIHitTestResult *result,
-                                       Vec2 local_position) {
+static bool ui_widget_hit_test_defer_to_children(UIWidget *widget,
+                                                 UIHitTestResult *result,
+                                                 Arena *arena,
+                                                 Vec2 local_position) {
   if (!vec2_contains(local_position, vec2_zero(), widget->size)) {
     return false;
   }
 
-  ui_widget_hit_test_children_default(widget, result, local_position);
+  if (!ui_widget_hit_test_children_default(widget, result, arena,
+                                           local_position)) {
+    return false;
+  }
 
-  ui_hit_test_result_add(result, widget, local_position);
+  ui_hit_test_result_add(result, arena, widget, local_position);
+  return true;
+}
+
+static bool ui_widget_hit_test_opaque(UIWidget *widget, UIHitTestResult *result,
+                                      Arena *arena, Vec2 local_position) {
+  if (!vec2_contains(local_position, vec2_zero(), widget->size)) {
+    return false;
+  }
+
+  ui_widget_hit_test_children_default(widget, result, arena, local_position);
+
+  ui_hit_test_result_add(result, arena, widget, local_position);
   return true;
 }
 
@@ -364,8 +466,9 @@ static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message) {
     } break;
 
     case UI_MESSAGE_HIT_TEST: {
-      result = ui_widget_hit_test_default(widget, message->hit_test.result,
-                                          message->hit_test.local_position);
+      result = ui_widget_hit_test_defer_to_children(
+          widget, message->hit_test.result, message->hit_test.arena,
+          message->hit_test.local_position);
     } break;
   }
   return result;
@@ -506,6 +609,7 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
 
   UIWidget *widget = ui_widget_alloc(&frame->arena, klass, props);
   UIWidget *last_widget = 0;
+  UIHitTestEntry *hit_test_entry = 0;
 
   UIWidgetStackEntry *parent = state->widget_stack.current;
   if (parent) {
@@ -530,10 +634,18 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
     if (parent->last_child) {
       parent->last_child = parent->last_child->next;
     }
+
+    if (parent->hit_test_entry) {
+      hit_test_entry = parent->hit_test_entry->prev;
+    }
   } else {
     ASSERTF(!frame->root, "root widget already exists.");
     frame->root = widget;
     last_widget = state->last_frame->root;
+
+    if (state->input.hit_test_result) {
+      hit_test_entry = state->input.hit_test_result->last;
+    }
   }
 
   if (last_widget) {
@@ -547,8 +659,16 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
     ui_widget_mount(widget);
   }
 
+  // Update widget references in input.hit_test_result so we can send events
+  // to widgets later.
+  if (hit_test_entry && hit_test_entry->widget == last_widget) {
+    hit_test_entry->widget = widget;
+  } else {
+    hit_test_entry = 0;
+  }
+
   ui_widget_stack_push(&state->widget_stack, &state->build_arena, widget,
-                       last_widget);
+                       last_widget, hit_test_entry);
   return widget;
 }
 
@@ -580,7 +700,10 @@ static UIWidget *ui_widget_find_first_ancestor(UIWidget *widget,
 
 UIWidget *ui_widget_get_root(void) {
   UIState *state = ui_state_get();
-  return state->current_frame->root;
+  if (state->current_frame) {
+    return state->current_frame->root;
+  }
+  return 0;
 }
 
 UIWidget *ui_widget_get_last_child(void) {
@@ -684,6 +807,13 @@ static i32 ui_colored_box_callback(UIWidget *widget, UIMessage *message) {
                            ui_widget_get_props(widget, UIColoredBoxProps),
                            message->paint.context, message->paint.offset);
     } break;
+
+    case UI_MESSAGE_HIT_TEST: {
+      result = ui_widget_hit_test_opaque(widget, message->hit_test.result,
+                                         message->hit_test.arena,
+                                         message->hit_test.local_position);
+    } break;
+
     default: {
       result = ui_widget_callback_default(widget, message);
     } break;
@@ -1542,7 +1672,11 @@ UIWidgetClass ui_row_class = {
 /// UIPointerListener
 ///
 typedef struct UIPointerListenerState {
-  UIPointerEventMoveO move;
+  UIPointerEventO down;
+  UIPointerEventO move;
+  UIPointerEventO up;
+  UIPointerEventO cancel;
+  UIPointerEventO hover;
 } UIPointerListenerState;
 
 static i32 ui_pointer_listener_callback(UIWidget *widget, UIMessage *message) {
@@ -1560,8 +1694,20 @@ static i32 ui_pointer_listener_callback(UIWidget *widget, UIMessage *message) {
       UIPointerListenerState *state = (UIPointerListenerState *)widget->state;
       UIPointerEvent *event = message->handle_event.event;
       switch (event->type) {
+        case UI_POINTER_EVENT_DOWN: {
+          state->down = ui_pointer_event_some(*event);
+        } break;
         case UI_POINTER_EVENT_MOVE: {
-          state->move = ui_pointer_move_event_some(event->move);
+          state->move = ui_pointer_event_some(*event);
+        } break;
+        case UI_POINTER_EVENT_UP: {
+          state->up = ui_pointer_event_some(*event);
+        } break;
+        case UI_POINTER_EVENT_CANCEL: {
+          state->cancel = ui_pointer_event_some(*event);
+        } break;
+        case UI_POINTER_EVENT_HOVER: {
+          state->hover = ui_pointer_event_some(*event);
         } break;
         default: {
         } break;
@@ -1584,8 +1730,21 @@ void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
   UIWidget *widget = ui_widget_begin(&ui_pointer_listener_class, props);
   ASSERT(widget->state);
   UIPointerListenerState *state = widget->state;
-  if (props->move && state->move.present) {
-    *props->move = state->move.value;
+  if (props->down) {
+    *props->down = state->down;
   }
+  if (props->move) {
+    *props->move = state->move;
+  }
+  if (props->up) {
+    *props->up = state->up;
+  }
+  if (props->cancel) {
+    *props->cancel = state->cancel;
+  }
+  if (props->hover) {
+    *props->hover = state->hover;
+  }
+
   *state = (UIPointerListenerState){0};
 }

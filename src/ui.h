@@ -8,8 +8,22 @@
 #include "src/string.h"
 #include "src/types.h"
 
+#define UI_BUTTON_PRIMARY 0x01
+#define UI_BUTTON_SECONDARY 0x02
+#define UI_BUTTON_TERTIARY 0x04
+
+#define UI_MOUSE_BUTTON_PRIMARY UI_BUTTON_PRIMARY
+#define UI_MOUSE_BUTTON_SECONDARY UI_BUTTON_SECONDARY
+#define UI_MOUSE_BUTTON_TERTIARY UI_BUTTON_TERTIARY
+#define UI_MOUSE_BUTTON_BACK 0x8
+#define UI_MOUSE_BUTTON_FORWARD 0x10
+
 void ui_set_viewport(Vec2 min, Vec2 max);
-void ui_on_pointer_move(Vec2 pos);
+
+void ui_on_focus_lost(Vec2 pos);
+void ui_on_mouse_move(Vec2 pos);
+void ui_on_mouse_button_down(Vec2 pos, u32 button);
+void ui_on_mouse_button_up(Vec2 pos, u32 button);
 
 void ui_begin_frame(void);
 void ui_end_frame(void);
@@ -216,53 +230,65 @@ typedef struct UIMessageGetParentData {
   void *parent_data;
 } UIMessageGetParentData;
 
-typedef struct UIHitTestResultEntry UIHitTestResultEntry;
-struct UIHitTestResultEntry {
-  UIHitTestResultEntry *prev;
-  UIHitTestResultEntry *next;
+typedef struct UIHitTestEntry UIHitTestEntry;
+struct UIHitTestEntry {
+  UIHitTestEntry *prev;
+  UIHitTestEntry *next;
 
   UIWidget *widget;
   Vec2 local_position;
 };
 
 typedef struct UIHitTestResult {
-  Arena *arena;
-  UIHitTestResultEntry *first;
-  UIHitTestResultEntry *last;
+  UIHitTestEntry *first;
+  UIHitTestEntry *last;
 } UIHitTestResult;
 
-void ui_hit_test_result_add(UIHitTestResult *result, UIWidget *widget,
-                            Vec2 local_position);
+// Add hit test entry to the result in a front-to-back order. i.e. the first
+// widget received the hit should be the first, the root should be the last.
+void ui_hit_test_result_add(UIHitTestResult *self, Arena *arena,
+                            UIWidget *widget, Vec2 local_position);
 
 /// Callback should return true if hit.
 typedef struct UIMessageHitTest {
   u32 type;  // UI_MESSAGE_HIT_TEST
   UIHitTestResult *result;
+  Arena *arena;
   /// Position relative to UIWidget's local coordinate system. (0, 0) is the
   /// top-left of the box.
   Vec2 local_position;
 } UIMessageHitTest;
 
 typedef enum UIPointerEventType {
+  UI_POINTER_EVENT_UNKNOWN,
+  /// A pointer comes into contact with the screen (for touch pointers), or has
+  /// its button pressed (for mouse pointers) at this widget's location.
+  UI_POINTER_EVENT_DOWN,
+  /// A pointer that triggered an UI_POINTER_EVENT_DOWN changes position.
   UI_POINTER_EVENT_MOVE,
+  /// A pointer that triggered an UI_POINTER_EVENT_DOWN is no longer in contact
+  /// with the screen.
+  UI_POINTER_EVENT_UP,
+  /// A pointer that triggered an UI_POINTER_EVENT_DOWN is no longer directed
+  /// towards this receiver.
+  UI_POINTER_EVENT_CANCEL,
+  /// A pointer that has not triggered an UI_POINTER_EVENT_DOWN changes
+  /// position.
+  UI_POINTER_EVENT_HOVER,
 } UIPointerEventType;
 
-typedef struct UIPointerEventMove {
+typedef struct UIPointerEvent {
   UIPointerEventType type;
+  u32 button;
   /// Coordinate of the position of the pointer, in logical pixels in the global
   /// coordinate space.
   Vec2 position;
   /// The position transformed into the event receiver's local coordinate
   /// system.
   Vec2 local_position;
-} UIPointerEventMove;
-
-OPTIONAL_TYPE(UIPointerEventMoveO, UIPointerEventMove, ui_pointer_move_event);
-
-typedef union UIPointerEvent {
-  UIPointerEventType type;
-  UIPointerEventMove move;
 } UIPointerEvent;
+
+OPTIONAL_TYPE(UIPointerEventO, UIPointerEvent, ui_pointer_event);
 
 typedef struct UIMessageHandleEvent {
   u32 type;  // UI_MESSAGE_HANDLE_EVENT
@@ -762,7 +788,11 @@ extern UIWidgetClass ui_pointer_listener_class;
 
 typedef struct UIPointerListenerProps {
   UIKey key;
-  UIPointerEventMove *move;
+  UIPointerEventO *down;
+  UIPointerEventO *move;
+  UIPointerEventO *up;
+  UIPointerEventO *cancel;
+  UIPointerEventO *hover;
 } UIPointerListenerProps;
 
 void ui_pointer_listener_begin(const UIPointerListenerProps *props);

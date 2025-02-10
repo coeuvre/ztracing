@@ -100,16 +100,42 @@
 static void build_ui(f32 dt, f32 frame_time) {
   ui_center_begin(&(UICenterProps){0});
   {
-    UIPointerEventMove* move = 0;
-    ui_pointer_listener_begin(&(UIPointerListenerProps){.move = &move});
+    UIPointerEventO down = {0};
+    UIPointerEventO move = {0};
+    UIPointerEventO up = {0};
+    UIPointerEventO cancel = {0};
+    UIPointerEventO hover = {0};
+    ui_pointer_listener_begin(&(UIPointerListenerProps){
+        .down = &down,
+        .move = &move,
+        .up = &up,
+        .cancel = &cancel,
+        .hover = &hover,
+    });
     ui_container_begin(&(UIContainerProps){
         .width = f32_some(30),
         .height = f32_some(30),
-        .color = move ? ui_color_some(ui_color(0, 1, 0, 1))
-                      : ui_color_some(ui_color(1, 0, 0, 1)),
+        .color = hover.present ? ui_color_some(ui_color(0, 1, 0, 1))
+                               : ui_color_some(ui_color(1, 0, 0, 1)),
     });
     ui_container_end();
     ui_pointer_listener_end();
+
+    if (down.present) {
+      INFO("down");
+    }
+    if (move.present) {
+      INFO("move");
+    }
+    if (up.present) {
+      INFO("up");
+    }
+    if (cancel.present) {
+      INFO("cancel");
+    }
+    if (hover.present) {
+      INFO("hover");
+    }
   }
   ui_center_end();
 }

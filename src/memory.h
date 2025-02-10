@@ -76,6 +76,8 @@ void temp_memory_end(TempMemory temp);
 
 Arena *arena_get_scratch(Arena **conflicts, usize len);
 
+typedef TempMemory Scratch;
+
 #define scratch_begin(conflicts, len) \
   temp_memory_begin(arena_get_scratch((conflicts), (len)))
 #define scratch_end(temp) temp_memory_end(temp)
