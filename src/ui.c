@@ -1,5 +1,6 @@
 #include "src/ui.h"
 
+#include <stdbool.h>
 #include <string.h>
 
 #include "src/assert.h"
@@ -9,6 +10,35 @@
 #include "src/memory.h"
 #include "src/string.h"
 #include "src/types.h"
+
+typedef struct UIWidgetListNode UIWidgetListNode;
+struct UIWidgetListNode {
+  UIWidgetListNode *prev;
+  UIWidgetListNode *next;
+  UIWidget *widget;
+};
+
+typedef struct UIWidgetList {
+  UIWidgetListNode *first;
+  UIWidgetListNode *last;
+} UIWidgetList;
+
+static void ui_widget_list_add_last(UIWidgetList *self, Arena *arena,
+                                    UIWidget *widget) {
+  UIWidgetListNode *node = arena_push_struct(arena, UIWidgetListNode);
+  node->widget = widget;
+  DLL_APPEND(self->first, self->last, node, prev, next);
+}
+
+static UIWidgetListNode *ui_widget_list_remove_first(UIWidgetList *self) {
+  if (!self->first) {
+    return 0;
+  }
+
+  UIWidgetListNode *node = self->first;
+  DLL_REMOVE(self->first, self->last, node, prev, next);
+  return node;
+}
 
 typedef struct UIWidgetHashNode UIWidgetHashNode;
 struct UIWidgetHashNode {
@@ -55,11 +85,15 @@ static UIWidget *ui_widget_hash_map_get(UIWidgetHashMap *map, UIKey key) {
 typedef struct UIFrame {
   Arena arena;
   UIWidget *root;
+  bool open;
 } UIFrame;
+
+static inline bool ui_frame_is_open(UIFrame *frame) {
+  return frame && frame->open;
+}
 
 typedef struct UIWidgetStackEntry {
   UIWidget *widget;
-  UIHitTestEntry *hit_test_entry;
   UIWidget *last_widget;
   UIWidget *last_child;
   const u8 *build_arena_top;
@@ -87,8 +121,7 @@ static bool ui_widget_stack_is_empty(UIWidgetStack *stack) {
 }
 
 static void ui_widget_stack_push(UIWidgetStack *stack, Arena *build_arena,
-                                 UIWidget *widget, UIWidget *last_widget,
-                                 UIHitTestEntry *hit_test_entry) {
+                                 UIWidget *widget, UIWidget *last_widget) {
   UIWidgetStackEntry *entry =
       arena_push_array(&stack->arena, UIWidgetStackEntry, 1);
   entry->widget = widget;
@@ -96,7 +129,6 @@ static void ui_widget_stack_push(UIWidgetStack *stack, Arena *build_arena,
   if (last_widget) {
     entry->last_child = last_widget->first;
   }
-  entry->hit_test_entry = hit_test_entry;
   if (build_arena->current_block) {
     entry->build_arena_top = build_arena->current_block->pos;
   } else {
@@ -125,12 +157,75 @@ static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack, Arena *build_arena) {
   return entry->widget;
 }
 
+typedef struct UIHitTestState {
+  Arena arena;
+  UIHitTestResult *result;
+} UIHitTestState;
+
+static void ui_hit_test_state_clear(UIHitTestState *self) {
+  self->result = 0;
+  arena_clear(&self->arena);
+}
+
+// Find widget inside the tree rooted at `root` that `widget->old_widget ==
+// entry->widget` using BFS.
+static UIWidget *ui_hit_test_find_widget_bfs(UIHitTestEntry *entry,
+                                             UIWidget *root) {
+  Scratch scratch = scratch_begin(0, 0);
+
+  UIWidget *result = 0;
+  UIWidgetList queue = {0};
+  ui_widget_list_add_last(&queue, scratch.arena, root);
+
+  for (UIWidgetListNode *node = ui_widget_list_remove_first(&queue); node;
+       node = ui_widget_list_remove_first(&queue)) {
+    if (entry->widget == node->widget->old_widget) {
+      result = node->widget;
+      break;
+    }
+
+    for (UIWidget *child = node->widget->first; child; child = child->next) {
+      ui_widget_list_add_last(&queue, scratch.arena, child);
+    }
+  }
+
+  scratch_end(scratch);
+
+  return result;
+}
+
+/// Update widget references in this hit test path from old widget tree to the
+/// new widget tree.
+static void ui_hit_test_state_sync(UIHitTestState *self, UIWidget *new_root) {
+  if (!self->result) {
+    return;
+  }
+
+  UIHitTestEntry *entry = self->result->last;
+  if (new_root) {
+    UIWidget *new_widget = new_root;
+    for (; entry; entry = entry->prev) {
+      UIWidget *match = ui_hit_test_find_widget_bfs(entry, new_widget);
+      if (!match) {
+        break;
+      }
+      entry->widget = match;
+      new_widget = match;
+    }
+  }
+
+  for (; entry; entry = entry->prev) {
+    entry->widget = 0;
+  }
+}
+
 typedef struct UIInputState {
   Vec2 last_pointer_pos;
   u32 current_down_button;
 
-  Arena hit_test_arena;
-  UIHitTestResult *hit_test_result;
+  // hit test state for button down.
+  UIHitTestState button_down_hit_test;
+  // TODO: hit test result for last mouse move
 } UIInputState;
 
 typedef struct UIState {
@@ -171,6 +266,7 @@ void ui_begin_frame(void) {
   UIFrame *frame = state->current_frame;
   arena_clear(&frame->arena);
   frame->root = 0;
+  frame->open = true;
 }
 
 static void ui_widget_mount(UIWidget *widget) {
@@ -260,10 +356,24 @@ static void ui_widget_handle_event(UIWidget *widget, UIPointerEvent *event) {
   widget->klass->callback(widget, &message);
 }
 
+static bool ui_hit_test_state_hit_test(UIHitTestState *self, UIWidget *root,
+                                       Vec2 pos) {
+  ASSERT(!self->result);
+  self->result = arena_push_struct(&self->arena, UIHitTestResult);
+  if (ui_widget_hit_test(root, self->result, &self->arena, pos)) {
+    return true;
+  } else {
+    ui_hit_test_state_clear(self);
+    return false;
+  }
+}
+
 void ui_on_mouse_button_down(Vec2 pos, u32 button) {
   UIState *state = ui_state_get();
+  ASSERT(!ui_frame_is_open(state->current_frame));
+
   state->input.current_down_button |= button;
-  if (state->input.hit_test_result) {
+  if (state->input.button_down_hit_test.result) {
     return;
   }
 
@@ -272,13 +382,11 @@ void ui_on_mouse_button_down(Vec2 pos, u32 button) {
     return;
   }
 
-  Arena *hit_test_arena = &state->input.hit_test_arena;
-  state->input.hit_test_result =
-      arena_push_struct(hit_test_arena, UIHitTestResult);
-  if (ui_widget_hit_test(root, state->input.hit_test_result, hit_test_arena,
-                         pos)) {
-    for (UIHitTestEntry *entry = state->input.hit_test_result->first; entry;
-         entry = entry->next) {
+  if (ui_hit_test_state_hit_test(&state->input.button_down_hit_test, root,
+                                 pos)) {
+    for (UIHitTestEntry *entry =
+             state->input.button_down_hit_test.result->first;
+         entry; entry = entry->next) {
       ui_widget_handle_event(entry->widget,
                              &(UIPointerEvent){
                                  .type = UI_POINTER_EVENT_DOWN,
@@ -287,50 +395,56 @@ void ui_on_mouse_button_down(Vec2 pos, u32 button) {
                                  .local_position = entry->local_position,
                              });
     }
-  } else {
-    state->input.hit_test_result = 0;
-    arena_clear(hit_test_arena);
   }
 }
 
 void ui_on_mouse_button_up(Vec2 pos, u32 button) {
   UIState *state = ui_state_get();
+  ASSERT(!ui_frame_is_open(state->current_frame));
+
   state->input.current_down_button &= (~button);
-  if (state->input.current_down_button || !state->input.hit_test_result) {
+  if (state->input.current_down_button ||
+      !state->input.button_down_hit_test.result) {
     return;
   }
 
-  for (UIHitTestEntry *entry = state->input.hit_test_result->first; entry;
-       entry = entry->next) {
-    ui_widget_handle_event(entry->widget,
-                           &(UIPointerEvent){
-                               .type = UI_POINTER_EVENT_UP,
-                               .button = button,
-                               .position = pos,
-                               .local_position = entry->local_position,
-                           });
+  for (UIHitTestEntry *entry = state->input.button_down_hit_test.result->first;
+       entry; entry = entry->next) {
+    if (entry->widget) {
+      ui_widget_handle_event(entry->widget,
+                             &(UIPointerEvent){
+                                 .type = UI_POINTER_EVENT_UP,
+                                 .button = button,
+                                 .position = pos,
+                                 .local_position = entry->local_position,
+                             });
+    }
   }
 
-  state->input.hit_test_result = 0;
-  arena_clear(&state->input.hit_test_arena);
+  ui_hit_test_state_clear(&state->input.button_down_hit_test);
 }
 
 void ui_on_mouse_move(Vec2 pos) {
   UIState *state = ui_state_get();
+  ASSERT(!ui_frame_is_open(state->current_frame));
+
   if (vec2_is_equal(state->input.last_pointer_pos, pos)) {
     return;
   }
   state->input.last_pointer_pos = pos;
 
-  if (state->input.hit_test_result) {
-    for (UIHitTestEntry *entry = state->input.hit_test_result->first; entry;
-         entry = entry->next) {
-      ui_widget_handle_event(entry->widget,
-                             &(UIPointerEvent){
-                                 .type = UI_POINTER_EVENT_MOVE,
-                                 .position = pos,
-                                 .local_position = entry->local_position,
-                             });
+  if (state->input.button_down_hit_test.result) {
+    for (UIHitTestEntry *entry =
+             state->input.button_down_hit_test.result->first;
+         entry; entry = entry->next) {
+      if (entry->widget) {
+        ui_widget_handle_event(entry->widget,
+                               &(UIPointerEvent){
+                                   .type = UI_POINTER_EVENT_MOVE,
+                                   .position = pos,
+                                   .local_position = entry->local_position,
+                               });
+      }
     }
   } else {
     UIWidget *root = ui_widget_get_root();
@@ -356,22 +470,25 @@ void ui_on_mouse_move(Vec2 pos) {
 
 void ui_on_focus_lost(Vec2 pos) {
   UIState *state = ui_state_get();
-  if (!state->input.hit_test_result) {
+  ASSERT(!ui_frame_is_open(state->current_frame));
+
+  if (!state->input.button_down_hit_test.result) {
     return;
   }
 
-  for (UIHitTestEntry *entry = state->input.hit_test_result->first; entry;
-       entry = entry->next) {
-    ui_widget_handle_event(entry->widget,
-                           &(UIPointerEvent){
-                               .type = UI_POINTER_EVENT_CANCEL,
-                               .position = pos,
-                               .local_position = entry->local_position,
-                           });
+  for (UIHitTestEntry *entry = state->input.button_down_hit_test.result->first;
+       entry; entry = entry->next) {
+    if (entry->widget) {
+      ui_widget_handle_event(entry->widget,
+                             &(UIPointerEvent){
+                                 .type = UI_POINTER_EVENT_CANCEL,
+                                 .position = pos,
+                                 .local_position = entry->local_position,
+                             });
+    }
   }
 
-  state->input.hit_test_result = 0;
-  arena_clear(&state->input.hit_test_arena);
+  ui_hit_test_state_clear(&state->input.button_down_hit_test);
 }
 
 static Vec2 ui_widget_layout_stack_children(UIWidget *widget,
@@ -518,9 +635,13 @@ static void unmount_widgets_if_not(UIWidget *widget) {
 void ui_end_frame(void) {
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
-  ASSERTF(!state->widget_stack.current,
+  ASSERTF(ui_widget_stack_is_empty(&state->widget_stack),
           "Mismatched begin/end calls, last begin: %s",
           state->widget_stack.current->widget->klass->name);
+
+  // Update widget references in hit tests so we can send events to widgets
+  // later.
+  ui_hit_test_state_sync(&state->input.button_down_hit_test, frame->root);
 
   // Layout and paint
   if (frame->root) {
@@ -533,6 +654,8 @@ void ui_end_frame(void) {
     UIPaintingContext context = {0};
     ui_widget_paint(frame->root, &context, state->viewport_min);
   }
+
+  frame->open = false;
 }
 
 static UIKey ui_key_from_str8(UIKey seed, Str8 str) {
@@ -610,7 +733,6 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
 
   UIWidget *widget = ui_widget_alloc(&frame->arena, klass, props);
   UIWidget *last_widget = 0;
-  UIHitTestEntry *hit_test_entry = 0;
 
   UIWidgetStackEntry *parent = state->widget_stack.current;
   if (parent) {
@@ -635,22 +757,15 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
     if (parent->last_child) {
       parent->last_child = parent->last_child->next;
     }
-
-    if (parent->hit_test_entry) {
-      hit_test_entry = parent->hit_test_entry->prev;
-    }
   } else {
     ASSERTF(!frame->root, "root widget already exists.");
     frame->root = widget;
     last_widget = state->last_frame->root;
-
-    if (state->input.hit_test_result) {
-      hit_test_entry = state->input.hit_test_result->last;
-    }
   }
 
   if (last_widget) {
     ASSERT(last_widget->status == UI_WIDGET_STATUS_MOUNTED);
+    widget->old_widget = last_widget;
     widget->state = last_widget->state;
     widget->status = UI_WIDGET_STATUS_MOUNTED;
     last_widget->state = 0;
@@ -660,16 +775,8 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
     ui_widget_mount(widget);
   }
 
-  // Update widget references in input.hit_test_result so we can send events
-  // to widgets later.
-  if (hit_test_entry && hit_test_entry->widget == last_widget) {
-    hit_test_entry->widget = widget;
-  } else {
-    hit_test_entry = 0;
-  }
-
   ui_widget_stack_push(&state->widget_stack, &state->build_arena, widget,
-                       last_widget, hit_test_entry);
+                       last_widget);
   return widget;
 }
 

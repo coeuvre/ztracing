@@ -339,6 +339,8 @@ struct UIWidget {
   /// The offset at which to paint the child in the parent's coordinate system.
   Vec2 offset;
 
+  // The same widget instance from last frame, if any.
+  UIWidget *old_widget;
   void *state;
 };
 
