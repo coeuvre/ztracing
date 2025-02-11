@@ -247,6 +247,23 @@ void ui_set_viewport(Vec2 min, Vec2 max) {
   state->viewport_max = max;
 }
 
+static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message);
+
+typedef struct UIRootProps {
+  UIKey key;
+} UIRootProps;
+
+static UIWidgetClass ui_root_class = {
+    .name = "Root",
+    .props_size = sizeof(UIKey),
+    .callback = &ui_widget_callback_default,
+};
+
+static inline void ui_root_begin(const UIRootProps *props) {
+  ui_widget_begin(&ui_root_class, props);
+}
+static inline void ui_root_end(void) { ui_widget_end(&ui_root_class); }
+
 void ui_begin_frame(void) {
   UIState *state = ui_state_get();
   ASSERT(ui_widget_stack_is_empty(&state->widget_stack));
@@ -261,6 +278,8 @@ void ui_begin_frame(void) {
   arena_clear(&frame->arena);
   frame->root = 0;
   frame->open = true;
+
+  ui_root_begin(&(UIRootProps){0});
 }
 
 static void ui_widget_mount(UIWidget *widget) {
@@ -701,6 +720,8 @@ static void unmount_widgets_if_not(UIWidget *widget) {
 }
 
 void ui_end_frame(void) {
+  ui_root_end();
+
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
   ASSERTF(ui_widget_stack_is_empty(&state->widget_stack),
