@@ -100,54 +100,21 @@
 static void build_ui(f32 dt, f32 frame_time) {
   ui_center_begin(&(UICenterProps){0});
   {
-    UIPointerEventO enter = {0};
-    UIPointerEventO exit = {0};
-    UIPointerEventO down = {0};
-    UIPointerEventO move = {0};
-    UIPointerEventO up = {0};
-    UIPointerEventO cancel = {0};
-    UIPointerEventO hover = {0};
-    ui_mouse_region_begin(&(UIMouseRegionProps){
-        .enter = &enter,
-        .hover = &hover,
-        .exit = &exit,
-    });
-    ui_pointer_listener_begin(&(UIPointerListenerProps){
-        .down = &down,
-        .move = &move,
-        .up = &up,
-        .cancel = &cancel,
+    bool tap;
+    ui_gesture_detector_begin(&(UIGestureDetectorProps){
+        .tap = &tap,
     });
     ui_container_begin(&(UIContainerProps){
         .width = f32_some(30),
         .height = f32_some(30),
-        .color = hover.present ? ui_color_some(ui_color(0, 1, 0, 1))
-                               : ui_color_some(ui_color(1, 0, 0, 1)),
+        .color = tap ? ui_color_some(ui_color(0, 1, 0, 1))
+                     : ui_color_some(ui_color(1, 0, 0, 1)),
     });
     ui_container_end();
-    ui_pointer_listener_end();
-    ui_mouse_region_end();
+    ui_gesture_detector_end();
 
-    if (down.present) {
-      INFO("down");
-    }
-    if (move.present) {
-      INFO("move");
-    }
-    if (up.present) {
-      INFO("up");
-    }
-    if (cancel.present) {
-      INFO("cancel");
-    }
-    if (enter.present) {
-      INFO("enter");
-    }
-    if (hover.present) {
-      INFO("hover");
-    }
-    if (exit.present) {
-      INFO("exit");
+    if (tap) {
+      INFO("TAP");
     }
   }
   ui_center_end();

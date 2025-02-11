@@ -340,8 +340,14 @@ struct UIWidget {
   UIWidgetStatus status;
 
   /// The size of this box computed during layout.
+  ///
+  /// The value is initialized to the size of the same widget from last frame
+  /// before layout.
   Vec2 size;
   /// The offset at which to paint the child in the parent's coordinate system.
+  ///
+  /// The value is initialized to the offset of the same widget from last frame
+  /// before layout.
   Vec2 offset;
 
   // The same widget instance from last frame, if any.
@@ -838,5 +844,21 @@ void ui_mouse_region_begin(const UIMouseRegionProps *props);
 static inline void ui_mouse_region_end(void) {
   ui_widget_end(&ui_mouse_region_class);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIGestureDetector
+///
+/// A widget that detects gestures.
+///
+extern UIWidgetClass ui_gesture_detector_class;
+
+typedef struct UIGestureDetectorProps {
+  UIKey key;
+  bool *tap;
+} UIGestureDetectorProps;
+
+void ui_gesture_detector_begin(const UIGestureDetectorProps *props);
+void ui_gesture_detector_end(void);
 
 #endif  // ZTRACING_SRC_UI_H_
