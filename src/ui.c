@@ -127,6 +127,7 @@ static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack, Arena *build_arena) {
 
 typedef struct UIInputState {
   Vec2 last_pointer_pos;
+  u32 current_down_button;
 
   Arena hit_test_arena;
   UIHitTestResult *hit_test_result;
@@ -261,11 +262,10 @@ static void ui_widget_handle_event(UIWidget *widget, UIPointerEvent *event) {
 
 void ui_on_mouse_button_down(Vec2 pos, u32 button) {
   UIState *state = ui_state_get();
+  state->input.current_down_button |= button;
   if (state->input.hit_test_result) {
-    ui_on_mouse_button_up(pos, button);
+    return;
   }
-
-  ASSERT(!state->input.hit_test_result);
 
   UIWidget *root = ui_widget_get_root();
   if (!root) {
@@ -295,7 +295,8 @@ void ui_on_mouse_button_down(Vec2 pos, u32 button) {
 
 void ui_on_mouse_button_up(Vec2 pos, u32 button) {
   UIState *state = ui_state_get();
-  if (!state->input.hit_test_result) {
+  state->input.current_down_button &= (~button);
+  if (state->input.current_down_button || !state->input.hit_test_result) {
     return;
   }
 
