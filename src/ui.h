@@ -275,6 +275,10 @@ typedef enum UIPointerEventType {
   /// A pointer that has not triggered an UI_POINTER_EVENT_DOWN changes
   /// position.
   UI_POINTER_EVENT_HOVER,
+  /// A pointer has entered this widget.
+  UI_POINTER_EVENT_ENTER,
+  /// A pointer has exited this widget when the widget is still mounted.
+  UI_POINTER_EVENT_EXIT,
 } UIPointerEventType;
 
 typedef struct UIPointerEvent {
@@ -311,6 +315,7 @@ typedef i32(UIWidgetCallback)(UIWidget *widget, UIMessage *message);
 typedef struct UIWidgetClass {
   const char *name;
   usize props_size;
+  usize state_size;
   UIWidgetCallback *callback;
 } UIWidgetClass;
 
@@ -364,12 +369,25 @@ static inline UIKey ui_widget_get_key(UIWidget *widget) {
 static inline void *ui_widget_get_props_(UIWidget *widget, usize props_size) {
   ASSERTF(props_size == widget->klass->props_size,
           "%s: klass.props_size (%d) doesn't match requested props_size (%d)",
-          widget->klass->name, (int)props_size, (int)widget->klass->props_size);
+          widget->klass->name, (int)widget->klass->props_size, (int)props_size);
   return widget + 1;
 }
 
 #define ui_widget_get_props(widget, Props) \
   ((Props *)ui_widget_get_props_(widget, sizeof(Props)))
+
+static inline void *ui_widget_get_state_(UIWidget *widget, usize state_size) {
+  ASSERTF(state_size == widget->klass->state_size,
+          "%s: klass.state_size (%d) doesn't match requested state_size (%d)",
+          widget->klass->name, (int)widget->klass->state_size, (int)state_size);
+  ASSERTF(widget->klass->state_size > 0, "%s doesn't have state",
+          widget->klass->name);
+  ASSERT(widget->state);
+  return widget->state;
+}
+
+#define ui_widget_get_state(widget, State) \
+  ((State *)ui_widget_get_state_(widget, sizeof(State)))
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -794,12 +812,31 @@ typedef struct UIPointerListenerProps {
   UIPointerEventO *move;
   UIPointerEventO *up;
   UIPointerEventO *cancel;
-  UIPointerEventO *hover;
 } UIPointerListenerProps;
 
 void ui_pointer_listener_begin(const UIPointerListenerProps *props);
 static inline void ui_pointer_listener_end(void) {
   ui_widget_end(&ui_pointer_listener_class);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIMouseRegion
+///
+/// A widget that tracks the movement of mice.
+///
+extern UIWidgetClass ui_mouse_region_class;
+
+typedef struct UIMouseRegionProps {
+  UIKey key;
+  UIPointerEventO *enter;
+  UIPointerEventO *hover;
+  UIPointerEventO *exit;
+} UIMouseRegionProps;
+
+void ui_mouse_region_begin(const UIMouseRegionProps *props);
+static inline void ui_mouse_region_end(void) {
+  ui_widget_end(&ui_mouse_region_class);
 }
 
 #endif  // ZTRACING_SRC_UI_H_

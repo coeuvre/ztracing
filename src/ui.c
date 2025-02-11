@@ -217,7 +217,9 @@ typedef struct UIInputState {
 
   // hit test state for button down.
   UIHitTestState button_down_hit_test;
-  // TODO: hit test result for last mouse move
+  // hit test result for mouse move
+  UIHitTestState button_move_hit_tests[2];
+  usize button_move_hit_test_index;
 } UIInputState;
 
 typedef struct UIState {
@@ -360,6 +362,19 @@ static UIWidget *ui_state_get_root_for_hit_test(UIState *self) {
   return self->last_frame->root;
 }
 
+static bool ui_hit_test_state_has_widget(UIHitTestState *self,
+                                         UIWidget *widget) {
+  // TODO: Use hash map to speed up lookup.
+  bool result = false;
+  for (UIHitTestEntry *entry = self->result.first; entry; entry = entry->next) {
+    if (entry->widget == widget) {
+      result = true;
+      break;
+    }
+  }
+  return result;
+}
+
 static bool ui_hit_test_state_hit_test(UIHitTestState *self, UIWidget *root,
                                        Vec2 pos) {
   ASSERT(!self->result.first);
@@ -427,14 +442,15 @@ void ui_on_mouse_button_up(Vec2 pos, u32 button) {
 
 void ui_on_mouse_move(Vec2 pos) {
   UIState *state = ui_state_get();
+  UIInputState *input = &state->input;
 
-  if (vec2_is_equal(state->input.last_pointer_pos, pos)) {
+  if (vec2_is_equal(input->last_pointer_pos, pos)) {
     return;
   }
-  state->input.last_pointer_pos = pos;
+  input->last_pointer_pos = pos;
 
-  if (state->input.button_down_hit_test.result.first) {
-    for (UIHitTestEntry *entry = state->input.button_down_hit_test.result.first;
+  if (input->button_down_hit_test.result.first) {
+    for (UIHitTestEntry *entry = input->button_down_hit_test.result.first;
          entry; entry = entry->next) {
       if (entry->widget) {
         ui_widget_handle_event(entry->widget,
@@ -445,26 +461,56 @@ void ui_on_mouse_move(Vec2 pos) {
                                });
       }
     }
-  } else {
-    UIWidget *root = ui_state_get_root_for_hit_test(state);
-    if (!root) {
-      return;
-    }
-
-    Scratch scratch = scratch_begin(0, 0);
-    UIHitTestResult result = {0};
-    if (ui_widget_hit_test(root, &result, scratch.arena, pos)) {
-      for (UIHitTestEntry *entry = result.first; entry; entry = entry->next) {
-        ui_widget_handle_event(entry->widget,
-                               &(UIPointerEvent){
-                                   .type = UI_POINTER_EVENT_HOVER,
-                                   .position = pos,
-                                   .local_position = entry->local_position,
-                               });
-      }
-    }
-    scratch_end(scratch);
   }
+
+  UIWidget *root = ui_state_get_root_for_hit_test(state);
+  if (!root) {
+    return;
+  }
+  UIHitTestState *last_hit_test =
+      input->button_move_hit_tests + input->button_move_hit_test_index;
+  input->button_move_hit_test_index = (input->button_move_hit_test_index + 1) %
+                                      ARRAY_COUNT(input->button_move_hit_tests);
+  UIHitTestState *hit_test =
+      input->button_move_hit_tests + input->button_move_hit_test_index;
+  ui_hit_test_state_hit_test(hit_test, root, pos);
+
+  for (UIHitTestEntry *entry = last_hit_test->result.first; entry;
+       entry = entry->next) {
+    if (!ui_hit_test_state_has_widget(hit_test, entry->widget)) {
+      ui_widget_handle_event(entry->widget, &(UIPointerEvent){
+                                                .type = UI_POINTER_EVENT_EXIT,
+                                                .position = pos,
+                                            });
+    }
+  }
+
+  for (UIHitTestEntry *entry = hit_test->result.first; entry;
+       entry = entry->next) {
+    if (!ui_hit_test_state_has_widget(last_hit_test, entry->widget)) {
+      ui_widget_handle_event(entry->widget,
+                             &(UIPointerEvent){
+                                 .type = UI_POINTER_EVENT_ENTER,
+                                 .position = pos,
+                                 .local_position = entry->local_position,
+                             });
+    }
+  }
+
+  // Only send HOVER events if there isn't button down.
+  if (!input->button_down_hit_test.result.first) {
+    for (UIHitTestEntry *entry = hit_test->result.first; entry;
+         entry = entry->next) {
+      ui_widget_handle_event(entry->widget,
+                             &(UIPointerEvent){
+                                 .type = UI_POINTER_EVENT_HOVER,
+                                 .position = pos,
+                                 .local_position = entry->local_position,
+                             });
+    }
+  }
+
+  ui_hit_test_state_clear(last_hit_test);
 }
 
 void ui_on_focus_lost(Vec2 pos) {
@@ -572,6 +618,18 @@ static bool ui_widget_hit_test_opaque(UIWidget *widget, UIHitTestResult *result,
 static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
+    case UI_MESSAGE_MOUNT: {
+      if (widget->klass->state_size > 0) {
+        widget->state = memory_alloc(widget->klass->state_size);
+      }
+    } break;
+
+    case UI_MESSAGE_UNMOUNT: {
+      if (widget->klass->state_size > 0) {
+        memory_free(widget->state, widget->klass->state_size);
+      }
+    } break;
+
     case UI_MESSAGE_LAYOUT: {
       ui_widget_layout_default(widget, message->layout.constraints);
     } break;
@@ -640,6 +698,8 @@ void ui_end_frame(void) {
   // Update widget references in hit tests so we can send events to widgets
   // later.
   ui_hit_test_state_sync(&state->input.button_down_hit_test, frame->root);
+  ui_hit_test_state_sync(&state->input.button_move_hit_tests[0], frame->root);
+  ui_hit_test_state_sync(&state->input.button_move_hit_tests[1], frame->root);
 
   // Layout and paint
   if (frame->root) {
@@ -1782,22 +1842,14 @@ typedef struct UIPointerListenerState {
   UIPointerEventO move;
   UIPointerEventO up;
   UIPointerEventO cancel;
-  UIPointerEventO hover;
 } UIPointerListenerState;
 
 static i32 ui_pointer_listener_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_MESSAGE_MOUNT: {
-      widget->state = memory_alloc(sizeof(UIPointerListenerState));
-    } break;
-
-    case UI_MESSAGE_UNMOUNT: {
-      memory_free(widget->state, sizeof(UIPointerListenerState));
-    } break;
-
     case UI_MESSAGE_HANDLE_EVENT: {
-      UIPointerListenerState *state = (UIPointerListenerState *)widget->state;
+      UIPointerListenerState *state =
+          ui_widget_get_state(widget, UIPointerListenerState);
       UIPointerEvent *event = message->handle_event.event;
       switch (event->type) {
         case UI_POINTER_EVENT_DOWN: {
@@ -1811,9 +1863,6 @@ static i32 ui_pointer_listener_callback(UIWidget *widget, UIMessage *message) {
         } break;
         case UI_POINTER_EVENT_CANCEL: {
           state->cancel = ui_pointer_event_some(*event);
-        } break;
-        case UI_POINTER_EVENT_HOVER: {
-          state->hover = ui_pointer_event_some(*event);
         } break;
         default: {
         } break;
@@ -1829,13 +1878,14 @@ static i32 ui_pointer_listener_callback(UIWidget *widget, UIMessage *message) {
 UIWidgetClass ui_pointer_listener_class = {
     .name = "PointerListener",
     .props_size = sizeof(UIPointerListenerProps),
+    .state_size = sizeof(UIPointerListenerState),
     .callback = &ui_pointer_listener_callback,
 };
 
 void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
   UIWidget *widget = ui_widget_begin(&ui_pointer_listener_class, props);
-  ASSERT(widget->state);
-  UIPointerListenerState *state = widget->state;
+  UIPointerListenerState *state =
+      ui_widget_get_state(widget, UIPointerListenerState);
   if (props->down) {
     *props->down = state->down;
   }
@@ -1848,9 +1898,66 @@ void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
   if (props->cancel) {
     *props->cancel = state->cancel;
   }
+
+  *state = (UIPointerListenerState){0};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIMouseRegion
+///
+typedef struct UIMouseRegionState {
+  UIPointerEventO enter;
+  UIPointerEventO hover;
+  UIPointerEventO exit;
+} UIMouseRegionState;
+
+static i32 ui_mouse_region_callback(UIWidget *widget, UIMessage *message) {
+  i32 result = 0;
+  switch (message->type) {
+    case UI_MESSAGE_HANDLE_EVENT: {
+      UIMouseRegionState *state =
+          ui_widget_get_state(widget, UIMouseRegionState);
+      UIPointerEvent *event = message->handle_event.event;
+      switch (event->type) {
+        case UI_POINTER_EVENT_ENTER: {
+          state->enter = ui_pointer_event_some(*event);
+        } break;
+        case UI_POINTER_EVENT_HOVER: {
+          state->hover = ui_pointer_event_some(*event);
+        } break;
+        case UI_POINTER_EVENT_EXIT: {
+          state->exit = ui_pointer_event_some(*event);
+        } break;
+        default: {
+        } break;
+      }
+    } break;
+    default: {
+      result = ui_widget_callback_default(widget, message);
+    } break;
+  }
+  return result;
+}
+UIWidgetClass ui_mouse_region_class = {
+    .name = "MouseRegion",
+    .props_size = sizeof(UIMouseRegionProps),
+    .state_size = sizeof(UIMouseRegionState),
+    .callback = &ui_mouse_region_callback,
+};
+
+void ui_mouse_region_begin(const UIMouseRegionProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_mouse_region_class, props);
+  UIMouseRegionState *state = ui_widget_get_state(widget, UIMouseRegionState);
+  if (props->enter) {
+    *props->enter = state->enter;
+  }
   if (props->hover) {
     *props->hover = state->hover;
   }
+  if (props->exit) {
+    *props->exit = state->exit;
+  }
 
-  *state = (UIPointerListenerState){0};
+  *state = (UIMouseRegionState){0};
 }

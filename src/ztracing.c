@@ -100,17 +100,23 @@
 static void build_ui(f32 dt, f32 frame_time) {
   ui_center_begin(&(UICenterProps){0});
   {
+    UIPointerEventO enter = {0};
+    UIPointerEventO exit = {0};
     UIPointerEventO down = {0};
     UIPointerEventO move = {0};
     UIPointerEventO up = {0};
     UIPointerEventO cancel = {0};
     UIPointerEventO hover = {0};
+    ui_mouse_region_begin(&(UIMouseRegionProps){
+        .enter = &enter,
+        .hover = &hover,
+        .exit = &exit,
+    });
     ui_pointer_listener_begin(&(UIPointerListenerProps){
         .down = &down,
         .move = &move,
         .up = &up,
         .cancel = &cancel,
-        .hover = &hover,
     });
     ui_container_begin(&(UIContainerProps){
         .width = f32_some(30),
@@ -120,6 +126,7 @@ static void build_ui(f32 dt, f32 frame_time) {
     });
     ui_container_end();
     ui_pointer_listener_end();
+    ui_mouse_region_end();
 
     if (down.present) {
       INFO("down");
@@ -133,8 +140,14 @@ static void build_ui(f32 dt, f32 frame_time) {
     if (cancel.present) {
       INFO("cancel");
     }
+    if (enter.present) {
+      INFO("enter");
+    }
     if (hover.present) {
       INFO("hover");
+    }
+    if (exit.present) {
+      INFO("exit");
     }
   }
   ui_center_end();
