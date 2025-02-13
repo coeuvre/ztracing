@@ -1,9 +1,8 @@
 #include "src/ui.h"
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <string.h>
-
-#include <cstdarg>
 
 #include "src/assert.h"
 #include "src/draw.h"
@@ -1454,11 +1453,31 @@ static i32 ui_flexible_callback(UIWidget *widget, UIMessage *message) {
   return result;
 }
 
-UIWidgetClass ui_flexible_vtable = {
+UIWidgetClass ui_flexible_class = {
     .name = "Flexible",
     .props_size = sizeof(UIFlexibleProps),
     .callback = &ui_flexible_callback,
 };
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIExpanded
+///
+UIWidgetClass ui_expanded_class = {
+    .name = "Expanded",
+    .props_size = sizeof(UIFlexibleProps),
+    .callback = &ui_flexible_callback,
+};
+
+void ui_expanded_begin(const UIExpandedProps *props) {
+  UIFlexibleProps flexible = {
+      .key = props->key,
+      .flex = props->flex,
+      .fit = UI_FLEX_FIT_TIGHT,
+  };
+
+  ui_widget_begin(&ui_expanded_class, &flexible);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -1840,65 +1859,45 @@ UIWidgetClass ui_flex_class = {
 ///
 /// UIColumn
 ///
-static i32 ui_column_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT: {
-      UIColumnProps *column = ui_widget_get_props(widget, UIColumnProps);
-      UIFlexProps flex = {
-          .key = column->key,
-          .direction = UI_AXIS_VERTICAL,
-          .main_axis_alignment = column->main_axis_alignment,
-          .main_axis_size = column->main_axis_size,
-          .cross_axis_alignment = column->cross_axis_alignment,
-          .spacing = column->spacing,
-      };
-      ui_flex_layout(widget, &flex, message->layout.constraints);
-    } break;
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 UIWidgetClass ui_column_class = {
     .name = "Column",
-    .props_size = sizeof(UIColumnProps),
-    .callback = &ui_column_callback,
+    .props_size = sizeof(UIFlexProps),
+    .callback = &ui_flex_callback,
 };
+
+void ui_column_begin(const UIColumnProps *props) {
+  UIFlexProps flex = {
+      .key = props->key,
+      .direction = UI_AXIS_VERTICAL,
+      .main_axis_alignment = props->main_axis_alignment,
+      .main_axis_size = props->main_axis_size,
+      .cross_axis_alignment = props->cross_axis_alignment,
+      .spacing = props->spacing,
+  };
+  ui_widget_begin(&ui_column_class, &flex);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIRow
 ///
-static i32 ui_row_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT: {
-      UIRowProps *row = ui_widget_get_props(widget, UIRowProps);
-      UIFlexProps flex = {
-          .key = row->key,
-          .direction = UI_AXIS_HORIZONTAL,
-          .main_axis_alignment = row->main_axis_alignment,
-          .main_axis_size = row->main_axis_size,
-          .cross_axis_alignment = row->cross_axis_alignment,
-          .spacing = row->spacing,
-      };
-      ui_flex_layout(widget, &flex, message->layout.constraints);
-    } break;
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 UIWidgetClass ui_row_class = {
     .name = "Row",
-    .props_size = sizeof(UIRowProps),
-    .callback = &ui_row_callback,
+    .props_size = sizeof(UIFlexProps),
+    .callback = &ui_flex_callback,
 };
+
+void ui_row_begin(const UIRowProps *props) {
+  UIFlexProps flex = {
+      .key = props->key,
+      .direction = UI_AXIS_HORIZONTAL,
+      .main_axis_alignment = props->main_axis_alignment,
+      .main_axis_size = props->main_axis_size,
+      .cross_axis_alignment = props->cross_axis_alignment,
+      .spacing = props->spacing,
+  };
+  ui_widget_begin(&ui_row_class, &flex);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///

@@ -636,6 +636,10 @@ static inline UIEdgeInsets ui_edge_insets_all(f32 val) {
   return ui_edge_insets(val, val, val, val);
 }
 
+static inline UIEdgeInsets ui_edge_insets_symmetric(f32 x, f32 y) {
+  return ui_edge_insets(x, x, y, y);
+}
+
 typedef struct UIPaddingProps {
   UIKey key;
   UIEdgeInsets padding;
@@ -684,7 +688,7 @@ void ui_container_end(void);
 ///
 /// A widget that controls how a child of a UIRow, UIColumn, or UIFlex flexes.
 ///
-extern UIWidgetClass ui_flexible_vtable;
+extern UIWidgetClass ui_flexible_class;
 
 typedef enum UIFlexFit {
   /// The child is forced to fill the available space.
@@ -701,10 +705,28 @@ typedef struct UIFlexibleProps {
 } UIFlexibleProps;
 
 static inline void ui_flexible_begin(const UIFlexibleProps *props) {
-  ui_widget_begin(&ui_flexible_vtable, props);
+  ui_widget_begin(&ui_flexible_class, props);
 }
 
-static inline void ui_flexible_end(void) { ui_widget_end(&ui_flexible_vtable); }
+static inline void ui_flexible_end(void) { ui_widget_end(&ui_flexible_class); }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIExpanded
+///
+/// A widget that expands a child of a UIRow, UIColumn, or UIFlex so that the
+/// child fills the available space.
+///
+extern UIWidgetClass ui_expanded_class;
+
+typedef struct UIExpandedProps {
+  UIKey key;
+  i32 flex;
+} UIExpandedProps;
+
+void ui_expanded_begin(const UIExpandedProps *props);
+
+static inline void ui_expanded_end(void) { ui_widget_end(&ui_expanded_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -780,10 +802,7 @@ typedef struct UIColumnProps {
   f32 spacing;
 } UIColumnProps;
 
-static inline void ui_column_begin(const UIColumnProps *props) {
-  ui_widget_begin(&ui_column_class, props);
-}
-
+void ui_column_begin(const UIColumnProps *props);
 static inline void ui_column_end(void) { ui_widget_end(&ui_column_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -802,10 +821,7 @@ typedef struct UIRowProps {
   f32 spacing;
 } UIRowProps;
 
-static inline void ui_row_begin(const UIRowProps *props) {
-  ui_widget_begin(&ui_row_class, props);
-}
-
+void ui_row_begin(const UIRowProps *props);
 static inline void ui_row_end(void) { ui_widget_end(&ui_row_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
