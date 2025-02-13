@@ -28,6 +28,10 @@ void ui_on_mouse_button_up(Vec2 pos, u32 button);
 void ui_begin_frame(void);
 void ui_end_frame(void);
 
+Str8 ui_push_str8(Str8 str);
+Str8 ui_push_str8f(const char *format, ...);
+Str8 ui_push_str8fv(const char *format, va_list ap);
+
 typedef struct UIKey {
   u64 hash;
 } UIKey;
@@ -860,5 +864,29 @@ typedef struct UIGestureDetectorProps {
 
 void ui_gesture_detector_begin(const UIGestureDetectorProps *props);
 void ui_gesture_detector_end(void);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIText
+///
+/// A run of text with a single style.
+extern UIWidgetClass ui_text_class;
+
+typedef struct UITextStyle {
+  UIColorO color;
+  f32o font_size;
+} UITextStyle;
+
+OPTIONAL_TYPE(UITextStyleO, UITextStyle, ui_text_style);
+
+typedef struct UITextProps {
+  UIKey key;
+  // String must be valid for the whole frame. Consider using
+  // `ui_push_str8[fv]` to allocate strings.
+  Str8 text;
+  UITextStyleO style;
+} UITextProps;
+
+void ui_text(const UITextProps *props);
 
 #endif  // ZTRACING_SRC_UI_H_

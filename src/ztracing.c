@@ -110,6 +110,13 @@ static void build_ui(f32 dt, f32 frame_time) {
         .color = tap ? ui_color_some(ui_color(0, 1, 0, 1))
                      : ui_color_some(ui_color(1, 0, 0, 1)),
     });
+    ui_text(&(UITextProps){
+        .text = str8_lit("Hello UI"),
+        .style = ui_text_style_some((UITextStyle){
+            .font_size = f32_some(15),
+            .color = ui_color_some(ui_color(0, 1, 0, 1)),
+        }),
+    });
     ui_container_end();
     ui_gesture_detector_end();
 

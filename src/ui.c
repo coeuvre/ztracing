@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include <cstdarg>
+
 #include "src/assert.h"
 #include "src/draw.h"
 #include "src/list.h"
@@ -747,6 +749,34 @@ void ui_end_frame(void) {
   }
 
   frame->open = false;
+}
+
+static inline UIFrame *ui_state_get_current_frame(UIState *state) {
+  UIFrame *frame = state->current_frame;
+  if (!frame) {
+    frame = state->frames;
+  }
+  return frame;
+}
+
+Str8 ui_push_str8(Str8 str) {
+  UIState *state = ui_state_get();
+  UIFrame *frame = ui_state_get_current_frame(state);
+  return arena_push_str8(&frame->arena, str);
+}
+
+Str8 ui_push_str8f(const char *format, ...) {
+  va_list ap;
+  va_start(ap, format);
+  Str8 result = ui_push_str8fv(format, ap);
+  va_end(ap);
+  return result;
+}
+
+Str8 ui_push_str8fv(const char *format, va_list ap) {
+  UIState *state = ui_state_get();
+  UIFrame *frame = ui_state_get_current_frame(state);
+  return arena_push_str8fv(&frame->arena, format, ap);
 }
 
 static UIKey ui_key_from_str8(UIKey seed, Str8 str) {
@@ -2049,4 +2079,85 @@ void ui_gesture_detector_begin(const UIGestureDetectorProps *props) {
 void ui_gesture_detector_end(void) {
   ui_pointer_listener_end();
   ui_widget_end(&ui_gesture_detector_class);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIText
+///
+
+typedef struct UITextState {
+  UIBoxConstraints constraints;
+  f32 font_size;
+} UITextState;
+
+static i32 ui_text_callback(UIWidget *widget, UIMessage *message) {
+  i32 result = 0;
+  switch (message->type) {
+    case UI_MESSAGE_LAYOUT: {
+      UITextProps *props = ui_widget_get_props(widget, UITextProps);
+      UITextState *state = ui_widget_get_state(widget, UITextState);
+
+      UIBoxConstraints constraints = message->layout.constraints;
+      state->constraints = constraints;
+
+      // TODO: Get default text style from widget tree.
+      f32 font_size = 13;
+      if (props->style.present) {
+        if (props->style.value.font_size.present) {
+          font_size = props->style.value.font_size.value;
+        }
+      }
+      state->font_size = font_size;
+
+      TextMetrics metrics = layout_text_str8(
+          props->text, font_size, constraints.min_width, constraints.max_width);
+      // TODO: Handle overflow.
+      widget->size = ui_box_constraints_constrain(constraints, metrics.size);
+    } break;
+
+    case UI_MESSAGE_PAINT: {
+      UITextProps *props = ui_widget_get_props(widget, UITextProps);
+      UITextState *state = ui_widget_get_state(widget, UITextState);
+
+      // TODO: Get default text style from widget tree.
+      UIColor color = ui_color(1, 1, 1, 1);
+      if (props->style.present) {
+        if (props->style.value.color.present) {
+          color = props->style.value.color.value;
+        }
+      }
+      draw_text_str8(message->paint.offset, props->text, state->font_size,
+                     state->constraints.min_width, state->constraints.max_width,
+                     (ColorU32){
+                         (u8)(color.a * 255.0f),
+                         (u8)(color.r * 255.0f),
+                         (u8)(color.g * 255.0f),
+                         (u8)(color.b * 255.0f),
+                     });
+    } break;
+
+    case UI_MESSAGE_HIT_TEST: {
+      result = ui_widget_hit_test_opaque(widget, message->hit_test.result,
+                                         message->hit_test.arena,
+                                         message->hit_test.local_position);
+    } break;
+
+    default: {
+      result = ui_widget_callback_default(widget, message);
+    } break;
+  }
+  return result;
+}
+
+UIWidgetClass ui_text_class = {
+    .name = "Text",
+    .props_size = sizeof(UITextProps),
+    .state_size = sizeof(UITextState),
+    .callback = &ui_text_callback,
+};
+
+void ui_text(const UITextProps *props) {
+  ui_widget_begin(&ui_text_class, props);
+  ui_widget_end(&ui_text_class);
 }

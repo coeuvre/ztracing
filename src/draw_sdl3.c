@@ -1,6 +1,7 @@
 #include "src/draw_sdl3.h"
 
 #include <SDL3/SDL.h>
+#include <stdbool.h>
 
 #include "src/assert.h"
 #include "src/draw.h"
@@ -232,10 +233,13 @@ static i32 GetKernAdvance(PackedFont *packed_font, u32 a, u32 b) {
   return result;
 }
 
-TextMetrics get_text_metrics_str8(Str8 text, f32 height) {
+TextMetrics layout_text_str8(Str8 text, f32 height, f32 min_width,
+                             f32 max_width) {
   TempMemory scratch = scratch_begin(0, 0);
   TextMetrics result = {0};
   f32 content_scale = get_screen_content_scale();
+  min_width = min_width * content_scale;
+  max_width = max_width * content_scale;
 
   f32 font_size = height * content_scale;
   stbtt_fontinfo *font = GetFontInfo();
@@ -244,33 +248,48 @@ TextMetrics get_text_metrics_str8(Str8 text, f32 height) {
   f32 scale = stbtt_ScaleForPixelHeight(font, height * content_scale);
   i32 ascent, descent, line_gap;
   stbtt_GetFontVMetrics(font, &ascent, &descent, &line_gap);
-  result.size.y = (ascent - descent) * scale;
+  f32 line_height = (ascent - descent) * scale;
 
   Str32 text32 = arena_push_str32_from_str8(scratch.arena, text);
+  bool reached_max_width = false;
   f32 baseline = (f32)ascent * scale;
   f32 pos_x = 0.0f;
+  f32 pos_y = 0.0f;
   for (u32 i = 0; i < text32.len; ++i) {
     u32 ch = text32.ptr[i];
     GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
-    if (i + 1 < text32.len) {
-      i32 kern = GetKernAdvance(packed_font, ch, text32.ptr[i + 1]);
-      pos_x += scale * kern;
+    if (pos_x > max_width) {
+      reached_max_width = true;
+      pos_x = 0;
+      pos_y += line_height;
+      GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
+    } else {
+      if (i + 1 < text32.len) {
+        i32 kern = GetKernAdvance(packed_font, ch, text32.ptr[i + 1]);
+        pos_x += scale * kern;
+      }
     }
   }
-  result.size.x = pos_x;
+  result.size.x = reached_max_width ? max_width : f32_max(min_width, pos_x);
+  result.size.y = pos_y + line_height;
   result.size = vec2_mul(result.size, 1.0f / content_scale);
 
   scratch_end(scratch);
   return result;
 }
 
-void draw_text_str8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
+void draw_text_str8(Vec2 pos, Str8 text, f32 height, f32 min_width,
+                    f32 max_width, ColorU32 color) {
+  (void)min_width;
+
   TempMemory scratch = scratch_begin(0, 0);
 
   Vec4 colorf = linear_color_from_srgb(color);
 
   f32 content_scale = get_screen_content_scale();
   pos = vec2_mul(pos, content_scale);
+  min_width = min_width * content_scale;
+  max_width = max_width * content_scale;
 
   f32 font_size = height * content_scale;
   stbtt_fontinfo *font = GetFontInfo();
@@ -309,6 +328,7 @@ void draw_text_str8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
   f32 scale = stbtt_ScaleForPixelHeight(font, height * content_scale);
   i32 ascent, descent, line_gap;
   stbtt_GetFontVMetrics(font, &ascent, &descent, &line_gap);
+  f32 line_height = (ascent - descent) * scale;
 
   Str32 text32 = arena_push_str32_from_str8(scratch.arena, text);
   f32 baseline = pos.y + (f32)ascent * scale;
@@ -317,6 +337,17 @@ void draw_text_str8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
     u32 ch = text32.ptr[i];
     stbtt_aligned_quad quad =
         GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
+    if ((pos_x - pos.x) > max_width) {
+      pos_x = pos.x;
+      baseline += line_height;
+      quad = GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
+    } else {
+      if (i + 1 < text32.len) {
+        i32 kern = GetKernAdvance(packed_font, ch, text32.ptr[i + 1]);
+        pos_x += scale * kern;
+      }
+    }
+
     f32 quad_w = quad.x1 - quad.x0;
     f32 quad_h = quad.y1 - quad.y0;
     if (quad_w > 0 && quad_h > 0) {
@@ -339,10 +370,6 @@ void draw_text_str8(Vec2 pos, Str8 text, f32 height, ColorU32 color) {
       SDL_SetTextureAlphaModFloat(packed_font->texture, colorf.w);
       SDL_RenderTexture(t_draw_state.renderer, packed_font->texture, &src_rect,
                         &dst_rect);
-    }
-    if (i + 1 < text32.len) {
-      i32 kern = GetKernAdvance(packed_font, ch, text32.ptr[i + 1]);
-      pos_x += scale * kern;
     }
   }
 
