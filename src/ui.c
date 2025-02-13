@@ -242,6 +242,14 @@ THREAD_LOCAL UIState t_ui_state;
 
 static inline UIState *ui_state_get(void) { return &t_ui_state; }
 
+static inline UIFrame *ui_state_get_current_frame(UIState *state) {
+  UIFrame *frame = state->current_frame;
+  if (!frame) {
+    frame = state->frames;
+  }
+  return frame;
+}
+
 void ui_set_viewport(Vec2 min, Vec2 max) {
   UIState *state = ui_state_get();
   state->viewport_min = min;
@@ -288,12 +296,21 @@ static void ui_widget_mount(UIWidget *widget) {
   UIMessage message = {
       .mount =
           {
-
               .type = UI_MESSAGE_MOUNT,
           },
   };
   widget->klass->callback(widget, &message);
   widget->status = UI_WIDGET_STATUS_MOUNTED;
+}
+
+static void ui_widget_update(UIWidget *widget) {
+  UIMessage message = {
+      .update =
+          {
+              .type = UI_MESSAGE_UPDATE,
+          },
+  };
+  widget->klass->callback(widget, &message);
 }
 
 static void ui_widget_unmount(UIWidget *widget) {
@@ -652,13 +669,23 @@ static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message) {
   switch (message->type) {
     case UI_MESSAGE_MOUNT: {
       if (widget->klass->state_size > 0) {
-        widget->state = memory_alloc(widget->klass->state_size);
+        UIState *state = ui_state_get();
+        UIFrame *frame = ui_state_get_current_frame(state);
+        widget->state = arena_push(&frame->arena, widget->klass->state_size, 0);
       }
     } break;
 
-    case UI_MESSAGE_UNMOUNT: {
+    case UI_MESSAGE_UPDATE: {
       if (widget->klass->state_size > 0) {
-        memory_free(widget->state, widget->klass->state_size);
+        UIWidget *old_widget = widget->old_widget;
+        void *old_state =
+            ui_widget_get_state_(old_widget, widget->klass->state_size);
+
+        UIState *state = ui_state_get();
+        UIFrame *frame = ui_state_get_current_frame(state);
+        widget->state = arena_push(&frame->arena, widget->klass->state_size,
+                                   ARENA_PUSH_NO_ZERO);
+        memory_copy(widget->state, old_state, widget->klass->state_size);
       }
     } break;
 
@@ -748,14 +775,6 @@ void ui_end_frame(void) {
   }
 
   frame->open = false;
-}
-
-static inline UIFrame *ui_state_get_current_frame(UIState *state) {
-  UIFrame *frame = state->current_frame;
-  if (!frame) {
-    frame = state->frames;
-  }
-  return frame;
 }
 
 Str8 ui_push_str8(Str8 str) {
@@ -885,15 +904,17 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
 
   if (last_widget) {
     ASSERT(last_widget->status == UI_WIDGET_STATUS_MOUNTED);
+    ASSERT(last_widget->klass == widget->klass);
 
     widget->status = UI_WIDGET_STATUS_MOUNTED;
     widget->size = last_widget->size;
     widget->offset = last_widget->offset;
     widget->old_widget = last_widget;
-    widget->state = last_widget->state;
 
-    last_widget->state = 0;
-    // The state is transfered into current, effectively make last unmounted.
+    ui_widget_update(widget);
+
+    // The state is transfered into current, effectively make last_widget
+    // unmounted.
     last_widget->status = UI_WIDGET_STATUS_UNMOUNTED;
   } else {
     ui_widget_mount(widget);
@@ -2091,6 +2112,8 @@ typedef struct UITextState {
 } UITextState;
 
 static i32 ui_text_callback(UIWidget *widget, UIMessage *message) {
+  ASSERTF(!widget->first, "UIText should be a leaf node");
+
   i32 result = 0;
   switch (message->type) {
     case UI_MESSAGE_LAYOUT: {

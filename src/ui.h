@@ -194,6 +194,7 @@ typedef struct UIPaintingContext {
 enum {
   UI_MESSAGE_UNKNOWN,
   UI_MESSAGE_MOUNT,
+  UI_MESSAGE_UPDATE,
   UI_MESSAGE_UNMOUNT,
   UI_MESSAGE_LAYOUT,
   UI_MESSAGE_PAINT,
@@ -207,6 +208,10 @@ enum {
 typedef struct UIMessageMount {
   u32 type;  // UI_MESSAGE_MOUNT
 } UIMessageMount;
+
+typedef struct UIMessageUpdate {
+  u32 type;  // UI_MESSAGE_UPDATE
+} UIMessageUpdate;
 
 typedef struct UIMessageUnmount {
   u32 type;  // UI_MESSAGE_UNMOUNT
@@ -306,7 +311,8 @@ typedef struct UIMessageHandleEvent {
 typedef union UIMessage {
   u32 type;
   UIMessageMount mount;
-  UIMessageMount umount;
+  UIMessageUpdate update;
+  UIMessageUnmount umount;
   UIMessageLayout layout;
   UIMessagePaint paint;
   UIMessageGetParentData get_parent_data;
