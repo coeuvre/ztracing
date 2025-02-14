@@ -30,8 +30,10 @@
 
 #if BUILD_DEBUG
 #define DEBUG_ASSERT(x) ASSERT(x)
+#define DEBUG_ASSERTF(x, fmt, ...) ASSERTF(x, fmt, ##__VA_ARGS__)
 #else
-#define DEBUG_ASSERT(x) (void)(x)
+#define DEBUG_ASSERT(x)
+#define DEBUG_ASSERTF(x)
 #endif
 #define UNREACHABLE ASSERT(!"Unreachable")
 #define NOT_IMPLEMENTED ASSERT(!"Not Implemented")

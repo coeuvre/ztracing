@@ -325,7 +325,7 @@ static void ui_widget_unmount(UIWidget *widget) {
   widget->status = UI_WIDGET_STATUS_UNMOUNTED;
 }
 
-static void ui_widget_layout(UIWidget *widget, UIBoxConstraints constraints) {
+static Vec2 ui_widget_layout(UIWidget *widget, UIBoxConstraints constraints) {
   UIMessage message = {
       .layout =
           {
@@ -334,6 +334,7 @@ static void ui_widget_layout(UIWidget *widget, UIBoxConstraints constraints) {
           },
   };
   widget->klass->callback(widget, &message);
+  return widget->size;
 }
 
 static void ui_widget_paint(UIWidget *widget, UIPaintingContext *context,
@@ -584,21 +585,22 @@ void ui_on_focus_lost(Vec2 pos) {
   ui_hit_test_state_clear(&state->input.button_down_hit_test);
 }
 
-static Vec2 ui_widget_layout_stack_children(UIWidget *widget,
-                                            UIBoxConstraints constraints) {
-  Vec2 max_child_size = vec2_zero();
-  for (UIWidget *child = widget->first; child; child = child->next) {
-    ui_widget_layout(child, constraints);
-    max_child_size = vec2_max(max_child_size, child->size);
-  }
-  return max_child_size;
+static inline bool ui_widget_has_at_most_one_child(UIWidget *widget) {
+  return !widget->first || widget->first == widget->last;
 }
 
+/// The default layout method for a widget just defers the layout to its child
+/// and sizes itself around the child. Only works for widget that has at most
+/// one child.
 static void ui_widget_layout_default(UIWidget *widget,
                                      UIBoxConstraints constraints) {
-  // The default layout just stacks children.
-  Vec2 max_child_size = ui_widget_layout_stack_children(widget, constraints);
-  widget->size = ui_box_constraints_constrain(constraints, max_child_size);
+  ASSERTF(ui_widget_has_at_most_one_child(widget),
+          "Default layout method doesn't work for UI_WIDGET_MANY_CHILDREN.");
+  if (widget->first) {
+    widget->size = ui_widget_layout(widget->first, constraints);
+  } else {
+    widget->size = ui_box_constraints_constrain(constraints, vec2_zero());
+  }
 }
 
 static void ui_widget_paint_child_default(UIWidget *child,
@@ -664,29 +666,37 @@ static bool ui_widget_hit_test_opaque(UIWidget *widget, UIHitTestResult *result,
   return true;
 }
 
+static void ui_widget_mount_default(UIWidget *widget) {
+  if (widget->klass->state_size > 0) {
+    UIState *state = ui_state_get();
+    UIFrame *frame = ui_state_get_current_frame(state);
+    widget->state = arena_push(&frame->arena, widget->klass->state_size, 0);
+  }
+}
+
+static void ui_widget_update_default(UIWidget *widget) {
+  if (widget->klass->state_size > 0) {
+    UIWidget *old_widget = widget->old_widget;
+    void *old_state =
+        ui_widget_get_state_(old_widget, widget->klass->state_size);
+
+    UIState *state = ui_state_get();
+    UIFrame *frame = ui_state_get_current_frame(state);
+    widget->state = arena_push(&frame->arena, widget->klass->state_size,
+                               ARENA_PUSH_NO_ZERO);
+    memory_copy(widget->state, old_state, widget->klass->state_size);
+  }
+}
+
 static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
     case UI_MESSAGE_MOUNT: {
-      if (widget->klass->state_size > 0) {
-        UIState *state = ui_state_get();
-        UIFrame *frame = ui_state_get_current_frame(state);
-        widget->state = arena_push(&frame->arena, widget->klass->state_size, 0);
-      }
+      ui_widget_mount_default(widget);
     } break;
 
     case UI_MESSAGE_UPDATE: {
-      if (widget->klass->state_size > 0) {
-        UIWidget *old_widget = widget->old_widget;
-        void *old_state =
-            ui_widget_get_state_(old_widget, widget->klass->state_size);
-
-        UIState *state = ui_state_get();
-        UIFrame *frame = ui_state_get_current_frame(state);
-        widget->state = arena_push(&frame->arena, widget->klass->state_size,
-                                   ARENA_PUSH_NO_ZERO);
-        memory_copy(widget->state, old_state, widget->klass->state_size);
-      }
+      ui_widget_update_default(widget);
     } break;
 
     case UI_MESSAGE_LAYOUT: {
@@ -852,10 +862,18 @@ static UIWidget *ui_widget_alloc(Arena *arena, UIWidgetClass *klass,
 }
 
 /// Append `child` as a child to `parent`.
-static void ui_widget_append(UIWidget *parent, UIWidget *child) {
+static void ui_widget_append(UIWidget *parent, UIWidget *child,
+                             bool allow_many_chilren) {
   child->parent = parent;
-  DLL_APPEND(parent->first, parent->last, child, prev, next);
-  ++parent->child_count;
+  if (allow_many_chilren) {
+    DLL_APPEND(parent->first, parent->last, child, prev, next);
+    ++parent->child_count;
+  } else {
+    DEBUG_ASSERTF(!parent->first, "%s expects only one child",
+                  parent->klass->name);
+    parent->first = parent->last = child;
+    parent->child_count = 1;
+  }
 }
 
 static inline bool can_reuse_widget(UIWidget *widget, UIWidget *last_widget) {
@@ -892,7 +910,9 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
       }
     }
 
-    ui_widget_append(parent->widget, widget);
+    ui_widget_append(parent->widget, widget,
+                     parent->widget->klass->flags & UI_WIDGET_MANY_CHILDREN);
+
     if (parent->last_child) {
       parent->last_child = parent->last_child->next;
     }
@@ -995,13 +1015,14 @@ static UIBoxConstraints ui_limited_box_limit_constraints(
 static void ui_limited_box_layout(UIWidget *widget,
                                   UILimitedBoxProps *limited_box,
                                   UIBoxConstraints constraints) {
+  ASSERT(ui_widget_has_at_most_one_child(widget));
+
   UIBoxConstraints limited_constraints =
       ui_limited_box_limit_constraints(limited_box, constraints);
 
   if (widget->first) {
-    Vec2 max_child_size =
-        ui_widget_layout_stack_children(widget, limited_constraints);
-    widget->size = ui_box_constraints_constrain(constraints, max_child_size);
+    Vec2 child_size = ui_widget_layout(widget->first, limited_constraints);
+    widget->size = ui_box_constraints_constrain(constraints, child_size);
   } else {
     widget->size =
         ui_box_constraints_constrain(limited_constraints, vec2_zero());
@@ -1087,12 +1108,15 @@ UIWidgetClass ui_colored_box_class = {
 static void ui_constrained_box_layout(UIWidget *widget,
                                       UIConstrainedBoxProps *constrained_box,
                                       UIBoxConstraints constraints) {
+  ASSERT(ui_widget_has_at_most_one_child(widget));
   UIBoxConstraints enforced_constraints =
       ui_box_constraints_enforce(constrained_box->constraints, constraints);
-  Vec2 max_child_size =
-      ui_widget_layout_stack_children(widget, enforced_constraints);
-  widget->size =
-      ui_box_constraints_constrain(enforced_constraints, max_child_size);
+  if (widget->first) {
+    widget->size = ui_widget_layout(widget->first, enforced_constraints);
+  } else {
+    widget->size =
+        ui_box_constraints_constrain(enforced_constraints, vec2_zero());
+  }
 }
 
 static i32 ui_constrained_box_callback(UIWidget *widget, UIMessage *message) {
@@ -1130,6 +1154,8 @@ static void ui_widget_align_children(UIWidget *widget, UIAlignment alignment) {
 
 static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
                             UIBoxConstraints constraints) {
+  ASSERT(ui_widget_has_at_most_one_child(widget));
+
   f32o width = align->width;
   f32o height = align->height;
 
@@ -1148,23 +1174,17 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
   UIBoxConstraints child_constraints = ui_box_constraints_loosen(constraints);
 
   if (widget->first) {
-    Vec2 max_child_size = vec2_zero();
+    Vec2 child_size = ui_widget_layout(widget->first, child_constraints);
 
-    for (UIWidget *child = widget->first; child; child = child->next) {
-      ui_widget_layout(child, child_constraints);
+    Vec2 wrap_size =
+        vec2(should_shrink_wrap_width
+                 ? (child_size.x * (width.present ? width.value : 1.0f))
+                 : F32_INFINITY,
+             should_shrink_wrap_height
+                 ? (child_size.y * (height.present ? height.value : 1.0f))
+                 : F32_INFINITY);
 
-      Vec2 wrap_size =
-          vec2(should_shrink_wrap_width
-                   ? (child->size.x * (width.present ? width.value : 1.0f))
-                   : F32_INFINITY,
-               should_shrink_wrap_height
-                   ? (child->size.y * (height.present ? height.value : 1.0f))
-                   : F32_INFINITY);
-
-      max_child_size = vec2_max(max_child_size, wrap_size);
-    }
-
-    widget->size = ui_box_constraints_constrain(constraints, max_child_size);
+    widget->size = ui_box_constraints_constrain(constraints, wrap_size);
 
     ui_widget_align_children(widget, align->alignment);
   } else {
@@ -1205,11 +1225,16 @@ static void ui_unconstrained_box_layout(
     UIBoxConstraints constraints) {
   (void)constraints;
 
+  ASSERT(ui_widget_has_at_most_one_child(widget));
+
   UIBoxConstraints child_constraints =
       ui_box_constraints(0, F32_INFINITY, 0, F32_INFINITY);
-  Vec2 max_child_size =
-      ui_widget_layout_stack_children(widget, child_constraints);
-  widget->size = ui_box_constraints_constrain(constraints, max_child_size);
+  if (widget->first) {
+    Vec2 child_size = ui_widget_layout(widget->first, child_constraints);
+    widget->size = ui_box_constraints_constrain(constraints, child_size);
+  } else {
+    widget->size = ui_box_constraints_constrain(constraints, vec2_zero());
+  }
 
   ui_widget_align_children(widget, unconstrained_box->alignment);
 }
@@ -1300,6 +1325,8 @@ static inline UIBoxConstraints ui_box_constraints_deflate(
 
 static void ui_padding_layout(UIWidget *widget, UIPaddingProps *padding,
                               UIBoxConstraints constraints) {
+  ASSERT(ui_widget_has_at_most_one_child(widget));
+
   // TODO: UITextDirection
   UIResolvedEdgeInsets resolved_padding = {
       .left = padding->padding.start,
@@ -1312,18 +1339,13 @@ static void ui_padding_layout(UIWidget *widget, UIPaddingProps *padding,
   if (widget->first) {
     UIBoxConstraints inner_constraints =
         ui_box_constraints_deflate(constraints, resolved_padding);
-    Vec2 max_child_size = vec2_zero();
 
-    for (UIWidget *child = widget->first; child; child = child->next) {
-      ui_widget_layout(child, inner_constraints);
-      child->offset = vec2(resolved_padding.left, resolved_padding.top);
-
-      max_child_size = vec2_max(max_child_size, child->size);
-    }
+    UIWidget *child = widget->first;
+    Vec2 child_size = ui_widget_layout(widget->first, inner_constraints);
+    child->offset = vec2(resolved_padding.left, resolved_padding.top);
 
     widget->size = ui_box_constraints_constrain(
-        constraints,
-        vec2(horizontal + max_child_size.x, vertical + max_child_size.y));
+        constraints, vec2(horizontal + child_size.x, vertical + child_size.y));
   } else {
     widget->size =
         ui_box_constraints_constrain(constraints, vec2(horizontal, vertical));
@@ -1665,8 +1687,9 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
         first_flex_child = child;
       }
     } else {
-      ui_widget_layout(child, non_flex_child_constraints);
-      AxisSize child_size = axis_size_from_size(child->size, flex->direction);
+      Vec2 child_size_raw = ui_widget_layout(child, non_flex_child_constraints);
+      AxisSize child_size =
+          axis_size_from_size(child_size_raw, flex->direction);
 
       accumulated_size.main += child_size.main;
       accumulated_size.cross += child_size.cross;
@@ -1694,8 +1717,8 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
                  max_child_extent < F32_INFINITY);
     UIBoxConstraints child_constraints = ui_box_constraints_for_flex_child(
         flex, constraints, max_child_extent, data);
-    ui_widget_layout(child, child_constraints);
-    AxisSize child_size = axis_size_from_size(child->size, flex->direction);
+    Vec2 child_size_raw = ui_widget_layout(child, child_constraints);
+    AxisSize child_size = axis_size_from_size(child_size_raw, flex->direction);
 
     accumulated_size.main += child_size.main;
     accumulated_size.cross += child_size.cross;
@@ -1872,6 +1895,7 @@ static i32 ui_flex_callback(UIWidget *widget, UIMessage *message) {
 
 UIWidgetClass ui_flex_class = {
     .name = "Flex",
+    .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIFlexProps),
     .callback = &ui_flex_callback,
 };
@@ -1882,6 +1906,7 @@ UIWidgetClass ui_flex_class = {
 ///
 UIWidgetClass ui_column_class = {
     .name = "Column",
+    .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIFlexProps),
     .callback = &ui_flex_callback,
 };
@@ -1904,6 +1929,7 @@ void ui_column_begin(const UIColumnProps *props) {
 ///
 UIWidgetClass ui_row_class = {
     .name = "Row",
+    .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIFlexProps),
     .callback = &ui_flex_callback,
 };

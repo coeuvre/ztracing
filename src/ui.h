@@ -322,8 +322,15 @@ typedef union UIMessage {
 
 typedef i32(UIWidgetCallback)(UIWidget *widget, UIMessage *message);
 
+#define UI_U64_LIT(v) (v##ULL)
+
+#define UI_WIDGET_MANY_CHILDREN UI_U64_LIT(0x0001)
+
+typedef u64 UIWidgetFlags;
+
 typedef struct UIWidgetClass {
   const char *name;
+  UIWidgetFlags flags;
   usize props_size;
   usize state_size;
   UIWidgetCallback *callback;
