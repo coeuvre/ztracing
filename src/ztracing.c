@@ -3,16 +3,42 @@
 #include <stdarg.h>
 
 #include "src/draw.h"
+#include "src/log.h"
 #include "src/math.h"
 #include "src/memory.h"
+#include "src/string.h"
 #include "src/types.h"
 #include "src/ui.h"
 
-static void build_ui(f32 dt, f32 frame_time) {
-  UITextStyleO text_style = ui_text_style_some((UITextStyle){
+static UITextStyleO default_text_style(void) {
+  return ui_text_style_some((UITextStyle){
       .color = ui_color_some(ui_color(0, 0, 0, 1)),
   });
+}
 
+typedef enum ButtonType {
+  BUTTON_PRIMARY,
+  BUTTON_SECONDARY,
+} ButtonType;
+
+static bool do_button(Str8 text, ButtonType type) {
+  bool pressed;
+  ui_button(&(UIButtonProps){
+      .text = text,
+      .text_style = default_text_style(),
+
+      .pressed = &pressed,
+      .fill_color = (type == BUTTON_PRIMARY)
+                        ? ui_color_some(ui_color(0.73, 0.83, 0.95, 1))
+                        : ui_color_none(),
+      .hover_color = ui_color_some(ui_color(0.29, 0.49, 0.72, 1)),
+      .splash_color = ui_color_some(ui_color(0.29, 0.44, 0.62, 1)),
+      .padding = ui_edge_insets_some(ui_edge_insets_symmetric(6, 3)),
+  });
+  return pressed;
+}
+
+static void build_ui(f32 dt, f32 frame_time) {
   ui_colored_box_begin(&(UIColoredBoxProps){
       .color = ui_color(0.94, 0.94, 0.94, 1.0),
   });
@@ -20,6 +46,16 @@ static void build_ui(f32 dt, f32 frame_time) {
   {
     ui_row_begin(&(UIRowProps){0});
     {
+      if (do_button(str8_lit("Load"), BUTTON_PRIMARY)) {
+        INFO("Load");
+      }
+      if (do_button(str8_lit("About"), BUTTON_SECONDARY)) {
+        INFO("About");
+      }
+      if (do_button(str8_lit("DEBUG"), BUTTON_SECONDARY)) {
+        INFO("DEBUG");
+      }
+
       ui_expanded_begin(&(UIExpandedProps){.flex = 1});
       ui_expanded_end();
 
@@ -31,7 +67,7 @@ static void build_ui(f32 dt, f32 frame_time) {
               "%.0f %.1fMB %.1fms", 1.0f / dt,
               (f32)((f64)memory_get_allocated_bytes() / 1024.0 / 1024.0),
               frame_time * 1000.0f),
-          .style = text_style,
+          .style = default_text_style(),
       });
       ui_padding_end();
     }

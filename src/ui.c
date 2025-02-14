@@ -1692,7 +1692,8 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
           axis_size_from_size(child_size_raw, flex->direction);
 
       accumulated_size.main += child_size.main;
-      accumulated_size.cross += child_size.cross;
+      accumulated_size.cross =
+          f32_max(accumulated_size.cross, child_size.cross);
     }
   }
 
@@ -1721,7 +1722,7 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
     AxisSize child_size = axis_size_from_size(child_size_raw, flex->direction);
 
     accumulated_size.main += child_size.main;
-    accumulated_size.cross += child_size.cross;
+    accumulated_size.cross = f32_max(accumulated_size.cross, child_size.cross);
   }
   DEBUG_ASSERT(total_flex == 0);
 
@@ -2103,7 +2104,21 @@ void ui_gesture_detector_begin(const UIGestureDetectorProps *props) {
       .up = &up,
   });
 
+  bool tap_down = false;
+  bool tap_up = false;
   bool tap = false;
+
+  if (down.present) {
+    if (down.value.button & UI_BUTTON_PRIMARY) {
+      tap_down = true;
+    }
+  }
+
+  if (up.present) {
+    if (up.value.button & UI_BUTTON_PRIMARY) {
+      tap_up = true;
+    }
+  }
 
   if (down.present) {
     state->down_button = down.value.button;
@@ -2117,6 +2132,12 @@ void ui_gesture_detector_begin(const UIGestureDetectorProps *props) {
     state->down_button = 0;
   }
 
+  if (props->tap_down) {
+    *props->tap_down = tap_down;
+  }
+  if (props->tap_up) {
+    *props->tap_up = tap_up;
+  }
   if (props->tap) {
     *props->tap = tap;
   }
@@ -2208,4 +2229,90 @@ UIWidgetClass ui_text_class = {
 void ui_text(const UITextProps *props) {
   ui_widget_begin(&ui_text_class, props);
   ui_widget_end(&ui_text_class);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIButton
+///
+typedef struct UIButtonState {
+  bool hovered;
+  bool down;
+} UIButtonState;
+
+UIWidgetClass ui_button_class = {
+    .name = "Button",
+    .props_size = sizeof(UIButtonProps),
+    .state_size = sizeof(UIButtonState),
+    .callback = &ui_widget_callback_default,
+};
+
+void ui_button(UIButtonProps *props) {
+  UIColor fill_color = ui_color_zero();
+  if (props->fill_color.present) {
+    fill_color = props->fill_color.value;
+  }
+  UIColor hover_color = ui_color_zero();
+  if (props->hover_color.present) {
+    hover_color = props->hover_color.value;
+  }
+  UIColor splash_color = ui_color_zero();
+  if (props->splash_color.present) {
+    splash_color = props->splash_color.value;
+  }
+
+  UIWidget *widget = ui_widget_begin(&ui_button_class, props);
+  UIButtonState *state = ui_widget_get_state(widget, UIButtonState);
+
+  UIPointerEventO enter;
+  UIPointerEventO exit;
+  bool down;
+  bool up;
+  ui_mouse_region_begin(&(UIMouseRegionProps){
+      .enter = &enter,
+      .exit = &exit,
+  });
+  if (enter.present) {
+    state->hovered = true;
+  }
+  if (exit.present) {
+    state->hovered = false;
+  }
+
+  ui_gesture_detector_begin(&(UIGestureDetectorProps){
+      .tap_down = &down,
+      .tap_up = &up,
+      .tap = props->pressed,
+  });
+
+  if (down) {
+    state->down = true;
+  }
+  if (up) {
+    state->down = false;
+  }
+
+  ui_colored_box_begin(&(UIColoredBoxProps){
+      .color = state->down ? splash_color
+                           : (state->hovered ? hover_color : fill_color),
+  });
+
+  UIEdgeInsets padding = ui_edge_insets_zero();
+  if (props->padding.present) {
+    padding = props->padding.value;
+  }
+  ui_padding_begin(&(UIPaddingProps){
+      .padding = padding,
+  });
+
+  ui_text(&(UITextProps){
+      .text = props->text,
+      .style = props->text_style,
+  });
+
+  ui_padding_end();
+  ui_colored_box_end();
+  ui_gesture_detector_end();
+  ui_mouse_region_end();
+  ui_widget_end(&ui_button_class);
 }

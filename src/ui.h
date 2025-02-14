@@ -187,6 +187,8 @@ static inline UIColor ui_color(f32 r, f32 g, f32 b, f32 a) {
   return color;
 }
 
+static inline UIColor ui_color_zero(void) { return ui_color(0, 0, 0, 0); }
+
 typedef struct UIPaintingContext {
   int placeholder;
 } UIPaintingContext;
@@ -649,6 +651,10 @@ static inline UIEdgeInsets ui_edge_insets_all(f32 val) {
   return ui_edge_insets(val, val, val, val);
 }
 
+static inline UIEdgeInsets ui_edge_insets_zero(void) {
+  return ui_edge_insets_all(0);
+}
+
 static inline UIEdgeInsets ui_edge_insets_symmetric(f32 x, f32 y) {
   return ui_edge_insets(x, x, y, y);
 }
@@ -888,6 +894,8 @@ extern UIWidgetClass ui_gesture_detector_class;
 
 typedef struct UIGestureDetectorProps {
   UIKey key;
+  bool *tap_down;
+  bool *tap_up;
   bool *tap;
 } UIGestureDetectorProps;
 
@@ -917,5 +925,25 @@ typedef struct UITextProps {
 } UITextProps;
 
 void ui_text(const UITextProps *props);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIButton
+///
+extern UIWidgetClass ui_button_class;
+
+typedef struct UIButtonProps {
+  UIKey key;
+  bool *pressed;
+
+  Str8 text;
+  UITextStyleO text_style;
+  UIColorO fill_color;
+  UIColorO hover_color;
+  UIColorO splash_color;
+  UIEdgeInsetsO padding;
+} UIButtonProps;
+
+void ui_button(UIButtonProps *props);
 
 #endif  // ZTRACING_SRC_UI_H_
