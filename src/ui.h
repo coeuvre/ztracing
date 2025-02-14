@@ -169,6 +169,94 @@ static inline UIBoxConstraints ui_box_constraints_tighten(UIBoxConstraints self,
                      : self.max_height);
 }
 
+typedef enum UIAxis {
+  UI_AXIS_HORIZONTAL,
+  UI_AXIS_VERTICAL,
+} UIAxis;
+
+typedef enum UIAxisDirection {
+  UI_AXIS_DIRECTION_UP,
+  UI_AXIS_DIRECTION_DOWN,
+  UI_AXIS_DIRECTION_LEFT,
+  UI_AXIS_DIRECTION_RIGHT,
+} UIAxisDirection;
+
+static inline UIAxis ui_axis_direction_to_axis(UIAxisDirection self) {
+  switch (self) {
+    case UI_AXIS_DIRECTION_UP:
+    case UI_AXIS_DIRECTION_DOWN: {
+      return UI_AXIS_VERTICAL;
+    } break;
+
+    case UI_AXIS_DIRECTION_LEFT:
+    case UI_AXIS_DIRECTION_RIGHT: {
+      return UI_AXIS_HORIZONTAL;
+    } break;
+
+    default: {
+      UNREACHABLE;
+    } break;
+  }
+}
+
+typedef enum UIGrowthDirection {
+  UI_GROWTH_DIRECTION_FORWARD,
+  UI_GROWTH_DIRECTION_REVERSE,
+} UIGrowthDirection;
+
+typedef enum UIScrollDirection {
+  UI_SCROLL_DIRECTION_IDLE,
+  UI_SCROLL_DIRECTION_FORWARD,
+  UI_SCROLL_DIRECTION_REVERSE,
+} UIScrollDirection;
+
+typedef struct UISliverConstraints {
+  /// The direction in which the `scroll_offset` and `remaining_paint_extent`
+  /// increase.
+  UIAxisDirection axis_direction;
+  /// The direction in which the contents of slivers are ordered, relative to
+  /// the `axis_direction`.
+  UIGrowthDirection growth_direction;
+  /// The direction in which the user is attempting to scroll, relative to the
+  /// `axis_direction` and `growth_direction`.
+  UIScrollDirection scroll_direction;
+  /// The scroll offset, in this sliver's coordinate system, that corresponds to
+  /// the earliest visible part of this sliver in the `axis_direction`.
+  f32 scroll_offset;
+  /// The scroll distance that has been consumed by all slivers that came before
+  /// this sliver.
+  f32 preceeding_scroll_extent;
+  /// The number of points of content that the sliver should consider providing.
+  /// (Providing more pixels than this is inefficient.)
+  f32 remaining_paint_extent;
+  /// The number of points in the cross-axis.
+  f32 cross_axis_extent;
+  /// The direction in which children should be placed in the cross axis.
+  UIAxisDirection cross_axis_direction;
+  /// The number of points the viewport can display in the main axis.
+  f32 main_axis_extent;
+} UISliverConstraints;
+
+static inline UIBoxConstraints ui_sliver_constraints_as_box_constraints(
+    UISliverConstraints self, f32 min_extent, f32 max_extent) {
+  UIAxis axis = ui_axis_direction_to_axis(self.axis_direction);
+  switch (axis) {
+    case UI_AXIS_HORIZONTAL: {
+      return ui_box_constraints(min_extent, max_extent, self.cross_axis_extent,
+                                self.cross_axis_extent);
+    } break;
+
+    case UI_AXIS_VERTICAL: {
+      return ui_box_constraints(self.cross_axis_extent, self.cross_axis_extent,
+                                min_extent, max_extent);
+    } break;
+
+    default: {
+      UNREACHABLE;
+    } break;
+  }
+}
+
 typedef struct UIColor {
   f32 r;
   f32 g;
@@ -198,7 +286,8 @@ enum {
   UI_MESSAGE_MOUNT,
   UI_MESSAGE_UPDATE,
   UI_MESSAGE_UNMOUNT,
-  UI_MESSAGE_LAYOUT,
+  UI_MESSAGE_LAYOUT_BOX,
+  UI_MESSAGE_LAYOUT_SLIVER,
   UI_MESSAGE_PAINT,
   UI_MESSAGE_GET_PARENT_DATA,
 
@@ -219,10 +308,15 @@ typedef struct UIMessageUnmount {
   u32 type;  // UI_MESSAGE_UNMOUNT
 } UIMessageUnmount;
 
-typedef struct UIMessageLayout {
-  u32 type;  // UI_MESSAGE_LAYOUT
+typedef struct UIMessageLayoutBox {
+  u32 type;  // UI_MESSAGE_LAYOUT_BOX
   UIBoxConstraints constraints;
-} UIMessageLayout;
+} UIMessageLayoutBox;
+
+typedef struct UIMessageLayoutSliver {
+  u32 type;  // UI_MESSAGE_LAYOUT_SLIVER
+  UISliverConstraints constraints;
+} UIMessageLayoutSliver;
 
 typedef struct UIMessagePaint {
   u32 type;  // UI_MESSAGE_PAINT
@@ -315,7 +409,8 @@ typedef union UIMessage {
   UIMessageMount mount;
   UIMessageUpdate update;
   UIMessageUnmount umount;
-  UIMessageLayout layout;
+  UIMessageLayoutBox layout_box;
+  UIMessageLayoutSliver layout_sliver;
   UIMessagePaint paint;
   UIMessageGetParentData get_parent_data;
   UIMessageHitTest hit_test;
@@ -759,11 +854,6 @@ typedef struct UIWidgetParentDataFlex {
   i32 flex;
   UIFlexFit fit;
 } UIWidgetParentDataFlex;
-
-typedef enum UIAxis {
-  UI_AXIS_HORIZONTAL,
-  UI_AXIS_VERTICAL,
-} UIAxis;
 
 typedef enum UIMainAxisSize {
   UI_MAIN_AXIS_SIZE_MAX,

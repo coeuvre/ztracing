@@ -291,7 +291,7 @@ void ui_begin_frame(void) {
   ui_root_begin(&(UIRootProps){0});
 }
 
-static void ui_widget_mount(UIWidget *widget) {
+static inline void ui_widget_mount(UIWidget *widget) {
   ASSERT(widget->status == UI_WIDGET_STATUS_UNMOUNTED);
   UIMessage message = {
       .mount =
@@ -303,7 +303,7 @@ static void ui_widget_mount(UIWidget *widget) {
   widget->status = UI_WIDGET_STATUS_MOUNTED;
 }
 
-static void ui_widget_update(UIWidget *widget) {
+static inline void ui_widget_update(UIWidget *widget) {
   UIMessage message = {
       .update =
           {
@@ -313,7 +313,7 @@ static void ui_widget_update(UIWidget *widget) {
   widget->klass->callback(widget, &message);
 }
 
-static void ui_widget_unmount(UIWidget *widget) {
+static inline void ui_widget_unmount(UIWidget *widget) {
   ASSERT(widget->status == UI_WIDGET_STATUS_MOUNTED);
   UIMessage message = {
       .umount =
@@ -325,11 +325,12 @@ static void ui_widget_unmount(UIWidget *widget) {
   widget->status = UI_WIDGET_STATUS_UNMOUNTED;
 }
 
-static Vec2 ui_widget_layout(UIWidget *widget, UIBoxConstraints constraints) {
+static inline Vec2 ui_widget_layout_box(UIWidget *widget,
+                                        UIBoxConstraints constraints) {
   UIMessage message = {
-      .layout =
+      .layout_box =
           {
-              .type = UI_MESSAGE_LAYOUT,
+              .type = UI_MESSAGE_LAYOUT_BOX,
               .constraints = constraints,
           },
   };
@@ -337,8 +338,20 @@ static Vec2 ui_widget_layout(UIWidget *widget, UIBoxConstraints constraints) {
   return widget->size;
 }
 
-static void ui_widget_paint(UIWidget *widget, UIPaintingContext *context,
-                            Vec2 offset) {
+static inline void ui_widget_layout_sliver(UIWidget *widget,
+                                           UISliverConstraints constraints) {
+  UIMessage message = {
+      .layout_sliver =
+          {
+              .type = UI_MESSAGE_LAYOUT_SLIVER,
+              .constraints = constraints,
+          },
+  };
+  widget->klass->callback(widget, &message);
+}
+
+static inline void ui_widget_paint(UIWidget *widget, UIPaintingContext *context,
+                                   Vec2 offset) {
   UIMessage message = {
       .paint =
           {
@@ -350,8 +363,9 @@ static void ui_widget_paint(UIWidget *widget, UIPaintingContext *context,
   widget->klass->callback(widget, &message);
 }
 
-static bool ui_widget_get_parent_data(UIWidget *widget, u32 parent_data_id,
-                                      void *parent_data) {
+static inline bool ui_widget_get_parent_data(UIWidget *widget,
+                                             u32 parent_data_id,
+                                             void *parent_data) {
   UIMessage message = {
       .get_parent_data =
           {
@@ -363,8 +377,8 @@ static bool ui_widget_get_parent_data(UIWidget *widget, u32 parent_data_id,
   return widget->klass->callback(widget, &message);
 }
 
-static bool ui_widget_hit_test(UIWidget *widget, UIHitTestResult *result,
-                               Arena *arena, Vec2 local_position) {
+static inline bool ui_widget_hit_test(UIWidget *widget, UIHitTestResult *result,
+                                      Arena *arena, Vec2 local_position) {
   UIMessage message = {
       .hit_test =
           {
@@ -377,7 +391,8 @@ static bool ui_widget_hit_test(UIWidget *widget, UIHitTestResult *result,
   return widget->klass->callback(widget, &message);
 }
 
-static void ui_widget_handle_event(UIWidget *widget, UIPointerEvent *event) {
+static inline void ui_widget_handle_event(UIWidget *widget,
+                                          UIPointerEvent *event) {
   UIMessage message = {
       .handle_event =
           {
@@ -592,12 +607,12 @@ static inline bool ui_widget_has_at_most_one_child(UIWidget *widget) {
 /// The default layout method for a widget just defers the layout to its child
 /// and sizes itself around the child. Only works for widget that has at most
 /// one child.
-static void ui_widget_layout_default(UIWidget *widget,
-                                     UIBoxConstraints constraints) {
+static void ui_widget_layout_box_default(UIWidget *widget,
+                                         UIBoxConstraints constraints) {
   ASSERTF(ui_widget_has_at_most_one_child(widget),
           "Default layout method doesn't work for UI_WIDGET_MANY_CHILDREN.");
   if (widget->first) {
-    widget->size = ui_widget_layout(widget->first, constraints);
+    widget->size = ui_widget_layout_box(widget->first, constraints);
   } else {
     widget->size = ui_box_constraints_constrain(constraints, vec2_zero());
   }
@@ -699,8 +714,13 @@ static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message) {
       ui_widget_update_default(widget);
     } break;
 
-    case UI_MESSAGE_LAYOUT: {
-      ui_widget_layout_default(widget, message->layout.constraints);
+    case UI_MESSAGE_LAYOUT_BOX: {
+      ui_widget_layout_box_default(widget, message->layout_box.constraints);
+    } break;
+
+    case UI_MESSAGE_LAYOUT_SLIVER: {
+      DEBUG_ASSERTF(false, "UI_MESSAGE_LAYOUT_SLIVER is not implemented for %s",
+                    widget->klass->name);
     } break;
 
     case UI_MESSAGE_PAINT: {
@@ -777,8 +797,8 @@ void ui_end_frame(void) {
     unmount_widgets_if_not(state->last_frame->root);
 
     Vec2 viewport_size = vec2_sub(state->viewport_max, state->viewport_min);
-    ui_widget_layout(frame->root, ui_box_constraints_tight(viewport_size.x,
-                                                           viewport_size.y));
+    ui_widget_layout_box(frame->root, ui_box_constraints_tight(
+                                          viewport_size.x, viewport_size.y));
 
     UIPaintingContext context = {0};
     ui_widget_paint(frame->root, &context, state->viewport_min);
@@ -1021,7 +1041,7 @@ static void ui_limited_box_layout(UIWidget *widget,
       ui_limited_box_limit_constraints(limited_box, constraints);
 
   if (widget->first) {
-    Vec2 child_size = ui_widget_layout(widget->first, limited_constraints);
+    Vec2 child_size = ui_widget_layout_box(widget->first, limited_constraints);
     widget->size = ui_box_constraints_constrain(constraints, child_size);
   } else {
     widget->size =
@@ -1032,10 +1052,10 @@ static void ui_limited_box_layout(UIWidget *widget,
 static i32 ui_limited_box_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_MESSAGE_LAYOUT: {
+    case UI_MESSAGE_LAYOUT_BOX: {
       ui_limited_box_layout(widget,
                             ui_widget_get_props(widget, UILimitedBoxProps),
-                            message->layout.constraints);
+                            message->layout_box.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -1112,7 +1132,7 @@ static void ui_constrained_box_layout(UIWidget *widget,
   UIBoxConstraints enforced_constraints =
       ui_box_constraints_enforce(constrained_box->constraints, constraints);
   if (widget->first) {
-    widget->size = ui_widget_layout(widget->first, enforced_constraints);
+    widget->size = ui_widget_layout_box(widget->first, enforced_constraints);
   } else {
     widget->size =
         ui_box_constraints_constrain(enforced_constraints, vec2_zero());
@@ -1122,10 +1142,10 @@ static void ui_constrained_box_layout(UIWidget *widget,
 static i32 ui_constrained_box_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_MESSAGE_LAYOUT: {
+    case UI_MESSAGE_LAYOUT_BOX: {
       ui_constrained_box_layout(
           widget, ui_widget_get_props(widget, UIConstrainedBoxProps),
-          message->layout.constraints);
+          message->layout_box.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -1174,7 +1194,7 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
   UIBoxConstraints child_constraints = ui_box_constraints_loosen(constraints);
 
   if (widget->first) {
-    Vec2 child_size = ui_widget_layout(widget->first, child_constraints);
+    Vec2 child_size = ui_widget_layout_box(widget->first, child_constraints);
 
     Vec2 wrap_size =
         vec2(should_shrink_wrap_width
@@ -1197,9 +1217,9 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
 static i32 ui_align_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_MESSAGE_LAYOUT: {
+    case UI_MESSAGE_LAYOUT_BOX: {
       ui_align_layout(widget, ui_widget_get_props(widget, UIAlignProps),
-                      message->layout.constraints);
+                      message->layout_box.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -1230,7 +1250,7 @@ static void ui_unconstrained_box_layout(
   UIBoxConstraints child_constraints =
       ui_box_constraints(0, F32_INFINITY, 0, F32_INFINITY);
   if (widget->first) {
-    Vec2 child_size = ui_widget_layout(widget->first, child_constraints);
+    Vec2 child_size = ui_widget_layout_box(widget->first, child_constraints);
     widget->size = ui_box_constraints_constrain(constraints, child_size);
   } else {
     widget->size = ui_box_constraints_constrain(constraints, vec2_zero());
@@ -1242,10 +1262,10 @@ static void ui_unconstrained_box_layout(
 static i32 ui_unconstrained_box_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_MESSAGE_LAYOUT: {
+    case UI_MESSAGE_LAYOUT_BOX: {
       ui_unconstrained_box_layout(
           widget, ui_widget_get_props(widget, UIUnconstrainedBoxProps),
-          message->layout.constraints);
+          message->layout_box.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -1267,14 +1287,14 @@ UIWidgetClass ui_unconstrained_box_class = {
 static i32 ui_center_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_MESSAGE_LAYOUT: {
+    case UI_MESSAGE_LAYOUT_BOX: {
       UICenterProps *center = ui_widget_get_props(widget, UICenterProps);
       UIAlignProps align = {
           .key = center->key,
           .width = center->width,
           .height = center->height,
       };
-      ui_align_layout(widget, &align, message->layout.constraints);
+      ui_align_layout(widget, &align, message->layout_box.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -1341,7 +1361,7 @@ static void ui_padding_layout(UIWidget *widget, UIPaddingProps *padding,
         ui_box_constraints_deflate(constraints, resolved_padding);
 
     UIWidget *child = widget->first;
-    Vec2 child_size = ui_widget_layout(widget->first, inner_constraints);
+    Vec2 child_size = ui_widget_layout_box(widget->first, inner_constraints);
     child->offset = vec2(resolved_padding.left, resolved_padding.top);
 
     widget->size = ui_box_constraints_constrain(
@@ -1355,9 +1375,9 @@ static void ui_padding_layout(UIWidget *widget, UIPaddingProps *padding,
 static i32 ui_padding_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_MESSAGE_LAYOUT: {
+    case UI_MESSAGE_LAYOUT_BOX: {
       ui_padding_layout(widget, ui_widget_get_props(widget, UIPaddingProps),
-                        message->layout.constraints);
+                        message->layout_box.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -1687,7 +1707,8 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
         first_flex_child = child;
       }
     } else {
-      Vec2 child_size_raw = ui_widget_layout(child, non_flex_child_constraints);
+      Vec2 child_size_raw =
+          ui_widget_layout_box(child, non_flex_child_constraints);
       AxisSize child_size =
           axis_size_from_size(child_size_raw, flex->direction);
 
@@ -1718,7 +1739,7 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
                  max_child_extent < F32_INFINITY);
     UIBoxConstraints child_constraints = ui_box_constraints_for_flex_child(
         flex, constraints, max_child_extent, data);
-    Vec2 child_size_raw = ui_widget_layout(child, child_constraints);
+    Vec2 child_size_raw = ui_widget_layout_box(child, child_constraints);
     AxisSize child_size = axis_size_from_size(child_size_raw, flex->direction);
 
     accumulated_size.main += child_size.main;
@@ -1883,9 +1904,9 @@ static void ui_flex_layout(UIWidget *widget, UIFlexProps *flex,
 static i32 ui_flex_callback(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_MESSAGE_LAYOUT: {
+    case UI_MESSAGE_LAYOUT_BOX: {
       ui_flex_layout(widget, ui_widget_get_props(widget, UIFlexProps),
-                     message->layout.constraints);
+                     message->layout_box.constraints);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -2163,11 +2184,11 @@ static i32 ui_text_callback(UIWidget *widget, UIMessage *message) {
 
   i32 result = 0;
   switch (message->type) {
-    case UI_MESSAGE_LAYOUT: {
+    case UI_MESSAGE_LAYOUT_BOX: {
       UITextProps *props = ui_widget_get_props(widget, UITextProps);
       UITextState *state = ui_widget_get_state(widget, UITextState);
 
-      UIBoxConstraints constraints = message->layout.constraints;
+      UIBoxConstraints constraints = message->layout_box.constraints;
       state->constraints = constraints;
 
       // TODO: Get default text style from widget tree.

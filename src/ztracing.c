@@ -85,7 +85,7 @@ static void build_ui(f32 dt, f32 frame_time) {
     ui_column_begin(&(UIColumnProps){0});
     {
       f32 item_size = 20.0f;
-      u32 item_count = 40;
+      u32 item_count = 512;
       for (u32 item_index = 0; item_index < item_count; ++item_index) {
         ui_row_begin(&(UIRowProps){0});
         ui_expanded_begin(&(UIExpandedProps){
