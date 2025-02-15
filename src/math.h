@@ -355,4 +355,9 @@ static inline f32 f32_floor(f32 value) {
   return result;
 }
 
+static inline f32 f32_ceil(f32 value) {
+  f32 result = ceilf(value);
+  return result;
+}
+
 #endif  // ZTRACING_SRC_MATH_H_

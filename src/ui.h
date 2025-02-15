@@ -18,6 +18,8 @@
 #define UI_MOUSE_BUTTON_BACK 0x8
 #define UI_MOUSE_BUTTON_FORWARD 0x10
 
+#define UI_PRECISION_ERROR_TOLERANCE 1e-5
+
 void ui_set_viewport(Vec2 min, Vec2 max);
 
 void ui_on_focus_lost(Vec2 pos);
@@ -235,6 +237,11 @@ typedef struct UISliverConstraints {
   UIAxisDirection cross_axis_direction;
   /// The number of points the viewport can display in the main axis.
   f32 main_axis_extent;
+  /// Where the cache area starts relative to the `scroll_offset`.
+  f32 cache_origin;
+  /// Describes how much content the sliver should provide starting from the
+  /// `cache_origin`.
+  f32 remaining_cache_extent;
 } UISliverConstraints;
 
 static inline UIBoxConstraints ui_sliver_constraints_as_box_constraints(
@@ -1035,5 +1042,27 @@ typedef struct UIButtonProps {
 } UIButtonProps;
 
 void ui_button(UIButtonProps *props);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UISliverFixedExtentList.
+///
+/// A sliver that places multiple box children with the same main axis extent in
+/// a linear array.
+///
+extern UIWidgetClass ui_sliver_fixed_extent_list_class;
+
+typedef struct UISliverFixedExtentListProps {
+  UIKey key;
+  f32 item_extent;
+} UISliverFixedExtentListProps;
+
+static inline void ui_sliver_fixed_extent_list_begin(
+    const UISliverFixedExtentListProps *props) {
+  ui_widget_begin(&ui_sliver_fixed_extent_list_class, props);
+}
+static inline void ui_sliver_fixed_extent_list_end(void) {
+  ui_widget_end(&ui_sliver_fixed_extent_list_class);
+}
 
 #endif  // ZTRACING_SRC_UI_H_

@@ -751,6 +751,15 @@ static UIWidget *ui_widget_get_child_by_key(UIWidget *parent, UIKey key) {
   return result;
 }
 
+static UIWidget *ui_widget_get_child_nth(UIWidget *widget, usize nth) {
+  UIWidget *child = widget->first;
+  while (child && nth) {
+    child = child->next;
+    nth -= 1;
+  }
+  return child;
+}
+
 static bool ui_widget_is_equal(UIWidget *a, UIWidget *b) {
   if (!a || !b) {
     return false;
@@ -2337,3 +2346,103 @@ void ui_button(UIButtonProps *props) {
   ui_mouse_region_end();
   ui_widget_end(&ui_button_class);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UISliverList.
+///
+static i32 ui_sliver_fixed_extent_list_get_min_child_index(f32 item_extent,
+                                                           f32 scroll_offset) {
+  if (item_extent <= 0.0f) {
+    return 0;
+  }
+  f32 actual = scroll_offset / item_extent;
+  i32 round = f32_round(actual);
+  if (f32_abs(actual * item_extent - round * item_extent) <
+      UI_PRECISION_ERROR_TOLERANCE) {
+    return round;
+  }
+  return f32_floor(actual);
+}
+
+static i32 ui_sliver_fixed_extent_list_get_max_child_index(f32 item_extent,
+                                                           f32 scroll_offset) {
+  if (item_extent <= 0.0f) {
+    return 0;
+  }
+
+  f32 actual = scroll_offset / item_extent - 1;
+  i32 round = f32_round(actual);
+  if (f32_abs(actual * item_extent - round * item_extent) <
+      UI_PRECISION_ERROR_TOLERANCE) {
+    return f32_max(0, round);
+  }
+
+  return f32_max(0, f32_ceil(actual));
+}
+
+static void ui_sliver_fixed_extent_list_layout_sliver(
+    UIWidget *widget, UISliverConstraints constraints) {
+  UISliverFixedExtentListProps *props =
+      ui_widget_get_props(widget, UISliverFixedExtentListProps);
+  f32 scroll_offset = constraints.scroll_offset + constraints.cache_origin;
+  ASSERT(scroll_offset >= 0.0f);
+  f32 remaining_extent = constraints.remaining_cache_extent;
+  ASSERT(remaining_extent >= 0.0f);
+  f32 target_end_scroll_offset = scroll_offset + remaining_extent;
+
+  f32 item_extent = props->item_extent;
+  i32 first_index = ui_sliver_fixed_extent_list_get_min_child_index(
+      item_extent, scroll_offset);
+  bool has_target_last_index = f32_is_finite(target_end_scroll_offset);
+  i32 target_last_index = has_target_last_index
+                              ? ui_sliver_fixed_extent_list_get_max_child_index(
+                                    item_extent, target_end_scroll_offset)
+                              : 0;
+
+  // For now, assume the index of first child is 0.
+  // TODO: builder indicates that they used first_index to build the first
+  // child.
+
+  ASSERT(first_index >= 0);
+  UIWidget *child = ui_widget_get_child_nth(widget, first_index);
+  i32 child_index = first_index;
+  while (child && child_index <= target_last_index) {
+    UIBoxConstraints child_constraints =
+        ui_sliver_constraints_as_box_constraints(constraints, item_extent,
+                                                 item_extent);
+    ui_widget_layout_box(child, child_constraints);
+    f32 layout_offset = child_index * item_extent;
+
+    child = child->next;
+    child_index += 1;
+  }
+}
+
+static i32 ui_sliver_fixed_extent_list_callback(UIWidget *widget,
+                                                UIMessage *message) {
+  i32 result = 0;
+  switch (message->type) {
+    case UI_MESSAGE_LAYOUT_BOX: {
+      DEBUG_ASSERTF(false, "UI_MESSAGE_LAYOUT_BOX is not implemented for %s",
+                    widget->klass->name);
+    } break;
+
+    case UI_MESSAGE_LAYOUT_SLIVER: {
+      ui_sliver_fixed_extent_list_layout_sliver(
+          widget, message->layout_sliver.constraints);
+    } break;
+
+    default: {
+      result = ui_widget_callback_default(widget, message);
+    } break;
+  }
+  return result;
+}
+
+UIWidgetClass ui_sliver_fixed_extent_list_class = {
+    .name = "SliverFixedExtentList",
+    .flags = UI_WIDGET_MANY_CHILDREN,
+    .props_size = sizeof(UISliverFixedExtentListProps),
+    .callback = &ui_sliver_fixed_extent_list_callback,
+};
