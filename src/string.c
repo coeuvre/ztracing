@@ -8,6 +8,16 @@
 #include "src/memory.h"
 #include "src/types.h"
 
+u64 str8_hash_with_seed(Str8 str, u64 seed) {
+  u64 hash = seed;
+  // djb2 hash function
+  for (usize i = 0; i < str.len; i += 1) {
+    // hash * 33 + c
+    hash = ((hash << 5) + hash) + str.ptr[i];
+  }
+  return hash;
+}
+
 Str8 arena_push_str8(Arena *arena, Str8 str) {
   u8 *ptr = arena_push_array_no_zero(arena, u8, str.len + 1);
   memcpy(ptr, str.ptr, str.len + 1);

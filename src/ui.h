@@ -5,6 +5,7 @@
 
 #include "src/assert.h"
 #include "src/math.h"
+#include "src/memory.h"
 #include "src/string.h"
 #include "src/types.h"
 
@@ -296,7 +297,6 @@ enum {
   UI_MESSAGE_LAYOUT_BOX,
   UI_MESSAGE_LAYOUT_SLIVER,
   UI_MESSAGE_PAINT,
-  UI_MESSAGE_GET_PARENT_DATA,
 
   // EVENT HANDLING
   UI_MESSAGE_HIT_TEST,
@@ -330,17 +330,6 @@ typedef struct UIMessagePaint {
   UIPaintingContext *context;
   Vec2 offset;
 } UIMessagePaint;
-
-enum {
-  UI_WIDGET_PARENT_DATA_FLEX = 1,
-};
-
-/// Callback should return true there is parent data.
-typedef struct UIMessageGetParentData {
-  u32 type;  // UI_MESSAGE_GET_PARENT_DATA
-  u32 parent_data_id;
-  void *parent_data;
-} UIMessageGetParentData;
 
 typedef struct UIHitTestEntry UIHitTestEntry;
 struct UIHitTestEntry {
@@ -419,7 +408,6 @@ typedef union UIMessage {
   UIMessageLayoutBox layout_box;
   UIMessageLayoutSliver layout_sliver;
   UIMessagePaint paint;
-  UIMessageGetParentData get_parent_data;
   UIMessageHitTest hit_test;
   UIMessageHandleEvent handle_event;
 } UIMessage;
@@ -445,6 +433,50 @@ typedef enum UIWidgetStatus {
   UI_WIDGET_STATUS_MOUNTED,
 } UIWidgetStatus;
 
+typedef enum UIParentDataType {
+  UI_PARENT_DATA_UNKNOWN,
+  UI_PARENT_DATA_FLEX,
+} UIParentDataType;
+
+typedef struct UIParentData UIParentData;
+struct UIParentData {
+  u64 key;
+  usize data_size;
+  UIParentData *slots[4];
+};
+
+static inline UIParentData *ui_parent_data_upsert(Arena *arena,
+                                                  UIParentData **t, u64 key,
+                                                  usize data_size, void *data) {
+  for (u64 hash = key; *t; hash <<= 2) {
+    if (key == t[0]->key) {
+      return t[0];
+    }
+    t = t[0]->slots + (hash >> 62);
+  }
+  if (arena) {
+    UIParentData *slot = (UIParentData *)arena_push(
+        arena, sizeof(UIParentData) + data_size, ARENA_PUSH_NO_ZERO);
+    *slot = (UIParentData){
+        .key = key,
+        .data_size = data_size,
+    };
+    memory_copy(slot + 1, data, data_size);
+    *t = slot;
+  }
+  return *t;
+}
+
+static inline void *ui_parent_data_get(UIParentData *root, u64 key,
+                                       usize data_size) {
+  UIParentData *slot = ui_parent_data_upsert(0, &root, key, 0, 0);
+  if (slot) {
+    ASSERT(slot->data_size == data_size);
+    return slot + 1;
+  }
+  return 0;
+}
+
 struct UIWidget {
   UIWidgetClass *klass;
   UIWidget *parent;
@@ -457,6 +489,7 @@ struct UIWidget {
   /// Last child of this widget.
   UIWidget *last;
   u32 child_count;
+  UIParentData *parent_data;
 
   UIWidgetStatus status;
 
@@ -515,6 +548,16 @@ static inline void *ui_widget_get_state_(UIWidget *widget, usize state_size) {
 
 #define ui_widget_get_state(widget, State) \
   ((State *)ui_widget_get_state_(widget, sizeof(State)))
+
+void ui_widget_set_parent_data(UIWidget *widget, u64 type, usize data_size,
+                               void *data);
+static inline void *ui_widget_get_parent_data_(UIWidget *widget, u64 type,
+                                               usize data_size) {
+  return ui_parent_data_get(widget->parent_data, type, data_size);
+}
+
+#define ui_widget_get_parent_data(widget, type, Data) \
+  (Data *)ui_widget_get_parent_data_(widget, type, sizeof(Data))
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -825,10 +868,7 @@ typedef struct UIFlexibleProps {
   UIFlexFit fit;
 } UIFlexibleProps;
 
-static inline void ui_flexible_begin(const UIFlexibleProps *props) {
-  ui_widget_begin(&ui_flexible_class, props);
-}
-
+void ui_flexible_begin(const UIFlexibleProps *props);
 static inline void ui_flexible_end(void) { ui_widget_end(&ui_flexible_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -857,10 +897,10 @@ static inline void ui_expanded_end(void) { ui_widget_end(&ui_expanded_class); }
 ///
 extern UIWidgetClass ui_flex_class;
 
-typedef struct UIWidgetParentDataFlex {
+typedef struct UIParentDataFlex {
   i32 flex;
   UIFlexFit fit;
-} UIWidgetParentDataFlex;
+} UIParentDataFlex;
 
 typedef enum UIMainAxisSize {
   UI_MAIN_AXIS_SIZE_MAX,

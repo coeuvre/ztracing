@@ -53,6 +53,9 @@ static inline b32 str8_is_equal(Str8 a, Str8 b) {
   return result;
 }
 
+u64 str8_hash_with_seed(Str8 str, u64 seed);
+static inline u64 str8_hash(Str8 str) { return str8_hash_with_seed(str, 5381); }
+
 Str8 arena_push_str8(Arena *arena, Str8 str);
 Str8 arena_push_str8f(Arena *arena, const char *format, ...);
 Str8 arena_push_str8fv(Arena *arena, const char *format, va_list ap);

@@ -363,20 +363,6 @@ static inline void ui_widget_paint(UIWidget *widget, UIPaintingContext *context,
   widget->klass->callback(widget, &message);
 }
 
-static inline bool ui_widget_get_parent_data(UIWidget *widget,
-                                             u32 parent_data_id,
-                                             void *parent_data) {
-  UIMessage message = {
-      .get_parent_data =
-          {
-              .type = UI_MESSAGE_GET_PARENT_DATA,
-              .parent_data_id = parent_data_id,
-              .parent_data = parent_data,
-          },
-  };
-  return widget->klass->callback(widget, &message);
-}
-
 static inline bool ui_widget_hit_test(UIWidget *widget, UIHitTestResult *result,
                                       Arena *arena, Vec2 local_position) {
   UIMessage message = {
@@ -1021,6 +1007,14 @@ Arena *ui_get_build_arena(void) {
   return &state->build_arena;
 }
 
+void ui_widget_set_parent_data(UIWidget *widget, u64 type, usize data_size,
+                               void *data) {
+  UIState *state = ui_state_get();
+  UIFrame *frame = ui_state_get_current_frame(state);
+  ui_parent_data_upsert(&frame->arena, &widget->parent_data, type, data_size,
+                        data);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UILimitedBox
@@ -1502,34 +1496,21 @@ void ui_container_end(void) {
 ///
 /// UIFlexible
 ///
-static i32 ui_flexible_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_GET_PARENT_DATA: {
-      if (message->get_parent_data.parent_data_id ==
-          UI_WIDGET_PARENT_DATA_FLEX) {
-        UIFlexibleProps *flexible =
-            ui_widget_get_props(widget, UIFlexibleProps);
-        UIWidgetParentDataFlex *data = message->get_parent_data.parent_data;
-        *data = (UIWidgetParentDataFlex){
-            .flex = flexible->flex,
-            .fit = flexible->fit,
-        };
-        result = 1;
-      }
-    } break;
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 UIWidgetClass ui_flexible_class = {
     .name = "Flexible",
     .props_size = sizeof(UIFlexibleProps),
-    .callback = &ui_flexible_callback,
+    .callback = &ui_widget_callback_default,
 };
+
+void ui_flexible_begin(const UIFlexibleProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_flexible_class, props);
+  UIParentDataFlex flex = {
+      .flex = props->flex,
+      .fit = props->fit,
+  };
+  ui_widget_set_parent_data(widget, UI_PARENT_DATA_FLEX,
+                            sizeof(UIParentDataFlex), &flex);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -1537,18 +1518,18 @@ UIWidgetClass ui_flexible_class = {
 ///
 UIWidgetClass ui_expanded_class = {
     .name = "Expanded",
-    .props_size = sizeof(UIFlexibleProps),
-    .callback = &ui_flexible_callback,
+    .props_size = sizeof(UIExpandedProps),
+    .callback = &ui_widget_callback_default,
 };
 
 void ui_expanded_begin(const UIExpandedProps *props) {
-  UIFlexibleProps flexible = {
-      .key = props->key,
+  UIWidget *widget = ui_widget_begin(&ui_expanded_class, props);
+  UIParentDataFlex flex = {
       .flex = props->flex,
       .fit = UI_FLEX_FIT_TIGHT,
   };
-
-  ui_widget_begin(&ui_expanded_class, &flexible);
+  ui_widget_set_parent_data(widget, UI_PARENT_DATA_FLEX,
+                            sizeof(UIParentDataFlex), &flex);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1596,11 +1577,11 @@ static inline UIBoxConstraints ui_box_constraints_for_non_flex_child(
 
 static inline UIBoxConstraints ui_box_constraints_for_flex_child(
     UIFlexProps *flex, UIBoxConstraints constraints, f32 max_child_extent,
-    UIWidgetParentDataFlex data) {
-  DEBUG_ASSERT(data.flex > 0);
-  DEBUG_ASSERT(max_child_extent >= 0.0f);
+    UIParentDataFlex *data) {
+  ASSERT(data->flex > 0);
+  ASSERT(max_child_extent >= 0.0f);
   f32 min_child_extent = 0.0;
-  if (data.fit == UI_FLEX_FIT_TIGHT) {
+  if (data->fit == UI_FLEX_FIT_TIGHT) {
     min_child_extent = max_child_extent;
   }
   bool should_fill_cross_axis = false;
@@ -1704,9 +1685,10 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
   for (UIWidget *child = widget->first; child; child = child->next) {
     i32 child_flex = 0;
     if (can_flex) {
-      UIWidgetParentDataFlex data;
-      if (ui_widget_get_parent_data(child, UI_WIDGET_PARENT_DATA_FLEX, &data)) {
-        child_flex = data.flex;
+      UIParentDataFlex *data = ui_widget_get_parent_data(
+          child, UI_PARENT_DATA_FLEX, UIParentDataFlex);
+      if (data) {
+        child_flex = data->flex;
       }
     }
 
@@ -1735,16 +1717,15 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
   f32 space_per_flex = flex_space / total_flex;
   for (UIWidget *child = widget->first; child && total_flex > 0;
        child = child->next) {
-    UIWidgetParentDataFlex data;
-    bool has_parent_data =
-        ui_widget_get_parent_data(child, UI_WIDGET_PARENT_DATA_FLEX, &data);
-    if (!has_parent_data || data.flex <= 0) {
+    UIParentDataFlex *data =
+        ui_widget_get_parent_data(child, UI_PARENT_DATA_FLEX, UIParentDataFlex);
+    if (!data || data->flex <= 0) {
       continue;
     }
-    total_flex -= data.flex;
+    total_flex -= data->flex;
     DEBUG_ASSERT(f32_is_finite(space_per_flex));
-    f32 max_child_extent = space_per_flex * data.flex;
-    DEBUG_ASSERT(data.fit == UI_FLEX_FIT_LOOSE ||
+    f32 max_child_extent = space_per_flex * data->flex;
+    DEBUG_ASSERT(data->fit == UI_FLEX_FIT_LOOSE ||
                  max_child_extent < F32_INFINITY);
     UIBoxConstraints child_constraints = ui_box_constraints_for_flex_child(
         flex, constraints, max_child_extent, data);
