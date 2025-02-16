@@ -81,11 +81,16 @@ static void build_ui(f32 dt, f32 frame_time) {
     });
     ui_container_end();
 
-    // TODO: Impl UIListView
-    ui_column_begin(&(UIColumnProps){0});
+    ui_expanded_begin(&(UIExpandedProps){
+        .flex = 1,
+    });
+
+    f32 item_size = 20.0f;
+    u32 item_count = 512;
+    ui_list_view_begin(&(UIListViewProps){
+        .item_extent = item_size,
+    });
     {
-      f32 item_size = 20.0f;
-      u32 item_count = 512;
       for (u32 item_index = 0; item_index < item_count; ++item_index) {
         ui_row_begin(&(UIRowProps){0});
         ui_expanded_begin(&(UIExpandedProps){
@@ -101,7 +106,8 @@ static void build_ui(f32 dt, f32 frame_time) {
         ui_row_end();
       }
     }
-    ui_column_end();
+    ui_list_view_end();
+    ui_expanded_end();
   }
   ui_column_end();
   ui_colored_box_end();

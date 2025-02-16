@@ -177,6 +177,11 @@ typedef enum UIAxis {
   UI_AXIS_VERTICAL,
 } UIAxis;
 
+typedef enum UIGrowthDirection {
+  UI_GROWTH_DIRECTION_FORWARD,
+  UI_GROWTH_DIRECTION_REVERSE,
+} UIGrowthDirection;
+
 typedef enum UIAxisDirection {
   UI_AXIS_DIRECTION_UP,
   UI_AXIS_DIRECTION_DOWN,
@@ -202,16 +207,60 @@ static inline UIAxis ui_axis_direction_to_axis(UIAxisDirection self) {
   }
 }
 
-typedef enum UIGrowthDirection {
-  UI_GROWTH_DIRECTION_FORWARD,
-  UI_GROWTH_DIRECTION_REVERSE,
-} UIGrowthDirection;
+static inline UIAxisDirection ui_axis_direction_flip(UIAxisDirection self) {
+  switch (self) {
+    case UI_AXIS_DIRECTION_UP: {
+      return UI_AXIS_DIRECTION_DOWN;
+    } break;
+
+    case UI_AXIS_DIRECTION_DOWN: {
+      return UI_AXIS_DIRECTION_UP;
+    } break;
+
+    case UI_AXIS_DIRECTION_LEFT: {
+      return UI_AXIS_DIRECTION_RIGHT;
+    } break;
+
+    case UI_AXIS_DIRECTION_RIGHT: {
+      return UI_AXIS_DIRECTION_LEFT;
+    } break;
+
+    default: {
+      UNREACHABLE;
+    } break;
+  }
+}
+
+static inline UIAxisDirection ui_axis_direction_apply_growth_direction(
+    UIAxisDirection self, UIGrowthDirection growth) {
+  if (growth == UI_GROWTH_DIRECTION_REVERSE) {
+    return ui_axis_direction_flip(self);
+  }
+  return self;
+}
 
 typedef enum UIScrollDirection {
   UI_SCROLL_DIRECTION_IDLE,
   UI_SCROLL_DIRECTION_FORWARD,
   UI_SCROLL_DIRECTION_REVERSE,
 } UIScrollDirection;
+
+static inline UIScrollDirection ui_scroll_direction_flip(
+    UIScrollDirection self) {
+  switch (self) {
+    case UI_SCROLL_DIRECTION_FORWARD: {
+      return UI_SCROLL_DIRECTION_REVERSE;
+    } break;
+
+    case UI_SCROLL_DIRECTION_REVERSE: {
+      return UI_SCROLL_DIRECTION_FORWARD;
+    } break;
+
+    default: {
+      return self;
+    } break;
+  }
+}
 
 typedef struct UISliverConstraints {
   /// The direction in which the `scroll_offset` and `remaining_paint_extent`
@@ -229,6 +278,10 @@ typedef struct UISliverConstraints {
   /// The scroll distance that has been consumed by all slivers that came before
   /// this sliver.
   f32 preceeding_scroll_extent;
+  /// The number of points from where the points corresponding to the
+  /// `scroll_offset` will be painted up to the first point that has not yet
+  /// been painted on by an earlier sliver, in the `axis_direction`.
+  f32 overlap;
   /// The number of points of content that the sliver should consider providing.
   /// (Providing more pixels than this is inefficient.)
   f32 remaining_paint_extent;
@@ -264,6 +317,60 @@ static inline UIBoxConstraints ui_sliver_constraints_as_box_constraints(
     } break;
   }
 }
+
+static inline f32 ui_sliver_constraints_calc_paint_offset(
+    UISliverConstraints self, f32 from, f32 to) {
+  f32 a = self.scroll_offset;
+  f32 b = self.scroll_offset + self.remaining_paint_extent;
+  return f32_clamp(f32_clamp(to, a, b) - f32_clamp(from, a, b), 0,
+                   self.remaining_paint_extent);
+}
+
+static inline f32 ui_sliver_constraints_calc_cache_offset(
+    UISliverConstraints self, f32 from, f32 to) {
+  f32 a = self.scroll_offset + self.cache_origin;
+  f32 b = self.scroll_offset + self.remaining_cache_extent;
+  return f32_clamp(f32_clamp(to, a, b) - f32_clamp(from, a, b), 0,
+                   self.remaining_cache_extent);
+}
+
+typedef struct UISliverGeometry {
+  /// The total scrollable extent that this sliver has content for.
+  f32 scroll_extent;
+  /// The visual location of the first visible part of this sliver relative to
+  /// its layout position.
+  f32 paint_origin;
+  /// The amount of currently visible visual space that was taken by the sliver
+  /// to render the subset of the sliver that covers all or part of the
+  /// `UISliverConstraints.remaining_paint_extent` in the current viewport.
+  f32 paint_extent;
+  /// The distance from the first visible part of this sliver to the first
+  /// visible part of the next sliver, assuming the next sliver's
+  /// `UISliverConstraints.scroll_offset` is zero.
+  f32 layout_extent;
+  /// The total paint extent that this sliver would be able to provide if the
+  /// `UISliverConstraints.remaining_paint_extent` was infinite.
+  f32 max_paint_extent;
+  /// The distance from where this sliver started painting to the bottom of
+  /// where it should accept hits.
+  f32 hit_test_extent;
+  /// If any slivers have visual overflow, the viewport will apply a clip to its
+  /// children.
+  bool has_visual_overflow;
+  /// If this is non-zero after, the scroll offset will be adjusted by the
+  /// parent and then the entire layout of the parent will be rerun.
+  f32 scroll_offset_correction;
+  /// How many points the sliver has consumed in the
+  /// `UISliverConstraints.remaining_cache_extent`.
+  f32 cache_extent;
+} UISliverGeometry;
+
+typedef struct UIParentDataSliver {
+  UISliverGeometry geometry;
+  /// The position of the child relative to the zero scroll offset. In a typical
+  /// list, this does not change as the parent is scrolled.
+  f32 layout_offset;
+} UIParentDataSliver;
 
 typedef struct UIColor {
   f32 r;
@@ -322,6 +429,7 @@ typedef struct UIMessageLayoutBox {
 
 typedef struct UIMessageLayoutSliver {
   u32 type;  // UI_MESSAGE_LAYOUT_SLIVER
+  UISliverGeometry *geometry;
   UISliverConstraints constraints;
 } UIMessageLayoutSliver;
 
@@ -436,6 +544,7 @@ typedef enum UIWidgetStatus {
 typedef enum UIParentDataType {
   UI_PARENT_DATA_UNKNOWN,
   UI_PARENT_DATA_FLEX,
+  UI_PARENT_DATA_SLIVER,
 } UIParentDataType;
 
 typedef struct UIParentData UIParentData;
@@ -1085,7 +1194,46 @@ void ui_button(UIButtonProps *props);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-/// UISliverFixedExtentList.
+/// UIViewport
+///
+/// A widget through which a portion of larger content can be viewed.
+///
+/// The children of Viewport must be slivers.
+///
+extern UIWidgetClass ui_viewport_class;
+
+typedef struct UIViewportOffset {
+  /// The number of points to offset the children in the opposite of the axis
+  /// direction.
+  f32 points;
+  UIScrollDirection scroll_direction;
+} UIViewportOffset;
+
+typedef struct UIViewportProps {
+  UIKey key;
+  /// The direction in which the `offset` increases.
+  UIAxisDirection axis_direction;
+  /// The direction in which child should be laid out in the cross axis.
+  UIAxisDirection cross_axis_direction;
+  /// The relative position of the zero scroll offset.
+  f32 anchor;
+  /// Which part of the content inside the viewport should be visible.
+  UIViewportOffset offset;
+  /// The viewport has an area before and after the visible area to cache items
+  /// that are about to become visible when the user scrolls.
+  f32 cache_extent;
+
+  // TODO: clip and center
+} UIViewportProps;
+
+static inline void ui_viewport_begin(const UIViewportProps *props) {
+  ui_widget_begin(&ui_viewport_class, props);
+}
+static inline void ui_viewport_end(void) { ui_widget_end(&ui_viewport_class); }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UISliverFixedExtentList
 ///
 /// A sliver that places multiple box children with the same main axis extent in
 /// a linear array.
@@ -1104,5 +1252,19 @@ static inline void ui_sliver_fixed_extent_list_begin(
 static inline void ui_sliver_fixed_extent_list_end(void) {
   ui_widget_end(&ui_sliver_fixed_extent_list_class);
 }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIListView
+///
+extern UIWidgetClass ui_list_view_class;
+
+typedef struct UIListViewProps {
+  UIKey key;
+  f32 item_extent;
+} UIListViewProps;
+
+void ui_list_view_begin(const UIListViewProps *props);
+void ui_list_view_end(void);
 
 #endif  // ZTRACING_SRC_UI_H_
