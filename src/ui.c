@@ -416,6 +416,7 @@ static bool ui_hit_test_state_has_widget(UIHitTestState *self,
   return result;
 }
 
+/// Returns true if hit any widget.
 static bool ui_hit_test_state_hit_test(UIHitTestState *self, UIWidget *root,
                                        Vec2 pos) {
   ASSERT(!self->result.first);
@@ -566,6 +567,29 @@ void ui_on_mouse_move(Vec2 pos) {
   }
 
   ui_hit_test_state_clear(last_hit_test);
+}
+
+void ui_on_mouse_scroll(Vec2 pos, Vec2 delta) {
+  UIState *state = ui_state_get();
+  UIWidget *root = ui_state_get_root_for_hit_test(state);
+  if (!root) {
+    return;
+  }
+
+  Scratch scratch = scratch_begin(0, 0);
+  UIHitTestResult result = {0};
+  if (ui_widget_hit_test(root, &result, scratch.arena, pos)) {
+    for (UIHitTestEntry *entry = result.first; entry; entry = entry->next) {
+      ui_widget_handle_event(entry->widget,
+                             &(UIPointerEvent){
+                                 .type = UI_POINTER_EVENT_SCROLL,
+                                 .position = pos,
+                                 .local_position = entry->local_position,
+                                 .scroll_delta = delta,
+                             });
+    }
+  }
+  scratch_end(scratch);
 }
 
 void ui_on_focus_lost(Vec2 pos) {
@@ -1964,11 +1988,20 @@ void ui_row_begin(const UIRowProps *props) {
 ///
 /// UIPointerListener
 ///
+typedef struct UIPointerEventQueueEntry UIPointerEventQueueEntry;
+struct UIPointerEventQueueEntry {
+  UIPointerEventQueueEntry *prev;
+  UIPointerEventQueueEntry *next;
+  UIPointerEvent event;
+};
+
+typedef struct UIPointerEventQueue {
+  UIPointerEventQueueEntry *first;
+  UIPointerEventQueueEntry *last;
+} UIPointerEventQueue;
+
 typedef struct UIPointerListenerState {
-  UIPointerEventO down;
-  UIPointerEventO move;
-  UIPointerEventO up;
-  UIPointerEventO cancel;
+  UIPointerEventQueue event_queue;
 } UIPointerListenerState;
 
 static i32 ui_pointer_listener_callback(UIWidget *widget, UIMessage *message) {
@@ -1978,22 +2011,12 @@ static i32 ui_pointer_listener_callback(UIWidget *widget, UIMessage *message) {
       UIPointerListenerState *state =
           ui_widget_get_state(widget, UIPointerListenerState);
       UIPointerEvent *event = message->handle_event.event;
-      switch (event->type) {
-        case UI_POINTER_EVENT_DOWN: {
-          state->down = ui_pointer_event_some(*event);
-        } break;
-        case UI_POINTER_EVENT_MOVE: {
-          state->move = ui_pointer_event_some(*event);
-        } break;
-        case UI_POINTER_EVENT_UP: {
-          state->up = ui_pointer_event_some(*event);
-        } break;
-        case UI_POINTER_EVENT_CANCEL: {
-          state->cancel = ui_pointer_event_some(*event);
-        } break;
-        default: {
-        } break;
-      }
+      UIFrame *frame = ui_state_get_current_frame(ui_state_get());
+      UIPointerEventQueueEntry *entry =
+          arena_push_struct(&frame->arena, UIPointerEventQueueEntry);
+      entry->event = *event;
+      DLL_APPEND(state->event_queue.first, state->event_queue.last, entry, prev,
+                 next);
     } break;
     default: {
       result = ui_widget_callback_default(widget, message);
@@ -2013,17 +2036,54 @@ void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
   UIWidget *widget = ui_widget_begin(&ui_pointer_listener_class, props);
   UIPointerListenerState *state =
       ui_widget_get_state(widget, UIPointerListenerState);
+
+  UIPointerEventO down = ui_pointer_event_none();
+  UIPointerEventO move = ui_pointer_event_none();
+  UIPointerEventO up = ui_pointer_event_none();
+  UIPointerEventO cancel = ui_pointer_event_none();
+  UIPointerEventO scroll = ui_pointer_event_none();
+  for (UIPointerEventQueueEntry *entry = state->event_queue.first; entry;
+       entry = entry->next) {
+    switch (entry->event.type) {
+      case UI_POINTER_EVENT_DOWN: {
+        down = ui_pointer_event_some(entry->event);
+      } break;
+
+      case UI_POINTER_EVENT_MOVE: {
+        move = ui_pointer_event_some(entry->event);
+      } break;
+
+      case UI_POINTER_EVENT_UP: {
+        up = ui_pointer_event_some(entry->event);
+      } break;
+
+      case UI_POINTER_EVENT_CANCEL: {
+        cancel = ui_pointer_event_some(entry->event);
+      } break;
+
+      case UI_POINTER_EVENT_SCROLL: {
+        scroll = ui_pointer_event_some(entry->event);
+      } break;
+
+      default: {
+      } break;
+    }
+  }
+
   if (props->down) {
-    *props->down = state->down;
+    *props->down = down;
   }
   if (props->move) {
-    *props->move = state->move;
+    *props->move = move;
   }
   if (props->up) {
-    *props->up = state->up;
+    *props->up = up;
   }
   if (props->cancel) {
-    *props->cancel = state->cancel;
+    *props->cancel = cancel;
+  }
+  if (props->scroll) {
+    *props->scroll = scroll;
   }
 
   *state = (UIPointerListenerState){0};
@@ -2533,6 +2593,12 @@ static i32 ui_viewport_callback(UIWidget *widget, UIMessage *message) {
       ui_viewport_paint(widget, message->paint.context, message->paint.offset);
     } break;
 
+    case UI_MESSAGE_HIT_TEST: {
+      result = ui_widget_hit_test_opaque(widget, message->hit_test.result,
+                                         message->hit_test.arena,
+                                         message->hit_test.local_position);
+    } break;
+
     default: {
       result = ui_widget_callback_default(widget, message);
     } break;
@@ -2546,6 +2612,48 @@ UIWidgetClass ui_viewport_class = {
     .props_size = sizeof(UIViewportProps),
     .callback = ui_viewport_callback,
 };
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIScrollable
+///
+typedef struct UIScrollableState {
+  f32 offset;
+} UIScrollableState;
+
+UIWidgetClass ui_scrollable_class = {
+    .name = "Scrollable",
+    .props_size = sizeof(UIScrollableProps),
+    .state_size = sizeof(UIScrollableState),
+    .callback = ui_widget_callback_default,
+};
+
+void ui_scrollable_begin(const UIScrollableProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_scrollable_class, props);
+  UIScrollableState *state = ui_widget_get_state(widget, UIScrollableState);
+  UIPointerEventO scroll;
+  ui_pointer_listener_begin(&(UIPointerListenerProps){
+      .scroll = &scroll,
+  });
+  if (scroll.present) {
+    state->offset =
+        f32_clamp(state->offset + scroll.value.scroll_delta.y,
+                  props->min_scroll_extent, props->max_scroll_extent);
+  }
+
+  ui_viewport_begin(
+      &(UIViewportProps){.axis_direction = props->axis_direction,
+                         .cross_axis_direction = props->cross_axis_direction,
+                         .offset = (UIViewportOffset){
+                             .points = state->offset,
+                         }});
+}
+
+void ui_scrollable_end(void) {
+  ui_viewport_end();
+  ui_pointer_listener_end();
+  ui_widget_end(&ui_scrollable_class);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -2680,9 +2788,10 @@ UIWidgetClass ui_list_view_class = {
 void ui_list_view_begin(const UIListViewProps *props) {
   ui_widget_begin(&ui_list_view_class, props);
   // TODO: Scrollable
-  ui_viewport_begin(&(UIViewportProps){
+  ui_scrollable_begin(&(UIScrollableProps){
       .axis_direction = UI_AXIS_DIRECTION_DOWN,
       .cross_axis_direction = UI_AXIS_DIRECTION_RIGHT,
+      .max_scroll_extent = F32_INFINITY,
   });
   ui_sliver_fixed_extent_list_begin(&(UISliverFixedExtentListProps){
       .item_extent = props->item_extent,
@@ -2691,6 +2800,6 @@ void ui_list_view_begin(const UIListViewProps *props) {
 
 void ui_list_view_end(void) {
   ui_sliver_fixed_extent_list_end();
-  ui_viewport_end();
+  ui_scrollable_end();
   ui_widget_end(&ui_list_view_class);
 }

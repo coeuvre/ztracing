@@ -93,16 +93,20 @@ static void build_ui(f32 dt, f32 frame_time) {
     {
       for (u32 item_index = 0; item_index < item_count; ++item_index) {
         ui_row_begin(&(UIRowProps){0});
-        ui_expanded_begin(&(UIExpandedProps){
-            .flex = 1,
+        // ui_expanded_begin(&(UIExpandedProps){
+        //     .flex = 1,
+        // });
+        // ui_container_begin(&(UIContainerProps){
+        //     .color =
+        //         ui_color_some(ui_color(0, 0, (item_index % 255) / 255.0f, 1)),
+        //     .height = f32_some(item_size),
+        // });
+        // ui_container_end();
+        // ui_expanded_end();
+        ui_text(&(UITextProps){
+          .text = ui_push_str8f("Row %u", item_index),
+          .style = default_text_style(),
         });
-        ui_container_begin(&(UIContainerProps){
-            .color =
-                ui_color_some(ui_color(0, 0, (item_index % 255) / 255.0f, 1)),
-            .height = f32_some(item_size),
-        });
-        ui_container_end();
-        ui_expanded_end();
         ui_row_end();
       }
     }

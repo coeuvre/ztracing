@@ -25,6 +25,7 @@ void ui_set_viewport(Vec2 min, Vec2 max);
 
 void ui_on_focus_lost(Vec2 pos);
 void ui_on_mouse_move(Vec2 pos);
+void ui_on_mouse_scroll(Vec2 pos, Vec2 delta);
 void ui_on_mouse_button_down(Vec2 pos, u32 button);
 void ui_on_mouse_button_up(Vec2 pos, u32 button);
 
@@ -488,6 +489,7 @@ typedef enum UIPointerEventType {
   UI_POINTER_EVENT_ENTER,
   /// A pointer has exited this widget when the widget is still mounted.
   UI_POINTER_EVENT_EXIT,
+  UI_POINTER_EVENT_SCROLL,
 } UIPointerEventType;
 
 typedef struct UIPointerEvent {
@@ -499,6 +501,7 @@ typedef struct UIPointerEvent {
   /// The position transformed into the event receiver's local coordinate
   /// system.
   Vec2 local_position;
+  Vec2 scroll_delta;
 } UIPointerEvent;
 
 OPTIONAL_TYPE(UIPointerEventO, UIPointerEvent, ui_pointer_event);
@@ -1103,6 +1106,7 @@ typedef struct UIPointerListenerProps {
   UIPointerEventO *move;
   UIPointerEventO *up;
   UIPointerEventO *cancel;
+  UIPointerEventO *scroll;
 } UIPointerListenerProps;
 
 void ui_pointer_listener_begin(const UIPointerListenerProps *props);
@@ -1230,6 +1234,25 @@ static inline void ui_viewport_begin(const UIViewportProps *props) {
   ui_widget_begin(&ui_viewport_class, props);
 }
 static inline void ui_viewport_end(void) { ui_widget_end(&ui_viewport_class); }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIScrollable
+///
+/// A widget that manages scrolling in one dimension and informs the
+/// `UIViewport` through which the content is viewed.
+extern UIWidgetClass ui_scrollable_class;
+
+typedef struct UIScrollableProps {
+  UIKey key;
+  UIAxisDirection axis_direction;
+  UIAxisDirection cross_axis_direction;
+  f32 min_scroll_extent;
+  f32 max_scroll_extent;
+} UIScrollableProps;
+
+void ui_scrollable_begin(const UIScrollableProps *props);
+void ui_scrollable_end(void);
 
 ////////////////////////////////////////////////////////////////////////////////
 ///

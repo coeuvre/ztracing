@@ -24,6 +24,16 @@ u64 get_perf_freq(void) {
   return result;
 }
 
+static Vec2 get_window_size() {
+  int w, h;
+  SDL_GetWindowSizeInPixels(window, &w, &h);
+  Vec2 size = vec2(w, h);
+  if (window_coordinate_is_in_pixels) {
+    size = vec2_mul(size, 1.0f / get_screen_content_scale());
+  }
+  return size;
+}
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   (void)appstate, (void)argc, (void)argv;
 
@@ -109,7 +119,11 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     } break;
 
     case SDL_EVENT_MOUSE_WHEEL: {
-      // ui_on_mouse_wheel(vec2(event->wheel.x, -event->wheel.y));
+      Vec2 mouse_pos =
+          mouse_pos_from_sdl(get_global_window_relative_mouse_pos());
+      Vec2 delta = vec2(event->wheel.x, -event->wheel.y);
+      Vec2 range = vec2_mul(get_window_size(), 0.1);
+      ui_on_mouse_scroll(mouse_pos, vec2(delta.x * range.x, delta.y * range.y));
     } break;
 
     default: {
