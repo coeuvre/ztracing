@@ -22,6 +22,7 @@
 #define UI_PRECISION_ERROR_TOLERANCE 1e-5
 
 void ui_set_viewport(Vec2 min, Vec2 max);
+void ui_set_delta_time(f32 dt);
 
 void ui_on_focus_lost(Vec2 pos);
 void ui_on_mouse_move(Vec2 pos);
@@ -35,6 +36,8 @@ void ui_end_frame(void);
 Str8 ui_push_str8(Str8 str);
 Str8 ui_push_str8f(const char *format, ...);
 Str8 ui_push_str8fv(const char *format, va_list ap);
+
+f32 ui_animate_fast_f32(f32 value, f32 target);
 
 typedef struct UIKey {
   u64 hash;

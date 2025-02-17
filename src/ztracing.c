@@ -112,7 +112,7 @@ static void build_ui(f32 dt, f32 frame_time) {
       });
       ui_container_begin(&(UIContainerProps){
           .color =
-              ui_color_some(ui_color(0, 0, (item_index % 255) / 255.0f, 1)),
+              ui_color_some(ui_color(0, (item_index % 255) / 255.0f, 0, 1)),
           .height = f32_some(item_size),
       });
       ui_container_end();
@@ -139,7 +139,7 @@ void do_frame(void) {
 
   clear_draw();
 
-  // ui_set_delta_time(dt);
+  ui_set_delta_time(dt);
   ui_begin_frame();
   build_ui(dt, last_frame_time);
   ui_end_frame();

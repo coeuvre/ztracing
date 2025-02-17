@@ -213,6 +213,7 @@ static void ui_hit_test_state_sync(UIHitTestState *self, UIWidget *new_root) {
 }
 
 typedef struct UIInputState {
+  f32 dt;
   Vec2 last_pointer_pos;
   u32 current_down_button;
 
@@ -236,6 +237,7 @@ typedef struct UIState {
   Vec2 viewport_max;
 
   UIInputState input;
+  f32 fast_animation_rate;
 } UIState;
 
 THREAD_LOCAL UIState t_ui_state;
@@ -254,6 +256,12 @@ void ui_set_viewport(Vec2 min, Vec2 max) {
   UIState *state = ui_state_get();
   state->viewport_min = min;
   state->viewport_max = max;
+}
+
+void ui_set_delta_time(f32 dt) {
+  UIState *state = ui_state_get();
+  state->input.dt = dt;
+  state->fast_animation_rate = 1.0f - f32_exp(-50.f * dt);
 }
 
 static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message);
@@ -276,6 +284,11 @@ static inline void ui_root_end(void) { ui_widget_end(&ui_root_class); }
 void ui_begin_frame(void) {
   UIState *state = ui_state_get();
   ASSERT(ui_widget_stack_is_empty(&state->widget_stack));
+
+  if (state->input.dt == 0) {
+    // Assume 60 FPS if `dt` is not explicitly set.
+    ui_set_delta_time(1000.0f / 60.0f);
+  }
 
   state->frame_index += 1;
   state->current_frame =
@@ -816,6 +829,18 @@ Str8 ui_push_str8fv(const char *format, va_list ap) {
   UIState *state = ui_state_get();
   UIFrame *frame = ui_state_get_current_frame(state);
   return arena_push_str8fv(&frame->arena, format, ap);
+}
+
+f32 ui_animate_fast_f32(f32 value, f32 target) {
+  UIState *state = ui_state_get();
+  f32 result;
+  f32 diff = (target - value);
+  if (f32_abs(diff) < UI_PRECISION_ERROR_TOLERANCE) {
+    result = target;
+  } else {
+    result = value + diff * state->fast_animation_rate;
+  }
+  return result;
 }
 
 static UIKey ui_key_from_str8(UIKey seed, Str8 str) {
@@ -2629,6 +2654,7 @@ void ui_viewport_begin(const UIViewportProps *props) {
 ///
 typedef struct UIScrollableState {
   f32 offset;
+  f32 target_offset;
 } UIScrollableState;
 
 UIWidgetClass ui_scrollable_class = {
@@ -2641,6 +2667,7 @@ UIWidgetClass ui_scrollable_class = {
 void ui_scrollable_begin(const UIScrollableProps *props) {
   UIWidget *widget = ui_widget_begin(&ui_scrollable_class, props);
   UIScrollableState *state = ui_widget_get_state(widget, UIScrollableState);
+  state->offset = ui_animate_fast_f32(state->offset, state->target_offset);
 
   UIPointerEventO scroll;
   ui_pointer_listener_begin(&(UIPointerListenerProps){
@@ -2660,9 +2687,9 @@ void ui_scrollable_begin(const UIScrollableProps *props) {
   });
 
   if (scroll.present) {
-    state->offset += scroll.value.scroll_delta.y;
+    state->target_offset += scroll.value.scroll_delta.y;
   }
-  state->offset = f32_clamp(state->offset, 0, max_scroll_offset);
+  state->target_offset = f32_clamp(state->target_offset, 0, max_scroll_offset);
 }
 
 void ui_scrollable_end(void) {
