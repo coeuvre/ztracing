@@ -2482,7 +2482,8 @@ static f32 ui_viewport_layout_children(
     child = child->next;
   }
 
-  state->max_scroll_offset = preceeding_scroll_extent - main_axis_extent;
+  state->max_scroll_offset +=
+      f32_max(0, preceeding_scroll_extent - main_axis_extent);
 
   return 0;
 }
@@ -2506,7 +2507,7 @@ static f32 ui_viewport_attempt_layout(UIWidget *widget, UIViewportProps *props,
       f32_clamp(full_cache_extent - center_offset, 0, full_cache_extent);
 
   state->has_visual_overflow = false;
-  state->max_scroll_offset = 0;
+  state->max_scroll_offset = cache_extent;
   return ui_viewport_layout_children(
       widget, props, state, /* child= */ widget->first,
       /* scroll_offset= */ f32_max(0, -center_offset),
@@ -2655,6 +2656,7 @@ void ui_scrollable_begin(const UIScrollableProps *props) {
               .points = state->offset,
           },
       .max_scroll_offset = &max_scroll_offset,
+      .cache_extent = props->cache_extent,
   });
 
   if (scroll.present) {
@@ -2673,6 +2675,10 @@ void ui_scrollable_end(void) {
 ///
 /// UISliverFixedExtentList
 ///
+typedef struct UISliverFixedExtentListState {
+  UISliverConstraints last_constraints;
+} UISliverFixedExtentListState;
+
 static i32 ui_sliver_fixed_extent_list_get_min_child_index(f32 item_extent,
                                                            f32 scroll_offset) {
   if (item_extent <= 0.0f) {
@@ -2703,37 +2709,49 @@ static i32 ui_sliver_fixed_extent_list_get_max_child_index(f32 item_extent,
   return f32_max(0, f32_ceil(actual));
 }
 
-static void ui_sliver_fixed_extent_list_layout_sliver(
-    UIWidget *widget, UISliverGeometry *geometry,
-    UISliverConstraints constraints) {
-  UISliverFixedExtentListProps *props =
-      ui_widget_get_props(widget, UISliverFixedExtentListProps);
-  f32 scroll_offset = constraints.scroll_offset + constraints.cache_origin;
-  ASSERT(scroll_offset >= 0.0f);
-  f32 remaining_extent = constraints.remaining_cache_extent;
-  ASSERT(remaining_extent >= 0.0f);
+static void ui_sliver_fixed_extent_list_calc_item_count(
+    f32 item_extent, f32 scroll_offset, f32 remaining_extent, i32 *first_index,
+    i32 *target_last_index) {
+  *first_index = ui_sliver_fixed_extent_list_get_min_child_index(item_extent,
+                                                                 scroll_offset);
+  ASSERT(*first_index >= 0);
+
   f32 target_end_scroll_offset = scroll_offset + remaining_extent;
+  if (f32_is_finite(target_end_scroll_offset)) {
+    *target_last_index = ui_sliver_fixed_extent_list_get_max_child_index(
+        item_extent, target_end_scroll_offset);
+  } else {
+    *target_last_index = I32_MAX;
+  }
+}
+
+static void ui_sliver_fixed_extent_list_layout_sliver(
+    UIWidget *widget, UISliverFixedExtentListProps *props,
+    UISliverFixedExtentListState *state, UISliverGeometry *geometry,
+    UISliverConstraints constraints) {
+  f32 scroll_offset = state->last_constraints.scroll_offset +
+                      state->last_constraints.cache_origin;
+  ASSERT(scroll_offset >= 0.0f);
+  f32 remaining_extent = state->last_constraints.remaining_cache_extent;
+  ASSERT(remaining_extent >= 0.0f);
 
   f32 item_extent = props->item_extent;
-  i32 first_index = ui_sliver_fixed_extent_list_get_min_child_index(
-      item_extent, scroll_offset);
-  bool has_target_last_index = f32_is_finite(target_end_scroll_offset);
-  i32 target_last_index = has_target_last_index
-                              ? ui_sliver_fixed_extent_list_get_max_child_index(
-                                    item_extent, target_end_scroll_offset)
-                              : 0;
+  i32 first_index;
+  i32 target_last_index;
+  ui_sliver_fixed_extent_list_calc_item_count(item_extent, scroll_offset,
+                                              remaining_extent, &first_index,
+                                              &target_last_index);
 
-  // For now, assume the index of first child is 0.
-  // TODO: builder indicates that they used first_index to build the first
-  // child.
-
-  ASSERT(first_index >= 0);
-
+  i32 item_count = props->item_count;
   i32 child_index = 0;
+  if (props->builder) {
+    child_index = first_index;
+  }
+
   for (UIWidget *child = widget->first; child; child = child->next) {
     UIBoxConstraints child_constraints =
-        ui_sliver_constraints_as_box_constraints(constraints, item_extent,
-                                                 item_extent);
+        ui_sliver_constraints_as_box_constraints(state->last_constraints,
+                                                 item_extent, item_extent);
     ui_widget_layout_box(child, child_constraints);
     f32 layout_offset = child_index * item_extent;
     child->offset = vec2(0, layout_offset - scroll_offset);
@@ -2745,16 +2763,17 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
   f32 trailing_scroll_offset =
       scroll_offset + (target_last_index - first_index + 1) * item_extent;
 
-  f32 max_scroll_offset = child_index * item_extent;
+  f32 scroll_extent = item_count * item_extent;
   f32 paint_extent = ui_sliver_constraints_calc_paint_offset(
-      constraints, leading_scroll_offset, trailing_scroll_offset);
+      state->last_constraints, leading_scroll_offset, trailing_scroll_offset);
   f32 cache_extent = ui_sliver_constraints_calc_cache_offset(
-      constraints, leading_scroll_offset, trailing_scroll_offset);
+      state->last_constraints, leading_scroll_offset, trailing_scroll_offset);
 
-  widget->size = vec2(constraints.cross_axis_extent, paint_extent);
+  widget->size = vec2(state->last_constraints.cross_axis_extent, paint_extent);
 
   f32 target_end_scroll_offset_for_paint =
-      constraints.scroll_offset + constraints.remaining_paint_extent;
+      state->last_constraints.scroll_offset +
+      state->last_constraints.remaining_paint_extent;
   bool has_target_last_index_for_paint =
       f32_is_finite(target_end_scroll_offset_for_paint);
   f32 target_last_index_for_paint =
@@ -2764,16 +2783,19 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
           : 0;
 
   *geometry = (UISliverGeometry){
-      .scroll_extent = max_scroll_offset,
+      .scroll_extent = scroll_extent,
       .paint_extent = paint_extent,
       .cache_extent = cache_extent,
       .layout_extent = paint_extent,
       .hit_test_extent = paint_extent,
-      .max_paint_extent = max_scroll_offset,
-      .has_visual_overflow = constraints.scroll_offset > 0 ||
+      .max_paint_extent = scroll_extent,
+      .has_visual_overflow = state->last_constraints.scroll_offset > 0 ||
                              (has_target_last_index_for_paint &&
                               child_index >= target_last_index_for_paint),
   };
+
+  // TODO: if last_constraints != constraints, mark as dirty.
+  state->last_constraints = constraints;
 }
 
 static void ui_sliver_fixed_extent_list_paint(UIWidget *widget,
@@ -2801,8 +2823,9 @@ static i32 ui_sliver_fixed_extent_list_callback(UIWidget *widget,
 
     case UI_MESSAGE_LAYOUT_SLIVER: {
       ui_sliver_fixed_extent_list_layout_sliver(
-          widget, message->layout_sliver.geometry,
-          message->layout_sliver.constraints);
+          widget, ui_widget_get_props(widget, UISliverFixedExtentListProps),
+          ui_widget_get_state(widget, UISliverFixedExtentListState),
+          message->layout_sliver.geometry, message->layout_sliver.constraints);
     } break;
 
     case UI_MESSAGE_PAINT: {
@@ -2821,33 +2844,47 @@ UIWidgetClass ui_sliver_fixed_extent_list_class = {
     .name = "SliverFixedExtentList",
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UISliverFixedExtentListProps),
+    .state_size = sizeof(UISliverFixedExtentListState),
     .callback = &ui_sliver_fixed_extent_list_callback,
 };
+
+void ui_sliver_fixed_extent_list_begin(
+    const UISliverFixedExtentListProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_sliver_fixed_extent_list_class, props);
+  UISliverFixedExtentListState *state =
+      ui_widget_get_state(widget, UISliverFixedExtentListState);
+  if (props->builder) {
+    f32 scroll_offset = state->last_constraints.scroll_offset +
+                        state->last_constraints.cache_origin;
+    f32 remaining_extent = state->last_constraints.remaining_cache_extent;
+    i32 first_index, target_last_index;
+    ui_sliver_fixed_extent_list_calc_item_count(
+        props->item_extent, scroll_offset, remaining_extent, &first_index,
+        &target_last_index);
+    props->builder->first_index = first_index;
+    props->builder->last_index =
+        f32_min(props->item_count - 1, target_last_index);
+  }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIListView
 ///
-UIWidgetClass ui_list_view_class = {
-    .name = "ListView",
-    .props_size = sizeof(UIListViewProps),
-    .callback = &ui_widget_callback_default,
-};
-
 void ui_list_view_begin(const UIListViewProps *props) {
-  ui_widget_begin(&ui_list_view_class, props);
-  // TODO: Scrollable
   ui_scrollable_begin(&(UIScrollableProps){
       .axis_direction = UI_AXIS_DIRECTION_DOWN,
       .cross_axis_direction = UI_AXIS_DIRECTION_RIGHT,
+      .cache_extent = props->item_extent,
   });
   ui_sliver_fixed_extent_list_begin(&(UISliverFixedExtentListProps){
       .item_extent = props->item_extent,
+      .item_count = props->item_count,
+      .builder = props->builder,
   });
 }
 
 void ui_list_view_end(void) {
   ui_sliver_fixed_extent_list_end();
   ui_scrollable_end();
-  ui_widget_end(&ui_list_view_class);
 }

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <limits.h>
 
 #include "src/config.h"
 
@@ -23,6 +24,8 @@ typedef float f32;
 typedef double f64;
 typedef size_t usize;
 typedef ptrdiff_t isize;
+
+#define I32_MAX INT_MAX
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
@@ -56,5 +59,7 @@ static inline usize usize_max(usize a, usize b) {
   }                                                 \
                                                     \
   static inline Name prefix##_none(void) { return (Name){0}; }
+
+OPTIONAL_TYPE(i32o, i32, i32);
 
 #endif  // ZTRACING_SRC_TYPES_H_

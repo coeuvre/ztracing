@@ -86,30 +86,38 @@ static void build_ui(f32 dt, f32 frame_time) {
     });
 
     f32 item_size = 20.0f;
-    u32 item_count = 512;
+    UIListBuilder builder;
     ui_list_view_begin(&(UIListViewProps){
         .item_extent = item_size,
+        .item_count = 512,
+        .builder = &builder,
     });
-    {
-      for (u32 item_index = 0; item_index < item_count; ++item_index) {
-        ui_row_begin(&(UIRowProps){0});
-        // ui_expanded_begin(&(UIExpandedProps){
-        //     .flex = 1,
-        // });
-        // ui_container_begin(&(UIContainerProps){
-        //     .color =
-        //         ui_color_some(ui_color(0, 0, (item_index % 255) / 255.0f,
-        //         1)),
-        //     .height = f32_some(item_size),
-        // });
-        // ui_container_end();
-        // ui_expanded_end();
-        ui_text(&(UITextProps){
-            .text = ui_push_str8f("Row %u", item_index),
-            .style = default_text_style(),
-        });
-        ui_row_end();
-      }
+    for (i32 item_index = builder.first_index; item_index <= builder.last_index;
+         ++item_index) {
+      ui_row_begin(&(UIRowProps){0});
+      UIWidget *widget = ui_widget_get_current();
+
+      ui_container_begin(&(UIContainerProps){
+          .width = f32_some(200.0f),
+      });
+      ui_text(&(UITextProps){
+          .text = ui_push_str8f("Row %u, offset=%.1f", item_index,
+                                widget->offset.y),
+          .style = default_text_style(),
+      });
+      ui_container_end();
+
+      ui_expanded_begin(&(UIExpandedProps){
+          .flex = 1,
+      });
+      ui_container_begin(&(UIContainerProps){
+          .color =
+              ui_color_some(ui_color(0, 0, (item_index % 255) / 255.0f, 1)),
+          .height = f32_some(item_size),
+      });
+      ui_container_end();
+      ui_expanded_end();
+      ui_row_end();
     }
     ui_list_view_end();
     ui_expanded_end();

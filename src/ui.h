@@ -1246,6 +1246,7 @@ typedef struct UIScrollableProps {
   UIKey key;
   UIAxisDirection axis_direction;
   UIAxisDirection cross_axis_direction;
+  f32 cache_extent;
 } UIScrollableProps;
 
 void ui_scrollable_begin(const UIScrollableProps *props);
@@ -1260,15 +1261,20 @@ void ui_scrollable_end(void);
 ///
 extern UIWidgetClass ui_sliver_fixed_extent_list_class;
 
+typedef struct UIListBuilder {
+  i32 first_index;
+  i32 last_index;
+} UIListBuilder;
+
 typedef struct UISliverFixedExtentListProps {
   UIKey key;
   f32 item_extent;
+  i32 item_count;
+  UIListBuilder *builder;
 } UISliverFixedExtentListProps;
 
-static inline void ui_sliver_fixed_extent_list_begin(
-    const UISliverFixedExtentListProps *props) {
-  ui_widget_begin(&ui_sliver_fixed_extent_list_class, props);
-}
+void ui_sliver_fixed_extent_list_begin(
+    const UISliverFixedExtentListProps *props);
 static inline void ui_sliver_fixed_extent_list_end(void) {
   ui_widget_end(&ui_sliver_fixed_extent_list_class);
 }
@@ -1277,11 +1283,11 @@ static inline void ui_sliver_fixed_extent_list_end(void) {
 ///
 /// UIListView
 ///
-extern UIWidgetClass ui_list_view_class;
-
 typedef struct UIListViewProps {
   UIKey key;
   f32 item_extent;
+  i32 item_count;
+  UIListBuilder *builder;
 } UIListViewProps;
 
 void ui_list_view_begin(const UIListViewProps *props);
