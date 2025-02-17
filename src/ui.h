@@ -337,6 +337,9 @@ static inline f32 ui_sliver_constraints_calc_cache_offset(
 
 typedef struct UISliverGeometry {
   /// The total scrollable extent that this sliver has content for.
+  ///
+  /// This is the amount of scrolling the user needs to do to get from the
+  /// beginning of this sliver to the end of this sliver.
   f32 scroll_extent;
   /// The visual location of the first visible part of this sliver relative to
   /// its layout position.
@@ -557,36 +560,31 @@ struct UIParentData {
   UIParentData *slots[4];
 };
 
-static inline UIParentData *ui_parent_data_upsert(Arena *arena,
-                                                  UIParentData **t, u64 key,
-                                                  usize data_size, void *data) {
+static inline void *ui_parent_data_upsert(Arena *arena, UIParentData **t,
+                                          u64 key, usize data_size) {
   for (u64 hash = key; *t; hash <<= 2) {
     if (key == t[0]->key) {
-      return t[0];
+      ASSERT(t[0]->data_size == data_size);
+      return t[0] + 1;
     }
     t = t[0]->slots + (hash >> 62);
   }
+
   if (arena) {
-    UIParentData *slot = (UIParentData *)arena_push(
-        arena, sizeof(UIParentData) + data_size, ARENA_PUSH_NO_ZERO);
-    *slot = (UIParentData){
-        .key = key,
-        .data_size = data_size,
-    };
-    memory_copy(slot + 1, data, data_size);
+    UIParentData *slot =
+        (UIParentData *)arena_push(arena, sizeof(UIParentData) + data_size, 0);
+    slot->key = key;
+    slot->data_size = data_size;
     *t = slot;
+    return slot + 1;
   }
-  return *t;
+
+  return 0;
 }
 
 static inline void *ui_parent_data_get(UIParentData *root, u64 key,
                                        usize data_size) {
-  UIParentData *slot = ui_parent_data_upsert(0, &root, key, 0, 0);
-  if (slot) {
-    ASSERT(slot->data_size == data_size);
-    return slot + 1;
-  }
-  return 0;
+  return ui_parent_data_upsert(0, &root, key, data_size);
 }
 
 struct UIWidget {
@@ -661,15 +659,18 @@ static inline void *ui_widget_get_state_(UIWidget *widget, usize state_size) {
 #define ui_widget_get_state(widget, State) \
   ((State *)ui_widget_get_state_(widget, sizeof(State)))
 
-void ui_widget_set_parent_data(UIWidget *widget, u64 type, usize data_size,
-                               void *data);
+void *ui_widget_set_parent_data_(UIWidget *widget, u64 type, usize data_size);
+
+#define ui_widget_set_parent_data(widget, type, Data) \
+  ((Data *)ui_widget_set_parent_data_(widget, type, sizeof(Data)))
+
 static inline void *ui_widget_get_parent_data_(UIWidget *widget, u64 type,
                                                usize data_size) {
   return ui_parent_data_get(widget->parent_data, type, data_size);
 }
 
 #define ui_widget_get_parent_data(widget, type, Data) \
-  (Data *)ui_widget_get_parent_data_(widget, type, sizeof(Data))
+  ((Data *)ui_widget_get_parent_data_(widget, type, sizeof(Data)))
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -1228,11 +1229,11 @@ typedef struct UIViewportProps {
   f32 cache_extent;
 
   // TODO: clip and center
+
+  f32 *max_scroll_offset;
 } UIViewportProps;
 
-static inline void ui_viewport_begin(const UIViewportProps *props) {
-  ui_widget_begin(&ui_viewport_class, props);
-}
+void ui_viewport_begin(const UIViewportProps *props);
 static inline void ui_viewport_end(void) { ui_widget_end(&ui_viewport_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1247,8 +1248,6 @@ typedef struct UIScrollableProps {
   UIKey key;
   UIAxisDirection axis_direction;
   UIAxisDirection cross_axis_direction;
-  f32 min_scroll_extent;
-  f32 max_scroll_extent;
 } UIScrollableProps;
 
 void ui_scrollable_begin(const UIScrollableProps *props);

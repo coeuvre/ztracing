@@ -122,8 +122,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
       Vec2 mouse_pos =
           mouse_pos_from_sdl(get_global_window_relative_mouse_pos());
       Vec2 delta = vec2(event->wheel.x, -event->wheel.y);
-      Vec2 range = vec2_mul(get_window_size(), 0.1);
-      ui_on_mouse_scroll(mouse_pos, delta);
+      ui_on_mouse_scroll(mouse_pos, vec2_mul(delta, 10.0f));
     } break;
 
     default: {

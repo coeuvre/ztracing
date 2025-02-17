@@ -1033,12 +1033,11 @@ Arena *ui_get_build_arena(void) {
   return &state->build_arena;
 }
 
-void ui_widget_set_parent_data(UIWidget *widget, u64 type, usize data_size,
-                               void *data) {
+void *ui_widget_set_parent_data_(UIWidget *widget, u64 type, usize data_size) {
   UIState *state = ui_state_get();
   UIFrame *frame = ui_state_get_current_frame(state);
-  ui_parent_data_upsert(&frame->arena, &widget->parent_data, type, data_size,
-                        data);
+  return ui_parent_data_upsert(&frame->arena, &widget->parent_data, type,
+                               data_size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1534,8 +1533,8 @@ void ui_flexible_begin(const UIFlexibleProps *props) {
       .flex = props->flex,
       .fit = props->fit,
   };
-  ui_widget_set_parent_data(widget, UI_PARENT_DATA_FLEX,
-                            sizeof(UIParentDataFlex), &flex);
+  *(ui_widget_set_parent_data(widget, UI_PARENT_DATA_FLEX, UIParentDataFlex)) =
+      flex;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1554,8 +1553,8 @@ void ui_expanded_begin(const UIExpandedProps *props) {
       .flex = props->flex,
       .fit = UI_FLEX_FIT_TIGHT,
   };
-  ui_widget_set_parent_data(widget, UI_PARENT_DATA_FLEX,
-                            sizeof(UIParentDataFlex), &flex);
+  *ui_widget_set_parent_data(widget, UI_PARENT_DATA_FLEX, UIParentDataFlex) =
+      flex;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2396,6 +2395,7 @@ void ui_button(UIButtonProps *props) {
 ///
 typedef struct UIViewportState {
   bool has_visual_overflow;
+  f32 max_scroll_offset;
 } UIViewportState;
 
 static UIScrollDirection ui_scroll_direction_apply_growth_direction(
@@ -2431,11 +2431,11 @@ static f32 ui_viewport_layout_children(
     ASSERT(sliver_scroll_offset >= 0);
     ASSERT(cache_extent_correction <= 0);
 
-    UIParentDataSliver data = {
-        .layout_offset = layout_offset,
-    };
+    UIParentDataSliver *data = ui_widget_set_parent_data(
+        child, UI_PARENT_DATA_SLIVER, UIParentDataSliver);
+    data->layout_offset = layout_offset;
     ui_widget_layout_sliver(
-        child, &data.geometry,
+        child, &data->geometry,
         (UISliverConstraints){
             .axis_direction = props->axis_direction,
             .growth_direction = growth_direction,
@@ -2454,18 +2454,18 @@ static f32 ui_viewport_layout_children(
             .cache_origin = corrected_cache_origin,
         });
 
-    if (data.geometry.scroll_offset_correction != 0) {
-      return data.geometry.scroll_offset_correction;
+    if (data->geometry.scroll_offset_correction != 0) {
+      return data->geometry.scroll_offset_correction;
     }
 
-    state->has_visual_overflow |= data.geometry.has_visual_overflow;
+    state->has_visual_overflow |= data->geometry.has_visual_overflow;
 
-    f32 effective_layout_offset = layout_offset + data.geometry.paint_origin;
+    f32 effective_layout_offset = layout_offset + data->geometry.paint_origin;
     switch (ui_axis_direction_apply_growth_direction(props->axis_direction,
                                                      growth_direction)) {
       case UI_AXIS_DIRECTION_UP: {
         child->offset = vec2(
-            0, widget->size.y - layout_offset - data.geometry.paint_extent);
+            0, widget->size.y - layout_offset - data->geometry.paint_extent);
       } break;
 
       case UI_AXIS_DIRECTION_DOWN: {
@@ -2474,7 +2474,7 @@ static f32 ui_viewport_layout_children(
 
       case UI_AXIS_DIRECTION_LEFT: {
         child->offset = vec2(
-            widget->size.x - layout_offset - data.geometry.paint_extent, 0);
+            widget->size.x - layout_offset - data->geometry.paint_extent, 0);
       } break;
 
       case UI_AXIS_DIRECTION_RIGHT: {
@@ -2486,22 +2486,23 @@ static f32 ui_viewport_layout_children(
       } break;
     }
 
-    max_paint_offset = f32_max(
-        effective_layout_offset + data.geometry.paint_extent, max_paint_offset);
-    scroll_offset -= data.geometry.scroll_extent;
-    preceeding_scroll_extent += data.geometry.scroll_extent;
-    layout_offset += data.geometry.layout_extent;
-    if (data.geometry.cache_extent != 0) {
+    max_paint_offset =
+        f32_max(effective_layout_offset + data->geometry.paint_extent,
+                max_paint_offset);
+    scroll_offset -= data->geometry.scroll_extent;
+    preceeding_scroll_extent += data->geometry.scroll_extent;
+    layout_offset += data->geometry.layout_extent;
+    if (data->geometry.cache_extent != 0) {
       remaining_cache_extent -=
-          data.geometry.cache_extent - cache_extent_correction;
+          data->geometry.cache_extent - cache_extent_correction;
       cache_origin =
-          f32_min(corrected_cache_origin + data.geometry.cache_extent, 0);
+          f32_min(corrected_cache_origin + data->geometry.cache_extent, 0);
     }
-    ui_widget_set_parent_data(child, UI_PARENT_DATA_SLIVER,
-                              sizeof(UIParentDataSliver), &data);
 
     child = child->next;
   }
+
+  state->max_scroll_offset = preceeding_scroll_extent - main_axis_extent;
 
   return 0;
 }
@@ -2525,6 +2526,7 @@ static f32 ui_viewport_attempt_layout(UIWidget *widget, UIViewportProps *props,
       f32_clamp(full_cache_extent - center_offset, 0, full_cache_extent);
 
   state->has_visual_overflow = false;
+  state->max_scroll_offset = 0;
   return ui_viewport_layout_children(
       widget, props, state, /* child= */ widget->first,
       /* scroll_offset= */ f32_max(0, -center_offset),
@@ -2632,6 +2634,14 @@ UIWidgetClass ui_viewport_class = {
     .callback = ui_viewport_callback,
 };
 
+void ui_viewport_begin(const UIViewportProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_viewport_class, props);
+  UIViewportState *state = ui_widget_get_state(widget, UIViewportState);
+  if (props->max_scroll_offset) {
+    *props->max_scroll_offset = state->max_scroll_offset;
+  }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIScrollable
@@ -2650,22 +2660,27 @@ UIWidgetClass ui_scrollable_class = {
 void ui_scrollable_begin(const UIScrollableProps *props) {
   UIWidget *widget = ui_widget_begin(&ui_scrollable_class, props);
   UIScrollableState *state = ui_widget_get_state(widget, UIScrollableState);
+
   UIPointerEventO scroll;
   ui_pointer_listener_begin(&(UIPointerListenerProps){
       .scroll = &scroll,
   });
-  if (scroll.present) {
-    state->offset =
-        f32_clamp(state->offset + scroll.value.scroll_delta.y,
-                  props->min_scroll_extent, props->max_scroll_extent);
-  }
 
-  ui_viewport_begin(
-      &(UIViewportProps){.axis_direction = props->axis_direction,
-                         .cross_axis_direction = props->cross_axis_direction,
-                         .offset = (UIViewportOffset){
-                             .points = state->offset,
-                         }});
+  f32 max_scroll_offset;
+  ui_viewport_begin(&(UIViewportProps){
+      .axis_direction = props->axis_direction,
+      .cross_axis_direction = props->cross_axis_direction,
+      .offset =
+          (UIViewportOffset){
+              .points = state->offset,
+          },
+      .max_scroll_offset = &max_scroll_offset,
+  });
+
+  if (scroll.present) {
+    state->offset += scroll.value.scroll_delta.y;
+  }
+  state->offset = f32_clamp(state->offset, 0, max_scroll_offset);
 }
 
 void ui_scrollable_end(void) {
@@ -2750,7 +2765,7 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
   f32 trailing_scroll_offset =
       scroll_offset + (target_last_index - first_index + 1) * item_extent;
 
-  f32 max_scroll_offset = widget->child_count * item_extent;
+  f32 max_scroll_offset = child_index * item_extent;
   f32 paint_extent = ui_sliver_constraints_calc_paint_offset(
       constraints, leading_scroll_offset, trailing_scroll_offset);
   f32 cache_extent = ui_sliver_constraints_calc_cache_offset(
@@ -2772,6 +2787,8 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
       .scroll_extent = max_scroll_offset,
       .paint_extent = paint_extent,
       .cache_extent = cache_extent,
+      .layout_extent = paint_extent,
+      .hit_test_extent = paint_extent,
       .max_paint_extent = max_scroll_offset,
       .has_visual_overflow = constraints.scroll_offset > 0 ||
                              (has_target_last_index_for_paint &&
@@ -2843,7 +2860,6 @@ void ui_list_view_begin(const UIListViewProps *props) {
   ui_scrollable_begin(&(UIScrollableProps){
       .axis_direction = UI_AXIS_DIRECTION_DOWN,
       .cross_axis_direction = UI_AXIS_DIRECTION_RIGHT,
-      .max_scroll_extent = F32_INFINITY,
   });
   ui_sliver_fixed_extent_list_begin(&(UISliverFixedExtentListProps){
       .item_extent = props->item_extent,
