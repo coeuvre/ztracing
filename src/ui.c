@@ -1524,6 +1524,192 @@ void ui_container_end(void) {
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
+/// UIStack
+///
+typedef struct UIStackState {
+  bool has_visual_overflow;
+} UIStackState;
+
+static Vec2 ui_stack_compute_size(UIWidget *widget, UIStackProps *props,
+                                  UIBoxConstraints constraints) {
+  if (!widget->first) {
+    Vec2 biggest = ui_box_constraints_get_biggest(constraints);
+    if (vec2_is_finite(biggest)) {
+      return biggest;
+    }
+    return ui_box_constraints_get_smallest(constraints);
+  }
+
+  f32 width = constraints.min_width;
+  f32 height = constraints.min_height;
+
+  UIBoxConstraints non_positioned_constraints;
+  switch (props->fit) {
+    case UI_STACK_FIT_LOOSE: {
+      non_positioned_constraints = ui_box_constraints_loosen(constraints);
+    } break;
+    case UI_STACK_FIT_EXPAND: {
+      Vec2 biggest = ui_box_constraints_get_biggest(constraints);
+      non_positioned_constraints =
+          ui_box_constraints_tight(biggest.x, biggest.y);
+    } break;
+    default: {
+      non_positioned_constraints = constraints;
+    } break;
+  }
+
+  bool has_non_positioned_child = false;
+  for (UIWidget *child = widget->first; child; child = child->next) {
+    UIParentDataStack *data = ui_widget_get_parent_data(
+        child, UI_PARENT_DATA_STACK, UIParentDataStack);
+
+    if (!ui_parent_data_stack_is_positioned(data)) {
+      has_non_positioned_child = true;
+      Vec2 child_size = ui_widget_layout_box(child, non_positioned_constraints);
+
+      width = f32_max(width, child_size.x);
+      height = f32_max(height, child_size.y);
+    }
+  }
+
+  Vec2 size;
+  if (has_non_positioned_child) {
+    size = vec2(width, height);
+    ASSERT(size.x == ui_box_constraints_constrain_width(constraints, width));
+    ASSERT(size.y == ui_box_constraints_constrain_height(constraints, height));
+  } else {
+    size = ui_box_constraints_get_biggest(constraints);
+  }
+
+  ASSERT(vec2_is_finite(size));
+  return size;
+}
+
+/// Returns true when the child has visual overflow.
+static bool ui_stack_layout_positioned_child(UIWidget *child,
+                                             UIParentDataStack *data,
+                                             Vec2 size) {
+  UIBoxConstraints child_constraints =
+      ui_parent_data_stack_positioned_child_constraints(data, size);
+  Vec2 child_size = ui_widget_layout_box(child, child_constraints);
+
+  f32 x;
+  if (data->left.present) {
+    x = data->left.value;
+  } else if (data->right.present) {
+    x = size.x - data->right.value - child_size.x;
+  } else {
+    // TODO: alignment
+    x = 0;
+  }
+
+  f32 y;
+  if (data->top.present) {
+    y = data->top.value;
+  } else if (data->bottom.present) {
+    y = size.y - data->bottom.value - child_size.y;
+  } else {
+    // TODO: alignment
+    y = 0;
+  }
+
+  child->offset = vec2(x, y);
+
+  return x < 0 || x + child_size.x > size.x || y < 0 ||
+         y + child_size.y > size.y;
+}
+
+static void ui_stack_layout_box(UIWidget *widget, UIStackProps *props,
+                                UIStackState *state,
+                                UIBoxConstraints constraints) {
+  state->has_visual_overflow = false;
+
+  Vec2 size = ui_stack_compute_size(widget, props, constraints);
+  widget->size = size;
+
+  for (UIWidget *child = widget->first; child; child = child->next) {
+    UIParentDataStack *data = ui_widget_get_parent_data(
+        child, UI_PARENT_DATA_STACK, UIParentDataStack);
+    if (!ui_parent_data_stack_is_positioned(data)) {
+      // TODO: alignment
+    } else {
+      state->has_visual_overflow =
+          ui_stack_layout_positioned_child(child, data, size) ||
+          state->has_visual_overflow;
+    }
+  }
+}
+
+static void ui_stack_paint(UIWidget *widget, UIStackState *state,
+                           UIPaintingContext *context, Vec2 offset) {
+  bool should_clip = state->has_visual_overflow;
+  if (should_clip) {
+    push_clip_rect(offset, vec2_add(offset, widget->size));
+  }
+
+  for (UIWidget *child = widget->first; child; child = child->next) {
+    ui_widget_paint_child_default(child, context, offset);
+  }
+
+  if (should_clip) {
+    pop_clip_rect();
+  }
+}
+
+static i32 ui_stack_callback(UIWidget *widget, UIMessage *message) {
+  i32 result = 0;
+  switch (message->type) {
+    case UI_MESSAGE_LAYOUT_BOX: {
+      ui_stack_layout_box(widget, ui_widget_get_props(widget, UIStackProps),
+                          ui_widget_get_state(widget, UIStackState),
+                          message->layout_box.constraints);
+    } break;
+
+    case UI_MESSAGE_PAINT: {
+      ui_stack_paint(widget, ui_widget_get_state(widget, UIStackState),
+                     message->paint.context, message->paint.offset);
+    } break;
+
+    default: {
+      result = ui_widget_callback_default(widget, message);
+    } break;
+  }
+  return result;
+}
+
+UIWidgetClass ui_stack_class = {
+    .name = "Stack",
+    .flags = UI_WIDGET_MANY_CHILDREN,
+    .props_size = sizeof(UIStackProps),
+    .state_size = sizeof(UIStackState),
+    .callback = &ui_stack_callback,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIPositioned
+///
+UIWidgetClass ui_positioned_class = {
+    .name = "Positioned",
+    .props_size = sizeof(UIPositionedProps),
+    .callback = &ui_widget_callback_default,
+};
+
+void ui_positioned_begin(const UIPositionedProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_positioned_class, props);
+  *ui_widget_set_parent_data(widget, UI_PARENT_DATA_STACK, UIParentDataStack) =
+      (UIParentDataStack){
+          .left = props->left,
+          .right = props->right,
+          .top = props->top,
+          .bottom = props->bottom,
+          .width = props->width,
+          .height = props->height,
+      };
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
 /// UIFlexible
 ///
 UIWidgetClass ui_flexible_class = {

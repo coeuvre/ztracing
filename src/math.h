@@ -11,6 +11,7 @@
 
 OPTIONAL_TYPE(f32o, f32, f32);
 
+static inline bool f32_is_nan(f32 a) { return isnan(a); }
 static inline bool f32_is_finite(f32 a) { return a != F32_INFINITY; }
 static inline bool f32_is_infinity(f32 a) { return a == F32_INFINITY; }
 
@@ -70,6 +71,10 @@ static inline f32 vec2_get(Vec2 v, usize index) {
   DEBUG_ASSERT(index < 2);
   f32 result = ((f32 *)&v)[index];
   return result;
+}
+
+static inline bool vec2_is_finite(Vec2 v) {
+  return f32_is_finite(v.x) && f32_is_finite(v.y);
 }
 
 static inline void vec2_set(Vec2 *v, usize index, f32 value) {

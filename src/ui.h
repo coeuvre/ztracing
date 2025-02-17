@@ -114,6 +114,12 @@ static inline Vec2 ui_box_constraints_get_biggest(UIBoxConstraints self) {
               ui_box_constraints_constrain_height(self, F32_INFINITY));
 }
 
+/// The smallest size that satisfies the constraints.
+static inline Vec2 ui_box_constraints_get_smallest(UIBoxConstraints self) {
+  return vec2(ui_box_constraints_constrain_width(self, 0),
+              ui_box_constraints_constrain_height(self, 0));
+}
+
 static inline UIBoxConstraints ui_box_constraints_flip(UIBoxConstraints self) {
   return ui_box_constraints(self.min_height, self.max_height, self.min_width,
                             self.max_width);
@@ -553,6 +559,7 @@ typedef enum UIWidgetStatus {
 typedef enum UIParentDataType {
   UI_PARENT_DATA_UNKNOWN,
   UI_PARENT_DATA_FLEX,
+  UI_PARENT_DATA_STACK,
   UI_PARENT_DATA_SLIVER,
 } UIParentDataType;
 
@@ -959,6 +966,101 @@ typedef struct UIContainerProps {
 
 void ui_container_begin(const UIContainerProps *props);
 void ui_container_end(void);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIStack
+///
+/// A widget that positions its children relative to the edges of its box.
+///
+extern UIWidgetClass ui_stack_class;
+
+typedef enum UIStackFit {
+  UI_STACK_FIT_LOOSE,
+  UI_STACK_FIT_EXPAND,
+  UI_STACK_FIT_PASSTHROUGH,
+} UIStackFit;
+
+typedef struct UIParentDataStack {
+  f32o left;
+  f32o right;
+  f32o top;
+  f32o bottom;
+  f32o width;
+  f32o height;
+} UIParentDataStack;
+
+static inline bool ui_parent_data_stack_is_positioned(UIParentDataStack *self) {
+  if (!self) {
+    return false;
+  }
+
+  return self->left.present || self->right.present || self->top.present ||
+         self->bottom.present || self->width.present || self->height.present;
+}
+
+static inline UIBoxConstraints
+ui_parent_data_stack_positioned_child_constraints(UIParentDataStack *self,
+                                                  Vec2 stack_size) {
+  f32o width = f32_none();
+  if (self->left.present && self->right.present) {
+    width = f32_some(stack_size.x - self->right.value - self->left.value);
+  } else {
+    width = self->width;
+  }
+
+  f32o height = f32_none();
+  if (self->top.present && self->bottom.present) {
+    height = f32_some(stack_size.y - self->bottom.value - self->top.value);
+  } else {
+    height = self->height;
+  }
+
+  ASSERT(!width.present || !f32_is_nan(width.value));
+  ASSERT(!height.present || !f32_is_nan(height.value));
+
+  if (width.present) {
+    width.value = f32_max(0, width.value);
+  }
+  if (height.present) {
+    height.value = f32_max(0, height.value);
+  }
+
+  return ui_box_constraints_tight_for(width, height);
+}
+
+typedef struct UIStackProps {
+  UIKey key;
+  UIStackFit fit;
+} UIStackProps;
+
+static inline void ui_stack_begin(const UIStackProps *props) {
+  ui_widget_begin(&ui_stack_class, props);
+}
+static inline void ui_stack_end(void) { ui_widget_end(&ui_stack_class); }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIPositioned
+///
+/// A widget that controls where a child of a [Stack] is positioned.
+///
+extern UIWidgetClass ui_positioned_class;
+
+typedef struct UIPositionedProps {
+  UIKey key;
+  f32o left;
+  f32o right;
+  f32o top;
+  f32o bottom;
+  f32o width;
+  f32o height;
+} UIPositionedProps;
+
+void ui_positioned_begin(const UIPositionedProps *props);
+static inline void ui_positioned_end(void) {
+  ui_widget_end(&ui_positioned_class);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
