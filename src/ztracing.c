@@ -98,14 +98,15 @@ static void build_ui(f32 dt, f32 frame_time) {
         // });
         // ui_container_begin(&(UIContainerProps){
         //     .color =
-        //         ui_color_some(ui_color(0, 0, (item_index % 255) / 255.0f, 1)),
+        //         ui_color_some(ui_color(0, 0, (item_index % 255) / 255.0f,
+        //         1)),
         //     .height = f32_some(item_size),
         // });
         // ui_container_end();
         // ui_expanded_end();
         ui_text(&(UITextProps){
-          .text = ui_push_str8f("Row %u", item_index),
-          .style = default_text_style(),
+            .text = ui_push_str8f("Row %u", item_index),
+            .style = default_text_style(),
         });
         ui_row_end();
       }

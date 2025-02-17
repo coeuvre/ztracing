@@ -275,7 +275,7 @@ typedef struct Rect2 {
   Vec2 max;
 } Rect2;
 
-static inline Rect2 r2(Vec2 min, Vec2 max) {
+static inline Rect2 rect2(Vec2 min, Vec2 max) {
   Rect2 result = {min, max};
   return result;
 }

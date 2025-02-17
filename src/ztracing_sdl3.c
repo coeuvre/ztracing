@@ -24,7 +24,7 @@ u64 get_perf_freq(void) {
   return result;
 }
 
-static Vec2 get_window_size() {
+static Vec2 get_window_size(void) {
   int w, h;
   SDL_GetWindowSizeInPixels(window, &w, &h);
   Vec2 size = vec2(w, h);
@@ -123,7 +123,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
           mouse_pos_from_sdl(get_global_window_relative_mouse_pos());
       Vec2 delta = vec2(event->wheel.x, -event->wheel.y);
       Vec2 range = vec2_mul(get_window_size(), 0.1);
-      ui_on_mouse_scroll(mouse_pos, vec2(delta.x * range.x, delta.y * range.y));
+      ui_on_mouse_scroll(mouse_pos, delta);
     } break;
 
     default: {

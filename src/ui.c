@@ -2394,6 +2394,10 @@ void ui_button(UIButtonProps *props) {
 ///
 /// UIViewport
 ///
+typedef struct UIViewportState {
+  bool has_visual_overflow;
+} UIViewportState;
+
 static UIScrollDirection ui_scroll_direction_apply_growth_direction(
     UIScrollDirection self, UIGrowthDirection growth) {
   if (growth == UI_GROWTH_DIRECTION_REVERSE) {
@@ -2404,8 +2408,8 @@ static UIScrollDirection ui_scroll_direction_apply_growth_direction(
 }
 
 static f32 ui_viewport_layout_children(
-    UIWidget *widget, UIViewportProps *props, UIWidget *child,
-    f32 scroll_offset, f32 overlap, f32 layout_offset,
+    UIWidget *widget, UIViewportProps *props, UIViewportState *state,
+    UIWidget *child, f32 scroll_offset, f32 overlap, f32 layout_offset,
     f32 remaining_painting_extent, f32 main_axis_extent, f32 cross_axis_extent,
     UIGrowthDirection growth_direction, f32 remaining_cache_extent,
     f32 cache_origin) {
@@ -2454,6 +2458,8 @@ static f32 ui_viewport_layout_children(
       return data.geometry.scroll_offset_correction;
     }
 
+    state->has_visual_overflow |= data.geometry.has_visual_overflow;
+
     f32 effective_layout_offset = layout_offset + data.geometry.paint_origin;
     switch (ui_axis_direction_apply_growth_direction(props->axis_direction,
                                                      growth_direction)) {
@@ -2501,6 +2507,7 @@ static f32 ui_viewport_layout_children(
 }
 
 static f32 ui_viewport_attempt_layout(UIWidget *widget, UIViewportProps *props,
+                                      UIViewportState *state,
                                       f32 main_axis_extent,
                                       f32 cross_axis_extent, f32 offset) {
   f32 center_offset = main_axis_extent * props->anchor - offset;
@@ -2517,8 +2524,9 @@ static f32 ui_viewport_attempt_layout(UIWidget *widget, UIViewportProps *props,
   f32 forward_direction_remaining_cache_extent =
       f32_clamp(full_cache_extent - center_offset, 0, full_cache_extent);
 
+  state->has_visual_overflow = false;
   return ui_viewport_layout_children(
-      widget, props, /* child= */ widget->first,
+      widget, props, state, /* child= */ widget->first,
       /* scroll_offset= */ f32_max(0, -center_offset),
       /* overlap= */ f32_min(0, -center_offset),
       /* layout_offset= */ center_offset >= main_axis_extent
@@ -2531,6 +2539,7 @@ static f32 ui_viewport_attempt_layout(UIWidget *widget, UIViewportProps *props,
 }
 
 static void ui_viewport_layout_box(UIWidget *widget, UIViewportProps *props,
+                                   UIViewportState *state,
                                    UIBoxConstraints constraints) {
   Vec2 size = ui_box_constraints_get_biggest(constraints);
   widget->size = size;
@@ -2555,7 +2564,7 @@ static void ui_viewport_layout_box(UIWidget *widget, UIViewportProps *props,
   u32 layout_index = 0;
   for (; layout_index < max_layout_counts; ++layout_index) {
     f32 correction =
-        ui_viewport_attempt_layout(widget, props, main_axis_extent,
+        ui_viewport_attempt_layout(widget, props, state, main_axis_extent,
                                    cross_axis_extent, props->offset.points);
     if (correction != 0.0f) {
       UNREACHABLE;
@@ -2566,9 +2575,13 @@ static void ui_viewport_layout_box(UIWidget *widget, UIViewportProps *props,
   ASSERT(layout_index < max_layout_counts);
 }
 
-static void ui_viewport_paint(UIWidget *widget, UIPaintingContext *context,
-                              Vec2 offset) {
-  push_clip_rect(offset, vec2_add(offset, widget->size));
+static void ui_viewport_paint(UIWidget *widget, UIViewportState *state,
+                              UIPaintingContext *context, Vec2 offset) {
+  bool should_clip = state->has_visual_overflow;
+  if (should_clip) {
+    push_clip_rect(offset, vec2_add(offset, widget->size));
+  }
+
   for (UIWidget *child = widget->first; child; child = child->next) {
     UIParentDataSliver *data = ui_widget_get_parent_data(
         child, UI_PARENT_DATA_SLIVER, UIParentDataSliver);
@@ -2577,7 +2590,10 @@ static void ui_viewport_paint(UIWidget *widget, UIPaintingContext *context,
       ui_widget_paint_child_default(child, context, offset);
     }
   }
-  pop_clip_rect();
+
+  if (should_clip) {
+    pop_clip_rect();
+  }
 }
 
 static i32 ui_viewport_callback(UIWidget *widget, UIMessage *message) {
@@ -2586,11 +2602,13 @@ static i32 ui_viewport_callback(UIWidget *widget, UIMessage *message) {
     case UI_MESSAGE_LAYOUT_BOX: {
       ui_viewport_layout_box(widget,
                              ui_widget_get_props(widget, UIViewportProps),
+                             ui_widget_get_state(widget, UIViewportState),
                              message->layout_box.constraints);
     } break;
 
     case UI_MESSAGE_PAINT: {
-      ui_viewport_paint(widget, message->paint.context, message->paint.offset);
+      ui_viewport_paint(widget, ui_widget_get_state(widget, UIViewportState),
+                        message->paint.context, message->paint.offset);
     } break;
 
     case UI_MESSAGE_HIT_TEST: {
@@ -2610,6 +2628,7 @@ UIWidgetClass ui_viewport_class = {
     .name = "Viewport",
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIViewportProps),
+    .state_size = sizeof(UIViewportState),
     .callback = ui_viewport_callback,
 };
 
@@ -2714,9 +2733,9 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
   // child.
 
   ASSERT(first_index >= 0);
-  UIWidget *child = ui_widget_get_child_nth(widget, first_index);
-  i32 child_index = first_index;
-  while (child && child_index <= target_last_index) {
+
+  i32 child_index = 0;
+  for (UIWidget *child = widget->first; child; child = child->next) {
     UIBoxConstraints child_constraints =
         ui_sliver_constraints_as_box_constraints(constraints, item_extent,
                                                  item_extent);
@@ -2724,7 +2743,6 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
     f32 layout_offset = child_index * item_extent;
     child->offset = vec2(0, layout_offset - scroll_offset);
 
-    child = child->next;
     child_index += 1;
   }
 
@@ -2738,12 +2756,41 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
   f32 cache_extent = ui_sliver_constraints_calc_cache_offset(
       constraints, leading_scroll_offset, trailing_scroll_offset);
 
+  widget->size = vec2(constraints.cross_axis_extent, paint_extent);
+
+  f32 target_end_scroll_offset_for_paint =
+      constraints.scroll_offset + constraints.remaining_paint_extent;
+  bool has_target_last_index_for_paint =
+      f32_is_finite(target_end_scroll_offset_for_paint);
+  f32 target_last_index_for_paint =
+      has_target_last_index_for_paint
+          ? ui_sliver_fixed_extent_list_get_max_child_index(
+                item_extent, target_end_scroll_offset_for_paint)
+          : 0;
+
   *geometry = (UISliverGeometry){
       .scroll_extent = max_scroll_offset,
       .paint_extent = paint_extent,
       .cache_extent = cache_extent,
       .max_paint_extent = max_scroll_offset,
+      .has_visual_overflow = constraints.scroll_offset > 0 ||
+                             (has_target_last_index_for_paint &&
+                              child_index >= target_last_index_for_paint),
   };
+}
+
+static void ui_sliver_fixed_extent_list_paint(UIWidget *widget,
+                                              UIPaintingContext *context,
+                                              Vec2 offset) {
+  Rect2 widget_rect = rect2(vec2_zero(), widget->size);
+  for (UIWidget *child = widget->first; child; child = child->next) {
+    Rect2 intersection = rect2_from_intersection(
+        widget_rect,
+        rect2(child->offset, vec2_add(child->offset, child->size)));
+    if (rect2_get_area(intersection) > 0) {
+      ui_widget_paint_child_default(child, context, offset);
+    }
+  }
 }
 
 static i32 ui_sliver_fixed_extent_list_callback(UIWidget *widget,
@@ -2759,6 +2806,11 @@ static i32 ui_sliver_fixed_extent_list_callback(UIWidget *widget,
       ui_sliver_fixed_extent_list_layout_sliver(
           widget, message->layout_sliver.geometry,
           message->layout_sliver.constraints);
+    } break;
+
+    case UI_MESSAGE_PAINT: {
+      ui_sliver_fixed_extent_list_paint(widget, message->paint.context,
+                                        message->paint.offset);
     } break;
 
     default: {
