@@ -616,7 +616,6 @@ struct UIWidget {
 
   // The same widget instance from last frame, if any.
   UIWidget *old_widget;
-  void *state;
 };
 
 UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props);
@@ -652,8 +651,7 @@ static inline void *ui_widget_get_state_(UIWidget *widget, usize state_size) {
           widget->klass->name, (int)widget->klass->state_size, (int)state_size);
   ASSERTF(widget->klass->state_size > 0, "%s doesn't have state",
           widget->klass->name);
-  ASSERT(widget->state);
-  return widget->state;
+  return ((u8 *)(widget + 1)) + widget->klass->props_size;
 }
 
 #define ui_widget_get_state(widget, State) \

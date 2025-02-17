@@ -693,39 +693,9 @@ static bool ui_widget_hit_test_opaque(UIWidget *widget, UIHitTestResult *result,
   return true;
 }
 
-static void ui_widget_mount_default(UIWidget *widget) {
-  if (widget->klass->state_size > 0) {
-    UIState *state = ui_state_get();
-    UIFrame *frame = ui_state_get_current_frame(state);
-    widget->state = arena_push(&frame->arena, widget->klass->state_size, 0);
-  }
-}
-
-static void ui_widget_update_default(UIWidget *widget) {
-  if (widget->klass->state_size > 0) {
-    UIWidget *old_widget = widget->old_widget;
-    void *old_state =
-        ui_widget_get_state_(old_widget, widget->klass->state_size);
-
-    UIState *state = ui_state_get();
-    UIFrame *frame = ui_state_get_current_frame(state);
-    widget->state = arena_push(&frame->arena, widget->klass->state_size,
-                               ARENA_PUSH_NO_ZERO);
-    memory_copy(widget->state, old_state, widget->klass->state_size);
-  }
-}
-
 static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
-    case UI_MESSAGE_MOUNT: {
-      ui_widget_mount_default(widget);
-    } break;
-
-    case UI_MESSAGE_UPDATE: {
-      ui_widget_update_default(widget);
-    } break;
-
     case UI_MESSAGE_LAYOUT_BOX: {
       ui_widget_layout_box_default(widget, message->layout_box.constraints);
     } break;
@@ -894,8 +864,9 @@ static UIKey ui_key_local(UIKey seed, u32 seq, const char *tag, Str8 id) {
 /// Allocate a UIWidget in current frame's arena.
 static UIWidget *ui_widget_alloc(Arena *arena, UIWidgetClass *klass,
                                  const void *props) {
-  UIWidget *widget = arena_push(arena, sizeof(UIWidget) + klass->props_size,
-                                ARENA_PUSH_NO_ZERO);
+  UIWidget *widget = arena_push(
+      arena, sizeof(UIWidget) + klass->props_size + klass->state_size,
+      ARENA_PUSH_NO_ZERO);
   memory_zero(widget, sizeof(UIWidget));
   widget->klass = klass;
   memory_copy(widget + 1, props, klass->props_size);
@@ -972,12 +943,21 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
     widget->offset = last_widget->offset;
     widget->old_widget = last_widget;
 
+    if (klass->state_size > 0) {
+      memory_copy(ui_widget_get_state_(widget, klass->state_size),
+                  ui_widget_get_state_(last_widget, klass->state_size),
+                  klass->state_size);
+    }
     ui_widget_update(widget);
 
     // The state is transfered into current, effectively make last_widget
     // unmounted.
     last_widget->status = UI_WIDGET_STATUS_UNMOUNTED;
   } else {
+    if (widget->klass->state_size > 0) {
+      void *state = ui_widget_get_state_(widget, klass->state_size);
+      memory_zero(state, klass->state_size);
+    }
     ui_widget_mount(widget);
   }
 
