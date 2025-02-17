@@ -1000,8 +1000,8 @@ static inline bool ui_parent_data_stack_is_positioned(UIParentDataStack *self) {
 }
 
 static inline UIBoxConstraints
-ui_parent_data_stack_positioned_child_constraints(UIParentDataStack *self,
-                                                  Vec2 stack_size) {
+ui_parent_data_stack_get_positioned_child_constraints(UIParentDataStack *self,
+                                                      Vec2 stack_size) {
   f32o width = f32_none();
   if (self->left.present && self->right.present) {
     width = f32_some(stack_size.x - self->right.value - self->left.value);
@@ -1231,6 +1231,7 @@ typedef struct UIMouseRegionProps {
   UIPointerEventO *enter;
   UIPointerEventO *hover;
   UIPointerEventO *exit;
+  bool *hovering;
 } UIMouseRegionProps;
 
 void ui_mouse_region_begin(const UIMouseRegionProps *props);
@@ -1246,11 +1247,17 @@ static inline void ui_mouse_region_end(void) {
 ///
 extern UIWidgetClass ui_gesture_detector_class;
 
+typedef struct UIGestureDetail {
+  Vec2 local_position;
+} UIGestureDetail;
+
+OPTIONAL_TYPE(UIGestureDetailO, UIGestureDetail, ui_gesture);
+
 typedef struct UIGestureDetectorProps {
   UIKey key;
   bool *tap_down;
   bool *tap_up;
-  bool *tap;
+  UIGestureDetailO *tap;
 } UIGestureDetectorProps;
 
 void ui_gesture_detector_begin(const UIGestureDetectorProps *props);
@@ -1333,6 +1340,7 @@ typedef struct UIViewportProps {
 
   // TODO: clip and center
 
+  f32 *max_scroll_extent;
   f32 *max_scroll_offset;
 } UIViewportProps;
 

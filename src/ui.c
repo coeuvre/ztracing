@@ -1590,7 +1590,7 @@ static bool ui_stack_layout_positioned_child(UIWidget *child,
                                              UIParentDataStack *data,
                                              Vec2 size) {
   UIBoxConstraints child_constraints =
-      ui_parent_data_stack_positioned_child_constraints(data, size);
+      ui_parent_data_stack_get_positioned_child_constraints(data, size);
   Vec2 child_size = ui_widget_layout_box(child, child_constraints);
 
   f32 x;
@@ -2287,6 +2287,8 @@ typedef struct UIMouseRegionState {
   UIPointerEventO enter;
   UIPointerEventO hover;
   UIPointerEventO exit;
+
+  bool hovering;
 } UIMouseRegionState;
 
 static i32 ui_mouse_region_callback(UIWidget *widget, UIMessage *message) {
@@ -2299,12 +2301,14 @@ static i32 ui_mouse_region_callback(UIWidget *widget, UIMessage *message) {
       switch (event->type) {
         case UI_POINTER_EVENT_ENTER: {
           state->enter = ui_pointer_event_some(*event);
+          state->hovering = true;
         } break;
         case UI_POINTER_EVENT_HOVER: {
           state->hover = ui_pointer_event_some(*event);
         } break;
         case UI_POINTER_EVENT_EXIT: {
           state->exit = ui_pointer_event_some(*event);
+          state->hovering = false;
         } break;
         default: {
         } break;
@@ -2336,8 +2340,13 @@ void ui_mouse_region_begin(const UIMouseRegionProps *props) {
   if (props->exit) {
     *props->exit = state->exit;
   }
+  if (props->hovering) {
+    *props->hovering = state->hovering;
+  }
 
-  *state = (UIMouseRegionState){0};
+  state->enter = ui_pointer_event_none();
+  state->hover = ui_pointer_event_none();
+  state->exit = ui_pointer_event_none();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2346,6 +2355,7 @@ void ui_mouse_region_begin(const UIMouseRegionProps *props) {
 ///
 typedef struct UIGestureDetectorState {
   u32 down_button;
+  Vec2 down_local_position;
 } UIGestureDetectorState;
 
 UIWidgetClass ui_gesture_detector_class = {
@@ -2369,7 +2379,7 @@ void ui_gesture_detector_begin(const UIGestureDetectorProps *props) {
 
   bool tap_down = false;
   bool tap_up = false;
-  bool tap = false;
+  UIGestureDetailO tap = ui_gesture_none();
 
   if (down.present) {
     if (down.value.button & UI_BUTTON_PRIMARY) {
@@ -2385,10 +2395,13 @@ void ui_gesture_detector_begin(const UIGestureDetectorProps *props) {
 
   if (down.present) {
     state->down_button = down.value.button;
+    state->down_local_position = down.value.local_position;
   } else if (up.present) {
     if (vec2_contains(up.value.local_position, vec2_zero(), widget->size)) {
       if ((state->down_button & UI_BUTTON_PRIMARY)) {
-        tap = true;
+        tap = ui_gesture_some((UIGestureDetail){
+            .local_position = state->down_local_position,
+        });
       }
     }
 
@@ -2499,7 +2512,6 @@ void ui_text(const UITextProps *props) {
 /// UIButton
 ///
 typedef struct UIButtonState {
-  bool hovered;
   bool down;
 } UIButtonState;
 
@@ -2527,26 +2539,23 @@ void ui_button(UIButtonProps *props) {
   UIWidget *widget = ui_widget_begin(&ui_button_class, props);
   UIButtonState *state = ui_widget_get_state(widget, UIButtonState);
 
-  UIPointerEventO enter;
-  UIPointerEventO exit;
+  bool hovering;
   bool down;
   bool up;
   ui_mouse_region_begin(&(UIMouseRegionProps){
-      .enter = &enter,
-      .exit = &exit,
+      .hovering = &hovering,
   });
-  if (enter.present) {
-    state->hovered = true;
-  }
-  if (exit.present) {
-    state->hovered = false;
-  }
 
+  UIGestureDetailO tap;
   ui_gesture_detector_begin(&(UIGestureDetectorProps){
       .tap_down = &down,
       .tap_up = &up,
-      .tap = props->pressed,
+      .tap = &tap,
   });
+
+  if (props->pressed) {
+    *props->pressed = tap.present;
+  }
 
   if (down) {
     state->down = true;
@@ -2556,8 +2565,8 @@ void ui_button(UIButtonProps *props) {
   }
 
   ui_colored_box_begin(&(UIColoredBoxProps){
-      .color = state->down ? splash_color
-                           : (state->hovered ? hover_color : fill_color),
+      .color =
+          state->down ? splash_color : (hovering ? hover_color : fill_color),
   });
 
   UIEdgeInsets padding = ui_edge_insets_zero();
@@ -2586,6 +2595,7 @@ void ui_button(UIButtonProps *props) {
 ///
 typedef struct UIViewportState {
   bool has_visual_overflow;
+  f32 max_scroll_extent;
   f32 max_scroll_offset;
 } UIViewportState;
 
@@ -2695,6 +2705,7 @@ static f32 ui_viewport_layout_children(
 
   state->max_scroll_offset +=
       f32_max(0, preceeding_scroll_extent - main_axis_extent);
+  state->max_scroll_extent += preceeding_scroll_extent;
 
   return 0;
 }
@@ -2719,6 +2730,7 @@ static f32 ui_viewport_attempt_layout(UIWidget *widget, UIViewportProps *props,
 
   state->has_visual_overflow = false;
   state->max_scroll_offset = cache_extent;
+  state->max_scroll_extent = cache_extent;
   return ui_viewport_layout_children(
       widget, props, state, /* child= */ widget->first,
       /* scroll_offset= */ f32_max(0, -center_offset),
@@ -2832,6 +2844,9 @@ void ui_viewport_begin(const UIViewportProps *props) {
   if (props->max_scroll_offset) {
     *props->max_scroll_offset = state->max_scroll_offset;
   }
+  if (props->max_scroll_extent) {
+    *props->max_scroll_extent = state->max_scroll_extent;
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2839,8 +2854,10 @@ void ui_viewport_begin(const UIViewportProps *props) {
 /// UIScrollable
 ///
 typedef struct UIScrollableState {
-  f32 offset;
-  f32 target_offset;
+  f32 scroll_offset;
+  f32 target_scroll_offset;
+  f32 max_scroll_offset;
+  f32 max_scroll_extent;
 } UIScrollableState;
 
 UIWidgetClass ui_scrollable_class = {
@@ -2853,34 +2870,87 @@ UIWidgetClass ui_scrollable_class = {
 void ui_scrollable_begin(const UIScrollableProps *props) {
   UIWidget *widget = ui_widget_begin(&ui_scrollable_class, props);
   UIScrollableState *state = ui_widget_get_state(widget, UIScrollableState);
-  state->offset = ui_animate_fast_f32(state->offset, state->target_offset);
+  state->scroll_offset =
+      ui_animate_fast_f32(state->scroll_offset, state->target_scroll_offset);
+
+  ui_row_begin(&(UIRowProps){0});
+  ui_expanded_begin(&(UIExpandedProps){.flex = 1});
 
   UIPointerEventO scroll;
   ui_pointer_listener_begin(&(UIPointerListenerProps){
       .scroll = &scroll,
   });
 
-  f32 max_scroll_offset;
   ui_viewport_begin(&(UIViewportProps){
       .axis_direction = props->axis_direction,
       .cross_axis_direction = props->cross_axis_direction,
       .offset =
           (UIViewportOffset){
-              .points = state->offset,
+              .points = state->scroll_offset,
           },
-      .max_scroll_offset = &max_scroll_offset,
+      .max_scroll_offset = &state->max_scroll_offset,
+      .max_scroll_extent = &state->max_scroll_extent,
       .cache_extent = props->cache_extent,
   });
 
   if (scroll.present) {
-    state->target_offset += scroll.value.scroll_delta.y;
+    state->target_scroll_offset += scroll.value.scroll_delta.y;
   }
-  state->target_offset = f32_clamp(state->target_offset, 0, max_scroll_offset);
+}
+
+static void ui_scrollable_scrollbar(UIWidget *widget,
+                                    UIScrollableState *state) {
+  f32 ratio = widget->size.y / state->max_scroll_extent;
+  f32 main_axis_extent = state->max_scroll_extent - state->max_scroll_offset;
+  f32 scroll_bar_size = f32_max(4, main_axis_extent * ratio);
+  f32 padding_top = state->scroll_offset * ratio;
+
+  UIGestureDetailO tap;
+  ui_gesture_detector_begin(&(UIGestureDetectorProps){
+      .tap = &tap,
+  });
+  ui_container_begin(&(UIContainerProps){
+      .color = ui_color_some(ui_color(0.96, 0.96, 0.96, 1)),
+      .alignment = ui_alignment_some(ui_alignment_top_center()),
+      .padding = ui_edge_insets_some(ui_edge_insets(0, 0, padding_top, 0)),
+  });
+  if (tap.present) {
+    state->target_scroll_offset =
+        tap.value.local_position.y / ratio - main_axis_extent / 2.0f;
+  }
+  {
+    bool hovering;
+    ui_mouse_region_begin(&(UIMouseRegionProps){
+        .hovering = &hovering,
+    });
+    ui_container_begin(&(UIContainerProps){
+        .color = ui_color_some(hovering ? ui_color(0.58, 0.58, 0.58, 1)
+                                        : ui_color(0.75, 0.75, 0.75, 1)),
+        .width = f32_some(10),
+        .height = f32_some(scroll_bar_size),
+    });
+    ui_container_end();
+    ui_mouse_region_end();
+  }
+  ui_container_end();
+  ui_gesture_detector_end();
 }
 
 void ui_scrollable_end(void) {
   ui_viewport_end();
   ui_pointer_listener_end();
+  ui_expanded_end();
+
+  UIWidget *widget = ui_widget_find_first_ancestor(ui_widget_get_current(),
+                                                   &ui_scrollable_class);
+  ASSERT(widget);
+  UIScrollableState *state = ui_widget_get_state(widget, UIScrollableState);
+  ui_scrollable_scrollbar(widget, state);
+
+  state->target_scroll_offset =
+      f32_clamp(state->target_scroll_offset, 0, state->max_scroll_offset);
+
+  ui_row_end();
   ui_widget_end(&ui_scrollable_class);
 }
 
@@ -3088,7 +3158,6 @@ void ui_list_view_begin(const UIListViewProps *props) {
   ui_scrollable_begin(&(UIScrollableProps){
       .axis_direction = UI_AXIS_DIRECTION_DOWN,
       .cross_axis_direction = UI_AXIS_DIRECTION_RIGHT,
-      .cache_extent = props->item_extent,
   });
   ui_sliver_fixed_extent_list_begin(&(UISliverFixedExtentListProps){
       .item_extent = props->item_extent,
