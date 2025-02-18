@@ -380,6 +380,7 @@ typedef struct UISliverGeometry {
 
 typedef struct UIParentDataSliver {
   UISliverGeometry geometry;
+  f32 next_scroll_offset;
   /// The position of the child relative to the zero scroll offset. In a typical
   /// list, this does not change as the parent is scrolled.
   f32 layout_offset;
