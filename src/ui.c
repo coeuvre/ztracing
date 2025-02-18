@@ -214,7 +214,6 @@ static void ui_hit_test_state_sync(UIHitTestState *self, UIWidget *new_root) {
 
 typedef struct UIInputState {
   f32 dt;
-  Vec2 last_pointer_pos;
   u32 current_down_button;
 
   // hit test state for button down.
@@ -518,11 +517,6 @@ void ui_on_mouse_button_up(Vec2 pos, u32 button) {
 void ui_on_mouse_move(Vec2 pos) {
   UIState *state = ui_state_get();
   UIInputState *input = &state->input;
-
-  if (vec2_is_equal(input->last_pointer_pos, pos)) {
-    return;
-  }
-  input->last_pointer_pos = pos;
 
   if (input->button_down_hit_test.result.first) {
     ui_hit_test_update_local_position(&state->input.button_down_hit_test.result,
