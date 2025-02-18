@@ -2966,6 +2966,7 @@ void ui_scrollable_end(void) {
 /// UISliverFixedExtentList
 ///
 typedef struct UISliverFixedExtentListState {
+  bool init;
   UISliverConstraints last_constraints;
   f32 next_scroll_offset;
 } UISliverFixedExtentListState;
@@ -3144,17 +3145,33 @@ void ui_sliver_fixed_extent_list_begin(
   UIWidget *widget = ui_widget_begin(&ui_sliver_fixed_extent_list_class, props);
   UISliverFixedExtentListState *state =
       ui_widget_get_state(widget, UISliverFixedExtentListState);
-  if (props->builder) {
-    f32 scroll_offset =
+
+  f32 scroll_offset = 0;
+  f32 remaining_extent;
+  if (!state->init) {
+    // For the first frame, we don't know the remaining_extent, just build
+    // enough items to cover the whole viewport.
+    UIState *s = ui_state_get();
+    remaining_extent = vec2_sub(s->viewport_max, s->viewport_min).y;
+
+    state->init = true;
+  } else {
+    scroll_offset =
         state->next_scroll_offset + state->last_constraints.cache_origin;
-    f32 remaining_extent = state->last_constraints.remaining_cache_extent;
-    i32 first_index, target_last_index;
-    ui_sliver_fixed_extent_list_calc_item_count(
-        props->item_extent, scroll_offset, remaining_extent, &first_index,
-        &target_last_index);
-    props->builder->first_index = first_index;
-    props->builder->last_index =
-        f32_min(props->item_count - 1, target_last_index);
+    remaining_extent = state->last_constraints.remaining_cache_extent;
+  }
+
+  i32 first_index, target_last_index;
+  ui_sliver_fixed_extent_list_calc_item_count(props->item_extent, scroll_offset,
+                                              remaining_extent, &first_index,
+                                              &target_last_index);
+  UIListBuilder builder = (UIListBuilder){
+      .first_index = first_index,
+      .last_index = f32_min(props->item_count - 1, target_last_index),
+  };
+
+  if (props->builder) {
+    *props->builder = builder;
   }
 }
 
