@@ -482,6 +482,11 @@ typedef struct UIMessageHitTest {
   Vec2 local_position;
 } UIMessageHitTest;
 
+typedef enum UIHitTestBehaviour {
+  UI_HIT_TEST_BEHAVIOUR_DEFER_TO_CHILD,
+  UI_HIT_TEST_BEHAVIOUR_OPAQUE,
+} UIHitTestBehaviour;
+
 typedef enum UIPointerEventType {
   UI_POINTER_EVENT_UNKNOWN,
   /// A pointer comes into contact with the screen (for touch pointers), or has
@@ -1207,6 +1212,7 @@ extern UIWidgetClass ui_pointer_listener_class;
 
 typedef struct UIPointerListenerProps {
   UIKey key;
+  UIHitTestBehaviour behaviour;
   UIPointerEventO *down;
   UIPointerEventO *move;
   UIPointerEventO *up;
@@ -1257,6 +1263,7 @@ OPTIONAL_TYPE(UIGestureDetailO, UIGestureDetail, ui_gesture_detail);
 
 typedef struct UIGestureDetectorProps {
   UIKey key;
+  UIHitTestBehaviour behaviour;
   UIGestureDetailO *tap_down;
   UIGestureDetailO *tap_up;
   UIGestureDetailO *tap;

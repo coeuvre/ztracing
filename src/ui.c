@@ -2208,6 +2208,28 @@ static i32 ui_pointer_listener_callback(UIWidget *widget, UIMessage *message) {
       DLL_APPEND(state->event_queue.first, state->event_queue.last, entry, prev,
                  next);
     } break;
+
+    case UI_MESSAGE_HIT_TEST: {
+      UIPointerListenerProps *props =
+          ui_widget_get_props(widget, UIPointerListenerProps);
+      switch (props->behaviour) {
+        case UI_HIT_TEST_BEHAVIOUR_DEFER_TO_CHILD: {
+          result = ui_widget_hit_test_defer_to_children(
+              widget, message->hit_test.result, message->hit_test.arena,
+              message->hit_test.local_position);
+        } break;
+
+        case UI_HIT_TEST_BEHAVIOUR_OPAQUE: {
+          result = ui_widget_hit_test_opaque(widget, message->hit_test.result,
+                                             message->hit_test.arena,
+                                             message->hit_test.local_position);
+        } break;
+
+        default:
+          UNREACHABLE;
+      }
+    } break;
+
     default: {
       result = ui_widget_callback_default(widget, message);
     } break;
@@ -2375,6 +2397,7 @@ void ui_gesture_detector_begin(const UIGestureDetectorProps *props) {
   UIPointerEventO move;
   UIPointerEventO up;
   ui_pointer_listener_begin(&(UIPointerListenerProps){
+      .behaviour = props->behaviour,
       .down = &down,
       .move = &move,
       .up = &up,
@@ -2909,7 +2932,8 @@ typedef struct UIScrollableState {
   f32 target_scroll_offset;
   f32 max_scroll_offset;
   f32 max_scroll_extent;
-  bool scrolling;
+  bool handle_scrolling;
+  f32 handle_down_offset;
 } UIScrollableState;
 
 UIWidgetClass ui_scrollable_class = {
@@ -2950,61 +2974,78 @@ void ui_scrollable_begin(const UIScrollableProps *props) {
   }
 }
 
+static void ui_scrollable_scrollbar_handle(UIScrollableState *state, f32 ratio,
+                                           f32 main_axis_extent) {
+  f32 handle_size = f32_max(4, main_axis_extent * ratio);
+  bool hovering;
+  ui_mouse_region_begin(&(UIMouseRegionProps){
+      .hovering = &hovering,
+  });
+  UIGestureDetailO tap_down;
+  UIGestureDetailO tap_up;
+  ui_gesture_detector_begin(&(UIGestureDetectorProps){
+      .tap_down = &tap_down,
+      .tap_up = &tap_up,
+  });
+  if (tap_down.present) {
+    state->handle_scrolling = true;
+    state->handle_down_offset = tap_down.value.local_position.y;
+  }
+  if (tap_up.present) {
+    state->handle_scrolling = false;
+  }
+  ui_container_begin(&(UIContainerProps){
+      .color = ui_color_some(hovering ? ui_color(0.58, 0.58, 0.58, 1)
+                                      : ui_color(0.75, 0.75, 0.75, 1)),
+      .height = f32_some(handle_size),
+  });
+  ui_container_end();
+  ui_gesture_detector_end();
+  ui_mouse_region_end();
+}
+
 static void ui_scrollable_scrollbar(UIWidget *widget,
                                     UIScrollableState *state) {
   f32 ratio = widget->size.y / state->max_scroll_extent;
   f32 main_axis_extent = state->max_scroll_extent - state->max_scroll_offset;
-  f32 scroll_bar_size = f32_max(4, main_axis_extent * ratio);
+  f32 scroll_track_width = 10;
   f32 padding_top = state->scroll_offset * ratio;
 
   UIGestureDetailO tap_down;
   UIGestureDetailO drag_start;
   UIGestureDetailO drag_update;
-  UIGestureDetailO tap_up;
   ui_gesture_detector_begin(&(UIGestureDetectorProps){
       .tap_down = &tap_down,
-      .tap_up = &tap_up,
       .drag_start = &drag_start,
       .drag_update = &drag_update,
   });
-  if (tap_down.present) {
-    state->target_scroll_offset =
-        tap_down.value.local_position.y / ratio - main_axis_extent / 2.0f;
-    state->scrolling = true;
-  }
-  if (drag_start.present) {
-    state->target_scroll_offset =
-        drag_start.value.local_position.y / ratio - main_axis_extent / 2.0f;
-  }
-  if (drag_update.present) {
-    state->target_scroll_offset =
-        drag_update.value.local_position.y / ratio - main_axis_extent / 2.0f;
-  }
-  if (tap_up.present) {
-    state->scrolling = false;
-  }
   ui_container_begin(&(UIContainerProps){
       .color = ui_color_some(ui_color(0.96, 0.96, 0.96, 1)),
       .alignment = ui_alignment_some(ui_alignment_top_center()),
       .padding = ui_edge_insets_some(ui_edge_insets(0, 0, padding_top, 0)),
+      .width = f32_some(scroll_track_width),
   });
-  {
-    bool hovering;
-    ui_mouse_region_begin(&(UIMouseRegionProps){
-        .hovering = &hovering,
-    });
-    bool should_highligh = hovering || state->scrolling;
-    ui_container_begin(&(UIContainerProps){
-        .color = ui_color_some(should_highligh ? ui_color(0.58, 0.58, 0.58, 1)
-                                               : ui_color(0.75, 0.75, 0.75, 1)),
-        .width = f32_some(10),
-        .height = f32_some(scroll_bar_size),
-    });
-    ui_container_end();
-    ui_mouse_region_end();
-  }
+  ui_scrollable_scrollbar_handle(state, ratio, main_axis_extent);
   ui_container_end();
   ui_gesture_detector_end();
+
+  f32 handle_offset = main_axis_extent / 2.0f;
+  if (state->handle_scrolling) {
+    handle_offset = state->handle_down_offset / ratio;
+  }
+
+  if (tap_down.present) {
+    state->target_scroll_offset =
+        tap_down.value.local_position.y / ratio - handle_offset;
+  }
+  if (drag_start.present) {
+    state->target_scroll_offset =
+        drag_start.value.local_position.y / ratio - handle_offset;
+  }
+  if (drag_update.present) {
+    state->target_scroll_offset =
+        drag_update.value.local_position.y / ratio - handle_offset;
+  }
 }
 
 void ui_scrollable_end(void) {
