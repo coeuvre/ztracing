@@ -23,6 +23,7 @@
 
 void ui_set_viewport(Vec2 min, Vec2 max);
 void ui_set_delta_time(f32 dt);
+void ui_set_rebuild(bool should_rebuild);
 
 void ui_on_focus_lost(Vec2 pos);
 void ui_on_mouse_move(Vec2 pos);
@@ -32,6 +33,8 @@ void ui_on_mouse_button_up(Vec2 pos, u32 button);
 
 void ui_begin_frame(void);
 void ui_end_frame(void);
+bool ui_should_rebuild(void);
+void ui_paint(void);
 
 Str8 ui_push_str8(Str8 str);
 Str8 ui_push_str8f(const char *format, ...);

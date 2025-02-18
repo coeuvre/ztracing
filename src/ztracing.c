@@ -135,10 +135,12 @@ void do_frame(void) {
   clear_draw();
 
   ui_set_delta_time(dt);
-  ui_begin_frame();
-  build_ui(dt, last_frame_time);
-  ui_end_frame();
-  // ui_render();
+  do {
+    ui_begin_frame();
+    build_ui(dt, last_frame_time);
+    ui_end_frame();
+  } while (ui_should_rebuild());
+  ui_paint();
 
   last_frame_time =
       (f32)((f64)(get_perf_counter() - last_counter) / (f64)get_perf_freq());

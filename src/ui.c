@@ -232,6 +232,7 @@ typedef struct UIState {
 
   UIWidgetStack widget_stack;
   Arena build_arena;
+  bool should_rebuild;
 
   Vec2 viewport_min;
   Vec2 viewport_max;
@@ -262,6 +263,11 @@ void ui_set_delta_time(f32 dt) {
   UIState *state = ui_state_get();
   state->input.dt = dt;
   state->fast_animation_rate = 1.0f - f32_exp(-50.f * dt);
+}
+
+void ui_set_rebuild(bool should_rebuild) {
+  UIState *state = ui_state_get();
+  state->should_rebuild = should_rebuild;
 }
 
 static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message);
@@ -300,6 +306,8 @@ void ui_begin_frame(void) {
   arena_clear(&frame->arena);
   frame->root = 0;
   frame->open = true;
+
+  state->should_rebuild = false;
 
   ui_root_begin(&(UIRootProps){0});
 }
@@ -785,7 +793,7 @@ void ui_end_frame(void) {
   ui_root_end();
 
   UIState *state = ui_state_get();
-  UIFrame *frame = state->current_frame;
+  UIFrame *frame = ui_state_get_current_frame(state);
   ASSERTF(ui_widget_stack_is_empty(&state->widget_stack),
           "Mismatched begin/end calls, last begin: %s",
           state->widget_stack.current->widget->klass->name);
@@ -803,12 +811,21 @@ void ui_end_frame(void) {
     Vec2 viewport_size = vec2_sub(state->viewport_max, state->viewport_min);
     ui_widget_layout_box(frame->root, ui_box_constraints_tight(
                                           viewport_size.x, viewport_size.y));
-
-    UIPaintingContext context = {0};
-    ui_widget_paint(frame->root, &context, state->viewport_min);
   }
 
   frame->open = false;
+}
+
+void ui_paint(void) {
+  UIState *state = ui_state_get();
+  UIFrame *frame = ui_state_get_current_frame(state);
+  UIPaintingContext context = {0};
+  ui_widget_paint(frame->root, &context, state->viewport_min);
+}
+
+bool ui_should_rebuild(void) {
+  UIState *state = ui_state_get();
+  return state->should_rebuild;
 }
 
 Str8 ui_push_str8(Str8 str) {
@@ -2936,11 +2953,26 @@ typedef struct UIScrollableState {
   f32 handle_down_offset;
 } UIScrollableState;
 
+static i32 ui_scrollable_callback(UIWidget *widget, UIMessage *message) {
+  i32 result = 0;
+  switch (message->type) {
+    case UI_MESSAGE_MOUNT: {
+      // Set rebuild so the scrollbar can have correct size on first appearance.
+      ui_set_rebuild(true);
+    } break;
+
+    default: {
+      result = ui_widget_callback_default(widget, message);
+    } break;
+  }
+  return result;
+}
+
 UIWidgetClass ui_scrollable_class = {
     .name = "Scrollable",
     .props_size = sizeof(UIScrollableProps),
     .state_size = sizeof(UIScrollableState),
-    .callback = ui_widget_callback_default,
+    .callback = &ui_scrollable_callback,
 };
 
 void ui_scrollable_begin(const UIScrollableProps *props) {
@@ -2974,9 +3006,8 @@ void ui_scrollable_begin(const UIScrollableProps *props) {
   }
 }
 
-static void ui_scrollable_scrollbar_handle(UIScrollableState *state, f32 ratio,
-                                           f32 main_axis_extent) {
-  f32 handle_size = f32_max(4, main_axis_extent * ratio);
+static void ui_scrollable_scrollbar_handle(UIScrollableState *state,
+                                           f32 handle_size) {
   bool hovering;
   ui_mouse_region_begin(&(UIMouseRegionProps){
       .hovering = &hovering,
@@ -3010,6 +3041,7 @@ static void ui_scrollable_scrollbar(UIWidget *widget,
   f32 main_axis_extent = state->max_scroll_extent - state->max_scroll_offset;
   f32 scroll_track_width = 10;
   f32 padding_top = state->scroll_offset * ratio;
+  f32 handle_size = f32_max(4, main_axis_extent * ratio);
 
   UIGestureDetailO tap_down;
   UIGestureDetailO drag_start;
@@ -3025,7 +3057,7 @@ static void ui_scrollable_scrollbar(UIWidget *widget,
       .padding = ui_edge_insets_some(ui_edge_insets(0, 0, padding_top, 0)),
       .width = f32_some(scroll_track_width),
   });
-  ui_scrollable_scrollbar_handle(state, ratio, main_axis_extent);
+  ui_scrollable_scrollbar_handle(state, handle_size);
   ui_container_end();
   ui_gesture_detector_end();
 
@@ -3213,6 +3245,16 @@ static i32 ui_sliver_fixed_extent_list_callback(UIWidget *widget,
                                                 UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
+    case UI_MESSAGE_MOUNT: {
+      UISliverFixedExtentListProps *props =
+          ui_widget_get_props(widget, UISliverFixedExtentListProps);
+      if (props->builder) {
+        // If call site uses builder, set rebuild because the builder is empty
+        // for the first frame.
+        ui_set_rebuild(true);
+      }
+    } break;
+
     case UI_MESSAGE_LAYOUT_BOX: {
       DEBUG_ASSERTF(false, "UI_MESSAGE_LAYOUT_BOX is not implemented for %s",
                     widget->klass->name);
@@ -3251,20 +3293,10 @@ void ui_sliver_fixed_extent_list_begin(
   UISliverFixedExtentListState *state =
       ui_widget_get_state(widget, UISliverFixedExtentListState);
 
-  f32 scroll_offset = 0;
-  f32 remaining_extent;
-  if (!state->init) {
-    // For the first frame, we don't know the remaining_extent, just build
-    // enough items to cover the whole viewport.
-    UIState *s = ui_state_get();
-    remaining_extent = vec2_sub(s->viewport_max, s->viewport_min).y;
-
-    state->init = true;
-  } else {
-    scroll_offset =
-        state->next_scroll_offset + state->last_constraints.cache_origin;
-    remaining_extent = state->last_constraints.remaining_cache_extent;
-  }
+  f32 scroll_offset = scroll_offset =
+      state->next_scroll_offset + state->last_constraints.cache_origin;
+  f32 remaining_extent = remaining_extent =
+      state->last_constraints.remaining_cache_extent;
 
   i32 first_index, target_last_index;
   ui_sliver_fixed_extent_list_calc_item_count(props->item_extent, scroll_offset,
