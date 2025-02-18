@@ -2624,8 +2624,8 @@ void ui_button(UIButtonProps *props) {
   UIButtonState *state = ui_widget_get_state(widget, UIButtonState);
 
   bool hovering;
-  bool down;
-  bool up;
+  UIGestureDetailO down;
+  UIGestureDetailO up;
   ui_mouse_region_begin(&(UIMouseRegionProps){
       .hovering = &hovering,
   });
@@ -2641,10 +2641,10 @@ void ui_button(UIButtonProps *props) {
     *props->pressed = tap.present;
   }
 
-  if (down) {
+  if (down.present) {
     state->down = true;
   }
-  if (up) {
+  if (up.present) {
     state->down = false;
   }
 
@@ -2981,13 +2981,13 @@ void ui_scrollable_begin(const UIScrollableProps *props) {
   state->scroll_offset =
       ui_animate_fast_f32(state->scroll_offset, state->target_scroll_offset);
 
-  ui_row_begin(&(UIRowProps){0});
-  ui_expanded_begin(&(UIExpandedProps){.flex = 1});
-
   UIPointerEventO scroll;
   ui_pointer_listener_begin(&(UIPointerListenerProps){
       .scroll = &scroll,
   });
+
+  ui_row_begin(&(UIRowProps){0});
+  ui_expanded_begin(&(UIExpandedProps){.flex = 1});
 
   ui_viewport_begin(&(UIViewportProps){
       .axis_direction = props->axis_direction,
@@ -3082,7 +3082,6 @@ static void ui_scrollable_scrollbar(UIWidget *widget,
 
 void ui_scrollable_end(void) {
   ui_viewport_end();
-  ui_pointer_listener_end();
   ui_expanded_end();
 
   UIWidget *widget = ui_widget_find_first_ancestor(ui_widget_get_current(),
@@ -3095,6 +3094,7 @@ void ui_scrollable_end(void) {
       f32_clamp(state->target_scroll_offset, 0, state->max_scroll_offset);
 
   ui_row_end();
+  ui_pointer_listener_end();
   ui_widget_end(&ui_scrollable_class);
 }
 
