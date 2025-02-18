@@ -1250,15 +1250,19 @@ extern UIWidgetClass ui_gesture_detector_class;
 
 typedef struct UIGestureDetail {
   Vec2 local_position;
+  Vec2 delta;
 } UIGestureDetail;
 
-OPTIONAL_TYPE(UIGestureDetailO, UIGestureDetail, ui_gesture);
+OPTIONAL_TYPE(UIGestureDetailO, UIGestureDetail, ui_gesture_detail);
 
 typedef struct UIGestureDetectorProps {
   UIKey key;
-  bool *tap_down;
-  bool *tap_up;
+  UIGestureDetailO *tap_down;
+  UIGestureDetailO *tap_up;
   UIGestureDetailO *tap;
+  UIGestureDetailO *drag_start;
+  UIGestureDetailO *drag_update;
+  UIGestureDetailO *drag_end;
 } UIGestureDetectorProps;
 
 void ui_gesture_detector_begin(const UIGestureDetectorProps *props);

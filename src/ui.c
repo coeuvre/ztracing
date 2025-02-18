@@ -2356,6 +2356,7 @@ void ui_mouse_region_begin(const UIMouseRegionProps *props) {
 typedef struct UIGestureDetectorState {
   u32 down_button;
   Vec2 down_local_position;
+  bool dragging;
 } UIGestureDetectorState;
 
 UIWidgetClass ui_gesture_detector_class = {
@@ -2371,38 +2372,72 @@ void ui_gesture_detector_begin(const UIGestureDetectorProps *props) {
       ui_widget_get_state(widget, UIGestureDetectorState);
 
   UIPointerEventO down;
+  UIPointerEventO move;
   UIPointerEventO up;
   ui_pointer_listener_begin(&(UIPointerListenerProps){
       .down = &down,
+      .move = &move,
       .up = &up,
   });
 
-  bool tap_down = false;
-  bool tap_up = false;
-  UIGestureDetailO tap = ui_gesture_none();
+  UIGestureDetailO tap_down = ui_gesture_detail_none();
+  UIGestureDetailO tap_up = ui_gesture_detail_none();
+  UIGestureDetailO tap = ui_gesture_detail_none();
+  UIGestureDetailO drag_start = ui_gesture_detail_none();
+  UIGestureDetailO drag_update = ui_gesture_detail_none();
+  UIGestureDetailO drag_end = ui_gesture_detail_none();
 
   if (down.present) {
     if (down.value.button & UI_BUTTON_PRIMARY) {
-      tap_down = true;
+      tap_down = ui_gesture_detail_some((UIGestureDetail){
+          .local_position = down.value.local_position,
+      });
+    }
+
+    state->down_button = down.value.button;
+    state->down_local_position = down.value.local_position;
+  }
+
+  if (move.present) {
+    if (state->down_button & UI_BUTTON_PRIMARY) {
+      if (!state->dragging) {
+        state->dragging = true;
+        drag_start = ui_gesture_detail_some((UIGestureDetail){
+            .local_position = move.value.local_position,
+        });
+      } else {
+        drag_update = ui_gesture_detail_some((UIGestureDetail){
+            .local_position = move.value.local_position,
+            .delta =
+                vec2_sub(move.value.local_position, state->down_local_position),
+        });
+      }
     }
   }
 
   if (up.present) {
     if (up.value.button & UI_BUTTON_PRIMARY) {
-      tap_up = true;
+      tap_up = ui_gesture_detail_some((UIGestureDetail){
+          .local_position = up.value.local_position,
+      });
     }
-  }
 
-  if (down.present) {
-    state->down_button = down.value.button;
-    state->down_local_position = down.value.local_position;
-  } else if (up.present) {
     if (vec2_contains(up.value.local_position, vec2_zero(), widget->size)) {
       if ((state->down_button & UI_BUTTON_PRIMARY)) {
-        tap = ui_gesture_some((UIGestureDetail){
+        tap = ui_gesture_detail_some((UIGestureDetail){
             .local_position = state->down_local_position,
         });
       }
+    }
+
+    if (state->dragging) {
+      drag_end = ui_gesture_detail_some((UIGestureDetail){
+          .local_position = move.value.local_position,
+          .delta =
+              vec2_sub(move.value.local_position, state->down_local_position),
+      });
+
+      state->dragging = false;
     }
 
     state->down_button = 0;
@@ -2416,6 +2451,15 @@ void ui_gesture_detector_begin(const UIGestureDetectorProps *props) {
   }
   if (props->tap) {
     *props->tap = tap;
+  }
+  if (props->drag_start) {
+    *props->drag_start = drag_start;
+  }
+  if (props->drag_update) {
+    *props->drag_update = drag_update;
+  }
+  if (props->drag_end) {
+    *props->drag_end = drag_end;
   }
 }
 
@@ -2865,6 +2909,7 @@ typedef struct UIScrollableState {
   f32 target_scroll_offset;
   f32 max_scroll_offset;
   f32 max_scroll_extent;
+  bool scrolling;
 } UIScrollableState;
 
 UIWidgetClass ui_scrollable_class = {
@@ -2912,27 +2957,46 @@ static void ui_scrollable_scrollbar(UIWidget *widget,
   f32 scroll_bar_size = f32_max(4, main_axis_extent * ratio);
   f32 padding_top = state->scroll_offset * ratio;
 
-  UIGestureDetailO tap;
+  UIGestureDetailO tap_down;
+  UIGestureDetailO drag_start;
+  UIGestureDetailO drag_update;
+  UIGestureDetailO tap_up;
   ui_gesture_detector_begin(&(UIGestureDetectorProps){
-      .tap = &tap,
+      .tap_down = &tap_down,
+      .tap_up = &tap_up,
+      .drag_start = &drag_start,
+      .drag_update = &drag_update,
   });
+  if (tap_down.present) {
+    state->target_scroll_offset =
+        tap_down.value.local_position.y / ratio - main_axis_extent / 2.0f;
+    state->scrolling = true;
+  }
+  if (drag_start.present) {
+    state->target_scroll_offset =
+        drag_start.value.local_position.y / ratio - main_axis_extent / 2.0f;
+  }
+  if (drag_update.present) {
+    state->target_scroll_offset =
+        drag_update.value.local_position.y / ratio - main_axis_extent / 2.0f;
+  }
+  if (tap_up.present) {
+    state->scrolling = false;
+  }
   ui_container_begin(&(UIContainerProps){
       .color = ui_color_some(ui_color(0.96, 0.96, 0.96, 1)),
       .alignment = ui_alignment_some(ui_alignment_top_center()),
       .padding = ui_edge_insets_some(ui_edge_insets(0, 0, padding_top, 0)),
   });
-  if (tap.present) {
-    state->target_scroll_offset =
-        tap.value.local_position.y / ratio - main_axis_extent / 2.0f;
-  }
   {
     bool hovering;
     ui_mouse_region_begin(&(UIMouseRegionProps){
         .hovering = &hovering,
     });
+    bool should_highligh = hovering || state->scrolling;
     ui_container_begin(&(UIContainerProps){
-        .color = ui_color_some(hovering ? ui_color(0.58, 0.58, 0.58, 1)
-                                        : ui_color(0.75, 0.75, 0.75, 1)),
+        .color = ui_color_some(should_highligh ? ui_color(0.58, 0.58, 0.58, 1)
+                                               : ui_color(0.75, 0.75, 0.75, 1)),
         .width = f32_some(10),
         .height = f32_some(scroll_bar_size),
     });

@@ -85,10 +85,9 @@ static void build_ui(f32 dt, f32 frame_time) {
         .flex = 1,
     });
 
-    f32 item_size = 20.0f;
     UIListBuilder builder;
     ui_list_view_begin(&(UIListViewProps){
-        .item_extent = item_size,
+        .item_extent = 20,
         .item_count = 512,
         .builder = &builder,
     });
@@ -110,7 +109,6 @@ static void build_ui(f32 dt, f32 frame_time) {
       ui_container_begin(&(UIContainerProps){
           .color =
               ui_color_some(ui_color(0, (item_index % 255) / 255.0f, 0, 1)),
-          .height = f32_some(item_size),
       });
       ui_container_end();
       ui_expanded_end();
