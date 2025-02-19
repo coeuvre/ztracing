@@ -34,7 +34,8 @@ enum ArenaPushFlag {
 void arena_free(Arena *arena);
 void arena_clear(Arena *arena);
 void *arena_push(Arena *arena, usize size, u32 flags);
-void arena_pop(Arena *arena, usize size);
+/// Returns top pointer after pop.
+void *arena_pop(Arena *arena, usize size);
 // Get a pointer from the stack that is `size` down away from the current top.
 void *arena_seek(Arena *arena, usize size);
 bool arena_is_empty(Arena *arena);

@@ -6,7 +6,7 @@
 #include "src/string.h"
 #include "src/types.h"
 
-static bool json_parser__is_whitespace(u8 val) {
+static inline bool json_parser__is_whitespace(u8 val) {
   return val == ' ' || val == '\t' || val == '\n' || val == '\r';
 }
 
@@ -47,7 +47,7 @@ static Str8 json_parser__take_input_str8(JsonParser *self, Arena *arena,
   return buf;
 }
 
-static void json_parser__skip_whitespace(JsonParser *self) {
+static inline void json_parser__skip_whitespace(JsonParser *self) {
   while (true) {
     u8 val = json_parser__take_input_u8(self);
     if (!json_parser__is_whitespace(val)) {
@@ -57,9 +57,10 @@ static void json_parser__skip_whitespace(JsonParser *self) {
   }
 }
 
-static void json_parser__append(Arena *arena, Str8 *buf, usize *cursor,
+static void json_parser__append(Arena *arena, Str8 *buf, usize *cursor_ptr,
                                 u8 val) {
-  if (*cursor >= buf->len) {
+  usize cursor = *cursor_ptr;
+  if (cursor >= buf->len) {
     if (arena_seek(arena, buf->len) == buf) {
       arena_pop(arena, buf->len);
     }
@@ -71,14 +72,17 @@ static void json_parser__append(Arena *arena, Str8 *buf, usize *cursor,
     }
     buf->len = new_len;
   }
-  buf->ptr[(*cursor)++] = val;
+  buf->ptr[cursor] = val;
+  (*cursor_ptr)++;
 }
 
 static void json_parser__shrink(Arena *arena, Str8 *buf, usize cursor) {
   usize free = buf->len - cursor;
-  if (free && arena_seek(arena, buf->len) == buf) {
-    arena_pop(arena, free);
+  Arena checkpoint = *arena;
+  if (arena_pop(arena, free) == (buf->ptr + cursor)) {
     buf->len = cursor;
+  } else {
+    *arena = checkpoint;
   }
 }
 
@@ -98,10 +102,11 @@ static bool json_parser__parse_digits(JsonParser *self, Arena *arena, Str8 *buf,
   return has_digits;
 }
 
+static Str8 JSON_TOKEN_VALUE__COMMA = STR8_LIT(",");
+static Str8 JSON_TOKEN_VALUE__COLON = STR8_LIT(":");
+
 JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
-  JsonToken token = {
-      .type = JSON_TOKEN_EOF,
-  };
+  JsonToken token;
 
   json_parser__skip_whitespace(self);
 
@@ -129,12 +134,12 @@ JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
 
     case ',': {
       token.type = JSON_TOKEN_COMMA;
-      token.value = STR8_LIT(",");
+      token.value = JSON_TOKEN_VALUE__COMMA;
     } break;
 
     case ':': {
       token.type = JSON_TOKEN_COLON;
-      token.value = STR8_LIT(":");
+      token.value = JSON_TOKEN_VALUE__COLON;
     } break;
 
     case 't': {
@@ -204,10 +209,10 @@ JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
 
       while (!done) {
         u8 val = json_parser__take_input_u8(self);
-        if (val == 0) {
-          done = true;
-        } else if (val == '"' && (prev[1] != '\\' || prev[0] == '\\')) {
+        if (val == '"' && (prev[1] != '\\' || prev[0] == '\\')) {
           found_close_quote = true;
+          done = true;
+        } else if (val == 0) {
           done = true;
         } else {
           json_parser__append(arena, &buf, &cursor, val);
@@ -327,6 +332,7 @@ JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
 
     // EOF
     case 0: {
+      token.type = JSON_TOKEN_EOF, token.value = str8_zero();
     } break;
 
     default: {

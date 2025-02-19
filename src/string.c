@@ -20,14 +20,12 @@ u64 str8_hash_with_seed(Str8 str, u64 seed) {
 
 Str8 arena_push_str8(Arena *arena, usize len) {
   u8 *ptr = arena_push_array(arena, u8, len);
-  Str8 result = {.ptr = ptr, .len = len};
-  return result;
+  return str8(ptr, len);
 }
 
 Str8 arena_push_str8_no_zero(Arena *arena, usize len) {
   u8 *ptr = arena_push_array_no_zero(arena, u8, len);
-  Str8 result = {.ptr = ptr, .len = len};
-  return result;
+  return str8(ptr, len);
 }
 
 Str8 arena_push_str8f(Arena *arena, const char *format, ...) {

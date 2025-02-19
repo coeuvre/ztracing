@@ -57,7 +57,7 @@ static void parse_json(const char *path) {
   ASSERTF(input, "%s", SDL_GetError());
 
   Scratch scratch = scratch_begin(0, 0);
-  Str8 buf = arena_push_str8(scratch.arena, 100 * 1024);
+  Str8 buf = arena_push_str8(scratch.arena, 1024 * 1024);
   GetInputContext context = {
       .io = input,
       .buf = buf,

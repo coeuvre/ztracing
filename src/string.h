@@ -22,7 +22,7 @@ static inline Str8 str8(u8 *ptr, usize len) {
   return s;
 }
 
-#define STR8_LIT(s) str8((u8 *)(s), sizeof(s) - 1)
+#define STR8_LIT(s) (Str8){(u8 *)(s), sizeof(s) - 1}
 
 static inline Str8 str8_from_cstr(const char *str) {
   Str8 result;

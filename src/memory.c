@@ -138,19 +138,19 @@ void *arena_push(Arena *arena, usize size, u32 flags) {
   return p;
 }
 
-void arena_pop(Arena *arena, usize size) {
+void *arena_pop(Arena *arena, usize size) {
   MemoryBlock *block = arena_get_memory_block(arena);
   while (block) {
     u8 *new_begin = arena->begin - size;
     if (new_begin >= block->begin) {
       arena->begin = new_begin;
-      return;
+      return new_begin;
     } else {
       size -= arena->begin - block->begin;
       block = block->prev;
       if (!block) {
         arena->begin = arena->end = 0;
-        return;
+        return 0;
       }
       arena->begin = arena->end = block->end;
     }
