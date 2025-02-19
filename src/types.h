@@ -27,6 +27,9 @@ typedef ptrdiff_t isize;
 
 #define I32_MAX INT_MAX
 
+#define I64_MIN INT64_MIN
+#define I64_MAX INT64_MAX
+
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 

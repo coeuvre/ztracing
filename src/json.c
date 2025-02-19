@@ -503,7 +503,9 @@ static void json_parser__parse_value(JsonParser *self, Arena *arena,
 }
 
 JsonValue *json_parser_parse_value(JsonParser *self, Arena *arena) {
-  JsonValue *value = arena_push_struct(arena, JsonValue);
+  JsonValue *value = arena_push_struct_no_zero(arena, JsonValue);
+  // This is faster than using memset.
+  *value = (JsonValue){0};
   json_parser__parse_value(self, arena, value);
   return value;
 }

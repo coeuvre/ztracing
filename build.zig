@@ -31,6 +31,7 @@ pub fn build(b: *std.Build) void {
     const srcs = [_][]const u8{
         "src/draw.c",
         "src/json.c",
+        "src/json_trace_profile.c",
         "src/memory.c",
         "src/string.c",
         "src/ui.c",

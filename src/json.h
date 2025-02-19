@@ -39,6 +39,29 @@ typedef enum JsonValueType {
   JSON_VALUE_NULL,
 } JsonValueType;
 
+static inline const char *json_value_type_string(JsonValueType type) {
+  switch (type) {
+    case JSON_VALUE_ERROR:
+      return "error";
+    case JSON_VALUE_OBJECT:
+      return "object";
+    case JSON_VALUE_ARRAY:
+      return "array";
+    case JSON_VALUE_STRING:
+      return "string";
+    case JSON_VALUE_NUMBER:
+      return "number";
+    case JSON_VALUE_TRUE:
+      return "true";
+    case JSON_VALUE_FALSE:
+      return "false";
+    case JSON_VALUE_NULL:
+      return "null";
+    default:
+      return "unknown";
+  }
+}
+
 typedef struct JsonValue JsonValue;
 struct JsonValue {
   JsonValue *prev;

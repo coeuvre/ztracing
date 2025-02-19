@@ -15,14 +15,14 @@ typedef struct Str8 {
   usize len;
 } Str8;
 
+#define STR8_LIT(s) (Str8){(u8 *)(s), sizeof(s) - 1}
+
 static inline Str8 str8(u8 *ptr, usize len) {
   Str8 s;
   s.ptr = ptr;
   s.len = len;
   return s;
 }
-
-#define STR8_LIT(s) (Str8){(u8 *)(s), sizeof(s) - 1}
 
 static inline Str8 str8_from_cstr(const char *str) {
   Str8 result;
@@ -72,6 +72,10 @@ static inline Str8 arena_push_str8f(Arena *arena, const char *format, ...) {
   Str8 result = arena_push_str8fv(arena, format, ap);
   va_end(ap);
   return result;
+}
+
+static inline Str8 arena_dup_str8(Arena *arena, Str8 s) {
+  return str8((u8 *)arena_dup(arena, s.ptr, s.len), s.len);
 }
 
 typedef struct Str32 Str32;

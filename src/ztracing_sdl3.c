@@ -4,6 +4,7 @@
 #include "src/draw.h"
 #include "src/draw_sdl3.h"
 #include "src/json.h"
+#include "src/json_trace_profile.h"
 #include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
@@ -64,18 +65,13 @@ static void parse_json(const char *path) {
   };
   JsonParser parser = json_parser(get_input, &context);
   u64 before = SDL_GetPerformanceCounter();
-  JsonToken t;
-  do {
-    Arena checkpoint = *scratch.arena;
-    t = json_parser_parse_token(&parser, scratch.arena);
-    *scratch.arena = checkpoint;
-    ASSERTF(t.type != JSON_TOKEN_ERROR, "%.*s", (int)t.value.len, t.value.ptr);
-  } while (t.type != JSON_TOKEN_EOF);
+  json_trace_profile_parse(scratch.arena, &parser);
   u64 after = SDL_GetPerformanceCounter();
 
   f64 mb = (f64)context.nread / 1024.0 / 1024.0;
   f64 secs = (f64)(after - before) / (f64)SDL_GetPerformanceFrequency();
-  INFO("Loaded %.1f MiB, %.1f MiB / s.", mb, mb / secs);
+  INFO("Loaded %.1f MiB, %.1f MiB / s, allocated memory: %.1f Mib.", mb,
+       mb / secs, (f64)memory_get_allocated_bytes() / 1024.0 / 1024.0);
 
   scratch_end(scratch);
 
