@@ -54,10 +54,25 @@ static inline bool str8_eq(Str8 a, Str8 b) {
 u64 str8_hash_with_seed(Str8 str, u64 seed);
 static inline u64 str8_hash(Str8 str) { return str8_hash_with_seed(str, 5381); }
 
-Str8 arena_push_str8(Arena *arena, usize len);
-Str8 arena_push_str8_no_zero(Arena *arena, usize len);
-Str8 arena_push_str8f(Arena *arena, const char *format, ...);
+static inline Str8 arena_push_str8(Arena *arena, usize len) {
+  u8 *ptr = arena_push_array(arena, u8, len);
+  return str8(ptr, len);
+}
+
+static inline Str8 arena_push_str8_no_zero(Arena *arena, usize len) {
+  u8 *ptr = arena_push_array_no_zero(arena, u8, len);
+  return str8(ptr, len);
+}
+
 Str8 arena_push_str8fv(Arena *arena, const char *format, va_list ap);
+
+static inline Str8 arena_push_str8f(Arena *arena, const char *format, ...) {
+  va_list ap;
+  va_start(ap, format);
+  Str8 result = arena_push_str8fv(arena, format, ap);
+  va_end(ap);
+  return result;
+}
 
 typedef struct Str32 Str32;
 struct Str32 {

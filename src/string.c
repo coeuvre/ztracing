@@ -18,24 +18,6 @@ u64 str8_hash_with_seed(Str8 str, u64 seed) {
   return hash;
 }
 
-Str8 arena_push_str8(Arena *arena, usize len) {
-  u8 *ptr = arena_push_array(arena, u8, len);
-  return str8(ptr, len);
-}
-
-Str8 arena_push_str8_no_zero(Arena *arena, usize len) {
-  u8 *ptr = arena_push_array_no_zero(arena, u8, len);
-  return str8(ptr, len);
-}
-
-Str8 arena_push_str8f(Arena *arena, const char *format, ...) {
-  va_list ap;
-  va_start(ap, format);
-  Str8 result = arena_push_str8fv(arena, format, ap);
-  va_end(ap);
-  return result;
-}
-
 Str8 arena_push_str8fv(Arena *arena, const char *format, va_list ap) {
 #define INIT_BUFFER_SIZE 256
   usize buf_len = INIT_BUFFER_SIZE;
