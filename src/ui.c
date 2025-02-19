@@ -106,15 +106,7 @@ static bool ui_widget_stack_is_empty(UIWidgetStack *stack) {
     return false;
   }
 
-  if (!stack->arena.current_block) {
-    return true;
-  }
-
-  if (stack->arena.current_block->prev) {
-    return false;
-  }
-
-  return stack->arena.current_block->pos == stack->arena.current_block->begin;
+  return arena_is_empty(&stack->arena);
 }
 
 static void ui_widget_stack_push(UIWidgetStack *stack, Arena *build_arena,
@@ -126,11 +118,7 @@ static void ui_widget_stack_push(UIWidgetStack *stack, Arena *build_arena,
   if (last_widget) {
     entry->last_child = last_widget->first;
   }
-  if (build_arena->current_block) {
-    entry->build_arena_top = build_arena->current_block->pos;
-  } else {
-    entry->build_arena_top = 0;
-  }
+  entry->build_arena_top = build_arena->begin;
   stack->current = entry;
 }
 
@@ -141,15 +129,11 @@ static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack, Arena *build_arena) {
   ASSERT(entry == arena_seek(&stack->arena, 0));
   stack->current = arena_seek(&stack->arena, sizeof(UIWidgetStackEntry));
   if (entry->build_arena_top) {
-    ASSERTF(build_arena->current_block &&
-                build_arena->current_block->pos == entry->build_arena_top,
+    ASSERTF(entry->build_arena_top == build_arena->begin,
             "build arena was not cleaned up properly by the widget");
   } else {
-    ASSERTF(
-        !build_arena->current_block || (!build_arena->current_block->prev &&
-                                        build_arena->current_block->pos ==
-                                            build_arena->current_block->begin),
-        "build arena was not cleaned up properly by the widget");
+    ASSERTF(arena_is_empty(build_arena),
+            "build arena was not cleaned up properly by the widget");
   }
   return entry->widget;
 }

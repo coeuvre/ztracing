@@ -59,7 +59,7 @@ typedef struct SDL3DrawState {
 THREAD_LOCAL SDL3DrawState t_draw_state;
 
 static PackedFont pack_font(Arena *arena, stbtt_fontinfo *info, f32 font_size) {
-  TempMemory scratch = scratch_begin(&arena, 1);
+  Scratch scratch = scratch_begin(&arena, 1);
   PackedFont result = {0};
   result.font = info;
   result.width = 1024;
@@ -235,7 +235,7 @@ static i32 GetKernAdvance(PackedFont *packed_font, u32 a, u32 b) {
 
 TextMetrics layout_text_str8(Str8 text, f32 height, f32 min_width,
                              f32 max_width) {
-  TempMemory scratch = scratch_begin(0, 0);
+  Scratch scratch = scratch_begin(0, 0);
   TextMetrics result = {0};
   f32 content_scale = get_screen_content_scale();
   min_width = min_width * content_scale;
@@ -282,7 +282,7 @@ void draw_text_str8(Vec2 pos, Str8 text, f32 height, f32 min_width,
                     f32 max_width, ColorU32 color) {
   (void)min_width;
 
-  TempMemory scratch = scratch_begin(0, 0);
+  Scratch scratch = scratch_begin(0, 0);
 
   Vec4 colorf = linear_color_from_srgb(color);
 

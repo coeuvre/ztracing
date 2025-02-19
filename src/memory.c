@@ -1,9 +1,19 @@
 #include "src/memory.h"
 
+#include <stdbool.h>
 #include <stdlib.h>
 
 #include "src/assert.h"
 #include "src/types.h"
+
+typedef struct MemoryBlock MemoryBlock;
+struct MemoryBlock {
+  MemoryBlock *first;
+  MemoryBlock *prev;
+  MemoryBlock *next;
+  u8 *begin;
+  u8 *end;
+};
 
 #define PAGE_SIZE KB(4)
 #define ALIGN 8
@@ -46,168 +56,165 @@ usize memory_get_allocated_bytes(void) { return g_allocated_bytes; }
 
 // Allocate a memory block which is at least `size` bytes large.
 static MemoryBlock *memory_block_alloc(usize size) {
-  usize block_size = usize_align_pow2(sizeof(MemoryBlock) + size, PAGE_SIZE);
+  usize block_size = usize_align_pow2(size + sizeof(MemoryBlock), PAGE_SIZE);
 
-  MemoryBlock *block = (MemoryBlock *)memory_alloc_no_zero(block_size);
+  u8 *memory = memory_alloc_no_zero(block_size);
+  u8 *end = memory + block_size;
+  MemoryBlock *block = (MemoryBlock *)(end - sizeof(MemoryBlock));
   block->prev = 0;
   block->next = 0;
-  block->begin = (u8 *)(block + 1);
-  block->end = (u8 *)block + block_size;
-  block->pos = block->begin;
+  block->begin = memory;
+  block->end = (u8 *)block;
   return block;
 }
 
 static inline void memory_block_free(MemoryBlock *block) {
-  usize block_size = block->end - (u8 *)block;
-  memory_free(block, block_size);
+  usize block_size = block->end - block->begin + sizeof(MemoryBlock);
+  memory_free(block->begin, block_size);
 }
 
-static void memory_block_free_last(Arena *arena) {
-  MemoryBlock *block = arena->current_block;
-  arena->current_block = block->prev;
-  if (arena->current_block) {
-    arena->current_block->next = 0;
-  }
-  memory_block_free(block);
+static inline MemoryBlock *arena_get_memory_block(Arena *arena) {
+  return (MemoryBlock *)arena->end;
 }
 
 void arena_free(Arena *arena) {
-  ASSERT(arena->temp_count == 0);
-  while (arena->current_block) {
-    b32 is_last_block = arena->current_block->prev == 0;
-    memory_block_free_last(arena);
-    if (is_last_block) {
-      break;
-    }
-  }
-}
+  MemoryBlock *block = arena_get_memory_block(arena);
 
-static void arena_pop_to(Arena *arena, MemoryBlock *block, u8 *pos) {
-  while (arena->current_block && arena->current_block != block) {
-    if (arena->current_block->prev == 0) {
-      break;
-    }
-    arena->current_block->pos = arena->current_block->begin;
-    arena->current_block = arena->current_block->prev;
+  for (MemoryBlock *tail = block ? block->next : 0; tail;) {
+    MemoryBlock *next = tail->next;
+    memory_block_free(tail);
+    tail = next;
   }
-  if (arena->current_block) {
-    DEBUG_ASSERT(arena->current_block->pos >= pos);
-    if (arena->current_block == block) {
-      arena->current_block->pos = pos;
-    } else {
-      arena->current_block->pos = arena->current_block->begin;
-    }
+
+  while (block) {
+    MemoryBlock *prev = block->prev;
+    memory_block_free(block);
+    block = prev;
   }
+
+  *arena = (Arena){0};
 }
 
 void arena_clear(Arena *arena) {
-  ASSERT(arena->temp_count == 0);
-  arena_pop_to(arena, 0, 0);
+  MemoryBlock *block = arena_get_memory_block(arena);
+  if (!block) {
+    return;
+  }
+  while (block->prev) {
+    block = block->prev;
+  }
+  arena->begin = block->begin;
+  arena->end = block->end;
 }
 
 void *arena_push(Arena *arena, usize size, u32 flags) {
-  u8 *result = 0;
-
-  MemoryBlock *block = arena->current_block;
-  while (block) {
-    u8 *addr = (u8 *)usize_align_pow2((usize)block->pos, ALIGN);
-    if (addr + size <= block->end) {
-      result = addr;
-      break;
+  u8 *p = (u8 *)usize_align_pow2((usize)arena->begin, ALIGN);
+  while (!p || p + size > arena->end) {
+    MemoryBlock *memory_block = arena_get_memory_block(arena);
+    MemoryBlock *next_memory_block = memory_block ? memory_block->next : 0;
+    if (!next_memory_block) {
+      next_memory_block = memory_block_alloc(size);
+      next_memory_block->prev = memory_block;
+      if (memory_block) {
+        next_memory_block->first = memory_block->first;
+        memory_block->next = next_memory_block;
+      } else {
+        next_memory_block->first = next_memory_block;
+      }
     }
-    block->pos = block->end;
 
-    if (block->next) {
-      block = block->next;
-      arena->current_block = block;
-    } else {
-      block = 0;
-    }
+    arena->begin = next_memory_block->begin;
+    arena->end = next_memory_block->end;
+
+    p = (u8 *)usize_align_pow2((usize)arena->begin, ALIGN);
   }
 
-  if (!result) {
-    MemoryBlock *new_block = memory_block_alloc(size);
-    new_block->prev = arena->current_block;
-    if (arena->current_block) {
-      arena->current_block->next = new_block;
-    }
-    block = new_block;
-    arena->current_block = block;
-
-    result = (u8 *)usize_align_pow2((usize)block->pos, ALIGN);
-  }
-
-  DEBUG_ASSERT(result + size <= block->end);
-  block->pos = result + size;
+  arena->begin = p + size;
 
   if (!(flags & ARENA_PUSH_NO_ZERO)) {
-    memory_zero(result, size);
+    memory_zero(p, size);
   }
 
-  return result;
+  return p;
 }
 
 void arena_pop(Arena *arena, usize size) {
-  for (;;) {
-    MemoryBlock *block = arena->current_block;
-    DEBUG_ASSERT(block);
-    if (block->pos - size >= block->begin) {
-      block->pos -= size;
-      break;
+  MemoryBlock *block = arena_get_memory_block(arena);
+  while (block) {
+    u8 *new_begin = arena->begin - size;
+    if (new_begin >= block->begin) {
+      arena->begin = new_begin;
+      return;
     } else {
-      size -= block->pos - block->begin;
-      block->pos = block->begin;
-      arena->current_block = block->prev;
+      size -= arena->begin - block->begin;
+      block = block->prev;
+      if (!block) {
+        arena->begin = arena->end = 0;
+        return;
+      }
+      arena->begin = arena->end = block->end;
     }
   }
+  UNREACHABLE;
 }
 
 void *arena_seek(Arena *arena, usize size) {
-  for (MemoryBlock *block = arena->current_block; block; block = block->prev) {
-    if (block->pos - size >= block->begin) {
-      return (void *)(block->pos - size);
-    }
-    size -= block->pos - block->begin;
+  Arena temp = *arena;
+  arena_pop(&temp, size);
+  return temp.begin;
+}
+
+bool arena_is_empty(Arena *arena) {
+  MemoryBlock *block = arena_get_memory_block(arena);
+  if (!block) {
+    return true;
   }
-  return 0;
+
+  if (block->prev) {
+    return false;
+  }
+
+  return arena->begin == block->begin;
 }
 
-TempMemory temp_memory_begin(Arena *arena) {
-  TempMemory temp;
-  temp.arena = arena;
-  temp.block = arena->current_block;
-  temp.pos = temp.block ? temp.block->pos : 0;
-  ++arena->temp_count;
-  return temp;
+static bool arena_overlap(Arena *a, Arena *b) {
+  MemoryBlock *a_block = arena_get_memory_block(a);
+  MemoryBlock *b_block = arena_get_memory_block(b);
+  if (!(a_block && b_block)) {
+    return false;
+  }
+
+  return a_block->first == b_block->first;
 }
 
-void temp_memory_end(TempMemory temp) {
-  Arena *arena = temp.arena;
-  arena_pop_to(arena, temp.block, temp.pos);
-  DEBUG_ASSERT(arena->temp_count > 0);
-  --arena->temp_count;
-}
+THREAD_LOCAL Arena t_scrach_arenas[2];
 
-THREAD_LOCAL Arena t_scratch_arenas[2];
+Scratch scratch_begin(Arena **conflicts, usize len) {
+  for (u32 scratch_arena_index = 0;
+       scratch_arena_index < ARRAY_COUNT(t_scrach_arenas);
+       ++scratch_arena_index) {
+    Arena *scratch = t_scrach_arenas + scratch_arena_index;
 
-Arena *arena_get_scratch(Arena **conflicts, usize len) {
-  Arena *result = 0;
-  for (u32 i = 0; i < ARRAY_COUNT(t_scratch_arenas); ++i) {
-    Arena *candidate = t_scratch_arenas + i;
-
-    b32 conflict = 0;
-    for (u32 j = 0; j < len; ++j) {
-      if (conflicts[j] == candidate) {
-        conflict = 1;
+    bool overlap = false;
+    for (u32 conflict_index = 0; conflict_index < len; ++conflict_index) {
+      Arena *conflict = conflicts[conflict_index];
+      if (arena_overlap(scratch, conflict)) {
+        overlap = true;
         break;
       }
     }
 
-    if (!conflict) {
-      result = candidate;
-      break;
+    if (!overlap) {
+      if (!scratch->begin) {
+        arena_push(scratch, 4, 0);
+        arena_pop(scratch, 4);
+      }
+      return (Scratch){
+          .snapshot = *scratch,
+          .arena = scratch,
+      };
     }
   }
-  ASSERT(result);
-  return result;
+
+  UNREACHABLE;
 }
