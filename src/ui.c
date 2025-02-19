@@ -806,12 +806,6 @@ bool ui_should_rebuild(void) {
   return state->should_rebuild;
 }
 
-Str8 ui_push_str8(Str8 str) {
-  UIState *state = ui_state_get();
-  UIFrame *frame = ui_state_get_current_frame(state);
-  return arena_push_str8(&frame->arena, str);
-}
-
 Str8 ui_push_str8f(const char *format, ...) {
   va_list ap;
   va_start(ap, format);

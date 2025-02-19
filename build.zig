@@ -30,10 +30,10 @@ pub fn build(b: *std.Build) void {
 
     const srcs = [_][]const u8{
         "src/draw.c",
+        "src/json.c",
         "src/memory.c",
         "src/string.c",
         "src/ui.c",
-        // "src/ui_widgets.c",
 
         "src/draw_sdl3.c",
         "src/log_sdl3.c",

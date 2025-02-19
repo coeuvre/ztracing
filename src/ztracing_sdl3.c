@@ -1,7 +1,12 @@
+#include <stdlib.h>
+
 #include "src/assert.h"
 #include "src/draw.h"
 #include "src/draw_sdl3.h"
+#include "src/json.h"
 #include "src/math.h"
+#include "src/memory.h"
+#include "src/string.h"
 #include "src/types.h"
 #include "src/ui.h"
 #include "src/ztracing.h"
@@ -34,8 +39,55 @@ static Vec2 get_window_size(void) {
   return size;
 }
 
+typedef struct GetInputContext {
+  SDL_IOStream *io;
+  Str8 buf;
+  u64 nread;
+} GetInputContext;
+
+static Str8 get_input(void *c) {
+  GetInputContext *context = c;
+  usize nread = SDL_ReadIO(context->io, context->buf.ptr, context->buf.len);
+  context->nread += nread;
+  return str8(context->buf.ptr, nread);
+}
+
+static void parse_json(const char *path) {
+  SDL_IOStream *input = SDL_IOFromFile(path, "r");
+  ASSERTF(input, "%s", SDL_GetError());
+
+  Scratch scratch = scratch_begin(0, 0);
+  Str8 buf = arena_push_str8(scratch.arena, 100 * 1024);
+  GetInputContext context = {
+      .io = input,
+      .buf = buf,
+  };
+  JsonParser parser = json_parser(get_input, &context);
+  u64 before = SDL_GetPerformanceCounter();
+  JsonToken t;
+  do {
+    Arena checkpoint = *scratch.arena;
+    t = json_parser_parse_token(&parser, scratch.arena);
+    *scratch.arena = checkpoint;
+    ASSERTF(t.type != JSON_TOKEN_ERROR, "%.*s", (int)t.value.len, t.value.ptr);
+  } while (t.type != JSON_TOKEN_EOF);
+  u64 after = SDL_GetPerformanceCounter();
+
+  f64 mb = (f64)context.nread / 1024.0 / 1024.0;
+  f64 secs = (f64)(after - before) / (f64)SDL_GetPerformanceFrequency();
+  INFO("Loaded %.1f MiB, %.1f MiB / s.", mb, mb / secs);
+
+  scratch_end(scratch);
+
+  exit(0);
+}
+
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   (void)appstate, (void)argc, (void)argv;
+
+  if (argc > 1) {
+    parse_json(argv[1]);
+  }
 
   ASSERTF(SDL_Init(SDL_INIT_VIDEO), "Failed to init SDL3: %s", SDL_GetError());
 

@@ -36,7 +36,6 @@ void ui_end_frame(void);
 bool ui_should_rebuild(void);
 void ui_paint(void);
 
-Str8 ui_push_str8(Str8 str);
 Str8 ui_push_str8f(const char *format, ...);
 Str8 ui_push_str8fv(const char *format, va_list ap);
 

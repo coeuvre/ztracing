@@ -57,13 +57,13 @@ static inline void *arena_dup(Arena *arena, void *src, usize size) {
 #define arena_dup_struct(arena, src) arena_dup(arena, src, sizeof(*(src)))
 
 typedef struct Scratch {
-  Arena snapshot;
+  Arena checkpoint;
   Arena *arena;
 } Scratch;
 
 Scratch scratch_begin(Arena **conflicts, usize len);
 static inline void scratch_end(Scratch scratch) {
-  *scratch.arena = scratch.snapshot;
+  *scratch.arena = scratch.checkpoint;
 }
 
 #endif  // ZTRACING_SRC_MEMORY_H_

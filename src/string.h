@@ -15,7 +15,14 @@ typedef struct Str8 {
   usize len;
 } Str8;
 
-#define STR8_LIT(s) (Str8){.ptr = (u8 *)(s), .len = sizeof(s) - 1}
+static inline Str8 str8(u8 *ptr, usize len) {
+  Str8 s;
+  s.ptr = ptr;
+  s.len = len;
+  return s;
+}
+
+#define STR8_LIT(s) str8((u8 *)(s), sizeof(s) - 1)
 
 static inline Str8 str8_from_cstr(const char *str) {
   Str8 result;
@@ -24,10 +31,7 @@ static inline Str8 str8_from_cstr(const char *str) {
   return result;
 }
 
-static inline Str8 str8_zero(void) {
-  Str8 result = {0};
-  return result;
-}
+static inline Str8 str8_zero(void) { return str8(0, 0); }
 
 static inline bool str8_is_empty(Str8 str) { return str.len == 0; }
 
@@ -50,7 +54,8 @@ static inline bool str8_eq(Str8 a, Str8 b) {
 u64 str8_hash_with_seed(Str8 str, u64 seed);
 static inline u64 str8_hash(Str8 str) { return str8_hash_with_seed(str, 5381); }
 
-Str8 arena_push_str8(Arena *arena, Str8 str);
+Str8 arena_push_str8(Arena *arena, usize len);
+Str8 arena_push_str8_no_zero(Arena *arena, usize len);
 Str8 arena_push_str8f(Arena *arena, const char *format, ...);
 Str8 arena_push_str8fv(Arena *arena, const char *format, va_list ap);
 

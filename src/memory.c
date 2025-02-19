@@ -210,7 +210,7 @@ Scratch scratch_begin(Arena **conflicts, usize len) {
         arena_pop(scratch, 4);
       }
       return (Scratch){
-          .snapshot = *scratch,
+          .checkpoint = *scratch,
           .arena = scratch,
       };
     }
