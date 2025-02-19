@@ -2,21 +2,20 @@
 #define ZTRACING_SRC_STRING_H_
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "src/memory.h"
 #include "src/types.h"
 
-// Null terminated utf-8 string.
+/// A slice of u8, can be used to represent utf-8 string, or a buffer.
 typedef struct Str8 {
   u8 *ptr;
-  // The number of bytes of the string, excluding NULL-terminator. The buffer
-  // pointed by `ptr` MUST be at least (len + 1) large to hold both the content
-  // the of string AND the NULL-terminator.
+  /// The number of bytes in the buffer
   usize len;
 } Str8;
 
-#define str8_lit(s) (Str8){(u8 *)(s), sizeof(s) - 1}
+#define STR8_LIT(s) (Str8){.ptr = (u8 *)(s), .len = sizeof(s) - 1}
 
 static inline Str8 str8_from_cstr(const char *str) {
   Str8 result;
@@ -30,27 +29,22 @@ static inline Str8 str8_zero(void) {
   return result;
 }
 
-static inline b32 str8_is_empty(Str8 str) {
-  b32 result = str.len == 0;
-  return result;
-}
+static inline bool str8_is_empty(Str8 str) { return str.len == 0; }
 
-static inline b32 str8_is_equal(Str8 a, Str8 b) {
-  b32 result;
-  if (a.len == b.len) {
-    if (a.ptr != b.ptr) {
-      if (a.ptr && b.ptr) {
-        result = memcmp(a.ptr, b.ptr, a.len) == 0;
-      } else {
-        result = 0;
-      }
-    } else {
-      result = 1;
-    }
-  } else {
-    result = 0;
+static inline bool str8_eq(Str8 a, Str8 b) {
+  if (a.len != b.len) {
+    return false;
   }
-  return result;
+
+  if (a.ptr == b.ptr) {
+    return true;
+  }
+
+  if (!(a.ptr && b.ptr)) {
+    return false;
+  }
+
+  return memcmp(a.ptr, b.ptr, a.len) == 0;
 }
 
 u64 str8_hash_with_seed(Str8 str, u64 seed);

@@ -19,9 +19,9 @@ u64 str8_hash_with_seed(Str8 str, u64 seed) {
 }
 
 Str8 arena_push_str8(Arena *arena, Str8 str) {
-  u8 *ptr = arena_push_array_no_zero(arena, u8, str.len + 1);
-  memcpy(ptr, str.ptr, str.len + 1);
-  Str8 result = {ptr, str.len};
+  u8 *ptr = arena_push_array_no_zero(arena, u8, str.len);
+  memcpy(ptr, str.ptr, str.len);
+  Str8 result = {.ptr = ptr, .len = str.len};
   return result;
 }
 
@@ -34,21 +34,21 @@ Str8 arena_push_str8f(Arena *arena, const char *format, ...) {
 }
 
 Str8 arena_push_str8fv(Arena *arena, const char *format, va_list ap) {
-  usize kInitBufferSize = 256;
-  usize buf_len = kInitBufferSize;
+#define INIT_BUFFER_SIZE 256
+  usize buf_len = INIT_BUFFER_SIZE;
   char *buf_ptr = arena_push_array(arena, char, buf_len);
 
   va_list args;
   va_copy(args, ap);
   usize str_len = vsnprintf(buf_ptr, buf_len, format, args);
 
-  if (str_len + 1 <= buf_len) {
+  if (str_len <= buf_len) {
     // Free the unused part of the buffer.
-    arena_pop(arena, buf_len - str_len - 1);
+    arena_pop(arena, buf_len - str_len);
   } else {
     // The buffer was too small. We need to resize it and try again.
     arena_pop(arena, buf_len);
-    buf_len = str_len + 1;
+    buf_len = str_len;
     buf_ptr = arena_push_array(arena, char, buf_len);
     va_copy(args, ap);
     vsnprintf(buf_ptr, buf_len, format, args);
@@ -104,7 +104,7 @@ static UnicodeDecode utf_decode(u8 *ptr, usize len) {
 }
 
 Str32 arena_push_str32_from_str8(Arena *arena, Str8 str) {
-  usize cap = str.len + 1;
+  usize cap = str.len;
   u32 *ptr = arena_push_array_no_zero(arena, u32, cap);
   u32 len = 0;
   u8 *end = str.ptr + str.len;
@@ -113,8 +113,7 @@ Str32 arena_push_str32_from_str8(Arena *arena, Str8 str) {
     decode = utf_decode(cursor, end - cursor);
     ptr[len++] = decode.codepoint;
   }
-  ptr[len++] = 0;
   DEBUG_ASSERT(len <= cap);
   arena_pop(arena, (cap - len) * 4);
-  return (Str32){ptr, len - 1};
+  return (Str32){.ptr = ptr, .len = len};
 }

@@ -46,13 +46,13 @@ static void build_ui(f32 dt, f32 frame_time) {
   {
     ui_row_begin(&(UIRowProps){0});
     {
-      if (do_button(str8_lit("Load"), BUTTON_PRIMARY)) {
+      if (do_button(STR8_LIT("Load"), BUTTON_PRIMARY)) {
         INFO("Load");
       }
-      if (do_button(str8_lit("About"), BUTTON_SECONDARY)) {
+      if (do_button(STR8_LIT("About"), BUTTON_SECONDARY)) {
         INFO("About");
       }
-      if (do_button(str8_lit("DEBUG"), BUTTON_SECONDARY)) {
+      if (do_button(STR8_LIT("DEBUG"), BUTTON_SECONDARY)) {
         INFO("DEBUG");
       }
 
