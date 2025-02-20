@@ -13,9 +13,66 @@
 #include "src/types.h"
 #include "src/ui.h"
 
+typedef struct ZtracingFileLoader {
+  Arena arena;
+  ZtracingFile *file;
+  PlatformThread *thread;
+} ZtracingFileLoader;
+
+static ZtracingFileLoader *ztracing_file_loader_alloc(ZtracingFile *file) {
+  Arena arena_ = {0};
+  ZtracingFileLoader *state =
+      arena_push_struct_no_zero(&arena_, ZtracingFileLoader);
+  *state = (ZtracingFileLoader){
+      .arena = arena_,
+      .file = file,
+  };
+  return state;
+}
+
+static Str8 ztracing_file_get_input(void *c) {
+  ZtracingFile *self = c;
+  Str8 buf = self->read(self);
+  self->nread += buf.len;
+  return buf;
+}
+
+static int ztracing_file_loader__thread(void *self_) {
+  ZtracingFileLoader *self = self_;
+  ZtracingFile *file = self->file;
+
+  Scratch scratch = scratch_begin(0, 0);
+
+  JsonParser parser = json_parser(ztracing_file_get_input, file);
+  u64 before = platform_get_perf_counter();
+  json_trace_profile_parse(scratch.arena, &parser);
+  u64 after = platform_get_perf_counter();
+
+  f64 mb = (f64)file->nread / 1024.0 / 1024.0;
+  f64 secs = (f64)(after - before) / (f64)platform_get_perf_freq();
+  INFO(
+      "Loaded %.1f MiB over %.1f seconds, %.1f MiB / s, allocated memory: %.1f "
+      "Mib.",
+      mb, secs, mb / secs, (f64)memory_get_allocated_bytes() / 1024.0 / 1024.0);
+
+  scratch_end(scratch);
+
+  file->close(self->file);
+
+  scratch_free();
+
+  return 0;
+}
+
+static void ztracing_file_loader_start(ZtracingFileLoader *self) {
+  self->thread =
+      platform_thread_start(ztracing_file_loader__thread, "FileLoader", self);
+}
+
 typedef struct ZtracingState {
   f32 dt;
   f32 frame_time;
+  ZtracingFileLoader *file_loader;
 } ZtracingState;
 
 static UITextStyleO text_style_default(void) {
@@ -71,7 +128,7 @@ static void global_menu_bar(ZtracingState *state) {
   ui_row_end();
 }
 
-static void welcome_page(void) {
+static void welcome_screen(void) {
   Str8 logo = STR8_LIT(
       // clang-format off
       " ________  _________  _______          _        ______  _____  ____  _____   ______\n"
@@ -100,8 +157,24 @@ static void welcome_page(void) {
   ui_column_end();
 }
 
-static void main_page(ZtracingState *state) {
-  welcome_page();
+static void loading_screen(ZtracingState *state) {
+  ZtracingFileLoader *loader = state->file_loader;
+
+  ui_center_begin(&(UICenterProps){0});
+  ui_text(&(UITextProps){
+      .text = ui_push_str8f("Loading (%.1f MiB) ...",
+                            (f64)loader->file->nread / 1024.0 / 1024.0),
+      .style = text_style_default(),
+  });
+  ui_center_end();
+}
+
+static void main_screen(ZtracingState *state) {
+  if (state->file_loader) {
+    loading_screen(state);
+  } else {
+    welcome_screen();
+  }
   // UIListBuilder builder;
   // ui_list_view_begin(&(UIListViewProps){
   //     .item_extent = 20,
@@ -154,7 +227,7 @@ static void build_ui(ZtracingState *state) {
     ui_expanded_begin(&(UIExpandedProps){
         .flex = 1,
     });
-    main_page(state);
+    main_screen(state);
     ui_expanded_end();
   }
   ui_column_end();
@@ -163,31 +236,15 @@ static void build_ui(ZtracingState *state) {
 
 static ZtracingState g_ztracing_state;
 
-static Str8 ztracing_file_get_input(void *c) {
-  ZtracingFile *self = c;
-  Str8 buf = self->read(self);
-  self->nread += buf.len;
-  return buf;
-}
-
 void ztracing_load_file(ZtracingFile *file) {
-  Scratch scratch = scratch_begin(0, 0);
+  ZtracingState *state = &g_ztracing_state;
 
-  JsonParser parser = json_parser(ztracing_file_get_input, file);
-  u64 before = platform_get_perf_counter();
-  json_trace_profile_parse(scratch.arena, &parser);
-  u64 after = platform_get_perf_counter();
+  if (state->file_loader) {
+    return;
+  }
 
-  f64 mb = (f64)file->nread / 1024.0 / 1024.0;
-  f64 secs = (f64)(after - before) / (f64)platform_get_perf_freq();
-  INFO(
-      "Loaded %.1f MiB over %.1f seconds, %.1f MiB / s, allocated memory: %.1f "
-      "Mib.",
-      mb, secs, mb / secs, (f64)memory_get_allocated_bytes() / 1024.0 / 1024.0);
-
-  scratch_end(scratch);
-
-  file->close(file);
+  state->file_loader = ztracing_file_loader_alloc(file);
+  ztracing_file_loader_start(state->file_loader);
 }
 
 void ztracing_update(void) {

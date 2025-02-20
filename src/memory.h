@@ -67,4 +67,6 @@ static inline void scratch_end(Scratch scratch) {
   *scratch.arena = scratch.checkpoint;
 }
 
+void scratch_free(void);
+
 #endif  // ZTRACING_SRC_MEMORY_H_
