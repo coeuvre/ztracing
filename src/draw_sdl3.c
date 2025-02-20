@@ -251,26 +251,33 @@ TextMetrics layout_text_str8(Str8 text, f32 height, f32 min_width,
   f32 line_height = (ascent - descent) * scale;
 
   Str32 text32 = arena_push_str32_from_str8(scratch.arena, text);
-  bool reached_max_width = false;
   f32 baseline = (f32)ascent * scale;
   f32 pos_x = 0.0f;
+  f32 max_pos_x = 0.0f;
   f32 pos_y = 0.0f;
   for (u32 i = 0; i < text32.len; ++i) {
     u32 ch = text32.ptr[i];
-    GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
-    if (pos_x > max_width) {
-      reached_max_width = true;
+    if (ch == '\n') {
+      max_pos_x = f32_max(max_pos_x, pos_x);
       pos_x = 0;
       pos_y += line_height;
-      GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
     } else {
-      if (i + 1 < text32.len) {
-        i32 kern = GetKernAdvance(packed_font, ch, text32.ptr[i + 1]);
-        pos_x += scale * kern;
+      GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
+      if (pos_x > max_width) {
+        max_pos_x = max_width;
+        pos_x = 0;
+        pos_y += line_height;
+        GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
+      } else {
+        if (i + 1 < text32.len) {
+          i32 kern = GetKernAdvance(packed_font, ch, text32.ptr[i + 1]);
+          pos_x += scale * kern;
+        }
+        max_pos_x = f32_max(max_pos_x, pos_x);
       }
     }
   }
-  result.size.x = reached_max_width ? max_width : f32_max(min_width, pos_x);
+  result.size.x = f32_max(min_width, max_pos_x);
   result.size.y = pos_y + line_height;
   result.size = vec2_mul(result.size, 1.0f / content_scale);
 
@@ -335,41 +342,46 @@ void draw_text_str8(Vec2 pos, Str8 text, f32 height, f32 min_width,
   f32 pos_x = pos.x;
   for (u32 i = 0; i < text32.len; ++i) {
     u32 ch = text32.ptr[i];
-    stbtt_aligned_quad quad =
-        GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
-    if ((pos_x - pos.x) > max_width) {
+    if (ch == '\n') {
       pos_x = pos.x;
       baseline += line_height;
-      quad = GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
     } else {
-      if (i + 1 < text32.len) {
-        i32 kern = GetKernAdvance(packed_font, ch, text32.ptr[i + 1]);
-        pos_x += scale * kern;
+      stbtt_aligned_quad quad =
+          GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
+      if ((pos_x - pos.x) > max_width) {
+        pos_x = pos.x;
+        baseline += line_height;
+        quad = GetPackedQuadAndAdvancePos(packed_font, ch, &pos_x, &baseline);
+      } else {
+        if (i + 1 < text32.len) {
+          i32 kern = GetKernAdvance(packed_font, ch, text32.ptr[i + 1]);
+          pos_x += scale * kern;
+        }
       }
-    }
 
-    f32 quad_w = quad.x1 - quad.x0;
-    f32 quad_h = quad.y1 - quad.y0;
-    if (quad_w > 0 && quad_h > 0) {
-      SDL_FRect src_rect;
-      src_rect.x = quad.s0 * packed_font->width;
-      src_rect.y = quad.t0 * packed_font->height;
-      src_rect.w = (quad.s1 - quad.s0) * packed_font->width;
-      src_rect.h = (quad.t1 - quad.t0) * packed_font->height;
+      f32 quad_w = quad.x1 - quad.x0;
+      f32 quad_h = quad.y1 - quad.y0;
+      if (quad_w > 0 && quad_h > 0) {
+        SDL_FRect src_rect;
+        src_rect.x = quad.s0 * packed_font->width;
+        src_rect.y = quad.t0 * packed_font->height;
+        src_rect.w = (quad.s1 - quad.s0) * packed_font->width;
+        src_rect.h = (quad.t1 - quad.t0) * packed_font->height;
 
-      SDL_FRect dst_rect;
-      dst_rect.x = quad.x0;
-      dst_rect.y = quad.y0;
-      dst_rect.w = quad_w;
-      dst_rect.h = quad_h;
+        SDL_FRect dst_rect;
+        dst_rect.x = quad.x0;
+        dst_rect.y = quad.y0;
+        dst_rect.w = quad_w;
+        dst_rect.h = quad_h;
 
-      SDL_SetTextureBlendMode(packed_font->texture,
-                              SDL_BLENDMODE_BLEND_PREMULTIPLIED);
-      SDL_SetTextureColorModFloat(packed_font->texture, colorf.x, colorf.y,
-                                  colorf.z);
-      SDL_SetTextureAlphaModFloat(packed_font->texture, colorf.w);
-      SDL_RenderTexture(t_draw_state.renderer, packed_font->texture, &src_rect,
-                        &dst_rect);
+        SDL_SetTextureBlendMode(packed_font->texture,
+                                SDL_BLENDMODE_BLEND_PREMULTIPLIED);
+        SDL_SetTextureColorModFloat(packed_font->texture, colorf.x, colorf.y,
+                                    colorf.z);
+        SDL_SetTextureAlphaModFloat(packed_font->texture, colorf.w);
+        SDL_RenderTexture(t_draw_state.renderer, packed_font->texture,
+                          &src_rect, &dst_rect);
+      }
     }
   }
 

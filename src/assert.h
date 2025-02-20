@@ -23,7 +23,7 @@
 #define ASSERTF(x, fmt, ...)                                  \
   do {                                                        \
     if (!(x)) {                                               \
-      ERROR("%s:%d:" fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
+      ERROR("%s:%d: " fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
       break_debugger();                                       \
     }                                                         \
   } while (0)

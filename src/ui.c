@@ -1202,11 +1202,10 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
   f32o height = align->height;
 
   if (width.present) {
-    ASSERTF(width.value >= 0, "factor.widget must be positive, got %f",
-            width.value);
+    ASSERTF(width.value >= 0, "widget must be positive, got %f", width.value);
   }
   if (height.present) {
-    ASSERTF(align->height.value >= 0, "height_factor must be positive, got %f",
+    ASSERTF(align->height.value >= 0, "height must be positive, got %f",
             align->height.value);
   }
   bool should_shrink_wrap_width =

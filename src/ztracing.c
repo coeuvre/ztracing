@@ -10,7 +10,12 @@
 #include "src/types.h"
 #include "src/ui.h"
 
-static UITextStyleO default_text_style(void) {
+typedef struct ZTracingState {
+  f32 dt;
+  f32 frame_time;
+} ZTracingState;
+
+static UITextStyleO text_style_default(void) {
   return ui_text_style_some((UITextStyle){
       .color = ui_color_some(ui_color(0, 0, 0, 1)),
   });
@@ -25,7 +30,7 @@ static bool do_button(Str8 text, ButtonType type) {
   bool pressed;
   ui_button(&(UIButtonProps){
       .text = text,
-      .text_style = default_text_style(),
+      .text_style = text_style_default(),
 
       .pressed = &pressed,
       .fill_color = (type == BUTTON_PRIMARY)
@@ -38,40 +43,102 @@ static bool do_button(Str8 text, ButtonType type) {
   return pressed;
 }
 
-static void build_ui(f32 dt, f32 frame_time) {
+static void global_menu_bar(ZTracingState *state) {
+  ui_row_begin(&(UIRowProps){0});
+  {
+    if (do_button(STR8_LIT("Load"), BUTTON_PRIMARY)) {
+      INFO("Load");
+    }
+
+    ui_expanded_begin(&(UIExpandedProps){.flex = 1});
+    ui_expanded_end();
+
+    ui_padding_begin(&(UIPaddingProps){
+        .padding = ui_edge_insets_symmetric(6, 3),
+    });
+    ui_text(&(UITextProps){
+        .text = ui_push_str8f(
+            "%.0f %.1fMB %.1fms", 1.0f / state->dt,
+            (f32)((f64)memory_get_allocated_bytes() / 1024.0 / 1024.0),
+            state->frame_time * 1000.0f),
+        .style = text_style_default(),
+    });
+    ui_padding_end();
+  }
+  ui_row_end();
+}
+
+static void welcome_page(void) {
+  Str8 logo = STR8_LIT(
+      // clang-format off
+      " ________  _________  _______          _        ______  _____  ____  _____   ______\n"
+      "|  __   _||  _   _  ||_   __ \\        / \\     .' ___  ||_   _||_   \\|_   _|.' ___  |\n"
+      "|_/  / /  |_/ | | \\_|  | |__) |      / _ \\   / .'   \\_|  | |    |   \\ | | / .'   \\_|\n"
+      "   .'.' _     | |      |  __ /      / ___ \\  | |         | |    | |\\ \\| | | |   ____\n"
+      " _/ /__/ |   _| |_    _| |  \\ \\_  _/ /   \\ \\_\\ `.___.'\\ _| |_  _| |_\\   |_\\ `.___]  |\n"
+      "|________|  |_____|  |____| |___||____| |____|`.____ .'|_____||_____|\\____|`._____.'"
+      // clang-format on
+  );
+  ui_column_begin(&(UIColumnProps){
+      .main_axis_alignment = UI_MAIN_AXIS_ALIGNMENT_CENTER,
+  });
+  ui_text(&(UITextProps){
+      .text = logo,
+      .style = text_style_default(),
+  });
+  ui_padding_begin(&(UIPaddingProps){
+      .padding = ui_edge_insets_symmetric(0, 10),
+  });
+  ui_padding_end();
+  ui_text(&(UITextProps){
+      .text = STR8_LIT("Drag & Drop a json trace profile to start."),
+      .style = text_style_default(),
+  });
+  ui_column_end();
+}
+
+static void main_page(ZTracingState *state) {
+  welcome_page();
+  // UIListBuilder builder;
+  // ui_list_view_begin(&(UIListViewProps){
+  //     .item_extent = 20,
+  //     .item_count = 512,
+  //     .builder = &builder,
+  // });
+  // for (i32 item_index = builder.first_index; item_index <=
+  // builder.last_index;
+  //      ++item_index) {
+  //   ui_row_begin(&(UIRowProps){0});
+  //   ui_container_begin(&(UIContainerProps){
+  //       .width = f32_some(200.0f),
+  //   });
+  //   ui_text(&(UITextProps){
+  //       .text = ui_push_str8f("Row %u", item_index),
+  //       .style = text_style_default(),
+  //   });
+  //   ui_container_end();
+  //
+  //   ui_expanded_begin(&(UIExpandedProps){
+  //       .flex = 1,
+  //   });
+  //   ui_container_begin(&(UIContainerProps){
+  //       .color = ui_color_some(ui_color(0, (item_index % 255) / 255.0f, 0,
+  //       1)),
+  //   });
+  //   ui_container_end();
+  //   ui_expanded_end();
+  //   ui_row_end();
+  // }
+  // ui_list_view_end();
+}
+
+static void build_ui(ZTracingState *state) {
   ui_colored_box_begin(&(UIColoredBoxProps){
       .color = ui_color(0.94, 0.94, 0.94, 1.0),
   });
   ui_column_begin(&(UIColumnProps){0});
   {
-    ui_row_begin(&(UIRowProps){0});
-    {
-      if (do_button(STR8_LIT("Load"), BUTTON_PRIMARY)) {
-        INFO("Load");
-      }
-      if (do_button(STR8_LIT("About"), BUTTON_SECONDARY)) {
-        INFO("About");
-      }
-      if (do_button(STR8_LIT("DEBUG"), BUTTON_SECONDARY)) {
-        INFO("DEBUG");
-      }
-
-      ui_expanded_begin(&(UIExpandedProps){.flex = 1});
-      ui_expanded_end();
-
-      ui_padding_begin(&(UIPaddingProps){
-          .padding = ui_edge_insets_symmetric(6, 3),
-      });
-      ui_text(&(UITextProps){
-          .text = ui_push_str8f(
-              "%.0f %.1fMB %.1fms", 1.0f / dt,
-              (f32)((f64)memory_get_allocated_bytes() / 1024.0 / 1024.0),
-              frame_time * 1000.0f),
-          .style = default_text_style(),
-      });
-      ui_padding_end();
-    }
-    ui_row_end();
+    global_menu_bar(state);
 
     // Simulate a bottom border.
     // TODO: Impl DecorationBox.
@@ -84,37 +151,7 @@ static void build_ui(f32 dt, f32 frame_time) {
     ui_expanded_begin(&(UIExpandedProps){
         .flex = 1,
     });
-
-    UIListBuilder builder;
-    ui_list_view_begin(&(UIListViewProps){
-        .item_extent = 20,
-        .item_count = 512,
-        .builder = &builder,
-    });
-    for (i32 item_index = builder.first_index; item_index <= builder.last_index;
-         ++item_index) {
-      ui_row_begin(&(UIRowProps){0});
-      ui_container_begin(&(UIContainerProps){
-          .width = f32_some(200.0f),
-      });
-      ui_text(&(UITextProps){
-          .text = ui_push_str8f("Row %u", item_index),
-          .style = default_text_style(),
-      });
-      ui_container_end();
-
-      ui_expanded_begin(&(UIExpandedProps){
-          .flex = 1,
-      });
-      ui_container_begin(&(UIContainerProps){
-          .color =
-              ui_color_some(ui_color(0, (item_index % 255) / 255.0f, 0, 1)),
-      });
-      ui_container_end();
-      ui_expanded_end();
-      ui_row_end();
-    }
-    ui_list_view_end();
+    main_page(state);
     ui_expanded_end();
   }
   ui_column_end();
@@ -124,6 +161,7 @@ static void build_ui(f32 dt, f32 frame_time) {
 void do_frame(void) {
   static u64 last_counter;
   static f32 last_frame_time;
+  static ZTracingState state;
 
   f32 dt = 0.0f;
   u64 current_counter = get_perf_counter();
@@ -132,12 +170,15 @@ void do_frame(void) {
   }
   last_counter = current_counter;
 
+  state.dt = dt;
+  state.frame_time = last_frame_time;
+
   clear_draw();
 
   ui_set_delta_time(dt);
   do {
     ui_begin_frame();
-    build_ui(dt, last_frame_time);
+    build_ui(&state);
     ui_end_frame();
   } while (ui_should_rebuild());
   ui_paint();
