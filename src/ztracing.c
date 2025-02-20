@@ -3,17 +3,20 @@
 #include <stdarg.h>
 
 #include "src/draw.h"
+#include "src/json.h"
+#include "src/json_trace_profile.h"
 #include "src/log.h"
 #include "src/math.h"
 #include "src/memory.h"
+#include "src/platform.h"
 #include "src/string.h"
 #include "src/types.h"
 #include "src/ui.h"
 
-typedef struct ZTracingState {
+typedef struct ZtracingState {
   f32 dt;
   f32 frame_time;
-} ZTracingState;
+} ZtracingState;
 
 static UITextStyleO text_style_default(void) {
   return ui_text_style_some((UITextStyle){
@@ -43,7 +46,7 @@ static bool do_button(Str8 text, ButtonType type) {
   return pressed;
 }
 
-static void global_menu_bar(ZTracingState *state) {
+static void global_menu_bar(ZtracingState *state) {
   ui_row_begin(&(UIRowProps){0});
   {
     if (do_button(STR8_LIT("Load"), BUTTON_PRIMARY)) {
@@ -97,7 +100,7 @@ static void welcome_page(void) {
   ui_column_end();
 }
 
-static void main_page(ZTracingState *state) {
+static void main_page(ZtracingState *state) {
   welcome_page();
   // UIListBuilder builder;
   // ui_list_view_begin(&(UIListViewProps){
@@ -132,7 +135,7 @@ static void main_page(ZTracingState *state) {
   // ui_list_view_end();
 }
 
-static void build_ui(ZTracingState *state) {
+static void build_ui(ZtracingState *state) {
   ui_colored_box_begin(&(UIColoredBoxProps){
       .color = ui_color(0.94, 0.94, 0.94, 1.0),
   });
@@ -158,33 +161,64 @@ static void build_ui(ZTracingState *state) {
   ui_colored_box_end();
 }
 
-void do_frame(void) {
+static ZtracingState g_ztracing_state;
+
+static Str8 ztracing_file_get_input(void *c) {
+  ZtracingFile *self = c;
+  Str8 buf = self->read(self);
+  self->nread += buf.len;
+  return buf;
+}
+
+void ztracing_load_file(ZtracingFile *file) {
+  Scratch scratch = scratch_begin(0, 0);
+
+  JsonParser parser = json_parser(ztracing_file_get_input, file);
+  u64 before = platform_get_perf_counter();
+  json_trace_profile_parse(scratch.arena, &parser);
+  u64 after = platform_get_perf_counter();
+
+  f64 mb = (f64)file->nread / 1024.0 / 1024.0;
+  f64 secs = (f64)(after - before) / (f64)platform_get_perf_freq();
+  INFO(
+      "Loaded %.1f MiB over %.1f seconds, %.1f MiB / s, allocated memory: %.1f "
+      "Mib.",
+      mb, secs, mb / secs, (f64)memory_get_allocated_bytes() / 1024.0 / 1024.0);
+
+  scratch_end(scratch);
+
+  file->close(file);
+}
+
+void ztracing_update(void) {
   static u64 last_counter;
   static f32 last_frame_time;
-  static ZTracingState state;
+
+  ZtracingState *state = &g_ztracing_state;
 
   f32 dt = 0.0f;
-  u64 current_counter = get_perf_counter();
+  u64 current_counter = platform_get_perf_counter();
   if (last_counter) {
-    dt = (f32)((f64)(current_counter - last_counter) / (f64)get_perf_freq());
+    dt = (f32)((f64)(current_counter - last_counter) /
+               (f64)platform_get_perf_freq());
   }
   last_counter = current_counter;
 
-  state.dt = dt;
-  state.frame_time = last_frame_time;
+  state->dt = dt;
+  state->frame_time = last_frame_time;
 
   clear_draw();
 
   ui_set_delta_time(dt);
   do {
     ui_begin_frame();
-    build_ui(&state);
+    build_ui(state);
     ui_end_frame();
   } while (ui_should_rebuild());
   ui_paint();
 
-  last_frame_time =
-      (f32)((f64)(get_perf_counter() - last_counter) / (f64)get_perf_freq());
+  last_frame_time = (f32)((f64)(platform_get_perf_counter() - last_counter) /
+                          (f64)platform_get_perf_freq());
 
   present_draw();
 }

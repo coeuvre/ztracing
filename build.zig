@@ -37,6 +37,7 @@ pub fn build(b: *std.Build) void {
         "src/ui.c",
 
         "src/draw_sdl3.c",
+        "src/platform_sdl3.c",
         "src/log_sdl3.c",
     };
 

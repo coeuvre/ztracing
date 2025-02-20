@@ -3,8 +3,6 @@
 #include "src/assert.h"
 #include "src/draw.h"
 #include "src/draw_sdl3.h"
-#include "src/json.h"
-#include "src/json_trace_profile.h"
 #include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
@@ -20,16 +18,6 @@ static SDL_Window *window;
 static b32 window_shown;
 static b32 window_coordinate_is_in_pixels;
 
-u64 get_perf_counter(void) {
-  u64 result = SDL_GetPerformanceCounter();
-  return result;
-}
-
-u64 get_perf_freq(void) {
-  u64 result = SDL_GetPerformanceFrequency();
-  return result;
-}
-
 static Vec2 get_window_size(void) {
   int w, h;
   SDL_GetWindowSizeInPixels(window, &w, &h);
@@ -40,44 +28,47 @@ static Vec2 get_window_size(void) {
   return size;
 }
 
-typedef struct GetInputContext {
+typedef struct ZtracingFileSDL3 {
+  ZtracingFile file;
   SDL_IOStream *io;
   Str8 buf;
-  u64 nread;
-} GetInputContext;
+} ZtracingFileSDL3;
 
-static Str8 get_input(void *c) {
-  GetInputContext *context = c;
-  usize nread = SDL_ReadIO(context->io, context->buf.ptr, context->buf.len);
-  context->nread += nread;
-  return str8(context->buf.ptr, nread);
+static Str8 ztracing_file_sdl3_read(void *self_) {
+  ZtracingFileSDL3 *self = self_;
+
+  usize nread = SDL_ReadIO(self->io, self->buf.ptr, self->buf.len);
+  return str8(self->buf.ptr, nread);
+}
+
+static void ztracing_file_sdl3_close(void *self_) {
+  ZtracingFileSDL3 *self = self_;
+  SDL_CloseIO(self->io);
+  memory_free(self, sizeof(ZtracingFileSDL3) + self->buf.len);
+}
+
+static ZtracingFile *ztracing_file_sdl3_open(SDL_IOStream *io, usize buf_len) {
+  ZtracingFileSDL3 *file =
+      memory_alloc_no_zero(sizeof(ZtracingFileSDL3) + buf_len);
+  *file = (ZtracingFileSDL3){
+      .file =
+          {
+              .read = ztracing_file_sdl3_read,
+              .close = ztracing_file_sdl3_close,
+          },
+      .io = io,
+      .buf = str8((u8 *)(file + 1), buf_len),
+  };
+  return (ZtracingFile *)file;
 }
 
 static void parse_json(const char *path) {
   SDL_IOStream *input = SDL_IOFromFile(path, "r");
   ASSERTF(input, "%s", SDL_GetError());
 
-  Scratch scratch = scratch_begin(0, 0);
-  Str8 buf = arena_push_str8(scratch.arena, 1024 * 1024);
-  GetInputContext context = {
-      .io = input,
-      .buf = buf,
-  };
-  JsonParser parser = json_parser(get_input, &context);
-  u64 before = SDL_GetPerformanceCounter();
-  json_trace_profile_parse(scratch.arena, &parser);
-  u64 after = SDL_GetPerformanceCounter();
-
-  f64 mb = (f64)context.nread / 1024.0 / 1024.0;
-  f64 secs = (f64)(after - before) / (f64)SDL_GetPerformanceFrequency();
-  INFO(
-      "Loaded %.1f MiB over %.1f seconds, %.1f MiB / s, allocated memory: %.1f "
-      "Mib.",
-      mb, secs, mb / secs, (f64)memory_get_allocated_bytes() / 1024.0 / 1024.0);
-
-  scratch_end(scratch);
-
-  exit(0);
+  usize buf_len = 1024 * 1024;
+  ZtracingFile *file = ztracing_file_sdl3_open(input, buf_len);
+  ztracing_load_file(file);
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
@@ -186,7 +177,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
   ui_set_viewport(vec2_zero(), get_screen_size());
   ui_on_mouse_move(get_global_window_relative_mouse_pos());
-  do_frame();
+  ztracing_update();
 
   if (!window_shown) {
     SDL_ShowWindow(window);
