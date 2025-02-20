@@ -3,7 +3,7 @@
 #include "SDL3/SDL_log.h"
 #include "src/log.h"
 
-static SDL_LogPriority kLogLevelToPriority[kLogLevelCount] = {
+static SDL_LogPriority kLogLevelToPriority[LOG_LEVEL_COUNT] = {
     SDL_LOG_PRIORITY_DEBUG,
     SDL_LOG_PRIORITY_INFO,
     SDL_LOG_PRIORITY_WARN,

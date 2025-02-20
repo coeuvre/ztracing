@@ -70,8 +70,10 @@ static void parse_json(const char *path) {
 
   f64 mb = (f64)context.nread / 1024.0 / 1024.0;
   f64 secs = (f64)(after - before) / (f64)SDL_GetPerformanceFrequency();
-  INFO("Loaded %.1f MiB, %.1f MiB / s, allocated memory: %.1f Mib.", mb,
-       mb / secs, (f64)memory_get_allocated_bytes() / 1024.0 / 1024.0);
+  INFO(
+      "Loaded %.1f MiB over %.1f seconds, %.1f MiB / s, allocated memory: %.1f "
+      "Mib.",
+      mb, secs, mb / secs, (f64)memory_get_allocated_bytes() / 1024.0 / 1024.0);
 
   scratch_end(scratch);
 

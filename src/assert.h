@@ -12,20 +12,20 @@
 #error Unknown trap intrinsic for this compiler.
 #endif
 
-#define ASSERT(x)       \
-  do {                  \
-    if (!(x)) {         \
-      ERROR("%s", #x);  \
-      break_debugger(); \
-    }                   \
+#define ASSERT(x)                                 \
+  do {                                            \
+    if (!(x)) {                                   \
+      ERROR("%s:%d: %s", __FILE__, __LINE__, #x); \
+      break_debugger();                           \
+    }                                             \
   } while (0)
 
-#define ASSERTF(x, fmt, ...)     \
-  do {                           \
-    if (!(x)) {                  \
-      ERROR(fmt, ##__VA_ARGS__); \
-      break_debugger();          \
-    }                            \
+#define ASSERTF(x, fmt, ...)                                  \
+  do {                                                        \
+    if (!(x)) {                                               \
+      ERROR("%s:%d:" fmt, __FILE__, __LINE__, ##__VA_ARGS__); \
+      break_debugger();                                       \
+    }                                                         \
   } while (0)
 
 #if BUILD_DEBUG
@@ -35,7 +35,12 @@
 #define DEBUG_ASSERT(x)
 #define DEBUG_ASSERTF(x, fmt, ...)
 #endif
-#define UNREACHABLE ASSERT(!"Unreachable")
 #define NOT_IMPLEMENTED ASSERT(!"Not Implemented")
+
+#if COMPILER_GCC || COMPILER_CLANG
+#define UNREACHABLE __builtin_unreachable()
+#else
+#define UNREACHABLE ASSERT(!"Unreachable")
+#endif
 
 #endif  // ZTRACING_SRC_ASSERT_H_
