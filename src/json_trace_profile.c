@@ -12,8 +12,8 @@ static bool json_trace_profile__parse_array_format(JsonTraceProfile *self,
                                                    JsonParser *parser,
                                                    Arena scratch) {
   bool eof = false;
-  bool on_going = true;
-  while (on_going) {
+  bool running = true;
+  while (running) {
     Arena scratch_ = scratch;
     JsonValue *value = json_parser_parse_value(parser, &scratch_);
     switch (value->type) {
@@ -27,12 +27,12 @@ static bool json_trace_profile__parse_array_format(JsonTraceProfile *self,
           } break;
 
           case JSON_TOKEN_CLOSE_BRACKET: {
-            on_going = false;
+            running = false;
           } break;
 
           case JSON_TOKEN_ERROR: {
             self->error = arena_dup_str8(arena, token.value);
-            on_going = false;
+            running = false;
             eof = true;
           } break;
 
@@ -40,21 +40,24 @@ static bool json_trace_profile__parse_array_format(JsonTraceProfile *self,
             self->error =
                 arena_push_str8f(arena, "expecting ',' or ']', got '%.*s'",
                                  (int)token.value.len, token.value.ptr);
+            running = false;
+            eof = true;
           } break;
         }
       } break;
 
       case JSON_VALUE_ERROR: {
         self->error = arena_dup_str8(arena, value->value);
-        on_going = false;
+        running = false;
         eof = true;
       } break;
 
       default: {
         self->error =
-            arena_push_str8f(arena, "expecting 'object', but got '%s'",
-                             json_value_type_string(value->type));
-        on_going = false;
+            arena_push_str8f(arena, "expecting 'object', but got '%s': %.*s",
+                             json_value_type_string(value->type),
+                             (int)value->value.len, value->value.ptr);
+        running = false;
         eof = true;
       } break;
     }
@@ -81,6 +84,7 @@ static bool json_trace_profile__parse_array_format_expecting_open_bracket(
     default: {
       self->error = arena_push_str8f(arena, "expecting '[', got '%.*s'",
                                      (int)token.value.len, token.value.ptr);
+      eof = true;
     } break;
   }
 
@@ -94,16 +98,16 @@ static bool json_trace_profile__skip_object_value(JsonTraceProfile *self,
                                                   JsonParser *parser,
                                                   Arena scratch) {
   bool eof = false;
-  bool on_going = true;
+  bool running = true;
   u32 open = 0;
 
-  while (on_going) {
+  while (running) {
     Arena scratch_ = scratch;
     JsonToken token = json_parser_parse_token(parser, &scratch_);
     switch (token.type) {
       case JSON_TOKEN_COMMA: {
         if (open == 0) {
-          on_going = false;
+          running = false;
         }
       } break;
 
@@ -118,13 +122,13 @@ static bool json_trace_profile__skip_object_value(JsonTraceProfile *self,
       } break;
 
       case JSON_TOKEN_EOF: {
-        on_going = false;
+        running = false;
         eof = true;
       } break;
 
       case JSON_TOKEN_ERROR: {
         self->error = arena_dup_str8(arena, token.value);
-        on_going = false;
+        running = false;
         eof = true;
       } break;
 
@@ -139,8 +143,8 @@ static void json_trace_profile__parse_object_format(JsonTraceProfile *self,
                                                     Arena *arena,
                                                     JsonParser *parser,
                                                     Arena scratch) {
-  bool on_going = true;
-  while (on_going) {
+  bool running = true;
+  while (running) {
     Arena scratch_ = scratch;
     JsonToken token = json_parser_parse_token(parser, &scratch_);
     switch (token.type) {
@@ -149,42 +153,42 @@ static void json_trace_profile__parse_object_format(JsonTraceProfile *self,
           JsonToken token = json_parser_parse_token(parser, &scratch_);
           switch (token.type) {
             case JSON_TOKEN_COLON: {
-              on_going =
+              running =
                   !json_trace_profile__parse_array_format_expecting_open_bracket(
                       self, arena, parser, scratch);
             } break;
 
             case JSON_TOKEN_ERROR: {
               self->error = arena_dup_str8(arena, token.value);
-              on_going = false;
+              running = false;
             } break;
             default: {
               self->error =
                   arena_push_str8f(arena, "expecting ':', but got '%.*s'",
                                    (int)token.value.len, token.value.ptr);
-              on_going = false;
+              running = false;
             } break;
           }
         } else {
-          on_going = !json_trace_profile__skip_object_value(self, arena, parser,
-                                                            scratch);
+          running = !json_trace_profile__skip_object_value(self, arena, parser,
+                                                           scratch);
         }
       } break;
 
       case JSON_TOKEN_CLOSE_BRACE: {
-        on_going = false;
+        running = false;
       } break;
 
       case JSON_TOKEN_ERROR: {
         self->error = arena_dup_str8(arena, token.value);
-        on_going = false;
+        running = false;
       } break;
 
       default: {
         self->error =
             arena_push_str8f(arena, "expecting 'string' or '}', got '%.*s'",
                              (int)token.value.len, token.value.ptr);
-        on_going = false;
+        running = false;
       } break;
     }
   }

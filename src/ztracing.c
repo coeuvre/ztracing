@@ -17,15 +17,20 @@ typedef struct ZtracingFileLoader {
   Arena arena;
   ZtracingFile *file;
   PlatformThread *thread;
+
+  Arena *profile_arena;
+  volatile JsonTraceProfile *profile;
 } ZtracingFileLoader;
 
-static ZtracingFileLoader *ztracing_file_loader_alloc(ZtracingFile *file) {
+static ZtracingFileLoader *ztracing_file_loader_alloc(ZtracingFile *file,
+                                                      Arena *profile_arena) {
   Arena arena_ = {0};
   ZtracingFileLoader *state =
       arena_push_struct_no_zero(&arena_, ZtracingFileLoader);
   *state = (ZtracingFileLoader){
       .arena = arena_,
       .file = file,
+      .profile_arena = profile_arena,
   };
   return state;
 }
@@ -41,22 +46,19 @@ static int ztracing_file_loader__thread(void *self_) {
   ZtracingFileLoader *self = self_;
   ZtracingFile *file = self->file;
 
-  Scratch scratch = scratch_begin(0, 0);
-
   JsonParser parser = json_parser(ztracing_file_get_input, file);
   u64 before = platform_get_perf_counter();
-  json_trace_profile_parse(scratch.arena, &parser);
+  JsonTraceProfile *profile =
+      json_trace_profile_parse(self->profile_arena, &parser);
   u64 after = platform_get_perf_counter();
 
   f64 mb = (f64)file->nread / 1024.0 / 1024.0;
   f64 secs = (f64)(after - before) / (f64)platform_get_perf_freq();
   INFO("Loaded %.1f MiB over %.1f seconds, %.1f MiB / s", mb, secs, mb / secs);
 
-  scratch_end(scratch);
-
-  file->close(self->file);
-
   scratch_free();
+
+  self->profile = profile;
 
   return 0;
 }
@@ -66,10 +68,22 @@ static void ztracing_file_loader_start(ZtracingFileLoader *self) {
       platform_thread_start(ztracing_file_loader__thread, "FileLoader", self);
 }
 
+static bool ztracing_file_loader_is_done(ZtracingFileLoader *self) {
+  return self->profile;
+}
+
+static void ztracing_file_loader_free(ZtracingFileLoader *self) {
+  platform_thread_wait(self->thread);
+  self->file->close(self->file);
+  arena_free(&self->arena);
+}
+
 typedef struct ZtracingState {
   f32 dt;
   f32 frame_time;
   ZtracingFileLoader *file_loader;
+  Arena profile_arena;
+  JsonTraceProfile *profile;
 } ZtracingState;
 
 static UITextStyleO text_style_default(void) {
@@ -164,14 +178,26 @@ static void loading_screen(ZtracingState *state) {
       .style = text_style_default(),
   });
   ui_center_end();
+
+  if (ztracing_file_loader_is_done(loader)) {
+    state->profile = (JsonTraceProfile *)loader->profile;
+    state->file_loader = 0;
+    ztracing_file_loader_free(loader);
+  }
 }
 
-static void main_screen(ZtracingState *state) {
-  if (state->file_loader) {
-    loading_screen(state);
-  } else {
-    welcome_screen();
+static void profile_screen(ZtracingState *state) {
+  JsonTraceProfile *profile = state->profile;
+  if (!str8_is_empty(profile->error)) {
+    ui_center_begin(&(UICenterProps){0});
+    ui_text(&(UITextProps){
+        .text = profile->error,
+        .style = text_style_default(),
+    });
+    ui_center_end();
+    return;
   }
+
   // UIListBuilder builder;
   // ui_list_view_begin(&(UIListViewProps){
   //     .item_extent = 20,
@@ -203,6 +229,16 @@ static void main_screen(ZtracingState *state) {
   //   ui_row_end();
   // }
   // ui_list_view_end();
+}
+
+static void main_screen(ZtracingState *state) {
+  if (state->file_loader) {
+    loading_screen(state);
+  } else if (state->profile) {
+    profile_screen(state);
+  } else {
+    welcome_screen();
+  }
 }
 
 static void build_ui(ZtracingState *state) {
@@ -240,7 +276,9 @@ void ztracing_load_file(ZtracingFile *file) {
     return;
   }
 
-  state->file_loader = ztracing_file_loader_alloc(file);
+  arena_clear(&state->profile_arena);
+  state->profile = 0;
+  state->file_loader = ztracing_file_loader_alloc(file, &state->profile_arena);
   ztracing_file_loader_start(state->file_loader);
 }
 

@@ -1,5 +1,7 @@
 #include "src/json.h"
 
+#include <stdbool.h>
+
 #include "src/assert.h"
 #include "src/list.h"
 #include "src/memory.h"
@@ -201,19 +203,19 @@ JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
 
     case '"': {
       u8 prev[2] = {0};
-      bool done = false;
+      bool running = true;
       bool found_close_quote = false;
 
       Str8 buf = arena_push_str8_no_zero(arena, 1024);
       usize cursor = 0;
 
-      while (!done) {
+      while (running) {
         u8 val = json_parser__take_input_u8(self);
         if (val == '"' && (prev[1] != '\\' || prev[0] == '\\')) {
           found_close_quote = true;
-          done = true;
+          running = false;
         } else if (val == 0) {
-          done = true;
+          running = false;
         } else {
           json_parser__append(arena, &buf, &cursor, val);
         }
@@ -246,7 +248,7 @@ JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
       usize cursor = 0;
       json_parser__append(arena, &buf, &cursor, val);
 
-      bool done = false;
+      bool running = true;
       if (val == '-') {
         val = json_parser__take_input_u8(self);
         if (val >= '0' && val <= '9') {
@@ -258,15 +260,15 @@ JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
           token.value = arena_push_str8f(
               arena, "Invalid number '%.*s', expecting digits but got EOF",
               (int)buf.len, buf.ptr);
-          done = true;
+          running = false;
         }
       }
 
-      if (!done && val != '0') {
+      if (running && val != '0') {
         json_parser__parse_digits(self, arena, &buf, &cursor);
       }
 
-      if (!done) {
+      if (running) {
         val = json_parser__take_input_u8(self);
         if (val == '.') {
           json_parser__append(arena, &buf, &cursor, val);
@@ -280,7 +282,7 @@ JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
                 "Invalid number '%.*s', expecting digits after '.' but "
                 "got '%c'",
                 (int)buf.len, buf.ptr, val);
-            done = true;
+            running = false;
           }
         } else {
           json_parser__return_input(self, val);
@@ -288,11 +290,11 @@ JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
           token.type = JSON_TOKEN_NUMBER;
           json_parser__shrink(arena, &buf, cursor);
           token.value = buf;
-          done = true;
+          running = false;
         }
       }
 
-      if (!done) {
+      if (running) {
         val = json_parser__take_input_u8(self);
         if (val == 'e' || val == 'E') {
           json_parser__append(arena, &buf, &cursor, val);
@@ -306,7 +308,7 @@ JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
             token.type = JSON_TOKEN_NUMBER;
             json_parser__shrink(arena, &buf, cursor);
             token.value = buf;
-            done = true;
+            running = false;
           } else {
             json_parser__return_input(self, val);
 
@@ -316,18 +318,18 @@ JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
                 "Invalid number '%.*s', expecting sign or digits after "
                 "'E' but got '%c'",
                 (int)buf.len, buf.ptr, val);
-            done = true;
+            running = false;
           }
         } else {
           json_parser__return_input(self, val);
           token.type = JSON_TOKEN_NUMBER;
           json_parser__shrink(arena, &buf, cursor);
           token.value = buf;
-          done = true;
+          running = false;
         }
       }
 
-      ASSERT(done);
+      DEBUG_ASSERT(!running);
     } break;
 
     // EOF
@@ -347,8 +349,8 @@ JsonToken json_parser_parse_token(JsonParser *self, Arena *arena) {
 static void json_parser__parse_object(JsonParser *self, Arena *arena,
                                       JsonValue *value) {
   bool has_value = false;
-  bool done = false;
-  while (!done) {
+  bool running = true;
+  while (running) {
     JsonToken token = json_parser_parse_token(self, arena);
     switch (token.type) {
       case JSON_TOKEN_STRING_LITERAL: {
@@ -363,14 +365,14 @@ static void json_parser__parse_object(JsonParser *self, Arena *arena,
               DLL_APPEND(value->first, value->last, child, prev, next);
             } else {
               *value = *child;
-              done = true;
+              running = false;
             }
           } break;
 
           case JSON_TOKEN_ERROR: {
             value->type = JSON_VALUE_ERROR;
             value->value = token.value;
-            done = true;
+            running = false;
           } break;
 
           default: {
@@ -378,7 +380,7 @@ static void json_parser__parse_object(JsonParser *self, Arena *arena,
             value->value =
                 arena_push_str8f(arena, "expecting ':', but got %.*s",
                                  (int)token.value.len, token.value.ptr);
-            done = true;
+            running = false;
           } break;
         }
       } break;
@@ -387,27 +389,27 @@ static void json_parser__parse_object(JsonParser *self, Arena *arena,
         if (!has_value) {
           value->type = JSON_VALUE_ERROR;
           value->value =
-              arena_push_str8f(arena, "expecting string or '}', but got ','");
-          done = true;
+              arena_push_str8f(arena, "expecting 'string' or '}', but got ','");
+          running = false;
         }
       } break;
 
       case JSON_TOKEN_CLOSE_BRACE: {
         value->type = JSON_VALUE_OBJECT;
-        done = true;
+        running = false;
       } break;
 
       case JSON_TOKEN_ERROR: {
         value->type = JSON_VALUE_ERROR;
         value->value = token.value;
-        done = true;
+        running = false;
       } break;
 
       default: {
         value->type = JSON_VALUE_ERROR;
         value->value = arena_push_str8f(arena, "Unexpected token '%.*s'",
                                         (int)token.value.len, token.value.ptr);
-        done = true;
+        running = false;
       } break;
     }
   }
@@ -415,8 +417,8 @@ static void json_parser__parse_object(JsonParser *self, Arena *arena,
 
 static void json_parser__parse_array(JsonParser *self, Arena *arena,
                                      JsonValue *value) {
-  bool done = false;
-  while (!done) {
+  bool running = true;
+  while (running) {
     JsonValue *child = json_parser_parse_value(self, arena);
     if (child->type != JSON_VALUE_ERROR) {
       DLL_APPEND(value->first, value->last, child, prev, next);
@@ -428,13 +430,13 @@ static void json_parser__parse_array(JsonParser *self, Arena *arena,
 
         case JSON_TOKEN_CLOSE_BRACKET: {
           value->type = JSON_VALUE_ARRAY;
-          done = true;
+          running = false;
         } break;
 
         case JSON_TOKEN_ERROR: {
           value->type = JSON_VALUE_ERROR;
           value->value = token.value;
-          done = true;
+          running = false;
         } break;
 
         default: {
@@ -442,12 +444,12 @@ static void json_parser__parse_array(JsonParser *self, Arena *arena,
           value->value =
               arena_push_str8f(arena, "expecting token ',' or '], but got %.*s",
                                (int)token.value.len, token.value.ptr);
-          done = true;
+          running = false;
         } break;
       }
     } else {
       *value = *child;
-      done = true;
+      running = false;
     }
   }
 }
