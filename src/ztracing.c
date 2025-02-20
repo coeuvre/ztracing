@@ -50,10 +50,7 @@ static int ztracing_file_loader__thread(void *self_) {
 
   f64 mb = (f64)file->nread / 1024.0 / 1024.0;
   f64 secs = (f64)(after - before) / (f64)platform_get_perf_freq();
-  INFO(
-      "Loaded %.1f MiB over %.1f seconds, %.1f MiB / s, allocated memory: %.1f "
-      "Mib.",
-      mb, secs, mb / secs, (f64)memory_get_allocated_bytes() / 1024.0 / 1024.0);
+  INFO("Loaded %.1f MiB over %.1f seconds, %.1f MiB / s", mb, secs, mb / secs);
 
   scratch_end(scratch);
 
@@ -119,7 +116,7 @@ static void global_menu_bar(ZtracingState *state) {
     ui_text(&(UITextProps){
         .text = ui_push_str8f(
             "%.0f %.1fMB %.1fms", 1.0f / state->dt,
-            (f32)((f64)memory_get_allocated_bytes() / 1024.0 / 1024.0),
+            (f32)((f64)platform_get_allocated_bytes() / 1024.0 / 1024.0),
             state->frame_time * 1000.0f),
         .style = text_style_default(),
     });

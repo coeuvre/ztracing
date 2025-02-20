@@ -5,6 +5,7 @@
 #include "src/draw_sdl3.h"
 #include "src/math.h"
 #include "src/memory.h"
+#include "src/platform_sdl3.h"
 #include "src/string.h"
 #include "src/types.h"
 #include "src/ui.h"
@@ -73,6 +74,8 @@ static void parse_json(const char *path) {
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   (void)appstate, (void)argc, (void)argv;
+
+  platform_sdl3_init();
 
   if (argc > 1) {
     parse_json(argv[1]);

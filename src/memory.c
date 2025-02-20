@@ -23,8 +23,13 @@ static inline usize usize_align_pow2(usize addr, usize align) {
   return result;
 }
 
-// TODO: thread-safe
-static usize g_allocated_bytes;
+static MemoryAllocFunction *g_alloc;
+static MemoryFreeFunction *g_free;
+
+void memory_set_callback(MemoryAllocFunction *alloc, MemoryFreeFunction *free) {
+  g_alloc = alloc;
+  g_free = free;
+}
 
 void *memory_alloc(usize size) {
   void *result = memory_alloc_no_zero(size);
@@ -34,8 +39,12 @@ void *memory_alloc(usize size) {
 
 void *memory_alloc_no_zero(usize size) {
   usize total_size = size + sizeof(usize);
-  g_allocated_bytes += total_size;
-  usize *result = malloc(total_size);
+  usize *result;
+  if (g_alloc) {
+    result = g_alloc(total_size);
+  } else {
+    result = malloc(total_size);
+  }
   ASSERT(result);
   *result = size;
   return result + 1;
@@ -43,16 +52,17 @@ void *memory_alloc_no_zero(usize size) {
 
 void memory_free(void *ptr, usize size) {
   usize total_size = size + sizeof(usize);
-  g_allocated_bytes -= total_size;
 
   usize *result = ((usize *)ptr) - 1;
   ASSERTF(*result == size,
           "free size doesn't match allocation size: frees %d, but allocated %d",
           (int)*result, size);
-  free(result);
+  if (g_free) {
+    g_free(result, total_size);
+  } else {
+    free(result);
+  }
 }
-
-usize memory_get_allocated_bytes(void) { return g_allocated_bytes; }
 
 // Allocate a memory block which is at least `size` bytes large.
 static MemoryBlock *memory_block_alloc(usize size) {

@@ -4,8 +4,33 @@
 #include <SDL3/SDL_thread.h>
 
 #include "src/assert.h"
+#include "src/memory.h"
 #include "src/platform.h"
 #include "src/types.h"
+
+static PlatformMutex *g_allocated_bytes_mutex;
+static usize g_allocated_bytes;
+
+static void *platform_memory_alloc(usize size) {
+  platform_mutex_lock(g_allocated_bytes_mutex);
+  g_allocated_bytes += size;
+  platform_mutex_unlock(g_allocated_bytes_mutex);
+  return SDL_malloc(size);
+}
+
+static void platform_memory_free(void *ptr, usize size) {
+  platform_mutex_lock(g_allocated_bytes_mutex);
+  g_allocated_bytes -= size;
+  platform_mutex_unlock(g_allocated_bytes_mutex);
+  SDL_free(ptr);
+}
+
+void platform_sdl3_init(void) {
+  g_allocated_bytes_mutex = platform_mutex_alloc();
+  memory_set_callback(platform_memory_alloc, platform_memory_free);
+}
+
+usize platform_get_allocated_bytes(void) { return g_allocated_bytes; }
 
 u64 platform_get_perf_counter(void) {
   u64 result = SDL_GetPerformanceCounter();

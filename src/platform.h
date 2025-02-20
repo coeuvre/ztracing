@@ -3,6 +3,8 @@
 
 #include "src/types.h"
 
+usize platform_get_allocated_bytes(void);
+
 u64 platform_get_perf_counter(void);
 u64 platform_get_perf_freq(void);
 
