@@ -1,7 +1,4 @@
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_error.h>
-#include <SDL3/SDL_mutex.h>
-#include <SDL3/SDL_thread.h>
 
 #include "src/assert.h"
 #include "src/memory.h"

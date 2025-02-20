@@ -191,7 +191,8 @@ static void profile_screen(ZtracingState *state) {
   if (!str8_is_empty(profile->error)) {
     ui_center_begin(&(UICenterProps){0});
     ui_text(&(UITextProps){
-        .text = profile->error,
+        .text = ui_push_str8f("error: %.*s", (int)profile->error.len,
+                              profile->error.ptr),
         .style = text_style_default(),
     });
     ui_center_end();

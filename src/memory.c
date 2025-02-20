@@ -90,6 +90,8 @@ static inline MemoryBlock *arena_get_memory_block(Arena *arena) {
 void arena_free(Arena *arena) {
   MemoryBlock *block = arena_get_memory_block(arena);
 
+  *arena = (Arena){0};
+
   for (MemoryBlock *tail = block ? block->next : 0; tail;) {
     MemoryBlock *next = tail->next;
     memory_block_free(tail);
@@ -101,8 +103,6 @@ void arena_free(Arena *arena) {
     memory_block_free(block);
     block = prev;
   }
-
-  *arena = (Arena){0};
 }
 
 void arena_clear(Arena *arena) {
