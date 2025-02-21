@@ -2355,6 +2355,7 @@ void ui_mouse_region_begin(const UIMouseRegionProps *props) {
 typedef struct UIGestureDetectorState {
   u32 down_button;
   Vec2 down_local_position;
+  Vec2 last_drag_local_position;
   bool dragging;
 } UIGestureDetectorState;
 
@@ -2407,10 +2408,11 @@ void ui_gesture_detector_begin(const UIGestureDetectorProps *props) {
       } else {
         drag_update = ui_gesture_detail_some((UIGestureDetail){
             .local_position = move.value.local_position,
-            .delta =
-                vec2_sub(move.value.local_position, state->down_local_position),
+            .delta = vec2_sub(move.value.local_position,
+                              state->last_drag_local_position),
         });
       }
+      state->last_drag_local_position = move.value.local_position;
     }
   }
 

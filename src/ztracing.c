@@ -378,12 +378,28 @@ static void profile_screen(ZtracingState *state) {
     return;
   }
 
+  UIGestureDetailO drag_update;
+  ui_gesture_detector_begin(&(UIGestureDetectorProps){
+      .behaviour = UI_HIT_TEST_BEHAVIOUR_OPAQUE,
+      .drag_update = &drag_update,
+  });
+  if (drag_update.present) {
+    UIWidget *widget = ui_widget_get_current();
+    Vec2 delta = drag_update.value.delta;
+    i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
+    f64 ns_per_point = (f64)duration / (f64)widget->size.x;
+    i64 offset = (i64)(ns_per_point * (f64)delta.x);
+    viewer->begin_time_ns -= offset;
+    viewer->end_time_ns = viewer->begin_time_ns + duration;
+  }
+
   ui_column_begin(&(UIColumnProps){0});
   timeline(&(TimelineProps){
       .min_time_ns = viewer->begin_time_ns,
       .max_time_ns = viewer->end_time_ns,
   });
   ui_column_end();
+  ui_gesture_detector_end();
 
   // UIListBuilder builder;
   // ui_list_view_begin(&(UIListViewProps){
