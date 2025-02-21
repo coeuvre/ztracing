@@ -8,25 +8,12 @@
 typedef struct JsonTraceProfileSample {
 } JsonTraceProfileSample;
 
-typedef struct JsonTraceEvent {
-  Str8 name;
-  Str8 id;
-  Str8 cat;
-  u8 ph;
-  i64 ts;
-  i64 tts;
-  i64 pid;
-  i64 tid;
-  i64 dur;
-  JsonValue *args;
-} JsonTraceEvent;
-
 typedef struct JsonTraceProcess {
 } JsonTraceProcess;
 
 typedef struct JsonTraceProfile {
-  i64 min_time;
-  i64 max_time;
+  i64 min_time_ns;
+  i64 max_time_ns;
   HashTrie processes;
   usize process_size;
   Str8 error;

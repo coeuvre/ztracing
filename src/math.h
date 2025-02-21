@@ -62,6 +62,14 @@ static inline f32 f32_animate(f32 a, f32 b, f32 dt, f32 rate) {
   return result;
 }
 
+static inline f64 f64_abs(f64 a) {
+  return fabs(a);
+}
+
+static inline f64 f64_pow(f64 a, f64 b) {
+  return pow(a, b);
+}
+
 typedef struct Vec2 {
   f32 x;
   f32 y;
@@ -212,19 +220,7 @@ typedef struct Vec4 {
   f32 w;
 } Vec4;
 
-// Premultiplied Color in sRGB space.
-typedef struct ColorU32 {
-  u8 a;
-  u8 r;
-  u8 g;
-  u8 b;
-} ColorU32;
-
-static inline ColorU32 color_u32_zero() {
-  ColorU32 result = {0};
-  return result;
-}
-
+#if 0
 static Vec4 linear_color_from_srgb(ColorU32 color) {
   Vec4 result;
   result.x = f32_pow(color.r / 255.0f, 2.2f);
@@ -268,6 +264,7 @@ static inline ColorU32 color_u32_from_hex(u32 hex) {
       (hex >> 16) & 0xFF, (hex >> 8) & 0xFF, hex & 0xFF, 0xFF);
   return result;
 }
+#endif
 
 typedef enum Axis2 {
   kAxis2X,

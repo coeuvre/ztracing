@@ -1,10 +1,10 @@
 #ifndef ZTRACING_SRC_TYPES_H_
 #define ZTRACING_SRC_TYPES_H_
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <limits.h>
 
 #include "src/config.h"
 
@@ -32,6 +32,9 @@ typedef ptrdiff_t isize;
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
+
+static inline i64 i64_min(i64 a, i64 b) { return MIN(a, b); }
+static inline i64 i64_max(i64 a, i64 b) { return MAX(a, b); }
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
 

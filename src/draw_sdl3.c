@@ -10,6 +10,7 @@
 #include "src/memory.h"
 #include "src/string.h"
 #include "src/types.h"
+#include "src/ui.h"
 
 #define STB_RECT_PACK_IMPLEMENTATION
 #define STBRP_STATIC
@@ -177,12 +178,28 @@ void clear_draw(void) {
 
 void present_draw(void) { SDL_RenderPresent(t_draw_state.renderer); }
 
-void fill_rect(Vec2 min, Vec2 max, ColorU32 color) {
+typedef struct ColorU32 {
+  u8 a;
+  u8 r;
+  u8 g;
+  u8 b;
+} ColorU32;
+
+static inline ColorU32 color_u32_from_ui_color(UIColor color) {
+  ColorU32 result;
+  result.r = f32_round(color.r * 255.0f);
+  result.g = f32_round(color.g * 255.0f);
+  result.b = f32_round(color.b * 255.0f);
+  result.a = f32_round(color.a * 255.0f);
+  return result;
+}
+
+void fill_rect(Vec2 min, Vec2 max, UIColor color) {
   min = vec2_mul(min, get_screen_content_scale());
   max = vec2_mul(max, get_screen_content_scale());
 
-  SDL_SetRenderDrawColor(t_draw_state.renderer, color.r, color.g, color.b,
-                         color.a);
+  ColorU32 c = color_u32_from_ui_color(color);
+  SDL_SetRenderDrawColor(t_draw_state.renderer, c.r, c.g, c.b, c.a);
   SDL_FRect rect;
   rect.x = min.x;
   rect.y = min.y;
@@ -286,12 +303,10 @@ TextMetrics layout_text_str8(Str8 text, f32 height, f32 min_width,
 }
 
 void draw_text_str8(Vec2 pos, Str8 text, f32 height, f32 min_width,
-                    f32 max_width, ColorU32 color) {
+                    f32 max_width, UIColor color) {
   (void)min_width;
 
   Scratch scratch = scratch_begin(0, 0);
-
-  Vec4 colorf = linear_color_from_srgb(color);
 
   f32 content_scale = get_screen_content_scale();
   pos = vec2_mul(pos, content_scale);
@@ -376,9 +391,9 @@ void draw_text_str8(Vec2 pos, Str8 text, f32 height, f32 min_width,
 
         SDL_SetTextureBlendMode(packed_font->texture,
                                 SDL_BLENDMODE_BLEND_PREMULTIPLIED);
-        SDL_SetTextureColorModFloat(packed_font->texture, colorf.x, colorf.y,
-                                    colorf.z);
-        SDL_SetTextureAlphaModFloat(packed_font->texture, colorf.w);
+        SDL_SetTextureColorModFloat(packed_font->texture, color.r, color.g,
+                                    color.b);
+        SDL_SetTextureAlphaModFloat(packed_font->texture, color.a);
         SDL_RenderTexture(t_draw_state.renderer, packed_font->texture,
                           &src_rect, &dst_rect);
       }

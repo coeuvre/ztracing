@@ -74,6 +74,8 @@ struct JsonValue {
   Str8 value;
 };
 
+f64 json_value_as_f64(JsonValue *value);
+
 typedef struct JsonParser {
   u8 tmp;
   Str8 buf;

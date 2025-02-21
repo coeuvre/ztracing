@@ -3,9 +3,62 @@
 #include <stdbool.h>
 
 #include "src/json.h"
+#include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
 #include "src/types.h"
+
+typedef struct JsonTraceEvent {
+  Str8 name;
+  Str8 id;
+  Str8 cat;
+  u8 ph;
+  i64 ts;
+  i64 tts;
+  i64 pid;
+  i64 tid;
+  i64 dur;
+  JsonValue *args;
+} JsonTraceEvent;
+
+static void json_trace_profile__process_trace_event(JsonTraceProfile *self,
+                                                    Arena *arena,
+                                                    JsonValue *value) {
+  JsonTraceEvent trace_event = {0};
+  for (JsonValue *entry = value->first; entry; entry = entry->next) {
+    if (str8_eq(entry->label, STR8_LIT("name"))) {
+      trace_event.name = entry->value;
+    } else if (str8_eq(entry->label, STR8_LIT("ph"))) {
+      if (entry->value.len > 0) {
+        trace_event.ph = entry->value.ptr[0];
+      }
+    } else if (str8_eq(entry->label, STR8_LIT("ts"))) {
+      trace_event.ts = json_value_as_f64(entry);
+    } else if (str8_eq(entry->label, STR8_LIT("tts"))) {
+      trace_event.tts = json_value_as_f64(entry);
+    } else if (str8_eq(entry->label, STR8_LIT("pid"))) {
+      trace_event.pid = json_value_as_f64(entry);
+    } else if (str8_eq(entry->label, STR8_LIT("tid"))) {
+      trace_event.tid = json_value_as_f64(entry);
+    } else if (str8_eq(entry->label, STR8_LIT("dur"))) {
+      trace_event.dur = json_value_as_f64(entry);
+    } else if (str8_eq(entry->label, STR8_LIT("args"))) {
+      trace_event.args = entry;
+    }
+  }
+
+  switch (trace_event.ph) {
+    // Counter event
+    case 'C': {
+      i64 time = trace_event.ts * 1000;
+      self->min_time_ns = i64_min(self->min_time_ns, time);
+      self->max_time_ns = i64_max(self->max_time_ns, time);
+    } break;
+
+    default: {
+    } break;
+  }
+}
 
 static bool json_trace_profile__parse_array_format(JsonTraceProfile *self,
                                                    Arena *arena,
@@ -18,7 +71,7 @@ static bool json_trace_profile__parse_array_format(JsonTraceProfile *self,
     JsonValue *value = json_parser_parse_value(parser, &scratch_);
     switch (value->type) {
       case JSON_VALUE_OBJECT: {
-        // TODO: process trace event
+        json_trace_profile__process_trace_event(self, arena, value);
 
         Arena scratch_ = scratch;
         JsonToken token = json_parser_parse_token(parser, &scratch_);
@@ -196,8 +249,8 @@ static void json_trace_profile__parse_object_format(JsonTraceProfile *self,
 
 JsonTraceProfile *json_trace_profile_parse(Arena *arena, JsonParser *parser) {
   JsonTraceProfile *self = arena_push_struct(arena, JsonTraceProfile);
-  self->min_time = I64_MAX;
-  self->max_time = I64_MIN;
+  self->min_time_ns = I64_MAX;
+  self->max_time_ns = I64_MIN;
 
   Scratch scratch = scratch_begin(&arena, 1);
   Arena scratch_ = *scratch.arena;

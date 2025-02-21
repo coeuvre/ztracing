@@ -253,8 +253,6 @@ void ui_set_rebuild(bool should_rebuild) {
   state->should_rebuild = should_rebuild;
 }
 
-static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message);
-
 typedef struct UIRootProps {
   UIKey key;
 } UIRootProps;
@@ -262,7 +260,6 @@ typedef struct UIRootProps {
 static UIWidgetClass ui_root_class = {
     .name = "Root",
     .props_size = sizeof(UIKey),
-    .callback = &ui_widget_callback_default,
 };
 
 static inline void ui_root_begin(const UIRootProps *props) {
@@ -692,7 +689,7 @@ static bool ui_widget_hit_test_opaque(UIWidget *widget, UIHitTestResult *result,
   return true;
 }
 
-static i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message) {
+i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message) {
   i32 result = 0;
   switch (message->type) {
     case UI_MESSAGE_LAYOUT_BOX: {
@@ -910,7 +907,9 @@ static inline bool can_reuse_widget(UIWidget *widget, UIWidget *last_widget) {
 UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
   ASSERTF(klass->props_size >= sizeof(UIKey),
           "The first field of props must be a UIKey");
-  ASSERTF(klass->callback, "%s doesn't have callback.", klass->name);
+  if (!klass->callback) {
+    klass->callback = ui_widget_callback_default;
+  }
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
 
@@ -1089,7 +1088,7 @@ static i32 ui_limited_box_callback(UIWidget *widget, UIMessage *message) {
 UIWidgetClass ui_limited_box_class = {
     .name = "LimitedBox",
     .props_size = sizeof(UILimitedBoxProps),
-    .callback = &ui_limited_box_callback,
+    .callback = ui_limited_box_callback,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1101,13 +1100,7 @@ static void ui_colored_box_paint(UIWidget *widget,
                                  UIPaintingContext *context, Vec2 offset) {
   Vec2 size = widget->size;
   if (size.x > 0 && size.y > 0) {
-    fill_rect(offset, vec2_add(offset, size),
-              (ColorU32){
-                  (u8)(colored_box->color.a * 255.0f),
-                  (u8)(colored_box->color.r * 255.0f),
-                  (u8)(colored_box->color.g * 255.0f),
-                  (u8)(colored_box->color.b * 255.0f),
-              });
+    fill_rect(offset, vec2_add(offset, size), colored_box->color);
   }
 
   for (UIWidget *child = widget->first; child; child = child->next) {
@@ -1140,7 +1133,7 @@ static i32 ui_colored_box_callback(UIWidget *widget, UIMessage *message) {
 UIWidgetClass ui_colored_box_class = {
     .name = "ColoredBox",
     .props_size = sizeof(UIColoredBoxProps),
-    .callback = &ui_colored_box_callback,
+    .callback = ui_colored_box_callback,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1179,7 +1172,7 @@ static i32 ui_constrained_box_callback(UIWidget *widget, UIMessage *message) {
 UIWidgetClass ui_constrained_box_class = {
     .name = "ConstrainedBox",
     .props_size = sizeof(UIConstrainedBoxProps),
-    .callback = &ui_constrained_box_callback,
+    .callback = ui_constrained_box_callback,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1252,7 +1245,7 @@ static i32 ui_align_callback(UIWidget *widget, UIMessage *message) {
 UIWidgetClass ui_align_class = {
     .name = "Align",
     .props_size = sizeof(UIAlignProps),
-    .callback = &ui_align_callback,
+    .callback = ui_align_callback,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1298,7 +1291,7 @@ static i32 ui_unconstrained_box_callback(UIWidget *widget, UIMessage *message) {
 UIWidgetClass ui_unconstrained_box_class = {
     .name = "UnconstrainedBox",
     .props_size = sizeof(UIUnconstrainedBoxProps),
-    .callback = &ui_unconstrained_box_callback,
+    .callback = ui_unconstrained_box_callback,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1327,7 +1320,7 @@ static i32 ui_center_callback(UIWidget *widget, UIMessage *message) {
 UIWidgetClass ui_center_class = {
     .name = "Center",
     .props_size = sizeof(UICenterProps),
-    .callback = &ui_center_callback,
+    .callback = ui_center_callback,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1410,7 +1403,7 @@ static i32 ui_padding_callback(UIWidget *widget, UIMessage *message) {
 UIWidgetClass ui_padding_class = {
     .name = "Padding",
     .props_size = sizeof(UIPaddingProps),
-    .callback = &ui_padding_callback,
+    .callback = ui_padding_callback,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1420,7 +1413,6 @@ UIWidgetClass ui_padding_class = {
 UIWidgetClass ui_container_class = {
     .name = "Container",
     .props_size = sizeof(UIContainerProps),
-    .callback = &ui_widget_callback_default,
 };
 
 void ui_container_begin(const UIContainerProps *props_) {
@@ -1670,7 +1662,7 @@ UIWidgetClass ui_stack_class = {
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIStackProps),
     .state_size = sizeof(UIStackState),
-    .callback = &ui_stack_callback,
+    .callback = ui_stack_callback,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1680,7 +1672,6 @@ UIWidgetClass ui_stack_class = {
 UIWidgetClass ui_positioned_class = {
     .name = "Positioned",
     .props_size = sizeof(UIPositionedProps),
-    .callback = &ui_widget_callback_default,
 };
 
 void ui_positioned_begin(const UIPositionedProps *props) {
@@ -1703,7 +1694,6 @@ void ui_positioned_begin(const UIPositionedProps *props) {
 UIWidgetClass ui_flexible_class = {
     .name = "Flexible",
     .props_size = sizeof(UIFlexibleProps),
-    .callback = &ui_widget_callback_default,
 };
 
 void ui_flexible_begin(const UIFlexibleProps *props) {
@@ -1723,7 +1713,6 @@ void ui_flexible_begin(const UIFlexibleProps *props) {
 UIWidgetClass ui_expanded_class = {
     .name = "Expanded",
     .props_size = sizeof(UIExpandedProps),
-    .callback = &ui_widget_callback_default,
 };
 
 void ui_expanded_begin(const UIExpandedProps *props) {
@@ -2113,7 +2102,7 @@ UIWidgetClass ui_flex_class = {
     .name = "Flex",
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIFlexProps),
-    .callback = &ui_flex_callback,
+    .callback = ui_flex_callback,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2124,7 +2113,7 @@ UIWidgetClass ui_column_class = {
     .name = "Column",
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIFlexProps),
-    .callback = &ui_flex_callback,
+    .callback = ui_flex_callback,
 };
 
 void ui_column_begin(const UIColumnProps *props) {
@@ -2147,7 +2136,7 @@ UIWidgetClass ui_row_class = {
     .name = "Row",
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIFlexProps),
-    .callback = &ui_flex_callback,
+    .callback = ui_flex_callback,
 };
 
 void ui_row_begin(const UIRowProps *props) {
@@ -2229,7 +2218,7 @@ UIWidgetClass ui_pointer_listener_class = {
     .name = "PointerListener",
     .props_size = sizeof(UIPointerListenerProps),
     .state_size = sizeof(UIPointerListenerState),
-    .callback = &ui_pointer_listener_callback,
+    .callback = ui_pointer_listener_callback,
 };
 
 void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
@@ -2335,7 +2324,7 @@ UIWidgetClass ui_mouse_region_class = {
     .name = "MouseRegion",
     .props_size = sizeof(UIMouseRegionProps),
     .state_size = sizeof(UIMouseRegionState),
-    .callback = &ui_mouse_region_callback,
+    .callback = ui_mouse_region_callback,
 };
 
 void ui_mouse_region_begin(const UIMouseRegionProps *props) {
@@ -2373,7 +2362,6 @@ UIWidgetClass ui_gesture_detector_class = {
     .name = "GestureDetector",
     .props_size = sizeof(UIGestureDetectorProps),
     .state_size = sizeof(UIGestureDetectorState),
-    .callback = &ui_widget_callback_default,
 };
 
 void ui_gesture_detector_begin(const UIGestureDetectorProps *props) {
@@ -2529,12 +2517,7 @@ static i32 ui_text_callback(UIWidget *widget, UIMessage *message) {
       }
       draw_text_str8(message->paint.offset, props->text, state->font_size,
                      state->constraints.min_width, state->constraints.max_width,
-                     (ColorU32){
-                         (u8)(color.a * 255.0f),
-                         (u8)(color.r * 255.0f),
-                         (u8)(color.g * 255.0f),
-                         (u8)(color.b * 255.0f),
-                     });
+                     color);
     } break;
 
     case UI_MESSAGE_HIT_TEST: {
@@ -2554,7 +2537,7 @@ UIWidgetClass ui_text_class = {
     .name = "Text",
     .props_size = sizeof(UITextProps),
     .state_size = sizeof(UITextState),
-    .callback = &ui_text_callback,
+    .callback = ui_text_callback,
 };
 
 void ui_text(const UITextProps *props) {
@@ -2574,7 +2557,6 @@ UIWidgetClass ui_button_class = {
     .name = "Button",
     .props_size = sizeof(UIButtonProps),
     .state_size = sizeof(UIButtonState),
-    .callback = &ui_widget_callback_default,
 };
 
 void ui_button(UIButtonProps *props) {
@@ -2943,7 +2925,7 @@ UIWidgetClass ui_scrollable_class = {
     .name = "Scrollable",
     .props_size = sizeof(UIScrollableProps),
     .state_size = sizeof(UIScrollableState),
-    .callback = &ui_scrollable_callback,
+    .callback = ui_scrollable_callback,
 };
 
 void ui_scrollable_begin(const UIScrollableProps *props) {
@@ -3255,7 +3237,7 @@ UIWidgetClass ui_sliver_fixed_extent_list_class = {
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UISliverFixedExtentListProps),
     .state_size = sizeof(UISliverFixedExtentListState),
-    .callback = &ui_sliver_fixed_extent_list_callback,
+    .callback = ui_sliver_fixed_extent_list_callback,
 };
 
 void ui_sliver_fixed_extent_list_begin(

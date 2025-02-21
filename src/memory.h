@@ -31,6 +31,10 @@ static inline void *memory_copy(void *dst, const void *src, usize size) {
   return memcpy(dst, src, size);
 }
 
+static inline void *memory_move(void *dst, const void *src, usize size) {
+  return memmove(dst, src, size);
+}
+
 typedef struct Arena Arena;
 struct Arena {
   u8 *begin;

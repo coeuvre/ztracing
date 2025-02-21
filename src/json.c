@@ -4,9 +4,73 @@
 
 #include "src/assert.h"
 #include "src/list.h"
+#include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
 #include "src/types.h"
+
+static inline f64 json_value__parse_sign(Str8 buf, usize *cursor) {
+  f64 sign = 1.0;
+  if (*cursor < buf.len) {
+    u8 ch = buf.ptr[*cursor];
+    if (ch == '-') {
+      sign = -1.0;
+      (*cursor)++;
+    } else if (ch == '+') {
+      (*cursor)++;
+    }
+  }
+  return sign;
+}
+
+static f64 json_value__parse_number(Str8 buf, usize *cursor) {
+  f64 result = 0;
+  while (*cursor < buf.len) {
+    u8 val = buf.ptr[*cursor] - '0';
+    if (val < 10) {
+      result = 10.0 * result + (f64)val;
+      (*cursor)++;
+    } else {
+      break;
+    }
+  }
+  return result;
+}
+
+f64 json_value_as_f64(JsonValue *value) {
+  Str8 buf = value->value;
+  if (str8_is_empty(buf)) {
+    return 0;
+  }
+  usize cursor = 0;
+  f64 sign = json_value__parse_sign(buf, &cursor);
+  f64 number = json_value__parse_number(buf, &cursor);
+
+  if (cursor < buf.len && buf.ptr[cursor] == '.') {
+    ++cursor;
+    f64 c = 1.0 / 10.0;
+    while (cursor < buf.len) {
+      u8 val = buf.ptr[cursor] - '0';
+      if (val < 10) {
+        number = number + c * (f64)val;
+        c *= 1.0 / 10.0;
+        cursor++;
+      } else {
+        break;
+      }
+    }
+  }
+
+  if (cursor < buf.len && (buf.ptr[cursor] == 'e' || buf.ptr[cursor] == 'E')) {
+    ++cursor;
+
+    f64 exp_sign = json_value__parse_sign(buf, &cursor);
+    f64 exp = exp_sign * json_value__parse_number(buf, &cursor);
+    number *= f64_pow(10.0, exp);
+  }
+
+  return sign * number;
+}
 
 static inline bool json_parser__is_whitespace(u8 val) {
   return val == ' ' || val == '\t' || val == '\n' || val == '\r';

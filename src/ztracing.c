@@ -2,6 +2,7 @@
 
 #include <stdarg.h>
 
+#include "src/assert.h"
 #include "src/draw.h"
 #include "src/json.h"
 #include "src/json_trace_profile.h"
@@ -17,6 +18,8 @@ typedef struct ZtracingProfileViewer {
   Arena arena;
   Str8 name;
   JsonTraceProfile *profile;
+  i64 begin_time_ns;
+  i64 end_time_ns;
 } ZtracingProfileViewer;
 
 static ZtracingProfileViewer *ztracing_profile_viewer_alloc(void) {
@@ -75,6 +78,11 @@ static int ztracing_file_loader__thread(void *self_) {
 
   scratch_free();
 
+  i64 duration = (viewer->profile->max_time_ns - viewer->profile->min_time_ns);
+  i64 offset = duration * 0.1;
+  viewer->begin_time_ns = viewer->profile->min_time_ns - offset;
+  viewer->end_time_ns = viewer->profile->max_time_ns + offset;
+
   self->viewer = viewer;
 
   return 0;
@@ -105,8 +113,10 @@ typedef struct ZtracingState {
 } ZtracingState;
 
 static UITextStyleO text_style_default(void) {
+#define FONT_SIZE_DEFAULT 13
   return ui_text_style_some((UITextStyle){
       .color = ui_color_some(ui_color(0, 0, 0, 1)),
+      .font_size = f32_some(FONT_SIZE_DEFAULT),
   });
 }
 
@@ -212,6 +222,148 @@ static void loading_screen(ZtracingState *state) {
   }
 }
 
+typedef struct TimelineProps {
+  UIKey key;
+  f32 min_time_ns;
+  f32 max_time_ns;
+} TimelineProps;
+
+static i64 timeline__calc_block_duration(i64 duration, f32 width,
+                                         f32 target_block_width) {
+  f32 num_blocks = f32_floor(width / target_block_width);
+  i64 block_duration = (f32)duration / (f32)num_blocks;
+  i64 base = 1;
+  while (base * 10 < block_duration) {
+    base *= 10;
+  }
+  if (block_duration >= base * 4) {
+    base *= 4;
+  } else if (block_duration >= base * 2) {
+    base *= 2;
+  }
+  block_duration = base;
+  return block_duration;
+}
+
+static Str8 timeline__format_time(Arena *arena, i64 time, i64 duration) {
+  static const char *TIME_UNITS[] = {"ns", "us", "ms", "s"};
+
+  if (time == 0) {
+    return STR8_LIT("0");
+  }
+
+  f64 t = time;
+  usize time_unit_index = 0;
+
+  if (duration > 0) {
+    i64 tmp = duration / 1000;
+    while (tmp > 0 && time_unit_index < ARRAY_COUNT(TIME_UNITS)) {
+      tmp /= 1000;
+      t /= 1000.0;
+      time_unit_index++;
+    }
+  } else {
+    while (f64_abs(t) >= 1000.0 && time_unit_index < ARRAY_COUNT(TIME_UNITS)) {
+      t /= 1000.0;
+      time_unit_index++;
+    }
+  }
+
+  Str8 buf = arena_push_str8f(arena, "%.1lf%s", t, TIME_UNITS[time_unit_index]);
+  u8 *period = buf.ptr + buf.len - 1;
+  while (*period != '.') {
+    period--;
+  }
+  if (*(period + 1) == '0') {
+    memory_move(period, period + 2, buf.ptr + buf.len - period - 1);
+    buf.len -= 2;
+  }
+  return buf;
+}
+
+static void timeline__paint(UIWidget *widget, TimelineProps *props,
+                            UIPaintingContext *context, Vec2 offset) {
+  (void)context;
+
+#define TIMELINE_HEIGHT 20
+
+  i64 begin = props->min_time_ns;
+  i64 end = props->max_time_ns;
+
+  UIColor color = ui_color(0, 0, 0, 1);
+
+  Vec2 size = widget->size;
+  f32 font_size = text_style_default().value.font_size.value;
+
+  i64 duration = end - begin;
+  i64 block_duration =
+      timeline__calc_block_duration(duration, size.x, size.y * 1.5f);
+  i64 large_block_duration = block_duration * 5;
+
+  f32 line_thickness = 1.0f;
+  fill_rect(vec2(offset.x, offset.y + size.y - line_thickness),
+            vec2(offset.x + size.x, offset.y + size.y), color);
+
+  f32 ns_per_point = (f32)((f64)(duration) / (f64)size.x);
+  f32 point_per_ns = 1.0f / ns_per_point;
+  f32 large_block_width = large_block_duration * point_per_ns;
+
+  i64 t = begin / block_duration * block_duration;
+  f32 bottom = offset.y + size.y;
+  while (t <= end) {
+    f32 x = offset.x + (t - begin) * point_per_ns;
+    bool is_large_block = t % large_block_duration == 0;
+    f32 height =
+        is_large_block ? TIMELINE_HEIGHT * 0.4f : TIMELINE_HEIGHT * 0.2f;
+    fill_rect(vec2(x, bottom - height), vec2(x + line_thickness, bottom),
+              color);
+
+    if (is_large_block) {
+      Scratch scratch = scratch_begin(0, 0);
+      draw_text_str8(vec2(x + 4, bottom - 2 - font_size),
+                     timeline__format_time(scratch.arena, t, duration),
+                     font_size, 0, large_block_width - 4, color);
+      scratch_end(scratch);
+    }
+
+    t += block_duration;
+  }
+}
+
+static i32 timeline_callback(UIWidget *widget, UIMessage *message) {
+  ASSERT(!widget->first);
+
+  i32 result = 0;
+  switch (message->type) {
+    case UI_MESSAGE_LAYOUT_BOX: {
+      UIBoxConstraints constraints = message->layout_box.constraints;
+      widget->size = ui_box_constraints_constrain(
+          constraints, vec2(F32_INFINITY, TIMELINE_HEIGHT));
+    } break;
+
+    case UI_MESSAGE_PAINT: {
+      timeline__paint(widget, ui_widget_get_props(widget, TimelineProps),
+                      message->paint.context, message->paint.offset);
+    } break;
+
+    default: {
+      result = ui_widget_callback_default(widget, message);
+    } break;
+  }
+  return result;
+}
+
+static UIWidgetClass timeline_class = {
+    .name = "Timeline",
+    .props_size = sizeof(TimelineProps),
+    .callback = timeline_callback,
+};
+
+static void timeline(const TimelineProps *props) {
+  ui_widget_begin(&timeline_class, props);
+  ui_widget_end(&timeline_class);
+}
+
 static void profile_screen(ZtracingState *state) {
   ZtracingProfileViewer *viewer = state->viewer;
   JsonTraceProfile *profile = viewer->profile;
@@ -225,6 +377,13 @@ static void profile_screen(ZtracingState *state) {
     ui_center_end();
     return;
   }
+
+  ui_column_begin(&(UIColumnProps){0});
+  timeline(&(TimelineProps){
+      .min_time_ns = viewer->begin_time_ns,
+      .max_time_ns = viewer->end_time_ns,
+  });
+  ui_column_end();
 
   // UIListBuilder builder;
   // ui_list_view_begin(&(UIListViewProps){

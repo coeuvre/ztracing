@@ -544,6 +544,7 @@ typedef union UIMessage {
 } UIMessage;
 
 typedef i32(UIWidgetCallback)(UIWidget *widget, UIMessage *message);
+i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message);
 
 #define UI_U64_LIT(v) (v##ULL)
 
