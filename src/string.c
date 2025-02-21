@@ -89,6 +89,10 @@ static UnicodeDecode utf_decode(u8 *ptr, usize len) {
 }
 
 Str32 arena_push_str32_from_str8(Arena *arena, Str8 str) {
+  if (str8_is_empty(str)) {
+    return str32_zero();
+  }
+
   usize cap = str.len;
   u32 *ptr = arena_push_array_no_zero(arena, u32, cap);
   u32 len = 0;

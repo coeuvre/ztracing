@@ -13,25 +13,37 @@
 #include "src/types.h"
 #include "src/ui.h"
 
+typedef struct ZtracingProfileViewer {
+  Arena arena;
+  Str8 name;
+  JsonTraceProfile *profile;
+} ZtracingProfileViewer;
+
+static ZtracingProfileViewer *ztracing_profile_viewer_alloc(void) {
+  Arena arena_ = {0};
+  ZtracingProfileViewer *viewer =
+      arena_push_struct(&arena_, ZtracingProfileViewer);
+  viewer->arena = arena_;
+  return viewer;
+}
+
+static void ztracing_profile_viewer_free(ZtracingProfileViewer *self) {
+  arena_free(&self->arena);
+}
+
 typedef struct ZtracingFileLoader {
   Arena arena;
   ZtracingFile *file;
   PlatformThread *thread;
 
-  Arena *profile_arena;
-  volatile JsonTraceProfile *profile;
+  volatile ZtracingProfileViewer *viewer;
 } ZtracingFileLoader;
 
-static ZtracingFileLoader *ztracing_file_loader_alloc(ZtracingFile *file,
-                                                      Arena *profile_arena) {
+static ZtracingFileLoader *ztracing_file_loader_alloc(ZtracingFile *file) {
   Arena arena_ = {0};
-  ZtracingFileLoader *state =
-      arena_push_struct_no_zero(&arena_, ZtracingFileLoader);
-  *state = (ZtracingFileLoader){
-      .arena = arena_,
-      .file = file,
-      .profile_arena = profile_arena,
-  };
+  ZtracingFileLoader *state = arena_push_struct(&arena_, ZtracingFileLoader);
+  state->arena = arena_;
+  state->file = file;
   return state;
 }
 
@@ -46,19 +58,24 @@ static int ztracing_file_loader__thread(void *self_) {
   ZtracingFileLoader *self = self_;
   ZtracingFile *file = self->file;
 
+  ZtracingProfileViewer *viewer = ztracing_profile_viewer_alloc();
+  viewer->name = arena_dup_str8(&viewer->arena, file->name);
+
   JsonParser parser = json_parser(ztracing_file_get_input, file);
   u64 before = platform_get_perf_counter();
-  JsonTraceProfile *profile =
-      json_trace_profile_parse(self->profile_arena, &parser);
+  viewer->profile = json_trace_profile_parse(&viewer->arena, &parser);
   u64 after = platform_get_perf_counter();
 
-  f64 mb = (f64)file->nread / 1024.0 / 1024.0;
-  f64 secs = (f64)(after - before) / (f64)platform_get_perf_freq();
-  INFO("Loaded %.1f MiB over %.1f seconds, %.1f MiB / s", mb, secs, mb / secs);
+  if (!file->interrupted) {
+    f64 mb = (f64)file->nread / 1024.0 / 1024.0;
+    f64 secs = (f64)(after - before) / (f64)platform_get_perf_freq();
+    INFO("Loaded %.1f MiB over %.1f seconds, %.1f MiB / s", mb, secs,
+         mb / secs);
+  }
 
   scratch_free();
 
-  self->profile = profile;
+  self->viewer = viewer;
 
   return 0;
 }
@@ -69,11 +86,13 @@ static void ztracing_file_loader_start(ZtracingFileLoader *self) {
 }
 
 static bool ztracing_file_loader_is_done(ZtracingFileLoader *self) {
-  return self->profile;
+  return self->viewer;
 }
 
 static void ztracing_file_loader_free(ZtracingFileLoader *self) {
+  self->file->interrupted = true;
   platform_thread_wait(self->thread);
+
   self->file->close(self->file);
   arena_free(&self->arena);
 }
@@ -81,9 +100,8 @@ static void ztracing_file_loader_free(ZtracingFileLoader *self) {
 typedef struct ZtracingState {
   f32 dt;
   f32 frame_time;
-  ZtracingFileLoader *file_loader;
-  Arena profile_arena;
-  JsonTraceProfile *profile;
+  ZtracingFileLoader *loader;
+  ZtracingProfileViewer *viewer;
 } ZtracingState;
 
 static UITextStyleO text_style_default(void) {
@@ -115,18 +133,26 @@ static bool do_button(Str8 text, ButtonType type) {
 }
 
 static void global_menu_bar(ZtracingState *state) {
+  ui_padding_begin(&(UIPaddingProps){
+      .padding = ui_edge_insets_symmetric(6, 4),
+  });
   ui_row_begin(&(UIRowProps){0});
   {
-    if (do_button(STR8_LIT("Load"), BUTTON_PRIMARY)) {
-      INFO("Load");
+    Str8 name = str8_zero();
+    if (state->loader) {
+      name = state->loader->file->name;
+    } else if (state->viewer) {
+      name = state->viewer->name;
     }
+
+    ui_text(&(UITextProps){
+        .text = name,
+        .style = text_style_default(),
+    });
 
     ui_expanded_begin(&(UIExpandedProps){.flex = 1});
     ui_expanded_end();
 
-    ui_padding_begin(&(UIPaddingProps){
-        .padding = ui_edge_insets_symmetric(6, 3),
-    });
     ui_text(&(UITextProps){
         .text = ui_push_str8f(
             "%.0f %.1fMB %.1fms", 1.0f / state->dt,
@@ -134,9 +160,9 @@ static void global_menu_bar(ZtracingState *state) {
             state->frame_time * 1000.0f),
         .style = text_style_default(),
     });
-    ui_padding_end();
   }
   ui_row_end();
+  ui_padding_end();
 }
 
 static void welcome_screen(void) {
@@ -169,7 +195,7 @@ static void welcome_screen(void) {
 }
 
 static void loading_screen(ZtracingState *state) {
-  ZtracingFileLoader *loader = state->file_loader;
+  ZtracingFileLoader *loader = state->loader;
 
   ui_center_begin(&(UICenterProps){0});
   ui_text(&(UITextProps){
@@ -180,14 +206,15 @@ static void loading_screen(ZtracingState *state) {
   ui_center_end();
 
   if (ztracing_file_loader_is_done(loader)) {
-    state->profile = (JsonTraceProfile *)loader->profile;
-    state->file_loader = 0;
+    state->viewer = (ZtracingProfileViewer *)loader->viewer;
+    state->loader = 0;
     ztracing_file_loader_free(loader);
   }
 }
 
 static void profile_screen(ZtracingState *state) {
-  JsonTraceProfile *profile = state->profile;
+  ZtracingProfileViewer *viewer = state->viewer;
+  JsonTraceProfile *profile = viewer->profile;
   if (!str8_is_empty(profile->error)) {
     ui_center_begin(&(UICenterProps){0});
     ui_text(&(UITextProps){
@@ -233,9 +260,9 @@ static void profile_screen(ZtracingState *state) {
 }
 
 static void main_screen(ZtracingState *state) {
-  if (state->file_loader) {
+  if (state->loader) {
     loading_screen(state);
-  } else if (state->profile) {
+  } else if (state->viewer) {
     profile_screen(state);
   } else {
     welcome_screen();
@@ -273,14 +300,18 @@ static ZtracingState g_ztracing_state;
 void ztracing_load_file(ZtracingFile *file) {
   ZtracingState *state = &g_ztracing_state;
 
-  if (state->file_loader) {
-    return;
+  if (state->loader) {
+    ztracing_file_loader_free(state->loader);
+    state->loader = 0;
   }
 
-  arena_clear(&state->profile_arena);
-  state->profile = 0;
-  state->file_loader = ztracing_file_loader_alloc(file, &state->profile_arena);
-  ztracing_file_loader_start(state->file_loader);
+  if (state->viewer) {
+    ztracing_profile_viewer_free(state->viewer);
+    state->viewer = 0;
+  }
+
+  state->loader = ztracing_file_loader_alloc(file);
+  ztracing_file_loader_start(state->loader);
 }
 
 void ztracing_update(void) {
@@ -314,4 +345,13 @@ void ztracing_update(void) {
                           (f64)platform_get_perf_freq());
 
   present_draw();
+}
+
+void ztracing_quit(void) {
+  ZtracingState *state = &g_ztracing_state;
+
+  if (state->loader) {
+    ztracing_file_loader_free(state->loader);
+    state->loader = 0;
+  }
 }

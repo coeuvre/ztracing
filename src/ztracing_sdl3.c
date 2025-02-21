@@ -31,12 +31,17 @@ static Vec2 get_window_size(void) {
 
 typedef struct ZtracingFileSDL3 {
   ZtracingFile file;
+  Arena arena;
   SDL_IOStream *io;
   Str8 buf;
 } ZtracingFileSDL3;
 
 static Str8 ztracing_file_sdl3_read(void *self_) {
   ZtracingFileSDL3 *self = self_;
+
+  if (self->file.interrupted) {
+    return str8_zero();
+  }
 
   usize nread = SDL_ReadIO(self->io, self->buf.ptr, self->buf.len);
   return str8(self->buf.ptr, nread);
@@ -45,30 +50,33 @@ static Str8 ztracing_file_sdl3_read(void *self_) {
 static void ztracing_file_sdl3_close(void *self_) {
   ZtracingFileSDL3 *self = self_;
   SDL_CloseIO(self->io);
-  memory_free(self, sizeof(ZtracingFileSDL3) + self->buf.len);
+  arena_free(&self->arena);
 }
 
-static ZtracingFile *ztracing_file_sdl3_open(SDL_IOStream *io, usize buf_len) {
-  ZtracingFileSDL3 *file =
-      memory_alloc_no_zero(sizeof(ZtracingFileSDL3) + buf_len);
+static ZtracingFile *ztracing_file_sdl3_open(const char *path, usize buf_len) {
+  SDL_IOStream *io = SDL_IOFromFile(path, "r");
+  ASSERTF(io, "%s", SDL_GetError());
+  Arena arena_ = {0};
+  ZtracingFileSDL3 *file = arena_push_struct(&arena_, ZtracingFileSDL3);
+  Str8 name = arena_dup_str8(&arena_, str8_from_cstr(path));
+  Str8 buf = arena_push_str8(&arena_, buf_len);
   *file = (ZtracingFileSDL3){
       .file =
           {
+              .name = name,
               .read = ztracing_file_sdl3_read,
               .close = ztracing_file_sdl3_close,
           },
+      .arena = arena_,
       .io = io,
-      .buf = str8((u8 *)(file + 1), buf_len),
+      .buf = buf,
   };
   return (ZtracingFile *)file;
 }
 
 static void parse_json(const char *path) {
-  SDL_IOStream *input = SDL_IOFromFile(path, "r");
-  ASSERTF(input, "%s", SDL_GetError());
-
   usize buf_len = 1024 * 1024;
-  ZtracingFile *file = ztracing_file_sdl3_open(input, buf_len);
+  ZtracingFile *file = ztracing_file_sdl3_open(path, buf_len);
   ztracing_load_file(file);
 }
 
@@ -192,5 +200,5 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   (void)appstate, (void)result;
-  // ui_quit();
+  ztracing_quit();
 }
