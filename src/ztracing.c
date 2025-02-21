@@ -257,13 +257,14 @@ static Str8 timeline__format_time(Arena *arena, i64 time, i64 duration) {
 
   if (duration > 0) {
     i64 tmp = duration / 1000;
-    while (tmp > 0 && time_unit_index < ARRAY_COUNT(TIME_UNITS)) {
+    while (tmp > 0 && (time_unit_index + 1) < ARRAY_COUNT(TIME_UNITS)) {
       tmp /= 1000;
       t /= 1000.0;
       time_unit_index++;
     }
   } else {
-    while (f64_abs(t) >= 1000.0 && time_unit_index < ARRAY_COUNT(TIME_UNITS)) {
+    while (f64_abs(t) >= 1000.0 &&
+           (time_unit_index + 1) < ARRAY_COUNT(TIME_UNITS)) {
       t /= 1000.0;
       time_unit_index++;
     }
