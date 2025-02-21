@@ -130,7 +130,7 @@ static void global_menu_bar(ZtracingState *state) {
     ui_text(&(UITextProps){
         .text = ui_push_str8f(
             "%.0f %.1fMB %.1fms", 1.0f / state->dt,
-            (f32)((f64)platform_get_allocated_bytes() / 1024.0 / 1024.0),
+            (f32)((f64)platform_memory_get_allocated_bytes() / 1024.0 / 1024.0),
             state->frame_time * 1000.0f),
         .style = text_style_default(),
     });

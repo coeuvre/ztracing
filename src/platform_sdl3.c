@@ -1,33 +1,39 @@
 #include <SDL3/SDL.h>
 
 #include "src/assert.h"
-#include "src/memory.h"
 #include "src/platform.h"
 #include "src/types.h"
 
 static PlatformMutex *g_allocated_bytes_mutex;
 static usize g_allocated_bytes;
 
-static void *platform_memory_alloc(usize size) {
+void *platform_memory_alloc(usize size) {
+  usize total_size = size + sizeof(usize);
+  usize *p = SDL_malloc(total_size);
+  ASSERTF(p, "OOM");
+  *p = size;
   platform_mutex_lock(g_allocated_bytes_mutex);
-  g_allocated_bytes += size;
+  g_allocated_bytes += total_size;
   platform_mutex_unlock(g_allocated_bytes_mutex);
-  return SDL_malloc(size);
+  return p + 1;
 }
 
-static void platform_memory_free(void *ptr, usize size) {
+void platform_memory_free(void *ptr, usize size) {
+  usize total_size = size + sizeof(usize);
+  usize *p = ((usize *)ptr) - 1;
+  ASSERTF(*p == size, "free size (%zu) doesn't match alloc size (%zu)", *p,
+          size);
+  SDL_free(p);
   platform_mutex_lock(g_allocated_bytes_mutex);
-  g_allocated_bytes -= size;
+  g_allocated_bytes -= total_size;
   platform_mutex_unlock(g_allocated_bytes_mutex);
-  SDL_free(ptr);
 }
+
+usize platform_memory_get_allocated_bytes(void) { return g_allocated_bytes; }
 
 void platform_sdl3_init(void) {
   g_allocated_bytes_mutex = platform_mutex_alloc();
-  memory_set_callback(platform_memory_alloc, platform_memory_free);
 }
-
-usize platform_get_allocated_bytes(void) { return g_allocated_bytes; }
 
 u64 platform_get_perf_counter(void) {
   u64 result = SDL_GetPerformanceCounter();

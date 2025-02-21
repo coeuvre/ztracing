@@ -3,6 +3,7 @@
 
 #include <string.h>
 
+#include "src/platform.h"
 #include "src/types.h"
 
 #define KB(n) (((u64)(n)) << 10)
@@ -12,14 +13,19 @@
 
 static inline void memory_zero(void *ptr, usize size) { memset(ptr, 0, size); }
 
-typedef void *(MemoryAllocFunction)(usize size);
-typedef void (MemoryFreeFunction)(void *ptr, usize size);
+static inline void *memory_alloc(usize size) {
+  void *result = platform_memory_alloc(size);
+  memory_zero(result, size);
+  return result;
+}
 
-void memory_set_callback(MemoryAllocFunction *alloc, MemoryFreeFunction *free);
+static inline void *memory_alloc_no_zero(usize size) {
+  return platform_memory_alloc(size);
+}
 
-void *memory_alloc(usize size);
-void *memory_alloc_no_zero(usize size);
-void memory_free(void *ptr, usize size);
+static inline void memory_free(void *ptr, usize size) {
+  return platform_memory_free(ptr, size);
+}
 
 static inline void *memory_copy(void *dst, const void *src, usize size) {
   return memcpy(dst, src, size);

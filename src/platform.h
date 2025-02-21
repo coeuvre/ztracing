@@ -3,7 +3,9 @@
 
 #include "src/types.h"
 
-usize platform_get_allocated_bytes(void);
+void *platform_memory_alloc(usize size);
+void platform_memory_free(void *ptr, usize size);
+usize platform_memory_get_allocated_bytes(void);
 
 u64 platform_get_perf_counter(void);
 u64 platform_get_perf_freq(void);
