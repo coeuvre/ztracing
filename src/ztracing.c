@@ -15,12 +15,34 @@
 #include "src/types.h"
 #include "src/ui.h"
 
+typedef enum ZtracingProfileItemType {
+  ZTRACING_PROFILE_ITEM_HEADER,
+  ZTRACING_PROFILE_ITEM_COUNTER,
+} ZtracingProfileItemType;
+
+typedef struct ZtracingProfileItemHeader {
+  ZtracingProfileItemType type;  // ZTRACING_PROFILE_ITEM_HEADER
+  Str8 name;
+} ZtracingProfileItemHeader;
+
+typedef struct ZtracingProfileItemCounter {
+  ZtracingProfileItemType type;  // ZTRACING_PROFILE_ITEM_COUNTER
+} ZtracingProfileItemCounter;
+
+typedef union ZtracingProfileItem {
+  ZtracingProfileItemType type;
+  ZtracingProfileItemHeader header;
+  ZtracingProfileItemCounter counter;
+} ZtracingProfileItem;
+
 typedef struct ZtracingProfileViewer {
   Arena arena;
   Str8 name;
   Str8 error;
   i64 begin_time_ns;
   i64 end_time_ns;
+  usize item_count;
+  ZtracingProfileItem *items;
 } ZtracingProfileViewer;
 
 static ZtracingProfileViewer *ztracing_profile_viewer_alloc(void) {
@@ -58,6 +80,60 @@ static Str8 ztracing_file_get_input(void *c) {
   return buf;
 }
 
+static void ztracing_file_loader__process_profile(ZtracingProfileViewer *viewer,
+                                                  JsonTraceProfile *profile) {
+  Scratch scratch = scratch_begin(0, 0);
+
+  usize item_count = 0;
+
+  Arena checkpoint = *scratch.arena;
+  HashTrieIter process_iter = hash_trie_iter(scratch.arena, profile->processes);
+  HashTrie *process_slot;
+  while ((process_slot = hash_trie_iter_next(&process_iter))) {
+    JsonTraceProcess *process = process_slot->value;
+    item_count += 2 * process->counter_len;
+  }
+  *scratch.arena = checkpoint;
+
+  ZtracingProfileItem *items =
+      arena_push_array(&viewer->arena, ZtracingProfileItem, item_count);
+
+  usize item_index = 0;
+  process_iter = hash_trie_iter(scratch.arena, profile->processes);
+  while ((process_slot = hash_trie_iter_next(&process_iter))) {
+    JsonTraceProcess *process = process_slot->value;
+
+    checkpoint = *scratch.arena;
+    HashTrieIter counter_iter =
+        hash_trie_iter(scratch.arena, process->counters);
+    HashTrie *counter_slot;
+    while ((counter_slot = hash_trie_iter_next(&counter_iter))) {
+      JsonTraceCounter *counter = counter_slot->value;
+
+      items[item_index++] = (ZtracingProfileItem){
+          .header =
+              {
+                  .type = ZTRACING_PROFILE_ITEM_HEADER,
+                  .name = arena_dup_str8(&viewer->arena, counter->name),
+              },
+      };
+
+      items[item_index++] = (ZtracingProfileItem){
+          .counter =
+              {
+                  .type = ZTRACING_PROFILE_ITEM_COUNTER,
+              },
+      };
+    }
+    *scratch.arena = checkpoint;
+  }
+
+  viewer->item_count = item_count;
+  viewer->items = items;
+
+  scratch_end(scratch);
+}
+
 static int ztracing_file_loader__thread(void *self_) {
   ZtracingFileLoader *self = self_;
   ZtracingFile *file = self->file;
@@ -77,7 +153,9 @@ static int ztracing_file_loader__thread(void *self_) {
     INFO("Loaded %.1f MiB over %.1f seconds, %.1f MiB / s", mb, secs,
          mb / secs);
 
-    if (!str8_is_empty(profile->error)) {
+    if (str8_is_empty(profile->error)) {
+      ztracing_file_loader__process_profile(viewer, profile);
+    } else {
       viewer->error = arena_dup_str8(&viewer->arena, profile->error);
     }
 
@@ -409,40 +487,46 @@ static void profile_screen(ZtracingState *state) {
       .min_time_ns = viewer->begin_time_ns,
       .max_time_ns = viewer->end_time_ns,
   });
+
+  ui_expanded_begin(&(UIExpandedProps){
+      .flex = 1,
+  });
+  UIListBuilder builder;
+  ui_list_view_begin(&(UIListViewProps){
+      .item_extent = TIMELINE_HEIGHT,
+      .item_count = viewer->item_count,
+      .builder = &builder,
+  });
+  for (i32 item_index = builder.first_index; item_index <= builder.last_index;
+       ++item_index) {
+    ZtracingProfileItem *item = viewer->items + item_index;
+    switch (item->type) {
+      case ZTRACING_PROFILE_ITEM_HEADER: {
+        ui_row_begin(&(UIRowProps){0});
+        ui_padding_begin(&(UIPaddingProps){
+            .padding = ui_edge_insets_symmetric(6, 0),
+        });
+        ui_text(&(UITextProps){
+            .text = item->header.name,
+            .style = text_style_default(),
+        });
+        ui_padding_end();
+        ui_row_end();
+      } break;
+
+      case ZTRACING_PROFILE_ITEM_COUNTER: {
+      } break;
+
+      default: {
+        UNREACHABLE;
+      } break;
+    }
+  }
+  ui_list_view_end();
+  ui_expanded_end();
+
   ui_column_end();
   ui_gesture_detector_end();
-
-  // UIListBuilder builder;
-  // ui_list_view_begin(&(UIListViewProps){
-  //     .item_extent = 20,
-  //     .item_count = 512,
-  //     .builder = &builder,
-  // });
-  // for (i32 item_index = builder.first_index; item_index <=
-  // builder.last_index;
-  //      ++item_index) {
-  //   ui_row_begin(&(UIRowProps){0});
-  //   ui_container_begin(&(UIContainerProps){
-  //       .width = f32_some(200.0f),
-  //   });
-  //   ui_text(&(UITextProps){
-  //       .text = ui_push_str8f("Row %u", item_index),
-  //       .style = text_style_default(),
-  //   });
-  //   ui_container_end();
-  //
-  //   ui_expanded_begin(&(UIExpandedProps){
-  //       .flex = 1,
-  //   });
-  //   ui_container_begin(&(UIContainerProps){
-  //       .color = ui_color_some(ui_color(0, (item_index % 255) / 255.0f, 0,
-  //       1)),
-  //   });
-  //   ui_container_end();
-  //   ui_expanded_end();
-  //   ui_row_end();
-  // }
-  // ui_list_view_end();
 }
 
 static void main_screen(ZtracingState *state) {
