@@ -2,8 +2,9 @@
 
 #include <stdbool.h>
 
+#include "src/hash_trie.h"
 #include "src/json.h"
-#include "src/math.h"
+#include "src/list.h"
 #include "src/memory.h"
 #include "src/string.h"
 #include "src/types.h"
@@ -20,6 +21,54 @@ typedef struct JsonTraceEvent {
   i64 dur;
   JsonValue *args;
 } JsonTraceEvent;
+
+static JsonTraceSeries *json_trace_counter__upsert_series(
+    JsonTraceCounter *self, Arena *arena, Str8 name) {
+  HashTrie *slot = hash_trie_upsert(arena, &self->series, name);
+  if (!slot->value) {
+    JsonTraceSeries *new_series = arena_push_struct(arena, JsonTraceSeries);
+    new_series->name = slot->key;
+    slot->value = new_series;
+    self->series_len += 1;
+  }
+  return slot->value;
+}
+
+static void json_trace_counter__add_sample(JsonTraceCounter *self, Arena *arena,
+                                           Str8 name, i64 time, f64 value) {
+  JsonTraceSeries *series =
+      json_trace_counter__upsert_series(self, arena, name);
+  JsonTraceSample *sample = arena_push_struct(arena, JsonTraceSample);
+  sample->time = time;
+  sample->value = value;
+  DLL_APPEND(series->first, series->last, sample, prev, next);
+  series->sample_len++;
+}
+
+static JsonTraceCounter *json_trace_process__upsert_counter(
+    JsonTraceProcess *self, Arena *arena, Str8 name) {
+  HashTrie *slot = hash_trie_upsert(arena, &self->counters, name);
+  if (!slot->value) {
+    JsonTraceCounter *new_counter = arena_push_struct(arena, JsonTraceCounter);
+    new_counter->name = slot->key;
+    slot->value = new_counter;
+    self->counter_len += 1;
+  }
+  return slot->value;
+}
+
+static JsonTraceProcess *json_trace_profile__upsert_process(
+    JsonTraceProfile *self, Arena *arena, i64 pid) {
+  Str8 key = str8((u8 *)&pid, sizeof(pid));
+  HashTrie *slot = hash_trie_upsert(arena, &self->processes, key);
+  if (!slot->value) {
+    JsonTraceProcess *new_process = arena_push_struct(arena, JsonTraceProcess);
+    new_process->pid = pid;
+    slot->value = new_process;
+    self->process_len += 1;
+  }
+  return slot->value;
+}
 
 static void json_trace_profile__process_trace_event(JsonTraceProfile *self,
                                                     Arena *arena,
@@ -51,6 +100,17 @@ static void json_trace_profile__process_trace_event(JsonTraceProfile *self,
     // Counter event
     case 'C': {
       i64 time = trace_event.ts * 1000;
+      JsonTraceProcess *process =
+          json_trace_profile__upsert_process(self, arena, trace_event.pid);
+      JsonTraceCounter *counter =
+          json_trace_process__upsert_counter(process, arena, trace_event.name);
+      if (trace_event.args->type == JSON_VALUE_OBJECT) {
+        for (JsonValue *arg = trace_event.args->first; arg; arg = arg->next) {
+          f64 value = json_value_as_f64(arg);
+          json_trace_counter__add_sample(counter, arena, arg->label, time,
+                                         value);
+        }
+      }
       self->min_time_ns = i64_min(self->min_time_ns, time);
       self->max_time_ns = i64_max(self->max_time_ns, time);
     } break;

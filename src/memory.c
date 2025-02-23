@@ -188,7 +188,7 @@ Scratch scratch_begin(Arena **conflicts, usize len) {
   UNREACHABLE;
 }
 
-void scratch_free(void) {
+void scratch_free_all(void) {
   for (u32 scratch_arena_index = 0;
        scratch_arena_index < ARRAY_COUNT(t_scrach_arenas);
        ++scratch_arena_index) {

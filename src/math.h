@@ -50,6 +50,16 @@ static inline f32 f32_round(f32 value) {
   return result;
 }
 
+static inline f32 f32_floor(f32 value) {
+  f32 result = floorf(value);
+  return result;
+}
+
+static inline f32 f32_ceil(f32 value) {
+  f32 result = ceilf(value);
+  return result;
+}
+
 static inline f32 f32_lerp(f32 a, f32 b, f32 t) {
   f32 result = a * (1.0f - t) + b * t;
   return result;
@@ -62,13 +72,9 @@ static inline f32 f32_animate(f32 a, f32 b, f32 dt, f32 rate) {
   return result;
 }
 
-static inline f64 f64_abs(f64 a) {
-  return fabs(a);
-}
+static inline f64 f64_abs(f64 a) { return fabs(a); }
 
-static inline f64 f64_pow(f64 a, f64 b) {
-  return pow(a, b);
-}
+static inline f64 f64_pow(f64 a, f64 b) { return pow(a, b); }
 
 typedef struct Vec2 {
   f32 x;
@@ -349,16 +355,6 @@ static inline Vec2I vec2i_clamp(Vec2I value, Vec2I min, Vec2I max) {
 
 static inline Vec2 vec2_round(Vec2 value) {
   Vec2 result = {f32_round(value.x), f32_round(value.y)};
-  return result;
-}
-
-static inline f32 f32_floor(f32 value) {
-  f32 result = floorf(value);
-  return result;
-}
-
-static inline f32 f32_ceil(f32 value) {
-  f32 result = ceilf(value);
   return result;
 }
 

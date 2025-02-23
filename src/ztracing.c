@@ -4,6 +4,7 @@
 
 #include "src/assert.h"
 #include "src/draw.h"
+#include "src/hash_trie.h"
 #include "src/json.h"
 #include "src/json_trace_profile.h"
 #include "src/log.h"
@@ -17,7 +18,7 @@
 typedef struct ZtracingProfileViewer {
   Arena arena;
   Str8 name;
-  JsonTraceProfile *profile;
+  Str8 error;
   i64 begin_time_ns;
   i64 end_time_ns;
 } ZtracingProfileViewer;
@@ -64,9 +65,10 @@ static int ztracing_file_loader__thread(void *self_) {
   ZtracingProfileViewer *viewer = ztracing_profile_viewer_alloc();
   viewer->name = arena_dup_str8(&viewer->arena, file->name);
 
+  Scratch scratch = scratch_begin(0, 0);
   JsonParser parser = json_parser(ztracing_file_get_input, file);
   u64 before = platform_get_perf_counter();
-  viewer->profile = json_trace_profile_parse(&viewer->arena, &parser);
+  JsonTraceProfile *profile = json_trace_profile_parse(scratch.arena, &parser);
   u64 after = platform_get_perf_counter();
 
   if (!file->interrupted) {
@@ -74,16 +76,21 @@ static int ztracing_file_loader__thread(void *self_) {
     f64 secs = (f64)(after - before) / (f64)platform_get_perf_freq();
     INFO("Loaded %.1f MiB over %.1f seconds, %.1f MiB / s", mb, secs,
          mb / secs);
+
+    if (!str8_is_empty(profile->error)) {
+      viewer->error = arena_dup_str8(&viewer->arena, profile->error);
+    }
+
+    i64 duration = (profile->max_time_ns - profile->min_time_ns);
+    i64 offset = duration * 0.1;
+    viewer->begin_time_ns = profile->min_time_ns - offset;
+    viewer->end_time_ns = profile->max_time_ns + offset;
+
+    self->viewer = viewer;
   }
 
-  scratch_free();
-
-  i64 duration = (viewer->profile->max_time_ns - viewer->profile->min_time_ns);
-  i64 offset = duration * 0.1;
-  viewer->begin_time_ns = viewer->profile->min_time_ns - offset;
-  viewer->end_time_ns = viewer->profile->max_time_ns + offset;
-
-  self->viewer = viewer;
+  scratch_end(scratch);
+  scratch_free_all();
 
   return 0;
 }
@@ -310,6 +317,10 @@ static void timeline__paint(UIWidget *widget, TimelineProps *props,
   f32 large_block_width = large_block_duration * point_per_ns;
 
   i64 t = begin / block_duration * block_duration;
+  // Truncate away from 0
+  if (t < 0) {
+    t -= block_duration;
+  }
   f32 bottom = offset.y + size.y;
   while (t <= end) {
     f32 x = offset.x + (t - begin) * point_per_ns;
@@ -367,12 +378,11 @@ static void timeline(const TimelineProps *props) {
 
 static void profile_screen(ZtracingState *state) {
   ZtracingProfileViewer *viewer = state->viewer;
-  JsonTraceProfile *profile = viewer->profile;
-  if (!str8_is_empty(profile->error)) {
+  if (!str8_is_empty(viewer->error)) {
     ui_center_begin(&(UICenterProps){0});
     ui_text(&(UITextProps){
-        .text = ui_push_str8f("error: %.*s", (int)profile->error.len,
-                              profile->error.ptr),
+        .text = ui_push_str8f("error: %.*s", (int)viewer->error.len,
+                              viewer->error.ptr),
         .style = text_style_default(),
     });
     ui_center_end();
