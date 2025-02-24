@@ -2992,6 +2992,9 @@ static void ui_scrollable_scrollbar_handle(UIScrollableState *state,
 
 static void ui_scrollable_scrollbar(UIWidget *widget,
                                     UIScrollableState *state) {
+  if (state->max_scroll_offset <= 0) {
+    return;
+  }
   f32 ratio = widget->size.y / state->max_scroll_extent;
   f32 main_axis_extent = state->max_scroll_extent - state->max_scroll_offset;
   f32 scroll_track_width = 10;
