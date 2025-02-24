@@ -76,6 +76,10 @@ static inline f64 f64_abs(f64 a) { return fabs(a); }
 
 static inline f64 f64_pow(f64 a, f64 b) { return pow(a, b); }
 
+static inline f64 f64_max(f64 a, f64 b) { return MAX(a, b); }
+
+static inline f64 f64_min(f64 a, f64 b) { return MIN(a, b); }
+
 typedef struct Vec2 {
   f32 x;
   f32 y;

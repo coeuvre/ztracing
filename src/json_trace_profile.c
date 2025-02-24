@@ -5,6 +5,7 @@
 #include "src/hash_trie.h"
 #include "src/json.h"
 #include "src/list.h"
+#include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
 #include "src/types.h"
@@ -43,6 +44,9 @@ static void json_trace_counter__add_sample(JsonTraceCounter *self, Arena *arena,
   sample->value = value;
   DLL_APPEND(series->first, series->last, sample, prev, next);
   series->sample_len++;
+
+  self->min_value = f64_min(self->min_value, value);
+  self->max_value = f64_max(self->max_value, value);
 }
 
 static JsonTraceCounter *json_trace_process__upsert_counter(
@@ -144,7 +148,7 @@ static bool json_trace_profile__parse_array_format(JsonTraceProfile *self,
           } break;
 
           case JSON_TOKEN_ERROR: {
-            self->error = arena_dup_str8(arena, token.value);
+            self->error = str8_dup(arena, token.value);
             running = false;
             eof = true;
           } break;
@@ -160,7 +164,7 @@ static bool json_trace_profile__parse_array_format(JsonTraceProfile *self,
       } break;
 
       case JSON_VALUE_ERROR: {
-        self->error = arena_dup_str8(arena, value->value);
+        self->error = str8_dup(arena, value->value);
         running = false;
         eof = true;
       } break;
@@ -190,7 +194,7 @@ static bool json_trace_profile__parse_array_format_expecting_open_bracket(
     } break;
 
     case JSON_TOKEN_ERROR: {
-      self->error = arena_dup_str8(arena, token.value);
+      self->error = str8_dup(arena, token.value);
       eof = true;
     } break;
 
@@ -240,7 +244,7 @@ static bool json_trace_profile__skip_object_value(JsonTraceProfile *self,
       } break;
 
       case JSON_TOKEN_ERROR: {
-        self->error = arena_dup_str8(arena, token.value);
+        self->error = str8_dup(arena, token.value);
         running = false;
         eof = true;
       } break;
@@ -272,7 +276,7 @@ static void json_trace_profile__parse_object_format(JsonTraceProfile *self,
             } break;
 
             case JSON_TOKEN_ERROR: {
-              self->error = arena_dup_str8(arena, token.value);
+              self->error = str8_dup(arena, token.value);
               running = false;
             } break;
             default: {
@@ -293,7 +297,7 @@ static void json_trace_profile__parse_object_format(JsonTraceProfile *self,
       } break;
 
       case JSON_TOKEN_ERROR: {
-        self->error = arena_dup_str8(arena, token.value);
+        self->error = str8_dup(arena, token.value);
         running = false;
       } break;
 
@@ -327,7 +331,7 @@ JsonTraceProfile *json_trace_profile_parse(Arena *arena, JsonParser *parser) {
     } break;
 
     case JSON_TOKEN_ERROR: {
-      self->error = arena_dup_str8(arena, token.value);
+      self->error = str8_dup(arena, token.value);
     } break;
 
     default: {

@@ -25,7 +25,7 @@ static inline HashTrie *hash_trie_upsert(Arena *arena, HashTrie **t, Str8 key) {
 
   if (arena) {
     HashTrie *slot = arena_push_struct(arena, HashTrie);
-    slot->key = arena_dup_str8(arena, key);
+    slot->key = str8_dup(arena, key);
     *t = slot;
     return slot;
   }

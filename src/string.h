@@ -51,6 +51,17 @@ static inline bool str8_eq(Str8 a, Str8 b) {
   return memcmp(a.ptr, b.ptr, a.len) == 0;
 }
 
+static inline int str8_cmp(Str8 a, Str8 b) {
+  usize len = usize_min(a.len, b.len);
+  for (usize i = 0; i < len; ++i) {
+    int r = a.ptr[i] - b.ptr[i];
+    if (r != 0) {
+      return r;
+    }
+  }
+  return a.len < b.len ? -1 : 1;
+}
+
 u64 str8_hash_with_seed(Str8 str, u64 seed);
 static inline u64 str8_hash(Str8 str) { return str8_hash_with_seed(str, 5381); }
 
@@ -74,8 +85,23 @@ static inline Str8 arena_push_str8f(Arena *arena, const char *format, ...) {
   return result;
 }
 
-static inline Str8 arena_dup_str8(Arena *arena, Str8 s) {
+static inline Str8 str8_dup(Arena *arena, Str8 s) {
   return str8((u8 *)arena_dup(arena, s.ptr, s.len), s.len);
+}
+
+static inline u8 u8_to_uppercase(u8 c) {
+  if (c >= 'a' && c <= 'z') {
+    return 'A' + c - 'a';
+  }
+  return c;
+}
+
+static inline Str8 str8_to_uppercase(Str8 s, Arena *arena) {
+  Str8 result = arena_push_str8(arena, s.len);
+  for (usize i = 0; i < s.len; ++i) {
+    result.ptr[i] = u8_to_uppercase(s.ptr[i]);
+  }
+  return result;
 }
 
 typedef struct Str32 Str32;

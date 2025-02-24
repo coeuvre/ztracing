@@ -58,7 +58,7 @@ static ZtracingFile *ztracing_file_sdl3_open(const char *path, usize buf_len) {
   ASSERTF(io, "%s", SDL_GetError());
   Arena arena_ = {0};
   ZtracingFileSDL3 *file = arena_push_struct(&arena_, ZtracingFileSDL3);
-  Str8 name = arena_dup_str8(&arena_, str8_from_cstr(path));
+  Str8 name = str8_dup(&arena_, str8_from_cstr(path));
   Str8 buf = arena_push_str8(&arena_, buf_len);
   *file = (ZtracingFileSDL3){
       .file =

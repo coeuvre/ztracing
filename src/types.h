@@ -43,6 +43,11 @@ static inline usize i32_max(i32 a, i32 b) {
   return result;
 }
 
+static inline usize usize_min(usize a, usize b) {
+  usize result = MIN(a, b);
+  return result;
+}
+
 static inline usize usize_max(usize a, usize b) {
   usize result = MAX(a, b);
   return result;

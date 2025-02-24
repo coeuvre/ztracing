@@ -10,7 +10,7 @@ static usize g_allocated_bytes;
 void *platform_memory_alloc(usize size) {
   usize total_size = size + sizeof(usize);
   usize *p = SDL_malloc(total_size);
-  ASSERTF(p, "OOM");
+  ASSERTF(p, "%s", SDL_GetError());
   *p = size;
   platform_mutex_lock(g_allocated_bytes_mutex);
   g_allocated_bytes += total_size;

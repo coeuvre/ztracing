@@ -24,6 +24,8 @@ typedef struct JsonTraceCounter {
   Str8 name;
   HashTrie *series;
   usize series_len;
+  f64 min_value;
+  f64 max_value;
 } JsonTraceCounter;
 
 typedef struct JsonTraceProcess {
