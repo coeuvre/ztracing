@@ -56,6 +56,8 @@ typedef struct ZtracingProfileViewer {
   Arena arena;
   Str8 name;
   Str8 error;
+  i64 min_time_ns;
+  i64 max_time_ns;
   i64 begin_time_ns;
   i64 end_time_ns;
   usize item_count;
@@ -134,10 +136,6 @@ static void ztracing_file_loader__collect_series(Arena *arena,
 
     qsort(s->samples, s->sample_count, sizeof(*s->samples),
           ztracing_file_loader__compare_samples);
-
-    if (str8_eq(series->name, STR8_LIT("action"))) {
-      int a = 0;
-    }
   }
   scratch_end(scratch);
 }
@@ -262,6 +260,9 @@ static int ztracing_file_loader__thread(void *self_) {
     } else {
       viewer->error = str8_dup(&viewer->arena, profile->error);
     }
+
+    viewer->min_time_ns = profile->min_time_ns;
+    viewer->max_time_ns = profile->max_time_ns;
 
     i64 duration = (profile->max_time_ns - profile->min_time_ns);
     i64 offset = duration * 0.1;
@@ -413,8 +414,8 @@ static void loading_screen(ZtracingState *state) {
 
 typedef struct TimelineProps {
   UIKey key;
-  f32 min_time_ns;
-  f32 max_time_ns;
+  f32 begin_time_ns;
+  f32 end_time_ns;
 } TimelineProps;
 
 static i64 timeline__calc_block_duration(i64 duration, f32 width,
@@ -477,8 +478,8 @@ static void timeline__paint(UIWidget *widget, TimelineProps *props,
                             UIPaintingContext *context, Vec2 offset) {
   (void)context;
 
-  i64 begin = props->min_time_ns;
-  i64 end = props->max_time_ns;
+  i64 begin = props->begin_time_ns;
+  i64 end = props->end_time_ns;
 
   UIColor color = ui_color(0, 0, 0, 1);
 
@@ -579,6 +580,26 @@ static usize profile_counter__samples_lower_bound(
   return low;
 }
 
+static void profile_counter__paint_sample(
+    UIWidget *widget, ProfileCounterProps *props, Vec2 offset, f32o *prev_x,
+    f32o *prev_h, f32 d, f32 point_per_ns, ZtracingProfileItemCounter *counter,
+    ZtracingProfileItemCounterSeriesSample *sample) {
+  f32 x = offset.x + (sample->time - props->begin_time_ns) * point_per_ns;
+  f32 height =
+      f32_max(1, (sample->value - counter->min_value) / d * widget->size.y);
+  if (prev_x->present) {
+    f32 bottom = offset.y + widget->size.y;
+    f32 px = prev_x->value;
+    f32 ph = prev_h->value;
+    f32 width = f32_max(1, x - px);
+    Vec2 min = vec2(px, bottom - ph);
+    Vec2 max = vec2(px + width, bottom);
+    fill_rect(min, max, ui_color(0.3, 0.3, 0.3, 0.7));
+  }
+  *prev_x = f32_some(x);
+  *prev_h = f32_some(height);
+}
+
 static void profile_counter__paint(UIWidget *widget, ProfileCounterProps *props,
                                    UIPaintingContext *context, Vec2 offset) {
   (void)context;
@@ -592,7 +613,6 @@ static void profile_counter__paint(UIWidget *widget, ProfileCounterProps *props,
   f32 ns_per_point = 1.0f / point_per_ns;
   i64 bin_duration = f32_round(ns_per_point * bin_width);
 
-  f32 bottom = offset.y + widget->size.y;
   for (usize series_index = 0; series_index < counter->series_count;
        ++series_index) {
     ZtracingProfileItemCounterSeries *series = counter->series + series_index;
@@ -602,22 +622,15 @@ static void profile_counter__paint(UIWidget *widget, ProfileCounterProps *props,
 
     i64 bin_begin = props->begin_time_ns / bin_duration;
     i64 bin_end = props->end_time_ns / bin_duration + 1;
+
     {
       usize first_sample_index = profile_counter__samples_lower_bound(
           series->samples, series->sample_count, bin_begin * bin_duration);
       if (first_sample_index > 0) {
         ZtracingProfileItemCounterSeriesSample *sample =
             series->samples + (first_sample_index - 1);
-        bin_begin = sample->time / bin_duration;
-      }
-    }
-    {
-      usize last_sample_index = profile_counter__samples_lower_bound(
-          series->samples, series->sample_count, bin_end * bin_duration);
-      if (last_sample_index < series->sample_count) {
-        ZtracingProfileItemCounterSeriesSample *sample =
-            series->samples + (last_sample_index);
-        bin_end = sample->time / bin_duration + 1;
+        profile_counter__paint_sample(widget, props, offset, &prev_x, &prev_h,
+                                      d, point_per_ns, counter, sample);
       }
     }
 
@@ -630,19 +643,19 @@ static void profile_counter__paint(UIWidget *widget, ProfileCounterProps *props,
           series->samples + sample_index;
 
       if (sample->time < bin_end_time_ms) {
-        f32 x = offset.x + (sample->time - props->begin_time_ns) * point_per_ns;
-        f32 height = f32_max(
-            1, (sample->value - counter->min_value) / d * widget->size.y);
-        if (prev_x.present) {
-          f32 px = prev_x.value;
-          f32 ph = prev_h.value;
-          f32 width = f32_max(1, x - px);
-          Vec2 min = vec2(px, bottom - ph);
-          Vec2 max = vec2(px + width, bottom);
-          fill_rect(min, max, ui_color(0.3, 0.3, 0.3, 0.7));
-        }
-        prev_x = f32_some(x);
-        prev_h = f32_some(height);
+        profile_counter__paint_sample(widget, props, offset, &prev_x, &prev_h,
+                                      d, point_per_ns, counter, sample);
+      }
+    }
+
+    {
+      usize last_sample_index = profile_counter__samples_lower_bound(
+          series->samples, series->sample_count, bin_end * bin_duration);
+      if (last_sample_index < series->sample_count) {
+        ZtracingProfileItemCounterSeriesSample *sample =
+            series->samples + (last_sample_index);
+        profile_counter__paint_sample(widget, props, offset, &prev_x, &prev_h,
+                                      d, point_per_ns, counter, sample);
       }
     }
   }
@@ -699,6 +712,10 @@ static void profile_screen(ZtracingState *state) {
       .behaviour = UI_HIT_TEST_BEHAVIOUR_OPAQUE,
       .drag_update = &drag_update,
   });
+  UIPointerEventO scroll;
+  ui_pointer_listener_begin(&(UIPointerListenerProps){
+      .scroll = &scroll,
+  });
   if (drag_update.present) {
     UIWidget *widget = ui_widget_get_current();
     Vec2 delta = drag_update.value.delta;
@@ -709,10 +726,28 @@ static void profile_screen(ZtracingState *state) {
     viewer->end_time_ns = viewer->begin_time_ns + duration;
   }
 
+  if (scroll.present /* && ctrl */) {
+    UIWidget *widget = ui_widget_get_current();
+    f32 pivot = scroll.value.local_position.x / widget->size.x;
+    i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
+    i64 pivot_time = viewer->begin_time_ns + pivot * duration;
+
+    Vec2 delta = scroll.value.scroll_delta;
+    if (delta.y > 0) {
+      duration = i64_max(duration * 0.8f, 1000000);
+    } else {
+      i64 max_duration = (viewer->max_time_ns - viewer->min_time_ns) * 2.0;
+      duration = i64_min(duration * 1.25f, max_duration);
+    }
+
+    viewer->begin_time_ns = pivot_time - pivot * duration;
+    viewer->end_time_ns = viewer->begin_time_ns + duration;
+  }
+
   ui_column_begin(&(UIColumnProps){0});
   timeline(&(TimelineProps){
-      .min_time_ns = viewer->begin_time_ns,
-      .max_time_ns = viewer->end_time_ns,
+      .begin_time_ns = viewer->begin_time_ns,
+      .end_time_ns = viewer->end_time_ns,
   });
 
   ui_expanded_begin(&(UIExpandedProps){
@@ -758,6 +793,8 @@ static void profile_screen(ZtracingState *state) {
   ui_expanded_end();
 
   ui_column_end();
+
+  ui_pointer_listener_end();
   ui_gesture_detector_end();
 }
 
