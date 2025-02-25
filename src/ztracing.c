@@ -561,6 +561,24 @@ typedef struct ProfileCounterProps {
   f32 end_time_ns;
 } ProfileCounterProps;
 
+static usize profile_counter__samples_lower_bound(
+    ZtracingProfileItemCounterSeriesSample *samples, usize count, i64 time) {
+  usize low = 0;
+  usize high = count;
+
+  while (low < high) {
+    usize mid = low + (high - low) / 2;
+    i64 mid_t = samples[mid].time;
+    if (mid_t < time) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
 static void profile_counter__paint(UIWidget *widget, ProfileCounterProps *props,
                                    UIPaintingContext *context, Vec2 offset) {
   (void)context;
@@ -569,29 +587,63 @@ static void profile_counter__paint(UIWidget *widget, ProfileCounterProps *props,
   f64 d = (counter->max_value - counter->min_value);
   f32 point_per_ns =
       (f32)widget->size.x / (f32)(props->end_time_ns - props->begin_time_ns);
+
+  f32 bin_width = 2.0f;
+  f32 ns_per_point = 1.0f / point_per_ns;
+  i64 bin_duration = f32_round(ns_per_point * bin_width);
+
   f32 bottom = offset.y + widget->size.y;
   for (usize series_index = 0; series_index < counter->series_count;
        ++series_index) {
     ZtracingProfileItemCounterSeries *series = counter->series + series_index;
 
-    f32 px = 0;
-    f32 ph = 0;
-    for (usize sample_index = 0; sample_index < series->sample_count;
-         ++sample_index) {
+    f32o prev_x = f32_none();
+    f32o prev_h = f32_none();
+
+    i64 bin_begin = props->begin_time_ns / bin_duration;
+    i64 bin_end = props->end_time_ns / bin_duration + 1;
+    {
+      usize first_sample_index = profile_counter__samples_lower_bound(
+          series->samples, series->sample_count, bin_begin * bin_duration);
+      if (first_sample_index > 0) {
+        ZtracingProfileItemCounterSeriesSample *sample =
+            series->samples + (first_sample_index - 1);
+        bin_begin = sample->time / bin_duration;
+      }
+    }
+    {
+      usize last_sample_index = profile_counter__samples_lower_bound(
+          series->samples, series->sample_count, bin_end * bin_duration);
+      if (last_sample_index < series->sample_count) {
+        ZtracingProfileItemCounterSeriesSample *sample =
+            series->samples + (last_sample_index);
+        bin_end = sample->time / bin_duration + 1;
+      }
+    }
+
+    for (i64 bin_index = bin_begin; bin_index < bin_end; ++bin_index) {
+      i64 bin_begin_time_ms = bin_index * bin_duration;
+      i64 bin_end_time_ms = bin_begin_time_ms + bin_duration;
+      usize sample_index = profile_counter__samples_lower_bound(
+          series->samples, series->sample_count, bin_begin_time_ms);
       ZtracingProfileItemCounterSeriesSample *sample =
           series->samples + sample_index;
 
-      f32 x = offset.x + (sample->time - props->begin_time_ns) * point_per_ns;
-      f32 height =
-          f32_max(1, (sample->value - counter->min_value) / d * widget->size.y);
-      f32 width = f32_max(1, x - px);
-      if (sample_index > 0) {
-        Vec2 min = vec2(px, bottom - ph);
-        Vec2 max = vec2(px + width, bottom);
-        fill_rect(min, max, ui_color(0.3, 0.3, 0.3, 0.7));
+      if (sample->time < bin_end_time_ms) {
+        f32 x = offset.x + (sample->time - props->begin_time_ns) * point_per_ns;
+        f32 height = f32_max(
+            1, (sample->value - counter->min_value) / d * widget->size.y);
+        if (prev_x.present) {
+          f32 px = prev_x.value;
+          f32 ph = prev_h.value;
+          f32 width = f32_max(1, x - px);
+          Vec2 min = vec2(px, bottom - ph);
+          Vec2 max = vec2(px + width, bottom);
+          fill_rect(min, max, ui_color(0.3, 0.3, 0.3, 0.7));
+        }
+        prev_x = f32_some(x);
+        prev_h = f32_some(height);
       }
-      px = x;
-      ph = height;
     }
   }
 }
