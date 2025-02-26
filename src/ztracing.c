@@ -474,9 +474,16 @@ static Str8 timeline__format_time(Arena *arena, i64 time, i64 duration) {
 
 #define PROFILE_ITEM_HEIGHT 20
 
-static void timeline__paint(UIWidget *widget, TimelineProps *props,
-                            UIPaintingContext *context, Vec2 offset) {
+static void timeline_layout(UIWidget *widget, UIBoxConstraints constraints) {
+  widget->size = ui_box_constraints_constrain(
+      constraints, vec2(F32_INFINITY, PROFILE_ITEM_HEIGHT));
+}
+
+static void timeline_paint(UIWidget *widget, UIPaintingContext *context,
+                           Vec2 offset) {
   (void)context;
+
+  TimelineProps *props = ui_widget_get_props(widget, TimelineProps);
 
   i64 begin = props->begin_time_ns;
   i64 end = props->end_time_ns;
@@ -523,31 +530,11 @@ static void timeline__paint(UIWidget *widget, TimelineProps *props,
   }
 }
 
-static i32 timeline_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      UIBoxConstraints constraints = message->layout_box.constraints;
-      widget->size = ui_box_constraints_constrain(
-          constraints, vec2(F32_INFINITY, PROFILE_ITEM_HEIGHT));
-    } break;
-
-    case UI_MESSAGE_PAINT: {
-      timeline__paint(widget, ui_widget_get_props(widget, TimelineProps),
-                      message->paint.context, message->paint.offset);
-    } break;
-
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 static UIWidgetClass timeline_class = {
     .name = "Timeline",
     .props_size = sizeof(TimelineProps),
-    .callback = timeline_callback,
+    .layout = timeline_layout,
+    .paint = timeline_paint,
 };
 
 static void timeline(const TimelineProps *props) {
@@ -561,6 +548,12 @@ typedef struct ProfileCounterProps {
   f32 begin_time_ns;
   f32 end_time_ns;
 } ProfileCounterProps;
+
+static void profile_counter_layout(UIWidget *widget,
+                                   UIBoxConstraints constraints) {
+  widget->size = ui_box_constraints_constrain(
+      constraints, vec2(F32_INFINITY, PROFILE_ITEM_HEIGHT));
+}
 
 static usize profile_counter__samples_lower_bound(
     ZtracingProfileItemCounterSeriesSample *samples, usize count, i64 time) {
@@ -600,9 +593,11 @@ static void profile_counter__paint_sample(
   *prev_h = f32_some(height);
 }
 
-static void profile_counter__paint(UIWidget *widget, ProfileCounterProps *props,
-                                   UIPaintingContext *context, Vec2 offset) {
+static void profile_counter_paint(UIWidget *widget, UIPaintingContext *context,
+                                  Vec2 offset) {
   (void)context;
+
+  ProfileCounterProps *props = ui_widget_get_props(widget, ProfileCounterProps);
 
   ZtracingProfileItemCounter *counter = props->counter;
   f64 d = (counter->max_value - counter->min_value);
@@ -661,32 +656,11 @@ static void profile_counter__paint(UIWidget *widget, ProfileCounterProps *props,
   }
 }
 
-static i32 profile_counter_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      UIBoxConstraints constraints = message->layout_box.constraints;
-      widget->size = ui_box_constraints_constrain(
-          constraints, vec2(F32_INFINITY, PROFILE_ITEM_HEIGHT));
-    } break;
-
-    case UI_MESSAGE_PAINT: {
-      profile_counter__paint(widget,
-                             ui_widget_get_props(widget, ProfileCounterProps),
-                             message->paint.context, message->paint.offset);
-    } break;
-
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 static UIWidgetClass profile_counter_class = {
     .name = "ProfileCounter",
     .props_size = sizeof(ProfileCounterProps),
-    .callback = profile_counter_callback,
+    .layout = profile_counter_layout,
+    .paint = profile_counter_paint,
 };
 
 static void profile_counter(const ProfileCounterProps *props) {
@@ -733,7 +707,7 @@ static void profile_screen(ZtracingState *state) {
     i64 pivot_time = viewer->begin_time_ns + pivot * duration;
 
     Vec2 delta = scroll.value.scroll_delta;
-    if (delta.y > 0) {
+    if (delta.y < 0) {
       duration = i64_max(duration * 0.8f, 1000000);
     } else {
       i64 max_duration = (viewer->max_time_ns - viewer->min_time_ns) * 2.0;

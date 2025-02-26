@@ -311,17 +311,18 @@ typedef struct UISliverConstraints {
 } UISliverConstraints;
 
 static inline UIBoxConstraints ui_sliver_constraints_as_box_constraints(
-    UISliverConstraints self, f32 min_extent, f32 max_extent) {
-  UIAxis axis = ui_axis_direction_to_axis(self.axis_direction);
+    const UISliverConstraints *self, f32 min_extent, f32 max_extent) {
+  UIAxis axis = ui_axis_direction_to_axis(self->axis_direction);
   switch (axis) {
     case UI_AXIS_HORIZONTAL: {
-      return ui_box_constraints(min_extent, max_extent, self.cross_axis_extent,
-                                self.cross_axis_extent);
+      return ui_box_constraints(min_extent, max_extent, self->cross_axis_extent,
+                                self->cross_axis_extent);
     } break;
 
     case UI_AXIS_VERTICAL: {
-      return ui_box_constraints(self.cross_axis_extent, self.cross_axis_extent,
-                                min_extent, max_extent);
+      return ui_box_constraints(self->cross_axis_extent,
+                                self->cross_axis_extent, min_extent,
+                                max_extent);
     } break;
 
     default: {
@@ -331,19 +332,19 @@ static inline UIBoxConstraints ui_sliver_constraints_as_box_constraints(
 }
 
 static inline f32 ui_sliver_constraints_calc_paint_offset(
-    UISliverConstraints self, f32 from, f32 to) {
-  f32 a = self.scroll_offset;
-  f32 b = self.scroll_offset + self.remaining_paint_extent;
+    const UISliverConstraints *self, f32 from, f32 to) {
+  f32 a = self->scroll_offset;
+  f32 b = self->scroll_offset + self->remaining_paint_extent;
   return f32_clamp(f32_clamp(to, a, b) - f32_clamp(from, a, b), 0,
-                   self.remaining_paint_extent);
+                   self->remaining_paint_extent);
 }
 
 static inline f32 ui_sliver_constraints_calc_cache_offset(
-    UISliverConstraints self, f32 from, f32 to) {
-  f32 a = self.scroll_offset + self.cache_origin;
-  f32 b = self.scroll_offset + self.remaining_cache_extent;
+    const UISliverConstraints *self, f32 from, f32 to) {
+  f32 a = self->scroll_offset + self->cache_origin;
+  f32 b = self->scroll_offset + self->remaining_cache_extent;
   return f32_clamp(f32_clamp(to, a, b) - f32_clamp(from, a, b), 0,
-                   self.remaining_cache_extent);
+                   self->remaining_cache_extent);
 }
 
 typedef struct UISliverGeometry {
@@ -412,49 +413,6 @@ typedef struct UIPaintingContext {
   int placeholder;
 } UIPaintingContext;
 
-enum {
-  UI_MESSAGE_UNKNOWN,
-  UI_MESSAGE_MOUNT,
-  UI_MESSAGE_UPDATE,
-  UI_MESSAGE_UNMOUNT,
-  UI_MESSAGE_LAYOUT_BOX,
-  UI_MESSAGE_LAYOUT_SLIVER,
-  UI_MESSAGE_PAINT,
-
-  // EVENT HANDLING
-  UI_MESSAGE_HIT_TEST,
-  UI_MESSAGE_HANDLE_EVENT,
-};
-
-typedef struct UIMessageMount {
-  u32 type;  // UI_MESSAGE_MOUNT
-} UIMessageMount;
-
-typedef struct UIMessageUpdate {
-  u32 type;  // UI_MESSAGE_UPDATE
-} UIMessageUpdate;
-
-typedef struct UIMessageUnmount {
-  u32 type;  // UI_MESSAGE_UNMOUNT
-} UIMessageUnmount;
-
-typedef struct UIMessageLayoutBox {
-  u32 type;  // UI_MESSAGE_LAYOUT_BOX
-  UIBoxConstraints constraints;
-} UIMessageLayoutBox;
-
-typedef struct UIMessageLayoutSliver {
-  u32 type;  // UI_MESSAGE_LAYOUT_SLIVER
-  UISliverGeometry *geometry;
-  UISliverConstraints constraints;
-} UIMessageLayoutSliver;
-
-typedef struct UIMessagePaint {
-  u32 type;  // UI_MESSAGE_PAINT
-  UIPaintingContext *context;
-  Vec2 offset;
-} UIMessagePaint;
-
 typedef struct UIHitTestEntry UIHitTestEntry;
 struct UIHitTestEntry {
   UIHitTestEntry *prev;
@@ -473,16 +431,6 @@ typedef struct UIHitTestResult {
 // widget received the hit should be the first, the root should be the last.
 void ui_hit_test_result_add(UIHitTestResult *self, Arena *arena,
                             UIWidget *widget, Vec2 local_position);
-
-/// Callback should return true if hit.
-typedef struct UIMessageHitTest {
-  u32 type;  // UI_MESSAGE_HIT_TEST
-  UIHitTestResult *result;
-  Arena *arena;
-  /// Position relative to UIWidget's local coordinate system. (0, 0) is the
-  /// top-left of the box.
-  Vec2 local_position;
-} UIMessageHitTest;
 
 typedef enum UIHitTestBehaviour {
   UI_HIT_TEST_BEHAVIOUR_DEFER_TO_CHILD,
@@ -526,26 +474,6 @@ typedef struct UIPointerEvent {
 
 OPTIONAL_TYPE(UIPointerEventO, UIPointerEvent, ui_pointer_event);
 
-typedef struct UIMessageHandleEvent {
-  u32 type;  // UI_MESSAGE_HANDLE_EVENT
-  UIPointerEvent *event;
-} UIMessageHandleEvent;
-
-typedef union UIMessage {
-  u32 type;
-  UIMessageMount mount;
-  UIMessageUpdate update;
-  UIMessageUnmount umount;
-  UIMessageLayoutBox layout_box;
-  UIMessageLayoutSliver layout_sliver;
-  UIMessagePaint paint;
-  UIMessageHitTest hit_test;
-  UIMessageHandleEvent handle_event;
-} UIMessage;
-
-typedef i32(UIWidgetCallback)(UIWidget *widget, UIMessage *message);
-i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message);
-
 #define UI_U64_LIT(v) (v##ULL)
 
 #define UI_WIDGET_MANY_CHILDREN UI_U64_LIT(0x0001)
@@ -557,7 +485,33 @@ typedef struct UIWidgetClass {
   UIWidgetFlags flags;
   usize props_size;
   usize state_size;
-  UIWidgetCallback *callback;
+
+  // Lifecycle
+
+  void (*mount)(UIWidget *widget);
+  void (*update)(UIWidget *widget);
+  void (*unmount)(UIWidget *widget);
+
+  // Layout
+
+  void (*layout)(UIWidget *widget, UIBoxConstraints constraints);
+  void (*layout_sliver)(UIWidget *widget,
+                        const UISliverConstraints *constraints,
+                        UISliverGeometry *geometry);
+
+  // Painting
+
+  void (*paint)(UIWidget *widget, UIPaintingContext *context, Vec2 offset);
+
+  // EVENT HANDLING
+
+  /// Returns true if hit.
+  ///
+  /// local_position: position relative to UIWidget's local coordinate system.
+  /// (0, 0) is the top-left of the box.
+  bool (*hit_test)(UIWidget *widget, Vec2 local_position, Arena *arena,
+                   UIHitTestResult *result);
+  void (*handle_pointer_event)(UIWidget *widget, const UIPointerEvent *event);
 } UIWidgetClass;
 
 typedef enum UIWidgetStatus {

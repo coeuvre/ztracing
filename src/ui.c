@@ -294,102 +294,81 @@ void ui_begin_frame(void) {
 
 static inline void ui_widget_mount(UIWidget *widget) {
   ASSERT(widget->status == UI_WIDGET_STATUS_UNMOUNTED);
-  UIMessage message = {
-      .mount =
-          {
-              .type = UI_MESSAGE_MOUNT,
-          },
-  };
-  widget->klass->callback(widget, &message);
+  if (widget->klass->mount) {
+    widget->klass->mount(widget);
+  }
   widget->status = UI_WIDGET_STATUS_MOUNTED;
 }
 
 static inline void ui_widget_update(UIWidget *widget) {
-  UIMessage message = {
-      .update =
-          {
-              .type = UI_MESSAGE_UPDATE,
-          },
-  };
-  widget->klass->callback(widget, &message);
+  if (widget->klass->update) {
+    widget->klass->update(widget);
+  }
 }
 
 static inline void ui_widget_unmount(UIWidget *widget) {
   ASSERT(widget->status == UI_WIDGET_STATUS_MOUNTED);
-  UIMessage message = {
-      .umount =
-          {
-              .type = UI_MESSAGE_UNMOUNT,
-          },
-  };
-  widget->klass->callback(widget, &message);
+  if (widget->klass->unmount) {
+    widget->klass->unmount(widget);
+  }
   widget->status = UI_WIDGET_STATUS_UNMOUNTED;
 }
 
-static inline Vec2 ui_widget_layout_box(UIWidget *widget,
-                                        UIBoxConstraints constraints) {
-  UIMessage message = {
-      .layout_box =
-          {
-              .type = UI_MESSAGE_LAYOUT_BOX,
-              .constraints = constraints,
-          },
-  };
-  widget->klass->callback(widget, &message);
-  return widget->size;
+static void ui_widget_layout_default(UIWidget *widget,
+                                     UIBoxConstraints constraints);
+
+static inline void ui_widget_layout(UIWidget *widget,
+                                    UIBoxConstraints constraints) {
+  if (widget->klass->layout) {
+    widget->klass->layout(widget, constraints);
+  } else {
+    ui_widget_layout_default(widget, constraints);
+  }
 }
 
-static inline void ui_widget_layout_sliver(UIWidget *widget,
-                                           UISliverGeometry *geometry,
-                                           UISliverConstraints constraints) {
-  UIMessage message = {
-      .layout_sliver =
-          {
-              .type = UI_MESSAGE_LAYOUT_SLIVER,
-              .geometry = geometry,
-              .constraints = constraints,
-          },
-  };
-  widget->klass->callback(widget, &message);
+static inline void ui_widget_layout_sliver(
+    UIWidget *widget, const UISliverConstraints *constraints,
+    UISliverGeometry *geometry) {
+  if (widget->klass->layout_sliver) {
+    widget->klass->layout_sliver(widget, constraints, geometry);
+  } else {
+    DEBUG_ASSERTF(false, "layout_sliver is not implemented for %s",
+                  widget->klass->name);
+  }
 }
+
+static void ui_widget_paint_default(UIWidget *widget,
+                                    UIPaintingContext *context, Vec2 offset);
 
 static inline void ui_widget_paint(UIWidget *widget, UIPaintingContext *context,
                                    Vec2 offset) {
-  UIMessage message = {
-      .paint =
-          {
-              .type = UI_MESSAGE_PAINT,
-              .context = context,
-              .offset = offset,
-          },
-  };
-  widget->klass->callback(widget, &message);
+  if (widget->klass->paint) {
+    widget->klass->paint(widget, context, offset);
+  } else {
+    ui_widget_paint_default(widget, context, offset);
+  }
 }
 
-static inline bool ui_widget_hit_test(UIWidget *widget, UIHitTestResult *result,
-                                      Arena *arena, Vec2 local_position) {
-  UIMessage message = {
-      .hit_test =
-          {
-              .type = UI_MESSAGE_HIT_TEST,
-              .result = result,
-              .arena = arena,
-              .local_position = local_position,
-          },
-  };
-  return widget->klass->callback(widget, &message);
+static bool ui_widget_hit_test_defer_to_children(UIWidget *widget,
+                                                 Vec2 local_position,
+                                                 Arena *arena,
+                                                 UIHitTestResult *result);
+
+static inline bool ui_widget_hit_test(UIWidget *widget, Vec2 local_position,
+                                      Arena *arena, UIHitTestResult *result) {
+  if (widget->klass->hit_test) {
+    return widget->klass->hit_test(widget, local_position, arena, result);
+  } else {
+    return ui_widget_hit_test_defer_to_children(widget, local_position, arena,
+                                                result);
+  }
 }
 
-static inline void ui_widget_handle_event(UIWidget *widget,
-                                          UIPointerEvent *event) {
-  UIMessage message = {
-      .handle_event =
-          {
-              .type = UI_MESSAGE_HANDLE_EVENT,
-              .event = event,
-          },
-  };
-  widget->klass->callback(widget, &message);
+static inline void ui_widget_handle_pointer_event(UIWidget *widget,
+                                                  UIPointerEvent *event) {
+  if (widget->klass->handle_pointer_event) {
+    widget->klass->handle_pointer_event(widget, event);
+  }
 }
 
 static UIWidget *ui_state_get_root_for_hit_test(UIState *self) {
@@ -421,7 +400,7 @@ static bool ui_hit_test_state_has_widget(UIHitTestState *self,
 static bool ui_hit_test_state_hit_test(UIHitTestState *self, UIWidget *root,
                                        Vec2 pos) {
   ASSERT(!self->result.first);
-  if (ui_widget_hit_test(root, &self->result, &self->arena, pos)) {
+  if (ui_widget_hit_test(root, pos, &self->arena, &self->result)) {
     return true;
   } else {
     ui_hit_test_state_clear(self);
@@ -447,13 +426,13 @@ void ui_on_mouse_button_down(Vec2 pos, u32 button) {
                                  pos)) {
     for (UIHitTestEntry *entry = state->input.button_down_hit_test.result.first;
          entry; entry = entry->next) {
-      ui_widget_handle_event(entry->widget,
-                             &(UIPointerEvent){
-                                 .type = UI_POINTER_EVENT_DOWN,
-                                 .button = button,
-                                 .position = pos,
-                                 .local_position = entry->local_position,
-                             });
+      ui_widget_handle_pointer_event(
+          entry->widget, &(UIPointerEvent){
+                             .type = UI_POINTER_EVENT_DOWN,
+                             .button = button,
+                             .position = pos,
+                             .local_position = entry->local_position,
+                         });
     }
   }
 }
@@ -482,13 +461,13 @@ void ui_on_mouse_button_up(Vec2 pos, u32 button) {
   for (UIHitTestEntry *entry = state->input.button_down_hit_test.result.first;
        entry; entry = entry->next) {
     if (entry->widget) {
-      ui_widget_handle_event(entry->widget,
-                             &(UIPointerEvent){
-                                 .type = UI_POINTER_EVENT_UP,
-                                 .button = button,
-                                 .position = pos,
-                                 .local_position = entry->local_position,
-                             });
+      ui_widget_handle_pointer_event(
+          entry->widget, &(UIPointerEvent){
+                             .type = UI_POINTER_EVENT_UP,
+                             .button = button,
+                             .position = pos,
+                             .local_position = entry->local_position,
+                         });
     }
   }
 
@@ -505,12 +484,12 @@ void ui_on_mouse_move(Vec2 pos) {
     for (UIHitTestEntry *entry = input->button_down_hit_test.result.first;
          entry; entry = entry->next) {
       if (entry->widget) {
-        ui_widget_handle_event(entry->widget,
-                               &(UIPointerEvent){
-                                   .type = UI_POINTER_EVENT_MOVE,
-                                   .position = pos,
-                                   .local_position = entry->local_position,
-                               });
+        ui_widget_handle_pointer_event(
+            entry->widget, &(UIPointerEvent){
+                               .type = UI_POINTER_EVENT_MOVE,
+                               .position = pos,
+                               .local_position = entry->local_position,
+                           });
       }
     }
   }
@@ -530,22 +509,23 @@ void ui_on_mouse_move(Vec2 pos) {
   for (UIHitTestEntry *entry = last_hit_test->result.first; entry;
        entry = entry->next) {
     if (!ui_hit_test_state_has_widget(hit_test, entry->widget)) {
-      ui_widget_handle_event(entry->widget, &(UIPointerEvent){
-                                                .type = UI_POINTER_EVENT_EXIT,
-                                                .position = pos,
-                                            });
+      ui_widget_handle_pointer_event(entry->widget,
+                                     &(UIPointerEvent){
+                                         .type = UI_POINTER_EVENT_EXIT,
+                                         .position = pos,
+                                     });
     }
   }
 
   for (UIHitTestEntry *entry = hit_test->result.first; entry;
        entry = entry->next) {
     if (!ui_hit_test_state_has_widget(last_hit_test, entry->widget)) {
-      ui_widget_handle_event(entry->widget,
-                             &(UIPointerEvent){
-                                 .type = UI_POINTER_EVENT_ENTER,
-                                 .position = pos,
-                                 .local_position = entry->local_position,
-                             });
+      ui_widget_handle_pointer_event(
+          entry->widget, &(UIPointerEvent){
+                             .type = UI_POINTER_EVENT_ENTER,
+                             .position = pos,
+                             .local_position = entry->local_position,
+                         });
     }
   }
 
@@ -553,12 +533,12 @@ void ui_on_mouse_move(Vec2 pos) {
   if (!input->button_down_hit_test.result.first) {
     for (UIHitTestEntry *entry = hit_test->result.first; entry;
          entry = entry->next) {
-      ui_widget_handle_event(entry->widget,
-                             &(UIPointerEvent){
-                                 .type = UI_POINTER_EVENT_HOVER,
-                                 .position = pos,
-                                 .local_position = entry->local_position,
-                             });
+      ui_widget_handle_pointer_event(
+          entry->widget, &(UIPointerEvent){
+                             .type = UI_POINTER_EVENT_HOVER,
+                             .position = pos,
+                             .local_position = entry->local_position,
+                         });
     }
   }
 
@@ -574,15 +554,15 @@ void ui_on_mouse_scroll(Vec2 pos, Vec2 delta) {
 
   Scratch scratch = scratch_begin(0, 0);
   UIHitTestResult result = {0};
-  if (ui_widget_hit_test(root, &result, scratch.arena, pos)) {
+  if (ui_widget_hit_test(root, pos, scratch.arena, &result)) {
     for (UIHitTestEntry *entry = result.first; entry; entry = entry->next) {
-      ui_widget_handle_event(entry->widget,
-                             &(UIPointerEvent){
-                                 .type = UI_POINTER_EVENT_SCROLL,
-                                 .position = pos,
-                                 .local_position = entry->local_position,
-                                 .scroll_delta = delta,
-                             });
+      ui_widget_handle_pointer_event(
+          entry->widget, &(UIPointerEvent){
+                             .type = UI_POINTER_EVENT_SCROLL,
+                             .position = pos,
+                             .local_position = entry->local_position,
+                             .scroll_delta = delta,
+                         });
     }
   }
   scratch_end(scratch);
@@ -598,10 +578,11 @@ void ui_on_focus_lost(Vec2 pos) {
   for (UIHitTestEntry *entry = state->input.button_down_hit_test.result.first;
        entry; entry = entry->next) {
     if (entry->widget) {
-      ui_widget_handle_event(entry->widget, &(UIPointerEvent){
-                                                .type = UI_POINTER_EVENT_CANCEL,
-                                                .position = pos,
-                                            });
+      ui_widget_handle_pointer_event(entry->widget,
+                                     &(UIPointerEvent){
+                                         .type = UI_POINTER_EVENT_CANCEL,
+                                         .position = pos,
+                                     });
     }
   }
 
@@ -615,15 +596,26 @@ static inline bool ui_widget_has_at_most_one_child(UIWidget *widget) {
 /// The default layout method for a widget just defers the layout to its child
 /// and sizes itself around the child. Only works for widget that has at most
 /// one child.
-static void ui_widget_layout_box_default(UIWidget *widget,
-                                         UIBoxConstraints constraints) {
-  ASSERTF(ui_widget_has_at_most_one_child(widget),
-          "Default layout method doesn't work for UI_WIDGET_MANY_CHILDREN.");
-  if (widget->first) {
-    widget->size = ui_widget_layout_box(widget->first, constraints);
+static void ui_widget_layout_default(UIWidget *widget,
+                                     UIBoxConstraints constraints) {
+  DEBUG_ASSERTF(
+      ui_widget_has_at_most_one_child(widget),
+      "Default layout method doesn't work for UI_WIDGET_MANY_CHILDREN.");
+  UIWidget *child = widget->first;
+  if (child) {
+    ui_widget_layout(child, constraints);
+    widget->size = child->size;
   } else {
     widget->size = ui_box_constraints_constrain(constraints, vec2_zero());
   }
+}
+
+static void ui_widget_layout_for_sliver(UIWidget *widget,
+                                        UIBoxConstraints constraints) {
+  (void)constraints;
+
+  DEBUG_ASSERTF(false, "layout is not implemented for sliver %s",
+                widget->klass->name);
 }
 
 static void ui_widget_paint_child_default(UIWidget *child,
@@ -640,12 +632,12 @@ static void ui_widget_paint_default(UIWidget *widget,
 }
 
 static bool ui_widget_hit_test_children_default(UIWidget *widget,
-                                                UIHitTestResult *result,
+                                                Vec2 local_position,
                                                 Arena *arena,
-                                                Vec2 local_position) {
+                                                UIHitTestResult *result) {
   for (UIWidget *child = widget->last; child; child = child->prev) {
-    if (ui_widget_hit_test(child, result, arena,
-                           vec2_sub(local_position, child->offset))) {
+    if (ui_widget_hit_test(child, vec2_sub(local_position, child->offset),
+                           arena, result)) {
       return true;
     }
   }
@@ -661,15 +653,15 @@ void ui_hit_test_result_add(UIHitTestResult *self, Arena *arena,
 }
 
 static bool ui_widget_hit_test_defer_to_children(UIWidget *widget,
-                                                 UIHitTestResult *result,
+                                                 Vec2 local_position,
                                                  Arena *arena,
-                                                 Vec2 local_position) {
+                                                 UIHitTestResult *result) {
   if (!vec2_contains(local_position, vec2_zero(), widget->size)) {
     return false;
   }
 
-  if (!ui_widget_hit_test_children_default(widget, result, arena,
-                                           local_position)) {
+  if (!ui_widget_hit_test_children_default(widget, local_position, arena,
+                                           result)) {
     return false;
   }
 
@@ -677,42 +669,25 @@ static bool ui_widget_hit_test_defer_to_children(UIWidget *widget,
   return true;
 }
 
-static bool ui_widget_hit_test_opaque(UIWidget *widget, UIHitTestResult *result,
-                                      Arena *arena, Vec2 local_position) {
+static bool ui_widget_hit_test_opaque(UIWidget *widget, Vec2 local_position,
+                                      Arena *arena, UIHitTestResult *result) {
   if (!vec2_contains(local_position, vec2_zero(), widget->size)) {
     return false;
   }
 
-  ui_widget_hit_test_children_default(widget, result, arena, local_position);
+  ui_widget_hit_test_children_default(widget, local_position, arena, result);
 
   ui_hit_test_result_add(result, arena, widget, local_position);
   return true;
 }
 
-i32 ui_widget_callback_default(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      ui_widget_layout_box_default(widget, message->layout_box.constraints);
-    } break;
-
-    case UI_MESSAGE_LAYOUT_SLIVER: {
-      DEBUG_ASSERTF(false, "UI_MESSAGE_LAYOUT_SLIVER is not implemented for %s",
-                    widget->klass->name);
-    } break;
-
-    case UI_MESSAGE_PAINT: {
-      ui_widget_paint_default(widget, message->paint.context,
-                              message->paint.offset);
-    } break;
-
-    case UI_MESSAGE_HIT_TEST: {
-      result = ui_widget_hit_test_defer_to_children(
-          widget, message->hit_test.result, message->hit_test.arena,
-          message->hit_test.local_position);
-    } break;
-  }
-  return result;
+void ui_widget_layout_sliver_default(UIWidget *widget,
+                                     const UISliverConstraints *constraints,
+                                     UISliverGeometry *geometry) {
+  (void)constraints;
+  (void)geometry;
+  DEBUG_ASSERTF(false, "ui_widget_layout_sliver is not implemented for %s",
+                widget->klass->name);
 }
 
 static UIWidget *ui_widget_get_child_by_key(UIWidget *parent, UIKey key) {
@@ -784,8 +759,8 @@ void ui_end_frame(void) {
     unmount_widgets_if_not(state->last_frame->root);
 
     Vec2 viewport_size = vec2_sub(state->viewport_max, state->viewport_min);
-    ui_widget_layout_box(frame->root, ui_box_constraints_tight(
-                                          viewport_size.x, viewport_size.y));
+    ui_widget_layout(frame->root, ui_box_constraints_tight(viewport_size.x,
+                                                           viewport_size.y));
   }
 
   frame->open = false;
@@ -892,7 +867,7 @@ static void ui_widget_append(UIWidget *parent, UIWidget *child,
     DLL_APPEND(parent->first, parent->last, child, prev, next);
     ++parent->child_count;
   } else {
-    DEBUG_ASSERTF(!parent->first, "%s expects only one child",
+    DEBUG_ASSERTF(!parent->first, "%s expects at most one child",
                   parent->klass->name);
     parent->first = parent->last = child;
     parent->child_count = 1;
@@ -907,9 +882,6 @@ static inline bool can_reuse_widget(UIWidget *widget, UIWidget *last_widget) {
 UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
   ASSERTF(klass->props_size >= sizeof(UIKey),
           "The first field of props must be a UIKey");
-  if (!klass->callback) {
-    klass->callback = ui_widget_callback_default;
-  }
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
 
@@ -1054,15 +1026,15 @@ static UIBoxConstraints ui_limited_box_limit_constraints(
 }
 
 static void ui_limited_box_layout(UIWidget *widget,
-                                  UILimitedBoxProps *limited_box,
                                   UIBoxConstraints constraints) {
-  ASSERT(ui_widget_has_at_most_one_child(widget));
-
+  UILimitedBoxProps *props = ui_widget_get_props(widget, UILimitedBoxProps);
   UIBoxConstraints limited_constraints =
-      ui_limited_box_limit_constraints(limited_box, constraints);
+      ui_limited_box_limit_constraints(props, constraints);
 
-  if (widget->first) {
-    Vec2 child_size = ui_widget_layout_box(widget->first, limited_constraints);
+  UIWidget *child = widget->first;
+  if (child) {
+    ui_widget_layout(child, limited_constraints);
+    Vec2 child_size = child->size;
     widget->size = ui_box_constraints_constrain(constraints, child_size);
   } else {
     widget->size =
@@ -1070,37 +1042,22 @@ static void ui_limited_box_layout(UIWidget *widget,
   }
 }
 
-static i32 ui_limited_box_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      ui_limited_box_layout(widget,
-                            ui_widget_get_props(widget, UILimitedBoxProps),
-                            message->layout_box.constraints);
-    } break;
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 UIWidgetClass ui_limited_box_class = {
     .name = "LimitedBox",
     .props_size = sizeof(UILimitedBoxProps),
-    .callback = ui_limited_box_callback,
+    .layout = ui_limited_box_layout,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIColoredBox
 ///
-static void ui_colored_box_paint(UIWidget *widget,
-                                 UIColoredBoxProps *colored_box,
-                                 UIPaintingContext *context, Vec2 offset) {
+static void ui_colored_box_paint(UIWidget *widget, UIPaintingContext *context,
+                                 Vec2 offset) {
+  UIColoredBoxProps *props = ui_widget_get_props(widget, UIColoredBoxProps);
   Vec2 size = widget->size;
   if (size.x > 0 && size.y > 0) {
-    fill_rect(offset, vec2_add(offset, size), colored_box->color);
+    fill_rect(offset, vec2_add(offset, size), props->color);
   }
 
   for (UIWidget *child = widget->first; child; child = child->next) {
@@ -1108,32 +1065,11 @@ static void ui_colored_box_paint(UIWidget *widget,
   }
 }
 
-static i32 ui_colored_box_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_PAINT: {
-      ui_colored_box_paint(widget,
-                           ui_widget_get_props(widget, UIColoredBoxProps),
-                           message->paint.context, message->paint.offset);
-    } break;
-
-    case UI_MESSAGE_HIT_TEST: {
-      result = ui_widget_hit_test_opaque(widget, message->hit_test.result,
-                                         message->hit_test.arena,
-                                         message->hit_test.local_position);
-    } break;
-
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 UIWidgetClass ui_colored_box_class = {
     .name = "ColoredBox",
     .props_size = sizeof(UIColoredBoxProps),
-    .callback = ui_colored_box_callback,
+    .paint = ui_colored_box_paint,
+    .hit_test = ui_widget_hit_test_opaque,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1141,38 +1077,26 @@ UIWidgetClass ui_colored_box_class = {
 /// UIConstrainedBox
 ///
 static void ui_constrained_box_layout(UIWidget *widget,
-                                      UIConstrainedBoxProps *constrained_box,
                                       UIBoxConstraints constraints) {
   ASSERT(ui_widget_has_at_most_one_child(widget));
+  UIConstrainedBoxProps *props =
+      ui_widget_get_props(widget, UIConstrainedBoxProps);
   UIBoxConstraints enforced_constraints =
-      ui_box_constraints_enforce(constrained_box->constraints, constraints);
-  if (widget->first) {
-    widget->size = ui_widget_layout_box(widget->first, enforced_constraints);
+      ui_box_constraints_enforce(props->constraints, constraints);
+  UIWidget *child = widget->first;
+  if (child) {
+    ui_widget_layout(child, enforced_constraints);
+    widget->size = child->size;
   } else {
     widget->size =
         ui_box_constraints_constrain(enforced_constraints, vec2_zero());
   }
 }
 
-static i32 ui_constrained_box_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      ui_constrained_box_layout(
-          widget, ui_widget_get_props(widget, UIConstrainedBoxProps),
-          message->layout_box.constraints);
-    } break;
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 UIWidgetClass ui_constrained_box_class = {
     .name = "ConstrainedBox",
     .props_size = sizeof(UIConstrainedBoxProps),
-    .callback = ui_constrained_box_callback,
+    .layout = ui_constrained_box_layout,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1187,19 +1111,17 @@ static void ui_widget_align_children(UIWidget *widget, UIAlignment alignment) {
   }
 }
 
-static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
-                            UIBoxConstraints constraints) {
-  ASSERT(ui_widget_has_at_most_one_child(widget));
-
-  f32o width = align->width;
-  f32o height = align->height;
+static void ui_align_layout_impl(UIWidget *widget, UIAlignProps *props,
+                                 UIBoxConstraints constraints) {
+  f32o width = props->width;
+  f32o height = props->height;
 
   if (width.present) {
     ASSERTF(width.value >= 0, "widget must be positive, got %f", width.value);
   }
   if (height.present) {
-    ASSERTF(align->height.value >= 0, "height must be positive, got %f",
-            align->height.value);
+    ASSERTF(props->height.value >= 0, "height must be positive, got %f",
+            props->height.value);
   }
   bool should_shrink_wrap_width =
       width.present || f32_is_infinity(constraints.max_width);
@@ -1207,8 +1129,10 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
       height.present || f32_is_infinity(constraints.max_height);
   UIBoxConstraints child_constraints = ui_box_constraints_loosen(constraints);
 
-  if (widget->first) {
-    Vec2 child_size = ui_widget_layout_box(widget->first, child_constraints);
+  UIWidget *child = widget->first;
+  if (child) {
+    ui_widget_layout(child, child_constraints);
+    Vec2 child_size = child->size;
 
     Vec2 wrap_size =
         vec2(should_shrink_wrap_width
@@ -1220,7 +1144,7 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
 
     widget->size = ui_box_constraints_constrain(constraints, wrap_size);
 
-    ui_widget_align_children(widget, align->alignment);
+    ui_widget_align_children(widget, props->alignment);
   } else {
     Vec2 size = vec2(should_shrink_wrap_width ? 0 : F32_INFINITY,
                      should_shrink_wrap_height ? 0 : F32_INFINITY);
@@ -1228,24 +1152,15 @@ static void ui_align_layout(UIWidget *widget, UIAlignProps *align,
   }
 }
 
-static i32 ui_align_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      ui_align_layout(widget, ui_widget_get_props(widget, UIAlignProps),
-                      message->layout_box.constraints);
-    } break;
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
+static void ui_align_layout(UIWidget *widget, UIBoxConstraints constraints) {
+  UIAlignProps *props = ui_widget_get_props(widget, UIAlignProps);
+  ui_align_layout_impl(widget, props, constraints);
 }
 
 UIWidgetClass ui_align_class = {
     .name = "Align",
     .props_size = sizeof(UIAlignProps),
-    .callback = ui_align_callback,
+    .layout = ui_align_layout,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1254,73 +1169,50 @@ UIWidgetClass ui_align_class = {
 ///
 /// A widget that imposes no constraints on its child, allowing it to render
 /// at its "natural" size.
-static void ui_unconstrained_box_layout(
-    UIWidget *widget, UIUnconstrainedBoxProps *unconstrained_box,
-    UIBoxConstraints constraints) {
+static void ui_unconstrained_box_layout(UIWidget *widget,
+                                        UIBoxConstraints constraints) {
   (void)constraints;
-
-  ASSERT(ui_widget_has_at_most_one_child(widget));
-
+  UIUnconstrainedBoxProps *props =
+      ui_widget_get_props(widget, UIUnconstrainedBoxProps);
   UIBoxConstraints child_constraints =
       ui_box_constraints(0, F32_INFINITY, 0, F32_INFINITY);
-  if (widget->first) {
-    Vec2 child_size = ui_widget_layout_box(widget->first, child_constraints);
+  UIWidget *child = widget->first;
+  if (child) {
+    ui_widget_layout(widget->first, child_constraints);
+    Vec2 child_size = child->size;
     widget->size = ui_box_constraints_constrain(constraints, child_size);
   } else {
     widget->size = ui_box_constraints_constrain(constraints, vec2_zero());
   }
 
-  ui_widget_align_children(widget, unconstrained_box->alignment);
-}
-
-static i32 ui_unconstrained_box_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      ui_unconstrained_box_layout(
-          widget, ui_widget_get_props(widget, UIUnconstrainedBoxProps),
-          message->layout_box.constraints);
-    } break;
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
+  ui_widget_align_children(widget, props->alignment);
 }
 
 UIWidgetClass ui_unconstrained_box_class = {
     .name = "UnconstrainedBox",
     .props_size = sizeof(UIUnconstrainedBoxProps),
-    .callback = ui_unconstrained_box_callback,
+    .layout = ui_unconstrained_box_layout,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UICenter
 ///
-static i32 ui_center_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      UICenterProps *center = ui_widget_get_props(widget, UICenterProps);
-      UIAlignProps align = {
-          .key = center->key,
-          .width = center->width,
-          .height = center->height,
-      };
-      ui_align_layout(widget, &align, message->layout_box.constraints);
-    } break;
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
+
+static void ui_center_layout(UIWidget *widget, UIBoxConstraints constraints) {
+  UICenterProps *props = ui_widget_get_props(widget, UICenterProps);
+  UIAlignProps align = {
+      .key = props->key,
+      .width = props->width,
+      .height = props->height,
+  };
+  ui_align_layout_impl(widget, &align, constraints);
 }
 
 UIWidgetClass ui_center_class = {
     .name = "Center",
     .props_size = sizeof(UICenterProps),
-    .callback = ui_center_callback,
+    .layout = ui_center_layout,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1357,16 +1249,14 @@ static inline UIBoxConstraints ui_box_constraints_deflate(
       f32_max(deflated_min_height, constraints.max_height - vertical));
 }
 
-static void ui_padding_layout(UIWidget *widget, UIPaddingProps *padding,
-                              UIBoxConstraints constraints) {
-  ASSERT(ui_widget_has_at_most_one_child(widget));
-
+static void ui_padding_layout(UIWidget *widget, UIBoxConstraints constraints) {
+  UIPaddingProps *props = ui_widget_get_props(widget, UIPaddingProps);
   // TODO: UITextDirection
   UIResolvedEdgeInsets resolved_padding = {
-      .left = padding->padding.start,
-      .right = padding->padding.end,
-      .top = padding->padding.top,
-      .bottom = padding->padding.bottom,
+      .left = props->padding.start,
+      .right = props->padding.end,
+      .top = props->padding.top,
+      .bottom = props->padding.bottom,
   };
   f32 horizontal = ui_resolved_edge_insets_get_horizontal(resolved_padding);
   f32 vertical = ui_resolved_edge_insets_get_vertical(resolved_padding);
@@ -1375,7 +1265,8 @@ static void ui_padding_layout(UIWidget *widget, UIPaddingProps *padding,
         ui_box_constraints_deflate(constraints, resolved_padding);
 
     UIWidget *child = widget->first;
-    Vec2 child_size = ui_widget_layout_box(widget->first, inner_constraints);
+    ui_widget_layout(child, inner_constraints);
+    Vec2 child_size = child->size;
     child->offset = vec2(resolved_padding.left, resolved_padding.top);
 
     widget->size = ui_box_constraints_constrain(
@@ -1386,24 +1277,10 @@ static void ui_padding_layout(UIWidget *widget, UIPaddingProps *padding,
   }
 }
 
-static i32 ui_padding_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      ui_padding_layout(widget, ui_widget_get_props(widget, UIPaddingProps),
-                        message->layout_box.constraints);
-    } break;
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 UIWidgetClass ui_padding_class = {
     .name = "Padding",
     .props_size = sizeof(UIPaddingProps),
-    .callback = ui_padding_callback,
+    .layout = ui_padding_layout,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1545,7 +1422,8 @@ static Vec2 ui_stack_compute_size(UIWidget *widget, UIStackProps *props,
 
     if (!ui_parent_data_stack_is_positioned(data)) {
       has_non_positioned_child = true;
-      Vec2 child_size = ui_widget_layout_box(child, non_positioned_constraints);
+      ui_widget_layout(child, non_positioned_constraints);
+      Vec2 child_size = child->size;
 
       width = f32_max(width, child_size.x);
       height = f32_max(height, child_size.y);
@@ -1571,7 +1449,8 @@ static bool ui_stack_layout_positioned_child(UIWidget *child,
                                              Vec2 size) {
   UIBoxConstraints child_constraints =
       ui_parent_data_stack_get_positioned_child_constraints(data, size);
-  Vec2 child_size = ui_widget_layout_box(child, child_constraints);
+  ui_widget_layout(child, child_constraints);
+  Vec2 child_size = child->size;
 
   f32 x;
   if (data->left.present) {
@@ -1599,14 +1478,13 @@ static bool ui_stack_layout_positioned_child(UIWidget *child,
          y + child_size.y > size.y;
 }
 
-static void ui_stack_layout_box(UIWidget *widget, UIStackProps *props,
-                                UIStackState *state,
-                                UIBoxConstraints constraints) {
-  state->has_visual_overflow = false;
-
+static void ui_stack_layout(UIWidget *widget, UIBoxConstraints constraints) {
+  UIStackProps *props = ui_widget_get_props(widget, UIStackProps);
   Vec2 size = ui_stack_compute_size(widget, props, constraints);
   widget->size = size;
 
+  UIStackState *state = ui_widget_get_state(widget, UIStackState);
+  state->has_visual_overflow = false;
   for (UIWidget *child = widget->first; child; child = child->next) {
     UIParentDataStack *data = ui_widget_get_parent_data(
         child, UI_PARENT_DATA_STACK, UIParentDataStack);
@@ -1620,8 +1498,10 @@ static void ui_stack_layout_box(UIWidget *widget, UIStackProps *props,
   }
 }
 
-static void ui_stack_paint(UIWidget *widget, UIStackState *state,
-                           UIPaintingContext *context, Vec2 offset) {
+static void ui_stack_paint(UIWidget *widget, UIPaintingContext *context,
+                           Vec2 offset) {
+  UIStackState *state = ui_widget_get_state(widget, UIStackState);
+
   bool should_clip = state->has_visual_overflow;
   if (should_clip) {
     push_clip_rect(offset, vec2_add(offset, widget->size));
@@ -1636,33 +1516,13 @@ static void ui_stack_paint(UIWidget *widget, UIStackState *state,
   }
 }
 
-static i32 ui_stack_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      ui_stack_layout_box(widget, ui_widget_get_props(widget, UIStackProps),
-                          ui_widget_get_state(widget, UIStackState),
-                          message->layout_box.constraints);
-    } break;
-
-    case UI_MESSAGE_PAINT: {
-      ui_stack_paint(widget, ui_widget_get_state(widget, UIStackState),
-                     message->paint.context, message->paint.offset);
-    } break;
-
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 UIWidgetClass ui_stack_class = {
     .name = "Stack",
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIStackProps),
     .state_size = sizeof(UIStackState),
-    .callback = ui_stack_callback,
+    .layout = ui_stack_layout,
+    .paint = ui_stack_paint,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1891,10 +1751,8 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
         first_flex_child = child;
       }
     } else {
-      Vec2 child_size_raw =
-          ui_widget_layout_box(child, non_flex_child_constraints);
-      AxisSize child_size =
-          axis_size_from_size(child_size_raw, flex->direction);
+      ui_widget_layout(child, non_flex_child_constraints);
+      AxisSize child_size = axis_size_from_size(child->size, flex->direction);
 
       accumulated_size.main += child_size.main;
       accumulated_size.cross =
@@ -1922,8 +1780,8 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
                  max_child_extent < F32_INFINITY);
     UIBoxConstraints child_constraints = ui_box_constraints_for_flex_child(
         flex, constraints, max_child_extent, data);
-    Vec2 child_size_raw = ui_widget_layout_box(child, child_constraints);
-    AxisSize child_size = axis_size_from_size(child_size_raw, flex->direction);
+    ui_widget_layout(child, child_constraints);
+    AxisSize child_size = axis_size_from_size(child->size, flex->direction);
 
     accumulated_size.main += child_size.main;
     accumulated_size.cross = f32_max(accumulated_size.cross, child_size.cross);
@@ -2049,60 +1907,46 @@ static f32 ui_flex_get_main_size(Vec2 size, UIAxis direction) {
   }
 }
 
-static void ui_flex_layout(UIWidget *widget, UIFlexProps *flex,
-                           UIBoxConstraints constraints) {
-  UIFlexLayoutSize sizes = ui_flex_compute_size(widget, flex, constraints);
+static void ui_flex_layout(UIWidget *widget, UIBoxConstraints constraints) {
+  UIFlexProps *props = ui_widget_get_props(widget, UIFlexProps);
+  UIFlexLayoutSize sizes = ui_flex_compute_size(widget, props, constraints);
   f32 cross_axis_extent = sizes.size.cross;
   widget->size =
-      convert_size(vec2(sizes.size.main, sizes.size.cross), flex->direction);
+      convert_size(vec2(sizes.size.main, sizes.size.cross), props->direction);
   // TODO: Handle overflow.
 
   f32 remaining_space = f32_max(0.0f, sizes.main_axis_free_space);
   // TODO: Handle text direction and vertical direction.
   f32 leading_space;
   f32 between_space;
-  ui_flex_distribute_space(flex->main_axis_alignment, remaining_space,
+  ui_flex_distribute_space(props->main_axis_alignment, remaining_space,
                            widget->child_count, /* flipped= */ false,
-                           flex->spacing, &leading_space, &between_space);
+                           props->spacing, &leading_space, &between_space);
 
   // Position all children in visual order: starting from the top-left child and
   // work towards the child that's farthest away from the origin.
   f32 child_main_position = leading_space;
   for (UIWidget *child = widget->first; child; child = child->next) {
     f32 child_cross_position = ui_flex_get_child_cross_axis_offset(
-        flex->cross_axis_alignment,
+        props->cross_axis_alignment,
         cross_axis_extent -
-            ui_flex_get_cross_size(child->size, flex->direction),
+            ui_flex_get_cross_size(child->size, props->direction),
         /* flipped= */ false);
-    if (flex->direction == UI_AXIS_HORIZONTAL) {
+    if (props->direction == UI_AXIS_HORIZONTAL) {
       child->offset = vec2(child_main_position, child_cross_position);
     } else {
       child->offset = vec2(child_cross_position, child_main_position);
     }
     child_main_position +=
-        ui_flex_get_main_size(child->size, flex->direction) + between_space;
+        ui_flex_get_main_size(child->size, props->direction) + between_space;
   }
-}
-
-static i32 ui_flex_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      ui_flex_layout(widget, ui_widget_get_props(widget, UIFlexProps),
-                     message->layout_box.constraints);
-    } break;
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
 }
 
 UIWidgetClass ui_flex_class = {
     .name = "Flex",
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIFlexProps),
-    .callback = ui_flex_callback,
+    .layout = ui_flex_layout,
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2113,7 +1957,7 @@ UIWidgetClass ui_column_class = {
     .name = "Column",
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIFlexProps),
-    .callback = ui_flex_callback,
+    .layout = ui_flex_layout,
 };
 
 void ui_column_begin(const UIColumnProps *props) {
@@ -2136,7 +1980,7 @@ UIWidgetClass ui_row_class = {
     .name = "Row",
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIFlexProps),
-    .callback = ui_flex_callback,
+    .layout = ui_flex_layout,
 };
 
 void ui_row_begin(const UIRowProps *props) {
@@ -2171,54 +2015,46 @@ typedef struct UIPointerListenerState {
   UIPointerEventQueue event_queue;
 } UIPointerListenerState;
 
-static i32 ui_pointer_listener_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_HANDLE_EVENT: {
-      UIPointerListenerState *state =
-          ui_widget_get_state(widget, UIPointerListenerState);
-      UIPointerEvent *event = message->handle_event.event;
-      UIFrame *frame = ui_state_get_current_frame(ui_state_get());
-      UIPointerEventQueueEntry *entry =
-          arena_push_struct(&frame->arena, UIPointerEventQueueEntry);
-      entry->event = *event;
-      DLL_APPEND(state->event_queue.first, state->event_queue.last, entry, prev,
-                 next);
+static bool ui_pointer_listener_hit_test(UIWidget *widget, Vec2 local_position,
+                                         Arena *arena,
+                                         UIHitTestResult *result) {
+  UIPointerListenerProps *props =
+      ui_widget_get_props(widget, UIPointerListenerProps);
+  switch (props->behaviour) {
+    case UI_HIT_TEST_BEHAVIOUR_DEFER_TO_CHILD: {
+      return ui_widget_hit_test_defer_to_children(widget, local_position, arena,
+                                                  result);
     } break;
 
-    case UI_MESSAGE_HIT_TEST: {
-      UIPointerListenerProps *props =
-          ui_widget_get_props(widget, UIPointerListenerProps);
-      switch (props->behaviour) {
-        case UI_HIT_TEST_BEHAVIOUR_DEFER_TO_CHILD: {
-          result = ui_widget_hit_test_defer_to_children(
-              widget, message->hit_test.result, message->hit_test.arena,
-              message->hit_test.local_position);
-        } break;
-
-        case UI_HIT_TEST_BEHAVIOUR_OPAQUE: {
-          result = ui_widget_hit_test_opaque(widget, message->hit_test.result,
-                                             message->hit_test.arena,
-                                             message->hit_test.local_position);
-        } break;
-
-        default:
-          UNREACHABLE;
-      }
+    case UI_HIT_TEST_BEHAVIOUR_OPAQUE: {
+      return ui_widget_hit_test_opaque(widget, local_position, arena, result);
     } break;
 
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
+    default:
+      UNREACHABLE;
   }
-  return result;
+
+  return false;
+}
+
+static void ui_pointer_listener_handle_pointer_event(
+    UIWidget *widget, const UIPointerEvent *event) {
+  UIPointerListenerState *state =
+      ui_widget_get_state(widget, UIPointerListenerState);
+  UIFrame *frame = ui_state_get_current_frame(ui_state_get());
+  UIPointerEventQueueEntry *entry =
+      arena_push_struct(&frame->arena, UIPointerEventQueueEntry);
+  entry->event = *event;
+  DLL_APPEND(state->event_queue.first, state->event_queue.last, entry, prev,
+             next);
 }
 
 UIWidgetClass ui_pointer_listener_class = {
     .name = "PointerListener",
     .props_size = sizeof(UIPointerListenerProps),
     .state_size = sizeof(UIPointerListenerState),
-    .callback = ui_pointer_listener_callback,
+    .hit_test = ui_pointer_listener_hit_test,
+    .handle_pointer_event = ui_pointer_listener_handle_pointer_event,
 };
 
 void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
@@ -2290,41 +2126,31 @@ typedef struct UIMouseRegionState {
   bool hovering;
 } UIMouseRegionState;
 
-static i32 ui_mouse_region_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_HANDLE_EVENT: {
-      UIMouseRegionState *state =
-          ui_widget_get_state(widget, UIMouseRegionState);
-      UIPointerEvent *event = message->handle_event.event;
-      switch (event->type) {
-        case UI_POINTER_EVENT_ENTER: {
-          state->enter = ui_pointer_event_some(*event);
-          state->hovering = true;
-        } break;
-        case UI_POINTER_EVENT_HOVER: {
-          state->hover = ui_pointer_event_some(*event);
-        } break;
-        case UI_POINTER_EVENT_EXIT: {
-          state->exit = ui_pointer_event_some(*event);
-          state->hovering = false;
-        } break;
-        default: {
-        } break;
-      }
+static void ui_mouse_region_handle_pointer_event(UIWidget *widget,
+                                                 const UIPointerEvent *event) {
+  UIMouseRegionState *state = ui_widget_get_state(widget, UIMouseRegionState);
+  switch (event->type) {
+    case UI_POINTER_EVENT_ENTER: {
+      state->enter = ui_pointer_event_some(*event);
+      state->hovering = true;
+    } break;
+    case UI_POINTER_EVENT_HOVER: {
+      state->hover = ui_pointer_event_some(*event);
+    } break;
+    case UI_POINTER_EVENT_EXIT: {
+      state->exit = ui_pointer_event_some(*event);
+      state->hovering = false;
     } break;
     default: {
-      result = ui_widget_callback_default(widget, message);
     } break;
   }
-  return result;
 }
 
 UIWidgetClass ui_mouse_region_class = {
     .name = "MouseRegion",
     .props_size = sizeof(UIMouseRegionProps),
     .state_size = sizeof(UIMouseRegionState),
-    .callback = ui_mouse_region_callback,
+    .handle_pointer_event = ui_mouse_region_handle_pointer_event,
 };
 
 void ui_mouse_region_begin(const UIMouseRegionProps *props) {
@@ -2473,73 +2299,60 @@ void ui_gesture_detector_end(void) {
 ///
 /// UIText
 ///
-
 typedef struct UITextState {
   UIBoxConstraints constraints;
   f32 font_size;
 } UITextState;
 
-static i32 ui_text_callback(UIWidget *widget, UIMessage *message) {
-  ASSERTF(!widget->first, "UIText should be a leaf node");
+static void ui_text_layout(UIWidget *widget, UIBoxConstraints constraints) {
+  DEBUG_ASSERTF(!widget->first, "UIText should be a leaf node");
 
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      UITextProps *props = ui_widget_get_props(widget, UITextProps);
-      UITextState *state = ui_widget_get_state(widget, UITextState);
+  UITextProps *props = ui_widget_get_props(widget, UITextProps);
+  UITextState *state = ui_widget_get_state(widget, UITextState);
 
-      UIBoxConstraints constraints = message->layout_box.constraints;
-      state->constraints = constraints;
+  state->constraints = constraints;
 
-      // TODO: Get default text style from widget tree.
-      f32 font_size = 13;
-      if (props->style.present) {
-        if (props->style.value.font_size.present) {
-          font_size = props->style.value.font_size.value;
-        }
-      }
-      state->font_size = font_size;
-
-      TextMetrics metrics = layout_text_str8(
-          props->text, font_size, constraints.min_width, constraints.max_width);
-      // TODO: Handle overflow.
-      widget->size = ui_box_constraints_constrain(constraints, metrics.size);
-    } break;
-
-    case UI_MESSAGE_PAINT: {
-      UITextProps *props = ui_widget_get_props(widget, UITextProps);
-      UITextState *state = ui_widget_get_state(widget, UITextState);
-
-      // TODO: Get default text style from widget tree.
-      UIColor color = ui_color(1, 1, 1, 1);
-      if (props->style.present) {
-        if (props->style.value.color.present) {
-          color = props->style.value.color.value;
-        }
-      }
-      draw_text_str8(message->paint.offset, props->text, state->font_size,
-                     state->constraints.min_width, state->constraints.max_width,
-                     color);
-    } break;
-
-    case UI_MESSAGE_HIT_TEST: {
-      result = ui_widget_hit_test_opaque(widget, message->hit_test.result,
-                                         message->hit_test.arena,
-                                         message->hit_test.local_position);
-    } break;
-
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
+  // TODO: Get default text style from widget tree.
+  f32 font_size = 13;
+  if (props->style.present) {
+    if (props->style.value.font_size.present) {
+      font_size = props->style.value.font_size.value;
+    }
   }
-  return result;
+  state->font_size = font_size;
+
+  TextMetrics metrics = layout_text_str8(
+      props->text, font_size, constraints.min_width, constraints.max_width);
+  // TODO: Handle overflow.
+  widget->size = ui_box_constraints_constrain(constraints, metrics.size);
+}
+
+static void ui_text_paint(UIWidget *widget, UIPaintingContext *context,
+                          Vec2 offset) {
+  (void)context;
+
+  UITextProps *props = ui_widget_get_props(widget, UITextProps);
+  UITextState *state = ui_widget_get_state(widget, UITextState);
+
+  // TODO: Get default text style from widget tree.
+  UIColor color = ui_color(1, 1, 1, 1);
+  if (props->style.present) {
+    if (props->style.value.color.present) {
+      color = props->style.value.color.value;
+    }
+  }
+  draw_text_str8(offset, props->text, state->font_size,
+                 state->constraints.min_width, state->constraints.max_width,
+                 color);
 }
 
 UIWidgetClass ui_text_class = {
     .name = "Text",
     .props_size = sizeof(UITextProps),
     .state_size = sizeof(UITextState),
-    .callback = ui_text_callback,
+    .layout = ui_text_layout,
+    .paint = ui_text_paint,
+    .hit_test = ui_widget_hit_test_opaque,
 };
 
 void ui_text(const UITextProps *props) {
@@ -2678,8 +2491,8 @@ static f32 ui_viewport_layout_children(
     data->layout_offset = layout_offset;
     data->next_scroll_offset = state->next_offset.points;
     ui_widget_layout_sliver(
-        child, &data->geometry,
-        (UISliverConstraints){
+        child,
+        &(UISliverConstraints){
             .axis_direction = props->axis_direction,
             .growth_direction = growth_direction,
             .scroll_direction = scroll_direction,
@@ -2695,7 +2508,8 @@ static f32 ui_viewport_layout_children(
             .remaining_cache_extent =
                 f32_max(0, remaining_cache_extent + cache_extent_correction),
             .cache_origin = corrected_cache_origin,
-        });
+        },
+        &data->geometry);
 
     if (data->geometry.scroll_offset_correction != 0) {
       return data->geometry.scroll_offset_correction;
@@ -2786,9 +2600,10 @@ static f32 ui_viewport_attempt_layout(UIWidget *widget, UIViewportProps *props,
       f32_clamp(center_offset, -cache_extent, 0));
 }
 
-static void ui_viewport_layout_box(UIWidget *widget, UIViewportProps *props,
-                                   UIViewportState *state,
-                                   UIBoxConstraints constraints) {
+static void ui_viewport_layout(UIWidget *widget, UIBoxConstraints constraints) {
+  UIViewportProps *props = ui_widget_get_props(widget, UIViewportProps);
+  UIViewportState *state = ui_widget_get_state(widget, UIViewportState);
+
   Vec2 size = ui_box_constraints_get_biggest(constraints);
   widget->size = size;
 
@@ -2823,8 +2638,10 @@ static void ui_viewport_layout_box(UIWidget *widget, UIViewportProps *props,
   ASSERT(layout_index < max_layout_counts);
 }
 
-static void ui_viewport_paint(UIWidget *widget, UIViewportState *state,
-                              UIPaintingContext *context, Vec2 offset) {
+static void ui_viewport_paint(UIWidget *widget, UIPaintingContext *context,
+                              Vec2 offset) {
+  UIViewportState *state = ui_widget_get_state(widget, UIViewportState);
+
   bool should_clip = state->has_visual_overflow;
   if (should_clip) {
     push_clip_rect(offset, vec2_add(offset, widget->size));
@@ -2844,40 +2661,14 @@ static void ui_viewport_paint(UIWidget *widget, UIViewportState *state,
   }
 }
 
-static i32 ui_viewport_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_LAYOUT_BOX: {
-      ui_viewport_layout_box(widget,
-                             ui_widget_get_props(widget, UIViewportProps),
-                             ui_widget_get_state(widget, UIViewportState),
-                             message->layout_box.constraints);
-    } break;
-
-    case UI_MESSAGE_PAINT: {
-      ui_viewport_paint(widget, ui_widget_get_state(widget, UIViewportState),
-                        message->paint.context, message->paint.offset);
-    } break;
-
-    case UI_MESSAGE_HIT_TEST: {
-      result = ui_widget_hit_test_opaque(widget, message->hit_test.result,
-                                         message->hit_test.arena,
-                                         message->hit_test.local_position);
-    } break;
-
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 UIWidgetClass ui_viewport_class = {
     .name = "Viewport",
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UIViewportProps),
     .state_size = sizeof(UIViewportState),
-    .callback = ui_viewport_callback,
+    .layout = ui_viewport_layout,
+    .paint = ui_viewport_paint,
+    .hit_test = ui_widget_hit_test_opaque,
 };
 
 void ui_viewport_begin(const UIViewportProps *props) {
@@ -2908,26 +2699,18 @@ typedef struct UIScrollableState {
   f32 handle_down_offset;
 } UIScrollableState;
 
-static i32 ui_scrollable_callback(UIWidget *widget, UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_MOUNT: {
-      // Set rebuild so the scrollbar can have correct size on first appearance.
-      ui_set_rebuild(true);
-    } break;
+static void ui_scrollable_mount(UIWidget *widget) {
+  (void)widget;
 
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
+  // Set rebuild so the scrollbar can have correct size on first appearance.
+  ui_set_rebuild(true);
 }
 
 UIWidgetClass ui_scrollable_class = {
     .name = "Scrollable",
     .props_size = sizeof(UIScrollableProps),
     .state_size = sizeof(UIScrollableState),
-    .callback = ui_scrollable_callback,
+    .mount = ui_scrollable_mount,
 };
 
 void ui_scrollable_begin(const UIScrollableProps *props) {
@@ -3066,6 +2849,16 @@ typedef struct UISliverFixedExtentListState {
   f32 next_scroll_offset;
 } UISliverFixedExtentListState;
 
+static void ui_sliver_fixed_extent_list_mount(UIWidget *widget) {
+  UISliverFixedExtentListProps *props =
+      ui_widget_get_props(widget, UISliverFixedExtentListProps);
+  if (props->builder) {
+    // If call site uses builder, set rebuild because the builder is empty
+    // for the first frame.
+    ui_set_rebuild(true);
+  }
+}
+
 static i32 ui_sliver_fixed_extent_list_get_min_child_index(f32 item_extent,
                                                            f32 scroll_offset) {
   if (item_extent <= 0.0f) {
@@ -3113,12 +2906,16 @@ static void ui_sliver_fixed_extent_list_calc_item_count(
 }
 
 static void ui_sliver_fixed_extent_list_layout_sliver(
-    UIWidget *widget, UISliverFixedExtentListProps *props,
-    UISliverFixedExtentListState *state, UISliverGeometry *geometry,
-    UISliverConstraints constraints) {
-  f32 scroll_offset = constraints.scroll_offset + constraints.cache_origin;
+    UIWidget *widget, const UISliverConstraints *constraints,
+    UISliverGeometry *geometry) {
+  UISliverFixedExtentListProps *props =
+      ui_widget_get_props(widget, UISliverFixedExtentListProps);
+  UISliverFixedExtentListState *state =
+      ui_widget_get_state(widget, UISliverFixedExtentListState);
+
+  f32 scroll_offset = constraints->scroll_offset + constraints->cache_origin;
   ASSERT(scroll_offset >= 0.0f);
-  f32 remaining_extent = constraints.remaining_cache_extent;
+  f32 remaining_extent = constraints->remaining_cache_extent;
   ASSERT(remaining_extent >= 0.0f);
 
   f32 item_extent = props->item_extent;
@@ -3138,7 +2935,7 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
     UIBoxConstraints child_constraints =
         ui_sliver_constraints_as_box_constraints(constraints, item_extent,
                                                  item_extent);
-    ui_widget_layout_box(child, child_constraints);
+    ui_widget_layout(child, child_constraints);
     f32 layout_offset = child_index * item_extent;
     child->offset = vec2(0, layout_offset - scroll_offset);
 
@@ -3155,10 +2952,10 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
   f32 cache_extent = ui_sliver_constraints_calc_cache_offset(
       constraints, leading_scroll_offset, trailing_scroll_offset);
 
-  widget->size = vec2(constraints.cross_axis_extent, paint_extent);
+  widget->size = vec2(constraints->cross_axis_extent, paint_extent);
 
   f32 target_end_scroll_offset_for_paint =
-      constraints.scroll_offset + constraints.remaining_paint_extent;
+      constraints->scroll_offset + constraints->remaining_paint_extent;
   bool has_target_last_index_for_paint =
       f32_is_finite(target_end_scroll_offset_for_paint);
   f32 target_last_index_for_paint =
@@ -3174,7 +2971,7 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
       .layout_extent = paint_extent,
       .hit_test_extent = paint_extent,
       .max_paint_extent = scroll_extent,
-      .has_visual_overflow = constraints.scroll_offset > 0 ||
+      .has_visual_overflow = constraints->scroll_offset > 0 ||
                              (has_target_last_index_for_paint &&
                               child_index >= target_last_index_for_paint),
   };
@@ -3182,7 +2979,7 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
   UIParentDataSliver *data = ui_widget_get_parent_data(
       widget, UI_PARENT_DATA_SLIVER, UIParentDataSliver);
   state->next_scroll_offset = data->next_scroll_offset;
-  state->last_constraints = constraints;
+  state->last_constraints = *constraints;
 }
 
 static void ui_sliver_fixed_extent_list_paint(UIWidget *widget,
@@ -3199,50 +2996,15 @@ static void ui_sliver_fixed_extent_list_paint(UIWidget *widget,
   }
 }
 
-static i32 ui_sliver_fixed_extent_list_callback(UIWidget *widget,
-                                                UIMessage *message) {
-  i32 result = 0;
-  switch (message->type) {
-    case UI_MESSAGE_MOUNT: {
-      UISliverFixedExtentListProps *props =
-          ui_widget_get_props(widget, UISliverFixedExtentListProps);
-      if (props->builder) {
-        // If call site uses builder, set rebuild because the builder is empty
-        // for the first frame.
-        ui_set_rebuild(true);
-      }
-    } break;
-
-    case UI_MESSAGE_LAYOUT_BOX: {
-      DEBUG_ASSERTF(false, "UI_MESSAGE_LAYOUT_BOX is not implemented for %s",
-                    widget->klass->name);
-    } break;
-
-    case UI_MESSAGE_LAYOUT_SLIVER: {
-      ui_sliver_fixed_extent_list_layout_sliver(
-          widget, ui_widget_get_props(widget, UISliverFixedExtentListProps),
-          ui_widget_get_state(widget, UISliverFixedExtentListState),
-          message->layout_sliver.geometry, message->layout_sliver.constraints);
-    } break;
-
-    case UI_MESSAGE_PAINT: {
-      ui_sliver_fixed_extent_list_paint(widget, message->paint.context,
-                                        message->paint.offset);
-    } break;
-
-    default: {
-      result = ui_widget_callback_default(widget, message);
-    } break;
-  }
-  return result;
-}
-
 UIWidgetClass ui_sliver_fixed_extent_list_class = {
     .name = "SliverFixedExtentList",
     .flags = UI_WIDGET_MANY_CHILDREN,
     .props_size = sizeof(UISliverFixedExtentListProps),
     .state_size = sizeof(UISliverFixedExtentListState),
-    .callback = ui_sliver_fixed_extent_list_callback,
+    .mount = ui_sliver_fixed_extent_list_mount,
+    .layout = ui_widget_layout_for_sliver,
+    .layout_sliver = ui_sliver_fixed_extent_list_layout_sliver,
+    .paint = ui_sliver_fixed_extent_list_paint,
 };
 
 void ui_sliver_fixed_extent_list_begin(
