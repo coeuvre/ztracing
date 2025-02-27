@@ -234,6 +234,14 @@ static void ztracing_file_loader__process_profile(ZtracingProfileViewer *viewer,
   viewer->items =
       arena_push_array(&viewer->arena, ZtracingProfileItem, viewer->item_count);
   ztracing_file_loader__collect_items(&viewer->arena, viewer->items, profile);
+
+  viewer->min_time_ns = profile->min_time_ns;
+  viewer->max_time_ns = profile->max_time_ns;
+
+  i64 duration = (profile->max_time_ns - profile->min_time_ns);
+  i64 offset = duration * 0.1;
+  viewer->begin_time_ns = profile->min_time_ns - offset;
+  viewer->end_time_ns = profile->max_time_ns + offset;
 }
 
 static int ztracing_file_loader__thread(void *self_) {
@@ -260,14 +268,6 @@ static int ztracing_file_loader__thread(void *self_) {
     } else {
       viewer->error = str8_dup(&viewer->arena, profile->error);
     }
-
-    viewer->min_time_ns = profile->min_time_ns;
-    viewer->max_time_ns = profile->max_time_ns;
-
-    i64 duration = (profile->max_time_ns - profile->min_time_ns);
-    i64 offset = duration * 0.1;
-    viewer->begin_time_ns = profile->min_time_ns - offset;
-    viewer->end_time_ns = profile->max_time_ns + offset;
 
     self->viewer = viewer;
   }

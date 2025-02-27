@@ -260,6 +260,7 @@ static void json_trace_profile__parse_object_format(JsonTraceProfile *self,
                                                     Arena *arena,
                                                     JsonParser *parser,
                                                     Arena scratch) {
+  bool has_value = false;
   bool running = true;
   while (running) {
     Arena scratch_ = scratch;
@@ -273,6 +274,9 @@ static void json_trace_profile__parse_object_format(JsonTraceProfile *self,
               running =
                   !json_trace_profile__parse_array_format_expecting_open_bracket(
                       self, arena, parser, scratch);
+              if (running) {
+                has_value = true;
+              }
             } break;
 
             case JSON_TOKEN_ERROR: {
@@ -289,6 +293,14 @@ static void json_trace_profile__parse_object_format(JsonTraceProfile *self,
         } else {
           running = !json_trace_profile__skip_object_value(self, arena, parser,
                                                            scratch);
+        }
+      } break;
+
+      case JSON_TOKEN_COMMA: {
+        if (!has_value) {
+          self->error =
+              arena_push_str8f(arena, "expecting 'string' or '}', but got ','");
+          running = false;
         }
       } break;
 
@@ -340,6 +352,9 @@ JsonTraceProfile *json_trace_profile_parse(Arena *arena, JsonParser *parser) {
     } break;
   }
   scratch_end(scratch);
+
+  self->min_time_ns = i64_min(self->min_time_ns, 0);
+  self->max_time_ns = i64_max(self->max_time_ns, self->min_time_ns);
 
   return self;
 }
