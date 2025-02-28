@@ -57,7 +57,7 @@ static JsonTraceSpan *json_trace_thread_add_span(JsonTraceThread *self,
   span->name = str8_dup(arena, name);
   span->begin_time_ns = begin_time_us;
   span->end_time_ns = end_time_us;
-  DLL_APPEND(self->first, self->last, span, prev, next);
+  DLL_APPEND(self->first_span, self->last_span, span, prev, next);
   self->span_count += 1;
   return span;
 }

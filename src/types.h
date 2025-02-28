@@ -35,6 +35,9 @@ typedef ptrdiff_t isize;
 
 static inline i64 i64_min(i64 a, i64 b) { return MIN(a, b); }
 static inline i64 i64_max(i64 a, i64 b) { return MAX(a, b); }
+static inline int i64_compare(i64 a, i64 b) {
+  return (a == b) ? 0 : (a < b ? -1 : 1);
+}
 
 #define ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
 
