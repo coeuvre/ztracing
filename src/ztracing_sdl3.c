@@ -29,15 +29,15 @@ static Vec2 get_window_size(void) {
   return size;
 }
 
-typedef struct ZtracingFileSDL3 {
-  ZtracingFile file;
+typedef struct ZFileSDL3 {
+  ZFile file;
   Arena arena;
   SDL_IOStream *io;
   Str8 buf;
-} ZtracingFileSDL3;
+} ZFileSDL3;
 
-static Str8 ztracing_file_sdl3_read(void *self_) {
-  ZtracingFileSDL3 *self = self_;
+static Str8 z_file_sdl3_read(void *self_) {
+  ZFileSDL3 *self = self_;
 
   if (self->file.interrupted) {
     return str8_zero();
@@ -47,37 +47,37 @@ static Str8 ztracing_file_sdl3_read(void *self_) {
   return str8(self->buf.ptr, nread);
 }
 
-static void ztracing_file_sdl3_close(void *self_) {
-  ZtracingFileSDL3 *self = self_;
+static void z_file_sdl3_close(void *self_) {
+  ZFileSDL3 *self = self_;
   SDL_CloseIO(self->io);
   arena_free(&self->arena);
 }
 
-static ZtracingFile *ztracing_file_sdl3_open(const char *path, usize buf_len) {
+static ZFile *z_file_sdl3_open(const char *path, usize buf_len) {
   SDL_IOStream *io = SDL_IOFromFile(path, "r");
   ASSERTF(io, "%s", SDL_GetError());
   Arena arena_ = {0};
-  ZtracingFileSDL3 *file = arena_push_struct(&arena_, ZtracingFileSDL3);
+  ZFileSDL3 *file = arena_push_struct(&arena_, ZFileSDL3);
   Str8 name = str8_dup(&arena_, str8_from_cstr(path));
   Str8 buf = arena_push_str8(&arena_, buf_len);
-  *file = (ZtracingFileSDL3){
+  *file = (ZFileSDL3){
       .file =
           {
               .name = name,
-              .read = ztracing_file_sdl3_read,
-              .close = ztracing_file_sdl3_close,
+              .read = z_file_sdl3_read,
+              .close = z_file_sdl3_close,
           },
       .arena = arena_,
       .io = io,
       .buf = buf,
   };
-  return (ZtracingFile *)file;
+  return (ZFile *)file;
 }
 
 static void parse_json(const char *path) {
   usize buf_len = 1024 * 1024;
-  ZtracingFile *file = ztracing_file_sdl3_open(path, buf_len);
-  ztracing_load_file(file);
+  ZFile *file = z_file_sdl3_open(path, buf_len);
+  z_load_file(file);
 }
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
@@ -188,7 +188,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
   ui_set_viewport(vec2_zero(), get_screen_size());
   ui_on_mouse_move(get_global_window_relative_mouse_pos());
-  ztracing_update();
+  z_update();
 
   if (!window_shown) {
     SDL_ShowWindow(window);
@@ -200,5 +200,5 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
 
 void SDL_AppQuit(void *appstate, SDL_AppResult result) {
   (void)appstate, (void)result;
-  ztracing_quit();
+  z_quit();
 }
