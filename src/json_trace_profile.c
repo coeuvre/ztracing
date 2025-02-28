@@ -23,45 +23,72 @@ typedef struct JsonTraceEvent {
   JsonValue *args;
 } JsonTraceEvent;
 
-static JsonTraceSeries *json_trace_counter__upsert_series(
-    JsonTraceCounter *self, Arena *arena, Str8 name) {
+static JsonTraceSeries *json_trace_counter_upsert_series(JsonTraceCounter *self,
+                                                         Arena *arena,
+                                                         Str8 name) {
   HashTrie *slot = hash_trie_upsert(arena, &self->series, name);
   if (!slot->value) {
     JsonTraceSeries *new_series = arena_push_struct(arena, JsonTraceSeries);
     new_series->name = slot->key;
     slot->value = new_series;
-    self->series_len += 1;
+    self->series_count += 1;
   }
   return slot->value;
 }
 
-static void json_trace_counter__add_sample(JsonTraceCounter *self, Arena *arena,
-                                           Str8 name, i64 time, f64 value) {
-  JsonTraceSeries *series =
-      json_trace_counter__upsert_series(self, arena, name);
+static void json_trace_counter_add_sample(JsonTraceCounter *self, Arena *arena,
+                                          Str8 name, i64 time, f64 value) {
+  JsonTraceSeries *series = json_trace_counter_upsert_series(self, arena, name);
   JsonTraceSample *sample = arena_push_struct(arena, JsonTraceSample);
   sample->time = time;
   sample->value = value;
   DLL_APPEND(series->first, series->last, sample, prev, next);
-  series->sample_len++;
+  series->sample_count++;
 
   self->min_value = f64_min(self->min_value, value);
   self->max_value = f64_max(self->max_value, value);
 }
 
-static JsonTraceCounter *json_trace_process__upsert_counter(
+static JsonTraceSpan *json_trace_thread_add_span(JsonTraceThread *self,
+                                                 Arena *arena, Str8 name,
+                                                 i64 begin_time_us,
+                                                 i64 end_time_us) {
+  JsonTraceSpan *span = arena_push_struct(arena, JsonTraceSpan);
+  span->name = str8_dup(arena, name);
+  span->begin_time_ns = begin_time_us;
+  span->end_time_ns = end_time_us;
+  DLL_APPEND(self->first, self->last, span, prev, next);
+  self->span_count += 1;
+  return span;
+}
+
+static JsonTraceCounter *json_trace_process_upsert_counter(
     JsonTraceProcess *self, Arena *arena, Str8 name) {
   HashTrie *slot = hash_trie_upsert(arena, &self->counters, name);
   if (!slot->value) {
     JsonTraceCounter *new_counter = arena_push_struct(arena, JsonTraceCounter);
     new_counter->name = slot->key;
     slot->value = new_counter;
-    self->counter_len += 1;
+    self->counter_count += 1;
   }
   return slot->value;
 }
 
-static JsonTraceProcess *json_trace_profile__upsert_process(
+static JsonTraceThread *json_trace_process_upsert_thread(JsonTraceProcess *self,
+                                                         Arena *arena,
+                                                         i64 tid) {
+  Str8 key = str8((u8 *)&tid, sizeof(tid));
+  HashTrie *slot = hash_trie_upsert(arena, &self->threads, key);
+  if (!slot->value) {
+    JsonTraceThread *new_thread = arena_push_struct(arena, JsonTraceThread);
+    new_thread->tid = tid;
+    slot->value = new_thread;
+    self->thread_count += 1;
+  }
+  return slot->value;
+}
+
+static JsonTraceProcess *json_trace_profile_upsert_process(
     JsonTraceProfile *self, Arena *arena, i64 pid) {
   Str8 key = str8((u8 *)&pid, sizeof(pid));
   HashTrie *slot = hash_trie_upsert(arena, &self->processes, key);
@@ -69,14 +96,14 @@ static JsonTraceProcess *json_trace_profile__upsert_process(
     JsonTraceProcess *new_process = arena_push_struct(arena, JsonTraceProcess);
     new_process->pid = pid;
     slot->value = new_process;
-    self->process_len += 1;
+    self->process_count += 1;
   }
   return slot->value;
 }
 
-static void json_trace_profile__process_trace_event(JsonTraceProfile *self,
-                                                    Arena *arena,
-                                                    JsonValue *value) {
+static void json_trace_profile_process_trace_event(JsonTraceProfile *self,
+                                                   Arena *arena,
+                                                   JsonValue *value) {
   JsonTraceEvent trace_event = {0};
   for (JsonValue *entry = value->first; entry; entry = entry->next) {
     if (str8_eq(entry->label, STR8_LIT("name"))) {
@@ -100,34 +127,56 @@ static void json_trace_profile__process_trace_event(JsonTraceProfile *self,
     }
   }
 
+  i64 time = trace_event.ts * 1000;
+
   switch (trace_event.ph) {
     // Counter event
     case 'C': {
-      i64 time = trace_event.ts * 1000;
       JsonTraceProcess *process =
-          json_trace_profile__upsert_process(self, arena, trace_event.pid);
+          json_trace_profile_upsert_process(self, arena, trace_event.pid);
       JsonTraceCounter *counter =
-          json_trace_process__upsert_counter(process, arena, trace_event.name);
+          json_trace_process_upsert_counter(process, arena, trace_event.name);
       if (trace_event.args->type == JSON_VALUE_OBJECT) {
         for (JsonValue *arg = trace_event.args->first; arg; arg = arg->next) {
           f64 value = json_value_as_f64(arg);
-          json_trace_counter__add_sample(counter, arena, arg->label, time,
-                                         value);
+          json_trace_counter_add_sample(counter, arena, arg->label, time,
+                                        value);
         }
       }
-      self->min_time_ns = i64_min(self->min_time_ns, time);
-      self->max_time_ns = i64_max(self->max_time_ns, time);
+    } break;
+
+    // Complete event
+    case 'X': {
+      if (!str8_is_empty(trace_event.name)) {
+        JsonTraceProcess *process =
+            json_trace_profile_upsert_process(self, arena, trace_event.pid);
+        JsonTraceThread *thread =
+            json_trace_process_upsert_thread(process, arena, trace_event.tid);
+
+        // TODO: Interning string name and cat.
+
+        JsonTraceSpan *span =
+            json_trace_thread_add_span(thread, arena, trace_event.name, time,
+                                       time + trace_event.dur * 1000);
+        if (!str8_is_empty(trace_event.cat)) {
+          span->cat = str8_dup(arena, trace_event.cat);
+        }
+        // TODO: handle trace_event.args.
+      }
     } break;
 
     default: {
     } break;
   }
+
+  self->min_time_ns = i64_min(self->min_time_ns, time);
+  self->max_time_ns = i64_max(self->max_time_ns, time);
 }
 
-static bool json_trace_profile__parse_array_format(JsonTraceProfile *self,
-                                                   Arena *arena,
-                                                   JsonParser *parser,
-                                                   Arena scratch) {
+static bool json_trace_profile_parse_array_format(JsonTraceProfile *self,
+                                                  Arena *arena,
+                                                  JsonParser *parser,
+                                                  Arena scratch) {
   bool eof = false;
   bool running = true;
   while (running) {
@@ -135,7 +184,7 @@ static bool json_trace_profile__parse_array_format(JsonTraceProfile *self,
     JsonValue *value = json_parser_parse_value(parser, &scratch_);
     switch (value->type) {
       case JSON_VALUE_OBJECT: {
-        json_trace_profile__process_trace_event(self, arena, value);
+        json_trace_profile_process_trace_event(self, arena, value);
 
         Arena scratch_ = scratch;
         JsonToken token = json_parser_parse_token(parser, &scratch_);
@@ -182,15 +231,14 @@ static bool json_trace_profile__parse_array_format(JsonTraceProfile *self,
   return eof;
 }
 
-static bool json_trace_profile__parse_array_format_expecting_open_bracket(
+static bool json_trace_profile_parse_array_format_expecting_open_bracket(
     JsonTraceProfile *self, Arena *arena, JsonParser *parser, Arena scratch) {
   bool eof = false;
   Arena scratch_ = scratch;
   JsonToken token = json_parser_parse_token(parser, &scratch_);
   switch (token.type) {
     case JSON_TOKEN_OPEN_BRACKET: {
-      eof =
-          json_trace_profile__parse_array_format(self, arena, parser, scratch);
+      eof = json_trace_profile_parse_array_format(self, arena, parser, scratch);
     } break;
 
     case JSON_TOKEN_ERROR: {
@@ -210,10 +258,10 @@ static bool json_trace_profile__parse_array_format_expecting_open_bracket(
 
 /// Skip tokens until next key-value pair in this object. Returns true if EOF
 /// reached.
-static bool json_trace_profile__skip_object_value(JsonTraceProfile *self,
-                                                  Arena *arena,
-                                                  JsonParser *parser,
-                                                  Arena scratch) {
+static bool json_trace_profile_skip_object_value(JsonTraceProfile *self,
+                                                 Arena *arena,
+                                                 JsonParser *parser,
+                                                 Arena scratch) {
   bool eof = false;
   bool running = true;
   u32 open = 0;
@@ -256,10 +304,10 @@ static bool json_trace_profile__skip_object_value(JsonTraceProfile *self,
   return eof;
 }
 
-static void json_trace_profile__parse_object_format(JsonTraceProfile *self,
-                                                    Arena *arena,
-                                                    JsonParser *parser,
-                                                    Arena scratch) {
+static void json_trace_profile_parse_object_format(JsonTraceProfile *self,
+                                                   Arena *arena,
+                                                   JsonParser *parser,
+                                                   Arena scratch) {
   bool has_value = false;
   bool running = true;
   while (running) {
@@ -272,7 +320,7 @@ static void json_trace_profile__parse_object_format(JsonTraceProfile *self,
           switch (token.type) {
             case JSON_TOKEN_COLON: {
               running =
-                  !json_trace_profile__parse_array_format_expecting_open_bracket(
+                  !json_trace_profile_parse_array_format_expecting_open_bracket(
                       self, arena, parser, scratch);
               if (running) {
                 has_value = true;
@@ -291,8 +339,8 @@ static void json_trace_profile__parse_object_format(JsonTraceProfile *self,
             } break;
           }
         } else {
-          running = !json_trace_profile__skip_object_value(self, arena, parser,
-                                                           scratch);
+          running = !json_trace_profile_skip_object_value(self, arena, parser,
+                                                          scratch);
         }
       } break;
 
@@ -333,13 +381,13 @@ JsonTraceProfile *json_trace_profile_parse(Arena *arena, JsonParser *parser) {
   JsonToken token = json_parser_parse_token(parser, &scratch_);
   switch (token.type) {
     case JSON_TOKEN_OPEN_BRACE: {
-      json_trace_profile__parse_object_format(self, arena, parser,
-                                              *scratch.arena);
+      json_trace_profile_parse_object_format(self, arena, parser,
+                                             *scratch.arena);
     } break;
 
     case JSON_TOKEN_OPEN_BRACKET: {
-      json_trace_profile__parse_array_format(self, arena, parser,
-                                             *scratch.arena);
+      json_trace_profile_parse_array_format(self, arena, parser,
+                                            *scratch.arena);
     } break;
 
     case JSON_TOKEN_ERROR: {

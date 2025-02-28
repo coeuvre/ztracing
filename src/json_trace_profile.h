@@ -15,30 +15,52 @@ struct JsonTraceSample {
 
 typedef struct JsonTraceSeries {
   Str8 name;
+  usize sample_count;
   JsonTraceSample *first;
   JsonTraceSample *last;
-  usize sample_len;
 } JsonTraceSeries;
 
 typedef struct JsonTraceCounter {
   Str8 name;
+  usize series_count;
   HashTrie *series;
-  usize series_len;
   f64 min_value;
   f64 max_value;
 } JsonTraceCounter;
 
+typedef struct JsonTraceSpan JsonTraceSpan;
+struct JsonTraceSpan {
+  JsonTraceSpan *prev;
+  JsonTraceSpan *next;
+  Str8 name;
+  Str8 cat;
+  i64 begin_time_ns;
+  i64 end_time_ns;
+};
+
+typedef struct JsonTraceThread {
+  i64 tid;
+  Str8 name;
+  usize span_count;
+  JsonTraceSpan *first;
+  JsonTraceSpan *last;
+} JsonTraceThread;
+
 typedef struct JsonTraceProcess {
   i64 pid;
+
+  usize counter_count;
   HashTrie *counters;
-  usize counter_len;
+
+  usize thread_count;
+  HashTrie *threads;
 } JsonTraceProcess;
 
 typedef struct JsonTraceProfile {
   i64 min_time_ns;
   i64 max_time_ns;
+  usize process_count;
   HashTrie *processes;
-  usize process_len;
   Str8 error;
 } JsonTraceProfile;
 
