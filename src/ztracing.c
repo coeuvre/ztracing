@@ -936,16 +936,14 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
 
     f32 left =
         offset.x + (span->begin_time_ns - props->begin_time_ns) * point_per_ns;
-    f32 right = left + (span->end_time_ns - span->begin_time_ns) * point_per_ns;
+    f32 right = left + f32_max(2, (span->end_time_ns - span->begin_time_ns) *
+                                      point_per_ns);
 
     Vec2 min = vec2(left, offset.y);
     Vec2 max = vec2(right, offset.y + widget->size.y);
     f32 width = max.x - min.x;
     f32 height = max.y - min.y;
     fill_rect(min, max, ui_color(0.3, 0.3, 0.3, 0.7));
-    if (width > 2) {
-      stroke_rect(min, max, ui_color(0.3, 0.3, 0.3, 1.0), 1);
-    }
 
     UITextStyle text_style = text_style_default().value;
     f32 font_size = text_style.font_size.value;
