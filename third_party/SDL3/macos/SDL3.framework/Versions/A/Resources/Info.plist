@@ -19,7 +19,7 @@
 	<key>CFBundlePackageType</key>
 	<string>FMWK</string>
 	<key>CFBundleShortVersionString</key>
-	<string>3.1.10</string>
+	<string>3.2.4</string>
 	<key>CFBundleSignature</key>
 	<string>SDLX</string>
 	<key>CFBundleSupportedPlatforms</key>
@@ -27,7 +27,7 @@
 		<string>MacOSX</string>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>3.1.10</string>
+	<string>3.2.4</string>
 	<key>DTCompiler</key>
 	<string>com.apple.compilers.llvm.clang.1_0</string>
 	<key>DTPlatformBuild</key>
