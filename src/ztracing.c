@@ -123,13 +123,14 @@ static Str8 z_file_get_input(void *c) {
   return buf;
 }
 
-static int z_file_loader_compare_span(const void *a, const void *b) {
+static int z_file_loader_compare_json_trace_span(const void *a, const void *b) {
   JsonTraceSpan *sa = *(JsonTraceSpan *const *)a;
   JsonTraceSpan *sb = *(JsonTraceSpan *const *)b;
-  if (sa->begin_time_ns == sb->begin_time_ns) {
-    return i64_compare(sa->end_time_ns, sb->end_time_ns);
+  int result = i64_compare(sa->begin_time_ns, sb->begin_time_ns);
+  if (result == 0) {
+    result = i64_compare(sa->end_time_ns, sb->end_time_ns);
   }
-  return i64_compare(sa->begin_time_ns, sb->begin_time_ns);
+  return result;
 }
 
 typedef struct ZProfileSpanNode ZProfileSpanNode;
@@ -254,7 +255,7 @@ static void z_file_loader_build_track_with_thread(
       spans[span_index++] = span;
     }
     qsort(spans, thread->span_count, sizeof(JsonTraceSpan *),
-          z_file_loader_compare_span);
+          z_file_loader_compare_json_trace_span);
 
     JsonTraceSpan *first_span = spans[0];
     i64 begin_time_ns = first_span->begin_time_ns;
@@ -389,6 +390,16 @@ static void z_file_loader_collect_counters(Arena *arena, ZProfileItem *items,
   scratch_end(scratch);
 }
 
+static int z_file_loader_compare_profile_span(const void *a, const void *b) {
+  const ZProfileSpan *sa = a;
+  const ZProfileSpan *sb = b;
+  int result = i64_compare(sa->end_time_ns, sb->end_time_ns);
+  if (result == 0) {
+    result = i64_compare(sa->begin_time_ns, sb->begin_time_ns);
+  }
+  return result;
+}
+
 static void z_file_loader_collect_tracks(Arena *arena, ZProfileItem *items,
                                          usize *item_index,
                                          ZProfileTrackBuilder *track_builder) {
@@ -423,6 +434,8 @@ static void z_file_loader_collect_tracks(Arena *arena, ZProfileItem *items,
         span->self_duration_ns = span_node->self_duration_ns;
         span_node = span_node->next;
       }
+      qsort(spans, track->span_count, sizeof(ZProfileSpan),
+            z_file_loader_compare_profile_span);
 
       items[(*item_index)++] = (ZProfileItem){
           .track =
@@ -887,6 +900,7 @@ static void ui_profile_counter_paint(UIWidget *widget,
           series->samples, series->sample_count, bin_begin_time_ns);
       ZProfileSample *sample = series->samples + sample_index;
 
+      // TODO: set bin_index based on sample's time
       if (sample->time < bin_end_time_ns) {
         ui_profile_counter_paint_sample(widget, props, offset, &prev_x, &prev_h,
                                         d, point_per_ns, counter, series,
@@ -926,11 +940,12 @@ typedef struct UIProfileTrackProps {
   f32 end_time_ns;
 } UIProfileTrackProps;
 
-// Find the first span whose end_time_ns > time.
+// Find the first span with in range [begin, end) whose end_time_ns > time.
 static usize ui_profile_track_spans_upper_bound(ZProfileSpan *spans,
-                                                usize count, i64 time) {
-  usize low = 0;
-  usize high = count;
+                                                usize begin, usize end,
+                                                i64 time) {
+  usize low = begin;
+  usize high = end;
 
   while (low < high) {
     usize mid = low + (high - low) / 2;
@@ -957,62 +972,70 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
   f32 bin_width = 4.0f;
   f32 ns_per_point = 1.0f / point_per_ns;
   i64 bin_duration = f32_round(ns_per_point * bin_width);
-  i64 bin_begin = props->begin_time_ns / bin_duration;
+  i64 bin_begin = props->begin_time_ns / bin_duration - 1;
   i64 bin_end = props->end_time_ns / bin_duration + 1;
-
-  // TODO: first bin is missing around the edge.
+  f32 offset_x = offset.x - (props->begin_time_ns - bin_begin * bin_duration) *
+                                point_per_ns;
 
   ZProfileItemTrack *track = props->track;
-  i64 bin_index = bin_begin;
-  while (bin_index < bin_end) {
+  isize last_span_index = -1;
+  for (i64 bin_index = bin_begin; bin_index < bin_end; ++bin_index) {
     i64 bin_begin_time_ns = bin_index * bin_duration;
-
     usize span_index = ui_profile_track_spans_upper_bound(
-        track->spans, track->span_count, bin_begin_time_ns);
-    if (span_index >= track->span_count) {
-      break;
+        track->spans, last_span_index + 1, track->span_count,
+        bin_begin_time_ns);
+    if (span_index < track->span_count) {
+      last_span_index = span_index;
+      ZProfileSpan *span = track->spans + span_index;
+      i64 span_bin_begin = span->begin_time_ns / bin_duration;
+      i64 span_bin_end = span->end_time_ns / bin_duration +
+                         (span->end_time_ns % bin_duration ? 1 : 0);
+
+      f32 left = offset_x + (span_bin_begin - bin_begin) * bin_width;
+      f32 right =
+          left + f32_max(1, (span_bin_end - span_bin_begin)) * bin_width;
+
+      Vec2 min = vec2(left, offset.y);
+      Vec2 max = vec2(right, offset.y + widget->size.y);
+      f32 width = max.x - min.x;
+      f32 height = max.y - min.y;
+      fill_rect(min, max, COLORS[span->color_index]);
+      stroke_rect(min, max, ui_color(0, 0, 0, 0.5), 1);
+
+      UITextStyle text_style = text_style_default().value;
+      f32 font_size = text_style.font_size.value;
+      UIColor text_color = text_style.color.value;
+
+      f32 padding_x = 4;
+      if (width - 2 * padding_x > 0) {
+        TextMetrics metrics =
+            layout_text_str8(span->name, font_size, 0, F32_INFINITY);
+
+        f32 text_left =
+            f32_max(left + padding_x, left + (width - metrics.size.x) / 2.0f);
+        f32 text_top = offset.y + (height - metrics.size.y) / 2.0f;
+        bool should_clip = metrics.size.x + 2 * padding_x > width;
+        if (should_clip) {
+          push_clip_rect(vec2(min.x + padding_x, min.y),
+                         vec2(max.x - padding_x, max.y));
+        }
+        draw_text_str8(vec2(text_left, text_top), span->name, font_size, 0,
+                       F32_INFINITY, text_color);
+        if (should_clip) {
+          pop_clip_rect();
+        }
+      }
     }
 
-    ZProfileSpan *span = track->spans + span_index;
-    bin_index = i64_max(bin_index + 1, span->end_time_ns / bin_duration);
-
-    f32 left = f32_round(
-        offset.x + (span->begin_time_ns - props->begin_time_ns) * point_per_ns);
-    f32 right =
-        left +
-        f32_round(f32_max(bin_width, (span->end_time_ns - span->begin_time_ns) *
-                                         point_per_ns));
-
-    Vec2 min = vec2(left, offset.y);
-    Vec2 max = vec2(right, offset.y + widget->size.y);
-    f32 width = max.x - min.x;
-    f32 height = max.y - min.y;
-    fill_rect(min, max, COLORS[span->color_index]);
-    stroke_rect(min, max, ui_color(0, 0, 0, 0.5), 1);
-
-    UITextStyle text_style = text_style_default().value;
-    f32 font_size = text_style.font_size.value;
-    UIColor text_color = text_style.color.value;
-
-    f32 padding_x = 4;
-    if (width - 2 * padding_x > 0) {
-      TextMetrics metrics =
-          layout_text_str8(span->name, font_size, 0, F32_INFINITY);
-
-      f32 text_left =
-          f32_max(left + padding_x, left + (width - metrics.size.x) / 2.0f);
-      f32 text_top = offset.y + (height - metrics.size.y) / 2.0f;
-      bool should_clip = metrics.size.x + 2 * padding_x > width;
-      if (should_clip) {
-        push_clip_rect(vec2(min.x + padding_x, min.y),
-                       vec2(max.x - padding_x, max.y));
-      }
-      draw_text_str8(vec2(text_left, text_top), span->name, font_size, 0,
-                     F32_INFINITY, text_color);
-      if (should_clip) {
-        pop_clip_rect();
-      }
-    }
+    // {
+    //   f32 left = offset_x + f32_round((bin_index - bin_begin) * bin_duration
+    //   *
+    //                                   point_per_ns);
+    //   f32 right = left + f32_round(bin_duration * point_per_ns);
+    //   stroke_rect(vec2(left, offset.y), vec2(right, offset.y +
+    //   widget->size.y),
+    //               ui_color(1, 0, 0, 0.5), 1);
+    // }
   }
 }
 
