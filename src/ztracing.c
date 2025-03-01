@@ -936,8 +936,8 @@ static void ui_profile_counter(const UIProfileCounterProps *props) {
 typedef struct UIProfileTrackProps {
   UIKey key;
   ZProfileItemTrack *track;
-  f32 begin_time_ns;
-  f32 end_time_ns;
+  i64 begin_time_ns;
+  i64 end_time_ns;
 } UIProfileTrackProps;
 
 // Find the first span with in range [begin, end) whose end_time_ns > time.
@@ -994,35 +994,39 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
       f32 left = offset_x + (span_bin_begin - bin_begin) * bin_width;
       f32 right =
           left + f32_max(1, (span_bin_end - span_bin_begin)) * bin_width;
+      left = f32_max(left, offset.x);
+      right = f32_max(f32_min(right, offset.x + widget->size.x), left);
 
-      Vec2 min = vec2(left, offset.y);
-      Vec2 max = vec2(right, offset.y + widget->size.y);
-      f32 width = max.x - min.x;
-      f32 height = max.y - min.y;
-      fill_rect(min, max, COLORS[span->color_index]);
-      stroke_rect(min, max, ui_color(0, 0, 0, 0.5), 1);
+      if (right > left) {
+        Vec2 min = vec2(left, offset.y);
+        Vec2 max = vec2(right, offset.y + widget->size.y);
+        f32 width = max.x - min.x;
+        f32 height = max.y - min.y;
+        fill_rect(min, max, COLORS[span->color_index]);
+        stroke_rect(min, max, ui_color(0, 0, 0, 0.5), 1);
 
-      UITextStyle text_style = text_style_default().value;
-      f32 font_size = text_style.font_size.value;
-      UIColor text_color = text_style.color.value;
+        UITextStyle text_style = text_style_default().value;
+        f32 font_size = text_style.font_size.value;
+        UIColor text_color = text_style.color.value;
 
-      f32 padding_x = 4;
-      if (width - 2 * padding_x > 0) {
-        TextMetrics metrics =
-            layout_text_str8(span->name, font_size, 0, F32_INFINITY);
+        f32 padding_x = 4;
+        if (width - 2 * padding_x > 0) {
+          TextMetrics metrics =
+              layout_text_str8(span->name, font_size, 0, F32_INFINITY);
 
-        f32 text_left =
-            f32_max(left + padding_x, left + (width - metrics.size.x) / 2.0f);
-        f32 text_top = offset.y + (height - metrics.size.y) / 2.0f;
-        bool should_clip = metrics.size.x + 2 * padding_x > width;
-        if (should_clip) {
-          push_clip_rect(vec2(min.x + padding_x, min.y),
-                         vec2(max.x - padding_x, max.y));
-        }
-        draw_text_str8(vec2(text_left, text_top), span->name, font_size, 0,
-                       F32_INFINITY, text_color);
-        if (should_clip) {
-          pop_clip_rect();
+          f32 text_left =
+              f32_max(left + padding_x, left + (width - metrics.size.x) / 2.0f);
+          f32 text_top = offset.y + (height - metrics.size.y) / 2.0f;
+          bool should_clip = metrics.size.x + 2 * padding_x > width;
+          if (should_clip) {
+            push_clip_rect(vec2(min.x + padding_x, min.y),
+                           vec2(max.x - padding_x, max.y));
+          }
+          draw_text_str8(vec2(text_left, text_top), span->name, font_size, 0,
+                         F32_INFINITY, text_color);
+          if (should_clip) {
+            pop_clip_rect();
+          }
         }
       }
     }
