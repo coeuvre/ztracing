@@ -17,7 +17,7 @@
 #include "src/types.h"
 #include "src/ui.h"
 
-#define RGB(r, g, b) {r / 255.0f, g / 255.0f, b / 255.0f, 0.7f}
+#define RGB(r, g, b) {r / 255.0f, g / 255.0f, b / 255.0f, 1.0f}
 
 static UIColor COLORS[] = {
     RGB(38, 70, 83),   RGB(42, 157, 143), RGB(233, 196, 106),
@@ -855,7 +855,7 @@ static void ui_profile_counter_paint(UIWidget *widget,
   f32 point_per_ns =
       (f32)widget->size.x / (f32)(props->end_time_ns - props->begin_time_ns);
 
-  f32 bin_width = 2.0f;
+  f32 bin_width = 4.0f;
   f32 ns_per_point = 1.0f / point_per_ns;
   i64 bin_duration = f32_round(ns_per_point * bin_width);
 
@@ -881,13 +881,13 @@ static void ui_profile_counter_paint(UIWidget *widget,
     }
 
     for (i64 bin_index = bin_begin; bin_index < bin_end; ++bin_index) {
-      i64 bin_begin_time_ms = bin_index * bin_duration;
-      i64 bin_end_time_ms = bin_begin_time_ms + bin_duration;
+      i64 bin_begin_time_ns = bin_index * bin_duration;
+      i64 bin_end_time_ns = bin_begin_time_ns + bin_duration;
       usize sample_index = ui_profile_counter_samples_lower_bound(
-          series->samples, series->sample_count, bin_begin_time_ms);
+          series->samples, series->sample_count, bin_begin_time_ns);
       ZProfileSample *sample = series->samples + sample_index;
 
-      if (sample->time < bin_end_time_ms) {
+      if (sample->time < bin_end_time_ns) {
         ui_profile_counter_paint_sample(widget, props, offset, &prev_x, &prev_h,
                                         d, point_per_ns, counter, series,
                                         sample);
@@ -926,6 +926,25 @@ typedef struct UIProfileTrackProps {
   f32 end_time_ns;
 } UIProfileTrackProps;
 
+// Find the first span whose end_time_ns > time.
+static usize ui_profile_track_spans_upper_bound(ZProfileSpan *spans,
+                                                usize count, i64 time) {
+  usize low = 0;
+  usize high = count;
+
+  while (low < high) {
+    usize mid = low + (high - low) / 2;
+    i64 mid_t = spans[mid].end_time_ns;
+    if (mid_t <= time) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+
+  return low;
+}
+
 static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
                                    Vec2 offset) {
   (void)context;
@@ -935,29 +954,41 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
   f32 point_per_ns =
       (f32)widget->size.x / (f32)(props->end_time_ns - props->begin_time_ns);
 
+  f32 bin_width = 4.0f;
+  f32 ns_per_point = 1.0f / point_per_ns;
+  i64 bin_duration = f32_round(ns_per_point * bin_width);
+  i64 bin_begin = props->begin_time_ns / bin_duration;
+  i64 bin_end = props->end_time_ns / bin_duration + 1;
+
+  // TODO: first bin is missing around the edge.
+
   ZProfileItemTrack *track = props->track;
+  i64 bin_index = bin_begin;
+  while (bin_index < bin_end) {
+    i64 bin_begin_time_ns = bin_index * bin_duration;
 
-  // TODO: binary serach.
-  for (usize span_index = 0; span_index < track->span_count; ++span_index) {
-    ZProfileSpan *span = track->spans + span_index;
-
-    Vec2 intersection =
-        vec2_from_intersection(vec2(props->begin_time_ns, props->end_time_ns),
-                               vec2(span->begin_time_ns, span->end_time_ns));
-    if (intersection.x >= intersection.y) {
-      continue;
+    usize span_index = ui_profile_track_spans_upper_bound(
+        track->spans, track->span_count, bin_begin_time_ns);
+    if (span_index >= track->span_count) {
+      break;
     }
 
-    f32 left =
-        offset.x + (span->begin_time_ns - props->begin_time_ns) * point_per_ns;
-    f32 right = left + f32_max(2, (span->end_time_ns - span->begin_time_ns) *
-                                      point_per_ns);
+    ZProfileSpan *span = track->spans + span_index;
+    bin_index = i64_max(bin_index + 1, span->end_time_ns / bin_duration);
+
+    f32 left = f32_round(
+        offset.x + (span->begin_time_ns - props->begin_time_ns) * point_per_ns);
+    f32 right =
+        left +
+        f32_round(f32_max(bin_width, (span->end_time_ns - span->begin_time_ns) *
+                                         point_per_ns));
 
     Vec2 min = vec2(left, offset.y);
     Vec2 max = vec2(right, offset.y + widget->size.y);
     f32 width = max.x - min.x;
     f32 height = max.y - min.y;
     fill_rect(min, max, COLORS[span->color_index]);
+    stroke_rect(min, max, ui_color(0, 0, 0, 0.5), 1);
 
     UITextStyle text_style = text_style_default().value;
     f32 font_size = text_style.font_size.value;
