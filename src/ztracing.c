@@ -978,13 +978,12 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
                                 point_per_ns;
 
   ZProfileItemTrack *track = props->track;
-  isize last_span_index = -1;
-  for (i64 bin_index = bin_begin; bin_index < bin_end; ++bin_index) {
+  usize last_span_index = track->span_count;
+  for (i64 bin_index = bin_end; bin_index >= bin_begin; --bin_index) {
     i64 bin_begin_time_ns = bin_index * bin_duration;
     usize span_index = ui_profile_track_spans_upper_bound(
-        track->spans, last_span_index + 1, track->span_count,
-        bin_begin_time_ns);
-    if (span_index < track->span_count) {
+        track->spans, 0, last_span_index, bin_begin_time_ns);
+    if (span_index < last_span_index) {
       last_span_index = span_index;
       ZProfileSpan *span = track->spans + span_index;
       i64 span_bin_begin = span->begin_time_ns / bin_duration;
@@ -1009,18 +1008,18 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
         f32 font_size = text_style.font_size.value;
         UIColor text_color = text_style.color.value;
 
-        f32 padding_x = 4;
-        if (width - 2 * padding_x > 0) {
+        f32 text_padding_x = 8;
+        if (width - 2 * text_padding_x > 0) {
           TextMetrics metrics =
               layout_text_str8(span->name, font_size, 0, F32_INFINITY);
 
-          f32 text_left =
-              f32_max(left + padding_x, left + (width - metrics.size.x) / 2.0f);
+          f32 text_left = f32_max(left + text_padding_x,
+                                  left + (width - metrics.size.x) / 2.0f);
           f32 text_top = offset.y + (height - metrics.size.y) / 2.0f;
-          bool should_clip = metrics.size.x + 2 * padding_x > width;
+          bool should_clip = metrics.size.x + 2 * text_padding_x > width;
           if (should_clip) {
-            push_clip_rect(vec2(min.x + padding_x, min.y),
-                           vec2(max.x - padding_x, max.y));
+            push_clip_rect(vec2(min.x + text_padding_x, min.y),
+                           vec2(max.x - text_padding_x, max.y));
           }
           draw_text_str8(vec2(text_left, text_top), span->name, font_size, 0,
                          F32_INFINITY, text_color);
