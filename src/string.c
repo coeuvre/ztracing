@@ -8,14 +8,14 @@
 #include "src/memory.h"
 #include "src/types.h"
 
-u64 str8_hash_with_seed(Str8 str, u64 seed) {
-  u64 hash = seed;
-  // djb2 hash function
-  for (usize i = 0; i < str.len; i += 1) {
-    // hash * 33 + c
-    hash = ((hash << 5) + hash) + str.ptr[i];
+u64 str8_hash_with_seed(Str8 s, u64 seed) {
+  // FNV-style hash
+  u64 h = seed;
+  for (usize i = 0; i < s.len; i++) {
+    h ^= s.ptr[i];
+    h *= 1111111111111111111u;
   }
-  return hash;
+  return h;
 }
 
 Str8 arena_push_str8fv(Arena *arena, const char *format, va_list ap) {

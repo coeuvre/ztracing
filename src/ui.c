@@ -805,16 +805,8 @@ f32 ui_animate_fast_f32(f32 value, f32 target) {
 }
 
 static UIKey ui_key_from_str8(UIKey seed, Str8 str) {
-  UIKey result = seed;
-  if (str.len) {
-    // djb2 hash function
-    u64 hash = seed.hash ? seed.hash : 5381;
-    for (usize i = 0; i < str.len; i += 1) {
-      // hash * 33 + c
-      hash = ((hash << 5) + hash) + str.ptr[i];
-    }
-    result.hash = hash;
-  }
+  UIKey result;
+  result.hash = str8_hash_with_seed(str, seed.hash ? seed.hash : 0x100);
   return result;
 }
 

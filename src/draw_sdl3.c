@@ -187,9 +187,9 @@ typedef struct ColorU32 {
 
 static inline ColorU32 color_u32_from_ui_color(UIColor color) {
   ColorU32 result;
-  result.r = f32_round(color.r * 255.0f);
-  result.g = f32_round(color.g * 255.0f);
-  result.b = f32_round(color.b * 255.0f);
+  result.r = f32_round(color.r * color.a * 255.0f);
+  result.g = f32_round(color.g * color.a * 255.0f);
+  result.b = f32_round(color.b * color.a * 255.0f);
   result.a = f32_round(color.a * 255.0f);
   return result;
 }

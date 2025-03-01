@@ -17,6 +17,13 @@
 #include "src/types.h"
 #include "src/ui.h"
 
+#define RGB(r, g, b) {r / 255.0f, g / 255.0f, b / 255.0f, 0.7f}
+
+static UIColor COLORS[] = {
+    RGB(38, 70, 83),   RGB(42, 157, 143), RGB(233, 196, 106),
+    RGB(244, 162, 97), RGB(231, 111, 81),
+};
+
 typedef enum ZProfileItemType {
   Z_PROFILE_ITEM_HEADER,
   Z_PROFILE_ITEM_COUNTER,
@@ -35,6 +42,7 @@ typedef struct ZProfileSample {
 
 typedef struct ZProfileSeries {
   Str8 name;
+  u32 color_index;
   usize sample_count;
   ZProfileSample *samples;
 } ZProfileSeries;
@@ -50,6 +58,7 @@ typedef struct ZProfileItemCounter {
 
 typedef struct ZProfileSpan {
   Str8 name;
+  u32 color_index;
   i64 begin_time_ns;
   i64 end_time_ns;
   i64 self_duration_ns;
@@ -302,6 +311,7 @@ static void z_file_loader_collect_series(Arena *arena, ZProfileItemCounter *c,
     ZProfileSeries *s = &c->series[series_index++];
 
     s->name = str8_dup(arena, series->name);
+    s->color_index = str8_hash(s->name) % ARRAY_COUNT(COLORS);
     s->sample_count = series->sample_count;
     s->samples = arena_push_array(arena, ZProfileSample, s->sample_count);
 
@@ -407,6 +417,7 @@ static void z_file_loader_collect_tracks(Arena *arena, ZProfileItem *items,
       for (usize span_index = 0; span_index < track->span_count; ++span_index) {
         ZProfileSpan *span = spans + span_index;
         span->name = str8_dup(arena, span_node->span->name);
+        span->color_index = str8_hash(span->name) % ARRAY_COUNT(COLORS);
         span->begin_time_ns = span_node->span->begin_time_ns;
         span->end_time_ns = span_node->span->end_time_ns;
         span->self_duration_ns = span_node->self_duration_ns;
@@ -815,7 +826,7 @@ static usize ui_profile_counter_samples_lower_bound(ZProfileSample *samples,
 static void ui_profile_counter_paint_sample(
     UIWidget *widget, UIProfileCounterProps *props, Vec2 offset, f32o *prev_x,
     f32o *prev_h, f32 d, f32 point_per_ns, ZProfileItemCounter *counter,
-    ZProfileSample *sample) {
+    ZProfileSeries *series, ZProfileSample *sample) {
   f32 x = offset.x + (sample->time - props->begin_time_ns) * point_per_ns;
   f32 height =
       f32_max(1, (sample->value - counter->min_value) / d * widget->size.y);
@@ -826,7 +837,7 @@ static void ui_profile_counter_paint_sample(
     f32 width = f32_max(1, x - px);
     Vec2 min = vec2(px, bottom - ph);
     Vec2 max = vec2(px + width, bottom);
-    fill_rect(min, max, ui_color(0.3, 0.3, 0.3, 0.7));
+    fill_rect(min, max, COLORS[series->color_index]);
   }
   *prev_x = f32_some(x);
   *prev_h = f32_some(height);
@@ -864,7 +875,8 @@ static void ui_profile_counter_paint(UIWidget *widget,
       if (first_sample_index > 0) {
         ZProfileSample *sample = series->samples + (first_sample_index - 1);
         ui_profile_counter_paint_sample(widget, props, offset, &prev_x, &prev_h,
-                                        d, point_per_ns, counter, sample);
+                                        d, point_per_ns, counter, series,
+                                        sample);
       }
     }
 
@@ -877,7 +889,8 @@ static void ui_profile_counter_paint(UIWidget *widget,
 
       if (sample->time < bin_end_time_ms) {
         ui_profile_counter_paint_sample(widget, props, offset, &prev_x, &prev_h,
-                                        d, point_per_ns, counter, sample);
+                                        d, point_per_ns, counter, series,
+                                        sample);
       }
     }
 
@@ -887,7 +900,8 @@ static void ui_profile_counter_paint(UIWidget *widget,
       if (last_sample_index < series->sample_count) {
         ZProfileSample *sample = series->samples + (last_sample_index);
         ui_profile_counter_paint_sample(widget, props, offset, &prev_x, &prev_h,
-                                        d, point_per_ns, counter, sample);
+                                        d, point_per_ns, counter, series,
+                                        sample);
       }
     }
   }
@@ -943,7 +957,7 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
     Vec2 max = vec2(right, offset.y + widget->size.y);
     f32 width = max.x - min.x;
     f32 height = max.y - min.y;
-    fill_rect(min, max, ui_color(0.3, 0.3, 0.3, 0.7));
+    fill_rect(min, max, COLORS[span->color_index]);
 
     UITextStyle text_style = text_style_default().value;
     f32 font_size = text_style.font_size.value;

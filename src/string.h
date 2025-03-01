@@ -63,7 +63,9 @@ static inline int str8_cmp(Str8 a, Str8 b) {
 }
 
 u64 str8_hash_with_seed(Str8 str, u64 seed);
-static inline u64 str8_hash(Str8 str) { return str8_hash_with_seed(str, 5381); }
+static inline u64 str8_hash(Str8 str) {
+  return str8_hash_with_seed(str, 0x100);
+}
 
 static inline Str8 arena_push_str8(Arena *arena, usize len) {
   u8 *ptr = arena_push_array(arena, u8, len);
