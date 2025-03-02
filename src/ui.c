@@ -2708,6 +2708,12 @@ UIWidgetClass ui_scrollable_class = {
 void ui_scrollable_begin(const UIScrollableProps *props) {
   UIWidget *widget = ui_widget_begin(&ui_scrollable_class, props);
   UIScrollableState *state = ui_widget_get_state(widget, UIScrollableState);
+
+  if (props->scroll) {
+    state->target_scroll_offset =
+        f32_clamp(*props->scroll, 0, state->max_scroll_offset);
+  }
+
   state->scroll_offset =
       ui_animate_fast_f32(state->scroll_offset, state->target_scroll_offset);
 
@@ -2820,11 +2826,15 @@ void ui_scrollable_end(void) {
   UIWidget *widget = ui_widget_find_first_ancestor(ui_widget_get_current(),
                                                    &ui_scrollable_class);
   ASSERT(widget);
+  UIScrollableProps *props = ui_widget_get_props(widget, UIScrollableProps);
   UIScrollableState *state = ui_widget_get_state(widget, UIScrollableState);
   ui_scrollable_scrollbar(widget, state);
 
   state->target_scroll_offset =
       f32_clamp(state->target_scroll_offset, 0, state->max_scroll_offset);
+  if (props->scroll) {
+    *props->scroll = state->target_scroll_offset;
+  }
 
   ui_row_end();
   ui_pointer_listener_end();
@@ -3032,6 +3042,7 @@ void ui_list_view_begin(const UIListViewProps *props) {
   ui_scrollable_begin(&(UIScrollableProps){
       .axis_direction = UI_AXIS_DIRECTION_DOWN,
       .cross_axis_direction = UI_AXIS_DIRECTION_RIGHT,
+      .scroll = props->scroll,
   });
   ui_sliver_fixed_extent_list_begin(&(UISliverFixedExtentListProps){
       .item_extent = props->item_extent,

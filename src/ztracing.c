@@ -87,6 +87,7 @@ typedef struct ZProfileViewer {
   i64 end_time_ns;
   usize item_count;
   ZProfileItem *items;
+  f32 scroll;
 } ZProfileViewer;
 
 static ZProfileViewer *z_profile_viewer_alloc(void) {
@@ -886,7 +887,7 @@ static void ui_profile_counter_paint(UIWidget *widget,
   Vec2 sample_offset =
       vec2(offset.x -
                (props->begin_time_ns - bin_begin * bin_duration) * point_per_ns,
-           offset.y);
+           f32_round(offset.y));
 
   for (usize series_index = 0; series_index < counter->series_count;
        ++series_index) {
@@ -1111,6 +1112,8 @@ static void ui_profile_screen(ZState *state) {
     i64 offset = (i64)(ns_per_point * (f64)delta.x);
     viewer->begin_time_ns -= offset;
     viewer->end_time_ns = viewer->begin_time_ns + duration;
+
+    viewer->scroll -= delta.y;
   }
 
   if (scroll.present /* && ctrl */) {
@@ -1145,6 +1148,7 @@ static void ui_profile_screen(ZState *state) {
       .item_extent = PROFILE_ITEM_HEIGHT,
       .item_count = viewer->item_count,
       .builder = &builder,
+      .scroll = &viewer->scroll,
   });
   for (i32 item_index = builder.first_index; item_index <= builder.last_index;
        ++item_index) {

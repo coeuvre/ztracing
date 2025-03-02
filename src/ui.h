@@ -1329,6 +1329,8 @@ typedef struct UIScrollableProps {
   UIAxisDirection axis_direction;
   UIAxisDirection cross_axis_direction;
   f32 cache_extent;
+
+  f32 *scroll;
 } UIScrollableProps;
 
 void ui_scrollable_begin(const UIScrollableProps *props);
@@ -1370,6 +1372,7 @@ typedef struct UIListViewProps {
   f32 item_extent;
   i32 item_count;
   UIListBuilder *builder;
+  f32 *scroll;
 } UIListViewProps;
 
 void ui_list_view_begin(const UIListViewProps *props);
