@@ -819,9 +819,10 @@ typedef struct UIProfileCounterProps {
 } UIProfileCounterProps;
 
 static usize ui_profile_counter_samples_lower_bound(ZProfileSample *samples,
-                                                    usize count, i64 time) {
-  usize low = 0;
-  usize high = count;
+                                                    usize begin, usize end,
+                                                    i64 time) {
+  usize low = begin;
+  usize high = end;
 
   while (low < high) {
     usize mid = low + (high - low) / 2;
@@ -837,20 +838,29 @@ static usize ui_profile_counter_samples_lower_bound(ZProfileSample *samples,
 }
 
 static void ui_profile_counter_paint_sample(
-    UIWidget *widget, UIProfileCounterProps *props, Vec2 offset, f32o *prev_x,
-    f32o *prev_h, f32 d, f32 point_per_ns, ZProfileItemCounter *counter,
+    Vec2 size, Vec2 offset, i64 bin_begin, i64 bin_duration, f32 bin_width,
+    f32o *prev_x, f32o *prev_h, f32 d, ZProfileItemCounter *counter,
     ZProfileSeries *series, ZProfileSample *sample) {
-  f32 x = offset.x + (sample->time - props->begin_time_ns) * point_per_ns;
-  f32 height =
-      f32_max(1, (sample->value - counter->min_value) / d * widget->size.y);
+  f32 bottom = offset.y + size.y;
+  i64 sample_bin_begin = sample->time / bin_duration;
+  f32 x = offset.x + (sample_bin_begin - bin_begin) * bin_width;
+  f32 height = f32_max(1, (sample->value - counter->min_value) / d * size.y);
   if (prev_x->present) {
-    f32 bottom = offset.y + widget->size.y;
     f32 px = prev_x->value;
     f32 ph = prev_h->value;
-    f32 width = f32_max(1, x - px);
-    Vec2 min = vec2(px, bottom - ph);
+    f32 top = bottom - ph;
+    f32 width = x - px;
+    Vec2 min = vec2(px, top);
     Vec2 max = vec2(px + width, bottom);
     fill_rect(min, max, COLORS[series->color_index]);
+    if (height != ph) {
+      fill_rect(vec2(max.x - 1, top), vec2(max.x, bottom - height),
+                ui_color(0, 0, 0, 0.5f));
+    }
+    fill_rect(vec2(min.x, top), vec2(max.x, top + 1), ui_color(0, 0, 0, 0.5f));
+  } else {
+    fill_rect(vec2(x - 1, bottom - height), vec2(x, bottom),
+              ui_color(0, 0, 0, 0.5f));
   }
   *prev_x = f32_some(x);
   *prev_h = f32_some(height);
@@ -871,6 +881,12 @@ static void ui_profile_counter_paint(UIWidget *widget,
   f32 bin_width = 4.0f;
   f32 ns_per_point = 1.0f / point_per_ns;
   i64 bin_duration = f32_round(ns_per_point * bin_width);
+  i64 bin_begin = props->begin_time_ns / bin_duration;
+  i64 bin_end = props->end_time_ns / bin_duration + 1;
+  Vec2 sample_offset =
+      vec2(offset.x -
+               (props->begin_time_ns - bin_begin * bin_duration) * point_per_ns,
+           offset.y);
 
   for (usize series_index = 0; series_index < counter->series_count;
        ++series_index) {
@@ -879,17 +895,17 @@ static void ui_profile_counter_paint(UIWidget *widget,
     f32o prev_x = f32_none();
     f32o prev_h = f32_none();
 
-    i64 bin_begin = props->begin_time_ns / bin_duration;
-    i64 bin_end = props->end_time_ns / bin_duration + 1;
-
+    usize prev_sample_index = 0;
     {
       usize first_sample_index = ui_profile_counter_samples_lower_bound(
-          series->samples, series->sample_count, bin_begin * bin_duration);
+          series->samples, 0, series->sample_count, bin_begin * bin_duration);
       if (first_sample_index > 0) {
-        ZProfileSample *sample = series->samples + (first_sample_index - 1);
-        ui_profile_counter_paint_sample(widget, props, offset, &prev_x, &prev_h,
-                                        d, point_per_ns, counter, series,
-                                        sample);
+        usize sample_index = first_sample_index - 1;
+        prev_sample_index = sample_index;
+        ZProfileSample *sample = series->samples + sample_index;
+        ui_profile_counter_paint_sample(widget->size, sample_offset, bin_begin,
+                                        bin_duration, bin_width, &prev_x,
+                                        &prev_h, d, counter, series, sample);
       }
     }
 
@@ -897,26 +913,37 @@ static void ui_profile_counter_paint(UIWidget *widget,
       i64 bin_begin_time_ns = bin_index * bin_duration;
       i64 bin_end_time_ns = bin_begin_time_ns + bin_duration;
       usize sample_index = ui_profile_counter_samples_lower_bound(
-          series->samples, series->sample_count, bin_begin_time_ns);
-      ZProfileSample *sample = series->samples + sample_index;
-
-      // TODO: set bin_index based on sample's time
-      if (sample->time < bin_end_time_ns) {
-        ui_profile_counter_paint_sample(widget, props, offset, &prev_x, &prev_h,
-                                        d, point_per_ns, counter, series,
-                                        sample);
+          series->samples, prev_sample_index, series->sample_count,
+          bin_begin_time_ns);
+      if (sample_index < series->sample_count) {
+        prev_sample_index = sample_index;
+        ZProfileSample *sample = series->samples + sample_index;
+        if (sample->time < bin_end_time_ns) {
+          ui_profile_counter_paint_sample(
+              widget->size, sample_offset, bin_begin, bin_duration, bin_width,
+              &prev_x, &prev_h, d, counter, series, sample);
+        }
       }
     }
 
     {
       usize last_sample_index = ui_profile_counter_samples_lower_bound(
-          series->samples, series->sample_count, bin_end * bin_duration);
+          series->samples, 0, series->sample_count, bin_end * bin_duration);
       if (last_sample_index < series->sample_count) {
-        ZProfileSample *sample = series->samples + (last_sample_index);
-        ui_profile_counter_paint_sample(widget, props, offset, &prev_x, &prev_h,
-                                        d, point_per_ns, counter, series,
-                                        sample);
+        usize sample_index = last_sample_index;
+        ZProfileSample *sample = series->samples + sample_index;
+        ui_profile_counter_paint_sample(widget->size, sample_offset, bin_begin,
+                                        bin_duration, bin_width, &prev_x,
+                                        &prev_h, d, counter, series, sample);
       }
+    }
+
+    if (prev_x.present) {
+      f32 bottom = offset.y + widget->size.y;
+      f32 x = prev_x.value;
+      f32 height = prev_h.value;
+      fill_rect(vec2(x, bottom - height), vec2(x + 1, bottom),
+                ui_color(0, 0, 0, 0.5f));
     }
   }
 }
