@@ -216,6 +216,9 @@ static usize z_file_loader_merge_spans(Arena *arena, ZProfileThreadNode *thread,
                                        JsonTraceSpan **spans, usize span_count,
                                        usize span_index,
                                        i64 *total_duration_ns) {
+  if (thread->thread->tid == 510) {
+    int a = 0;
+  }
   i64 total = 0;
   for (; span_index < span_count;) {
     JsonTraceSpan *span = spans[span_index];
@@ -260,7 +263,7 @@ static void z_file_loader_build_track_with_thread(
 
     JsonTraceSpan *first_span = spans[0];
     i64 begin_time_ns = first_span->begin_time_ns;
-    i64 end_time_ns = begin_time_ns;
+    i64 end_time_ns = first_span->end_time_ns;
     for (span_index = 1; span_index < thread->span_count; ++span_index) {
       end_time_ns = i64_max(end_time_ns, spans[span_index]->end_time_ns);
     }
@@ -651,7 +654,7 @@ static void global_menu_bar(ZState *state) {
 
     ui_text(&(UITextProps){
         .text = ui_push_str8f(
-            "%.0f %.1fMB %.1fms", 1.0f / state->dt,
+            "%.1fMB %.1fms",
             (f32)((f64)platform_memory_get_allocated_bytes() / 1024.0 / 1024.0),
             state->frame_time * 1000.0f),
         .style = text_style_default(),

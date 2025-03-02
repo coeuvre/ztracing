@@ -51,10 +51,11 @@ static void json_trace_counter_add_sample(JsonTraceCounter *self, Arena *arena,
 
 static JsonTraceSpan *json_trace_thread_add_span(JsonTraceThread *self,
                                                  Arena *arena, Str8 name,
-                                                 i64 begin_time_us,
+                                                 Str8 cat, i64 begin_time_us,
                                                  i64 end_time_us) {
   JsonTraceSpan *span = arena_push_struct(arena, JsonTraceSpan);
   span->name = str8_dup(arena, name);
+  span->cat = str8_dup(arena, cat);
   span->begin_time_ns = begin_time_us;
   span->end_time_ns = end_time_us;
   DLL_APPEND(self->first_span, self->last_span, span, prev, next);
@@ -108,6 +109,8 @@ static void json_trace_profile_process_trace_event(JsonTraceProfile *self,
   for (JsonValue *entry = value->first; entry; entry = entry->next) {
     if (str8_eq(entry->label, STR8_LIT("name"))) {
       trace_event.name = entry->value;
+    } else if (str8_eq(entry->label, STR8_LIT("cat"))) {
+      trace_event.cat = entry->value;
     } else if (str8_eq(entry->label, STR8_LIT("ph"))) {
       if (entry->value.len > 0) {
         trace_event.ph = entry->value.ptr[0];
@@ -147,22 +150,18 @@ static void json_trace_profile_process_trace_event(JsonTraceProfile *self,
 
     // Complete event
     case 'X': {
-      if (!str8_is_empty(trace_event.name)) {
-        JsonTraceProcess *process =
-            json_trace_profile_upsert_process(self, arena, trace_event.pid);
-        JsonTraceThread *thread =
-            json_trace_process_upsert_thread(process, arena, trace_event.tid);
+      JsonTraceProcess *process =
+          json_trace_profile_upsert_process(self, arena, trace_event.pid);
+      JsonTraceThread *thread =
+          json_trace_process_upsert_thread(process, arena, trace_event.tid);
 
-        // TODO: Interning string name and cat.
+      // TODO: Interning string name and cat.
 
-        JsonTraceSpan *span =
-            json_trace_thread_add_span(thread, arena, trace_event.name, time,
-                                       time + trace_event.dur * 1000);
-        if (!str8_is_empty(trace_event.cat)) {
-          span->cat = str8_dup(arena, trace_event.cat);
-        }
-        // TODO: handle trace_event.args.
-      }
+      json_trace_thread_add_span(thread, arena, trace_event.name,
+                                 trace_event.cat, time,
+                                 time + trace_event.dur * 1000);
+
+      // TODO: handle trace_event.args.
     } break;
 
     // Metadata event

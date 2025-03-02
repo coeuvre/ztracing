@@ -88,6 +88,9 @@ static inline Str8 arena_push_str8f(Arena *arena, const char *format, ...) {
 }
 
 static inline Str8 str8_dup(Arena *arena, Str8 s) {
+  if (str8_is_empty(s)) {
+    return str8_zero();
+  }
   return str8((u8 *)arena_dup(arena, s.ptr, s.len), s.len);
 }
 
