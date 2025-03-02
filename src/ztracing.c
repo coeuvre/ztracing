@@ -216,9 +216,6 @@ static usize z_file_loader_merge_spans(Arena *arena, ZProfileThreadNode *thread,
                                        JsonTraceSpan **spans, usize span_count,
                                        usize span_index,
                                        i64 *total_duration_ns) {
-  if (thread->thread->tid == 510) {
-    int a = 0;
-  }
   i64 total = 0;
   for (; span_index < span_count;) {
     JsonTraceSpan *span = spans[span_index];
@@ -1092,17 +1089,37 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
         }
       }
     }
-
-    // {
-    //   f32 left = offset_x + f32_round((bin_index - bin_begin) * bin_duration
-    //   *
-    //                                   point_per_ns);
-    //   f32 right = left + f32_round(bin_duration * point_per_ns);
-    //   stroke_rect(vec2(left, offset.y), vec2(right, offset.y +
-    //   widget->size.y),
-    //               ui_color(1, 0, 0, 0.5), 1);
-    // }
   }
+}
+
+static void ui_profile_header(ZProfileItemHeader *header) {
+  UIColor line_color = ui_color(0.5, 0.5, 0.5, 1);
+  f32 line_height = 2;
+  ui_row_begin(&(UIRowProps){0});
+  ui_container_begin(&(UIContainerProps){
+      .width = f32_some(16),
+      .height = f32_some(line_height),
+      .color = ui_color_some(line_color),
+  });
+  ui_container_end();
+  ui_padding_begin(&(UIPaddingProps){
+      .padding = ui_edge_insets_symmetric(8, 0),
+  });
+  ui_text(&(UITextProps){
+      .text = header->name,
+      .style = text_style_default(),
+  });
+  ui_padding_end();
+  ui_expanded_begin(&(UIExpandedProps){
+      .flex = 1,
+  });
+  ui_container_begin(&(UIContainerProps){
+      .height = f32_some(line_height),
+      .color = ui_color_some(line_color),
+  });
+  ui_container_end();
+  ui_expanded_end();
+  ui_row_end();
 }
 
 static UIWidgetClass ui_profile_track_class = {
@@ -1190,16 +1207,7 @@ static void ui_profile_screen(ZState *state) {
     ZProfileItem *item = viewer->items + item_index;
     switch (item->type) {
       case Z_PROFILE_ITEM_HEADER: {
-        ui_row_begin(&(UIRowProps){0});
-        ui_padding_begin(&(UIPaddingProps){
-            .padding = ui_edge_insets_symmetric(6, 0),
-        });
-        ui_text(&(UITextProps){
-            .text = item->header.name,
-            .style = text_style_default(),
-        });
-        ui_padding_end();
-        ui_row_end();
+        ui_profile_header(&item->header);
       } break;
 
       case Z_PROFILE_ITEM_COUNTER: {

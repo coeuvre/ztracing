@@ -506,8 +506,8 @@ void ui_on_mouse_move(Vec2 pos) {
       input->button_move_hit_tests + input->button_move_hit_test_index;
   ui_hit_test_state_hit_test(hit_test, root, pos);
 
-  for (UIHitTestEntry *entry = last_hit_test->result.first; entry;
-       entry = entry->next) {
+  for (UIHitTestEntry *entry = last_hit_test->result.first;
+       entry && entry->widget; entry = entry->next) {
     if (!ui_hit_test_state_has_widget(hit_test, entry->widget)) {
       ui_widget_handle_pointer_event(entry->widget,
                                      &(UIPointerEvent){
@@ -606,7 +606,7 @@ static void ui_widget_layout_default(UIWidget *widget,
     ui_widget_layout(child, constraints);
     widget->size = child->size;
   } else {
-    widget->size = ui_box_constraints_constrain(constraints, vec2_zero());
+    widget->size = ui_box_constraints_get_smallest(constraints);
   }
 }
 
