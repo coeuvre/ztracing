@@ -434,6 +434,7 @@ void ui_hit_test_result_add(UIHitTestResult *self, Arena *arena,
 
 typedef enum UIHitTestBehaviour {
   UI_HIT_TEST_BEHAVIOUR_DEFER_TO_CHILD,
+  UI_HIT_TEST_BEHAVIOUR_TRANSLUCENT,
   UI_HIT_TEST_BEHAVIOUR_OPAQUE,
 } UIHitTestBehaviour;
 

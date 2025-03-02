@@ -669,6 +669,21 @@ static bool ui_widget_hit_test_defer_to_children(UIWidget *widget,
   return true;
 }
 
+static bool ui_widget_hit_test_transluscent(UIWidget *widget,
+                                            Vec2 local_position, Arena *arena,
+                                            UIHitTestResult *result) {
+  if (!vec2_contains(local_position, vec2_zero(), widget->size)) {
+    return false;
+  }
+
+  bool hit_children = ui_widget_hit_test_children_default(
+      widget, local_position, arena, result);
+
+  ui_hit_test_result_add(result, arena, widget, local_position);
+
+  return hit_children;
+}
+
 static bool ui_widget_hit_test_opaque(UIWidget *widget, Vec2 local_position,
                                       Arena *arena, UIHitTestResult *result) {
   if (!vec2_contains(local_position, vec2_zero(), widget->size)) {
@@ -2016,6 +2031,11 @@ static bool ui_pointer_listener_hit_test(UIWidget *widget, Vec2 local_position,
     case UI_HIT_TEST_BEHAVIOUR_DEFER_TO_CHILD: {
       return ui_widget_hit_test_defer_to_children(widget, local_position, arena,
                                                   result);
+    } break;
+
+    case UI_HIT_TEST_BEHAVIOUR_TRANSLUCENT: {
+      return ui_widget_hit_test_transluscent(widget, local_position, arena,
+                                             result);
     } break;
 
     case UI_HIT_TEST_BEHAVIOUR_OPAQUE: {
