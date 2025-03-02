@@ -35,7 +35,7 @@ typedef ptrdiff_t isize;
 
 static inline i64 i64_min(i64 a, i64 b) { return MIN(a, b); }
 static inline i64 i64_max(i64 a, i64 b) { return MAX(a, b); }
-static inline int i64_compare(i64 a, i64 b) {
+static inline int i64_cmp(i64 a, i64 b) {
   return (a == b) ? 0 : (a < b ? -1 : 1);
 }
 
@@ -62,18 +62,25 @@ static inline usize usize_max(usize a, usize b) {
 #define THREAD_LOCAL __thread
 #endif
 
-#define OPTIONAL_TYPE(Name, Type, prefix)           \
-  typedef struct Name {                             \
-    bool present;                                   \
-    Type value;                                     \
-  } Name;                                           \
-                                                    \
-  static inline Name prefix##_some(Type value) {    \
-    return (Name){.present = true, .value = value}; \
-  }                                                 \
-                                                    \
-  static inline Name prefix##_none(void) { return (Name){0}; }
+#define OPTIONAL_TYPE(Name, Type, prefix)        \
+  typedef struct Name {                          \
+    Type value;                                  \
+    bool present;                                \
+  } Name;                                        \
+                                                 \
+  static inline Name prefix##_some(Type value) { \
+    Name result;                                 \
+    result.present = true;                       \
+    result.value = value;                        \
+    return result;                               \
+  }                                              \
+                                                 \
+  static inline Name prefix##_none(void) {       \
+    Name result = {0};                           \
+    return result;                               \
+  }
 
 OPTIONAL_TYPE(i32o, i32, i32);
+OPTIONAL_TYPE(i64o, i64, i64);
 
 #endif  // ZTRACING_SRC_TYPES_H_

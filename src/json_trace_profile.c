@@ -165,6 +165,39 @@ static void json_trace_profile_process_trace_event(JsonTraceProfile *self,
       }
     } break;
 
+    // Metadata event
+    case 'M': {
+      if (str8_eq(trace_event.name, STR8_LIT("thread_name"))) {
+        if (trace_event.args->type == JSON_VALUE_OBJECT) {
+          for (JsonValue *value = trace_event.args->first; value;
+               value = value->next) {
+            if (str8_eq(value->label, STR8_LIT("name"))) {
+              JsonTraceProcess *process = json_trace_profile_upsert_process(
+                  self, arena, trace_event.pid);
+              JsonTraceThread *thread = json_trace_process_upsert_thread(
+                  process, arena, trace_event.tid);
+              thread->name = str8_dup(arena, value->value);
+              break;
+            }
+          }
+        }
+      } else if (str8_eq(trace_event.name, STR8_LIT("thread_sort_index"))) {
+        if (trace_event.args->type == JSON_VALUE_OBJECT) {
+          for (JsonValue *value = trace_event.args->first; value;
+               value = value->next) {
+            if (str8_eq(value->label, STR8_LIT("sort_index"))) {
+              JsonTraceProcess *process = json_trace_profile_upsert_process(
+                  self, arena, trace_event.pid);
+              JsonTraceThread *thread = json_trace_process_upsert_thread(
+                  process, arena, trace_event.tid);
+              thread->sort_index = i64_some(json_value_as_f64(value));
+              break;
+            }
+          }
+        }
+      }
+    } break;
+
     default: {
     } break;
   }

@@ -41,6 +41,7 @@ struct JsonTraceSpan {
 typedef struct JsonTraceThread {
   i64 tid;
   Str8 name;
+  i64o sort_index;
   usize span_count;
   JsonTraceSpan *first_span;
   JsonTraceSpan *last_span;

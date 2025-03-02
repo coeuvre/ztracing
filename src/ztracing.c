@@ -127,9 +127,9 @@ static Str8 z_file_get_input(void *c) {
 static int z_file_loader_compare_json_trace_span(const void *a, const void *b) {
   JsonTraceSpan *sa = *(JsonTraceSpan *const *)a;
   JsonTraceSpan *sb = *(JsonTraceSpan *const *)b;
-  int result = i64_compare(sa->begin_time_ns, sb->begin_time_ns);
+  int result = i64_cmp(sa->begin_time_ns, sb->begin_time_ns);
   if (result == 0) {
-    result = i64_compare(sa->end_time_ns, sb->end_time_ns);
+    result = i64_cmp(sa->end_time_ns, sb->end_time_ns);
   }
   return result;
 }
@@ -272,15 +272,47 @@ static void z_file_loader_build_track_with_thread(
   scratch_end(scratch);
 }
 
+static int z_file_loader_compare_thread(const void *a, const void *b) {
+  JsonTraceThread *ta = *(JsonTraceThread *const *)a;
+  JsonTraceThread *tb = *(JsonTraceThread *const *)b;
+  if (ta->sort_index.present) {
+    if (tb->sort_index.present) {
+      return i64_cmp(ta->sort_index.value, tb->sort_index.value);
+    } else {
+      return -1;
+    }
+  } else if (tb->sort_index.present) {
+    return 1;
+  }
+
+  Scratch scratch = scratch_begin(0, 0);
+  int result = str8_cmp(str8_to_uppercase(ta->name, scratch.arena),
+                        str8_to_uppercase(tb->name, scratch.arena));
+  scratch_end(scratch);
+  return result;
+}
+
 static void z_file_loader_build_track_with_process(
     JsonTraceProcess *process, Arena *arena, ZProfileTrackBuilder *builder) {
   Scratch scratch = scratch_begin(&arena, 1);
+
+  JsonTraceThread **threads = arena_push_array_no_zero(
+      scratch.arena, JsonTraceThread *, process->thread_count);
+  usize thread_index = 0;
   HashTrieIter thread_iter = hash_trie_iter(scratch.arena, process->threads);
   HashTrie *thread_slot;
   while ((thread_slot = hash_trie_iter_next(&thread_iter))) {
     JsonTraceThread *thread = thread_slot->value;
-    z_file_loader_build_track_with_thread(thread, arena, builder);
+    threads[thread_index++] = thread;
   }
+  qsort(threads, process->thread_count, sizeof(*threads),
+        z_file_loader_compare_thread);
+
+  for (thread_index = 0; thread_index < process->thread_count; ++thread_index) {
+    z_file_loader_build_track_with_thread(threads[thread_index], arena,
+                                          builder);
+  }
+
   scratch_end(scratch);
 }
 
@@ -299,7 +331,7 @@ static void z_file_loader_build_track(JsonTraceProfile *profile, Arena *arena,
 static int z_file_loader_compare_sample(const void *a, const void *b) {
   const ZProfileSample *sa = a;
   const ZProfileSample *sb = b;
-  return i64_compare(sa->time, sb->time);
+  return i64_cmp(sa->time, sb->time);
 }
 
 static void z_file_loader_collect_series(Arena *arena, ZProfileItemCounter *c,
@@ -394,9 +426,9 @@ static void z_file_loader_collect_counters(Arena *arena, ZProfileItem *items,
 static int z_file_loader_compare_profile_span(const void *a, const void *b) {
   const ZProfileSpan *sa = a;
   const ZProfileSpan *sb = b;
-  int result = i64_compare(sa->end_time_ns, sb->end_time_ns);
+  int result = i64_cmp(sa->end_time_ns, sb->end_time_ns);
   if (result == 0) {
-    result = i64_compare(sa->begin_time_ns, sb->begin_time_ns);
+    result = i64_cmp(sa->begin_time_ns, sb->begin_time_ns);
   }
   return result;
 }
@@ -879,7 +911,7 @@ static void ui_profile_counter_paint(UIWidget *widget,
   f32 point_per_ns =
       (f32)widget->size.x / (f32)(props->end_time_ns - props->begin_time_ns);
 
-  f32 bin_width = 4.0f;
+  f32 bin_width = 2.0f;
   f32 ns_per_point = 1.0f / point_per_ns;
   i64 bin_duration = f32_round(ns_per_point * bin_width);
   i64 bin_begin = props->begin_time_ns / bin_duration;
