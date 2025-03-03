@@ -26,14 +26,14 @@ typedef struct JsonTraceEvent {
 static JsonTraceSeries *json_trace_counter_upsert_series(JsonTraceCounter *self,
                                                          Arena *arena,
                                                          Str8 name) {
-  HashTrie *slot = hash_trie_upsert(arena, &self->series, name);
-  if (!slot->value) {
-    JsonTraceSeries *new_series = arena_push_struct(arena, JsonTraceSeries);
-    new_series->name = slot->key;
-    slot->value = new_series;
+  JsonTraceSeries *series =
+      hash_trie_upsert(&self->series, name, arena, JsonTraceSeries);
+  Str8 key = hash_trie_get_key(series);
+  if (series->name.ptr != key.ptr) {
+    series->name = key;
     self->series_count += 1;
   }
-  return slot->value;
+  return series;
 }
 
 static void json_trace_counter_add_sample(JsonTraceCounter *self, Arena *arena,
@@ -79,41 +79,41 @@ static void json_trace_thread_add_span(JsonTraceThread *self, Arena *arena,
 
 static JsonTraceCounter *json_trace_process_upsert_counter(
     JsonTraceProcess *self, Arena *arena, Str8 name) {
-  HashTrie *slot = hash_trie_upsert(arena, &self->counters, name);
-  if (!slot->value) {
-    JsonTraceCounter *new_counter = arena_push_struct(arena, JsonTraceCounter);
-    new_counter->name = slot->key;
-    slot->value = new_counter;
+  JsonTraceCounter *counter =
+      hash_trie_upsert(&self->counters, name, arena, JsonTraceCounter);
+  Str8 key = hash_trie_get_key(counter);
+  if (counter->name.ptr != key.ptr) {
+    counter->name = key;
     self->counter_count += 1;
   }
-  return slot->value;
+  return counter;
 }
 
 static JsonTraceThread *json_trace_process_upsert_thread(JsonTraceProcess *self,
                                                          Arena *arena,
                                                          i64 tid) {
   Str8 key = str8((u8 *)&tid, sizeof(tid));
-  HashTrie *slot = hash_trie_upsert(arena, &self->threads, key);
-  if (!slot->value) {
-    JsonTraceThread *new_thread = arena_push_struct(arena, JsonTraceThread);
-    new_thread->tid = tid;
-    slot->value = new_thread;
+  JsonTraceThread *thread =
+      hash_trie_upsert(&self->threads, key, arena, JsonTraceThread);
+  if (!thread->init) {
+    thread->init = true;
+    thread->tid = tid;
     self->thread_count += 1;
   }
-  return slot->value;
+  return thread;
 }
 
 static JsonTraceProcess *json_trace_profile_upsert_process(
     JsonTraceProfile *self, Arena *arena, i64 pid) {
   Str8 key = str8((u8 *)&pid, sizeof(pid));
-  HashTrie *slot = hash_trie_upsert(arena, &self->processes, key);
-  if (!slot->value) {
-    JsonTraceProcess *new_process = arena_push_struct(arena, JsonTraceProcess);
-    new_process->pid = pid;
-    slot->value = new_process;
+  JsonTraceProcess *process =
+      hash_trie_upsert(&self->processes, key, arena, JsonTraceProcess);
+  if (!process->init) {
+    process->init = true;
+    process->pid = pid;
     self->process_count += 1;
   }
-  return slot->value;
+  return process;
 }
 
 static void json_trace_profile_process_trace_event(JsonTraceProfile *self,

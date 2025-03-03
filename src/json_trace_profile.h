@@ -23,7 +23,7 @@ typedef struct JsonTraceSeries {
 typedef struct JsonTraceCounter {
   Str8 name;
   usize series_count;
-  HashTrie *series;
+  HashTrie series;
   f64 min_value;
   f64 max_value;
 } JsonTraceCounter;
@@ -39,6 +39,7 @@ struct JsonTraceSpan {
 };
 
 typedef struct JsonTraceThread {
+  bool init;
   i64 tid;
   Str8 name;
   i64o sort_index;
@@ -51,20 +52,21 @@ typedef struct JsonTraceThread {
 } JsonTraceThread;
 
 typedef struct JsonTraceProcess {
+  bool init;
   i64 pid;
 
   usize counter_count;
-  HashTrie *counters;
+  HashTrie counters;
 
   usize thread_count;
-  HashTrie *threads;
+  HashTrie threads;
 } JsonTraceProcess;
 
 typedef struct JsonTraceProfile {
   i64 min_time_ns;
   i64 max_time_ns;
   usize process_count;
-  HashTrie *processes;
+  HashTrie processes;
   Str8 error;
 } JsonTraceProfile;
 

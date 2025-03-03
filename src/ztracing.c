@@ -299,10 +299,9 @@ static void z_file_loader_build_track_with_process(
   JsonTraceThread **threads = arena_push_array_no_zero(
       scratch.arena, JsonTraceThread *, process->thread_count);
   usize thread_index = 0;
-  HashTrieIter thread_iter = hash_trie_iter(scratch.arena, process->threads);
-  HashTrie *thread_slot;
-  while ((thread_slot = hash_trie_iter_next(&thread_iter))) {
-    JsonTraceThread *thread = thread_slot->value;
+  HashTrieIter thread_iter = hash_trie_iter(&process->threads, scratch.arena);
+  JsonTraceThread *thread;
+  while ((thread = hash_trie_iter_next(&thread_iter, JsonTraceThread))) {
     threads[thread_index++] = thread;
   }
   qsort(threads, process->thread_count, sizeof(*threads),
@@ -319,10 +318,10 @@ static void z_file_loader_build_track_with_process(
 static void z_file_loader_build_track(JsonTraceProfile *profile, Arena *arena,
                                       ZProfileTrackBuilder *builder) {
   Scratch scratch = scratch_begin(&arena, 1);
-  HashTrieIter process_iter = hash_trie_iter(scratch.arena, profile->processes);
-  HashTrie *process_slot;
-  while ((process_slot = hash_trie_iter_next(&process_iter))) {
-    JsonTraceProcess *process = process_slot->value;
+  HashTrieIter process_iter =
+      hash_trie_iter(&profile->processes, scratch.arena);
+  JsonTraceProcess *process;
+  while ((process = hash_trie_iter_next(&process_iter, JsonTraceProcess))) {
     z_file_loader_build_track_with_process(process, arena, builder);
   }
   scratch_end(scratch);
@@ -337,11 +336,10 @@ static int z_file_loader_compare_sample(const void *a, const void *b) {
 static void z_file_loader_collect_series(Arena *arena, ZProfileItemCounter *c,
                                          JsonTraceCounter *counter) {
   Scratch scratch = scratch_begin(&arena, 1);
-  HashTrieIter series_iter = hash_trie_iter(scratch.arena, counter->series);
-  HashTrie *series_slot;
+  HashTrieIter series_iter = hash_trie_iter(&counter->series, scratch.arena);
   usize series_index = 0;
-  while ((series_slot = hash_trie_iter_next(&series_iter))) {
-    JsonTraceSeries *series = series_slot->value;
+  JsonTraceSeries *series;
+  while ((series = hash_trie_iter_next(&series_iter, JsonTraceSeries))) {
     ZProfileSeries *s = &c->series[series_index++];
 
     s->name = str8_dup(arena, series->name);
@@ -384,10 +382,10 @@ static void z_file_loader_collect_counters(Arena *arena, ZProfileItem *items,
   {
     usize counter_index = 0;
     HashTrieIter counter_iter =
-        hash_trie_iter(scratch.arena, process->counters);
-    HashTrie *counter_slot;
-    while ((counter_slot = hash_trie_iter_next(&counter_iter))) {
-      sorted_counters[counter_index++] = counter_slot->value;
+        hash_trie_iter(&process->counters, scratch.arena);
+    JsonTraceCounter *counter;
+    while ((counter = hash_trie_iter_next(&counter_iter, JsonTraceCounter))) {
+      sorted_counters[counter_index++] = counter;
     }
   }
   qsort(sorted_counters, process->counter_count, sizeof(*sorted_counters),
@@ -487,10 +485,10 @@ static void z_file_loader_collect_items(Arena *arena, ZProfileItem *items,
                                         ZProfileTrackBuilder *track_builder) {
   Scratch scratch = scratch_begin(&arena, 1);
   usize item_index = 0;
-  HashTrieIter process_iter = hash_trie_iter(scratch.arena, profile->processes);
-  HashTrie *process_slot;
-  while ((process_slot = hash_trie_iter_next(&process_iter))) {
-    JsonTraceProcess *process = process_slot->value;
+  HashTrieIter process_iter =
+      hash_trie_iter(&profile->processes, scratch.arena);
+  JsonTraceProcess *process;
+  while ((process = hash_trie_iter_next(&process_iter, JsonTraceProcess))) {
     z_file_loader_collect_counters(arena, items, &item_index, process);
   }
 
@@ -503,10 +501,10 @@ static usize z_file_loader_count_items(JsonTraceProfile *profile,
                                        ZProfileTrackBuilder *track_builder) {
   usize item_count = 0;
   Scratch scratch = scratch_begin(0, 0);
-  HashTrieIter process_iter = hash_trie_iter(scratch.arena, profile->processes);
-  HashTrie *process_slot;
-  while ((process_slot = hash_trie_iter_next(&process_iter))) {
-    JsonTraceProcess *process = process_slot->value;
+  HashTrieIter process_iter =
+      hash_trie_iter(&profile->processes, scratch.arena);
+  JsonTraceProcess *process;
+  while ((process = hash_trie_iter_next(&process_iter, JsonTraceProcess))) {
     item_count += 2 * process->counter_count;
   }
 
