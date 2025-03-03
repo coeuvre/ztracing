@@ -1278,6 +1278,34 @@ static void build_ui(ZState *state) {
   ui_colored_box_end();
 }
 
+static void build_test_ui(void) {
+  UIGestureDetailO tap_outer;
+  UIGestureDetailO tap_inner;
+  ui_tap_gesture_detector_begin(&(UITapGestureDetectorProps){
+      .tap = &tap_outer,
+      .behaviour = UI_HIT_TEST_BEHAVIOUR_OPAQUE,
+  });
+  ui_center_begin(&(UICenterProps){0});
+  ui_tap_gesture_detector_begin(&(UITapGestureDetectorProps){
+      .tap = &tap_inner,
+  });
+  if (tap_inner.present) {
+    INFO("TAP (inner)!");
+  }
+  if (tap_outer.present) {
+    INFO("TAP (outer)!");
+  }
+  ui_container_begin(&(UIContainerProps){
+      .width = f32_some(100),
+      .height = f32_some(100),
+      .color = ui_color_some(ui_color(1, 0, 0, 1)),
+  });
+  ui_container_end();
+  ui_tap_gesture_detector_end();
+  ui_center_end();
+  ui_tap_gesture_detector_end();
+}
+
 static ZState g_z_state;
 
 void z_load_file(ZFile *file) {
@@ -1319,7 +1347,8 @@ void z_update(void) {
   ui_set_delta_time(dt);
   do {
     ui_begin_frame();
-    build_ui(state);
+    // build_ui(state);
+    build_test_ui();
     ui_end_frame();
   } while (ui_should_rebuild());
   ui_paint();

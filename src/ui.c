@@ -159,6 +159,39 @@ static void ui_hit_test_state_sync(UIHitTestState *self) {
   }
 }
 
+typedef struct UIGestureArenaMember UIGestureArenaMember;
+struct UIGestureArenaMember {
+  UIGestureArenaMember *prev;
+  UIGestureArenaMember *next;
+  UIGestureRecognizer recognizer;
+};
+
+typedef struct UIGestureArena UIGestureArena;
+struct UIGestureArena {
+  UIGestureArena *prev;
+  UIGestureArena *next;
+  u32 pointer;
+  UIGestureArenaMember *first_member;
+  UIGestureArenaMember *last_member;
+};
+
+static inline void ui_gesture_arena_add_member(UIGestureArena *self,
+                                               UIGestureArenaMember *member) {
+  DLL_APPEND(self->first_member, self->last_member, member, prev, next);
+}
+
+typedef struct UIGestureArenaState {
+  Arena arena;
+
+  UIGestureArena *first_arena;
+  UIGestureArena *last_arena;
+  UIGestureArena *first_free_arena;
+  UIGestureArena *last_free_arena;
+
+  UIGestureArenaMember *first_free_member;
+  UIGestureArenaMember *last_free_member;
+} UIGestureArenaState;
+
 typedef struct UIInputState {
   f32 dt;
   u32 current_down_button;
@@ -168,6 +201,8 @@ typedef struct UIInputState {
   // hit test result for mouse move
   UIHitTestState button_move_hit_tests[2];
   usize button_move_hit_test_index;
+
+  UIGestureArenaState gesture_arena_state;
 } UIInputState;
 
 typedef struct UIState {
@@ -651,6 +686,32 @@ static bool ui_widget_hit_test_opaque(UIWidget *widget, Vec2 local_position,
   return true;
 }
 
+static inline bool ui_widget_hit_test_by_behaviour(UIWidget *widget,
+                                                   UIHitTestBehaviour behaviour,
+                                                   Vec2 local_position,
+                                                   Arena *arena,
+                                                   UIHitTestResult *result) {
+  switch (behaviour) {
+    case UI_HIT_TEST_BEHAVIOUR_DEFER_TO_CHILD: {
+      return ui_widget_hit_test_defer_to_children(widget, local_position, arena,
+                                                  result);
+    } break;
+
+    case UI_HIT_TEST_BEHAVIOUR_TRANSLUCENT: {
+      return ui_widget_hit_test_transluscent(widget, local_position, arena,
+                                             result);
+    } break;
+
+    case UI_HIT_TEST_BEHAVIOUR_OPAQUE: {
+      return ui_widget_hit_test_opaque(widget, local_position, arena, result);
+    } break;
+
+    default:
+      UNREACHABLE;
+  }
+  return false;
+}
+
 void ui_widget_layout_sliver_default(UIWidget *widget,
                                      const UISliverConstraints *constraints,
                                      UISliverGeometry *geometry) {
@@ -768,6 +829,64 @@ f32 ui_animate_fast_f32(f32 value, f32 target) {
     result = value + diff * state->fast_animation_rate;
   }
   return result;
+}
+
+void ui_gesture_arena_add(u32 pointer, UIGestureRecognizer recognizer) {
+  UIGestureArenaState *state = &ui_state_get()->input.gesture_arena_state;
+  UIGestureArenaMember *member = state->last_free_member;
+  if (member) {
+    DLL_REMOVE(state->first_free_member, state->last_free_member, member, prev,
+               next);
+  } else {
+    member = arena_push_struct(&state->arena, UIGestureArenaMember);
+  }
+  member->recognizer = recognizer;
+
+  bool added = false;
+  for (UIGestureArena *gesture_arena = state->first_arena; gesture_arena;
+       gesture_arena = gesture_arena->next) {
+    if (gesture_arena->pointer == pointer) {
+      ui_gesture_arena_add_member(gesture_arena, member);
+      added = true;
+      break;
+    }
+  }
+
+  if (!added) {
+    UIGestureArena *gesture_arena = state->first_free_arena;
+    if (gesture_arena) {
+      DLL_REMOVE(state->first_free_arena, state->last_free_arena, gesture_arena,
+                 prev, next);
+    } else {
+      gesture_arena = arena_push_struct(&state->arena, UIGestureArena);
+    }
+    gesture_arena->pointer = pointer;
+    DLL_APPEND(state->first_arena, state->last_arena, gesture_arena, prev,
+               next);
+
+    ui_gesture_arena_add_member(gesture_arena, member);
+  }
+}
+
+static void ui_gesture_arena_free(u32 pointer) {
+  UIGestureArenaState *state = &ui_state_get()->input.gesture_arena_state;
+
+  for (UIGestureArena *gesture_arena = state->first_arena; gesture_arena;
+       gesture_arena = gesture_arena->next) {
+    if (gesture_arena->pointer == pointer) {
+      DLL_REMOVE(state->first_arena, state->last_arena, gesture_arena, prev,
+                 next);
+
+      DLL_CONCAT(state->first_free_member, state->last_free_member,
+                 gesture_arena->first_member, gesture_arena->last_member, prev,
+                 next);
+      gesture_arena->first_member = gesture_arena->last_member = 0;
+
+      DLL_APPEND(state->first_free_arena, state->last_free_arena, gesture_arena,
+                 prev, next);
+      break;
+    }
+  }
 }
 
 static UIKey ui_key_from_str8(UIKey seed, Str8 str) {
@@ -1972,26 +2091,8 @@ static bool ui_pointer_listener_hit_test(UIWidget *widget, Vec2 local_position,
                                          UIHitTestResult *result) {
   UIPointerListenerProps *props =
       ui_widget_get_props(widget, UIPointerListenerProps);
-  switch (props->behaviour) {
-    case UI_HIT_TEST_BEHAVIOUR_DEFER_TO_CHILD: {
-      return ui_widget_hit_test_defer_to_children(widget, local_position, arena,
-                                                  result);
-    } break;
-
-    case UI_HIT_TEST_BEHAVIOUR_TRANSLUCENT: {
-      return ui_widget_hit_test_transluscent(widget, local_position, arena,
-                                             result);
-    } break;
-
-    case UI_HIT_TEST_BEHAVIOUR_OPAQUE: {
-      return ui_widget_hit_test_opaque(widget, local_position, arena, result);
-    } break;
-
-    default:
-      UNREACHABLE;
-  }
-
-  return false;
+  return ui_widget_hit_test_by_behaviour(widget, props->behaviour,
+                                         local_position, arena, result);
 }
 
 static void ui_pointer_listener_handle_pointer_event(
@@ -2129,6 +2230,96 @@ void ui_mouse_region_begin(const UIMouseRegionProps *props) {
   state->enter = ui_pointer_event_none();
   state->hover = ui_pointer_event_none();
   state->exit = ui_pointer_event_none();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UITapGestureDetector
+///
+
+typedef struct UITapGestureDetectorState {
+  UIHitTestBehaviour behaviour;
+  u32 button;
+  u32 pointer;
+  UIGestureDetailO tap_down;
+  UIGestureDetailO tap_up;
+  UIGestureDetailO tap;
+} UITapGestureDetectorState;
+
+static bool ui_tap_gesture_detector_hit_test(UIWidget *widget,
+                                             Vec2 local_position, Arena *arena,
+                                             UIHitTestResult *result) {
+  UITapGestureDetectorState *state =
+      ui_widget_get_state(widget, UITapGestureDetectorState);
+  return ui_widget_hit_test_by_behaviour(widget, state->behaviour,
+                                         local_position, arena, result);
+}
+
+static void ui_tap_gesture_detector_handle_pointer_event(
+    UIWidget *widget, const UIPointerEvent *event) {
+  UITapGestureDetectorState *state =
+      ui_widget_get_state(widget, UITapGestureDetectorState);
+
+  // TODO: check for state: ready, possible, defunct?
+  switch (event->type) {
+    case UI_POINTER_EVENT_DOWN: {
+      if ((event->button & state->button) && !state->pointer) {
+        // TODO: add to gesture arena
+        state->pointer = event->pointer;
+        state->tap_down = ui_gesture_detail_some((UIGestureDetail){
+            .local_position = event->local_position,
+        });
+      }
+    } break;
+
+    case UI_POINTER_EVENT_UP: {
+      // TODO: claim win
+      if (event->pointer == state->pointer) {
+        state->pointer = 0;
+        state->tap_up = ui_gesture_detail_some((UIGestureDetail){
+            .local_position = event->local_position,
+        });
+        state->tap = ui_gesture_detail_some((UIGestureDetail){
+            .local_position = event->local_position,
+        });
+      }
+    } break;
+
+    default: {
+    } break;
+  }
+}
+
+UIWidgetClass ui_tap_gesture_detector_class = {
+    .name = "TapGestureDetector",
+    .props_size = sizeof(UITapGestureDetectorProps),
+    .state_size = sizeof(UITapGestureDetectorState),
+    .hit_test = ui_tap_gesture_detector_hit_test,
+    .handle_pointer_event = ui_tap_gesture_detector_handle_pointer_event,
+};
+
+void ui_tap_gesture_detector_begin(const UITapGestureDetectorProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_tap_gesture_detector_class, props);
+  UITapGestureDetectorState *state =
+      ui_widget_get_state(widget, UITapGestureDetectorState);
+
+  state->behaviour = props->behaviour;
+  state->button = props->button;
+
+  if (props->tap_down) {
+    *props->tap_down = state->tap_down;
+  }
+  state->tap_down = ui_gesture_detail_none();
+
+  if (props->tap_up) {
+    *props->tap_up = state->tap_up;
+  }
+  state->tap_up = ui_gesture_detail_none();
+
+  if (props->tap) {
+    *props->tap = state->tap;
+  }
+  state->tap = ui_gesture_detail_none();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -62,6 +62,14 @@ static inline usize usize_max(usize a, usize b) {
 #define THREAD_LOCAL __thread
 #endif
 
+// clang-format off
+#ifdef __cplusplus
+#define ZERO_INIT {}
+#else
+#define ZERO_INIT {0}
+#endif
+// clang-format on
+
 #define OPTIONAL_TYPE(Name, Type, prefix)        \
   typedef struct Name {                          \
     Type value;                                  \
@@ -76,7 +84,7 @@ static inline usize usize_max(usize a, usize b) {
   }                                              \
                                                  \
   static inline Name prefix##_none(void) {       \
-    Name result = {0};                           \
+    Name result = ZERO_INIT;                     \
     return result;                               \
   }
 

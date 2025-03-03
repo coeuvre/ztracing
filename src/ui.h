@@ -46,7 +46,10 @@ typedef struct UIKey {
   u64 hash;
 } UIKey;
 
-static inline UIKey ui_key_zero(void) { return (UIKey){0}; }
+static inline UIKey ui_key_zero(void) {
+  UIKey key = ZERO_INIT;
+  return key;
+}
 static inline bool ui_key_is_zero(UIKey key) { return key.hash == 0; }
 static inline bool ui_key_is_equal(UIKey a, UIKey b) {
   return a.hash == b.hash;
@@ -464,6 +467,11 @@ typedef enum UIPointerEventType {
 
 typedef struct UIPointerEvent {
   UIPointerEventType type;
+  /// Unique identifier for the pointer, not reused. Changes for each new
+  /// pointer down event.
+  u32 pointer;
+  /// Bit field of UI_BUTTON_* constants that is pressed when the event is
+  /// generated.
   u32 button;
   /// Coordinate of the position of the pointer, in logical pixels in the global
   /// coordinate space.
@@ -475,6 +483,20 @@ typedef struct UIPointerEvent {
 } UIPointerEvent;
 
 OPTIONAL_TYPE(UIPointerEventO, UIPointerEvent, ui_pointer_event);
+
+typedef struct UIGestureRecognizerVTable {
+  /// Called when this member wins the arena for the given pointer id.
+  void (*accept)(void *self, int pointer);
+  /// Called when this member loses the arena for the given pointer id.
+  void (*reject)(void *self, int pointer);
+} UIGestureRecognizerVTable;
+
+typedef struct UIGestureRecognizer {
+  void *self;
+  UIGestureRecognizerVTable *vtable;
+} UIGestureRecognizer;
+
+void ui_gesture_arena_add(u32 pointer, UIGestureRecognizer recognizer);
 
 #define UI_U64_LIT(v) (v##ULL)
 
@@ -1164,18 +1186,38 @@ static inline void ui_mouse_region_end(void) {
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-/// UIGestureDetector
+/// UITapGestureDetector
 ///
-/// A widget that detects gestures.
-///
-extern UIWidgetClass ui_gesture_detector_class;
-
 typedef struct UIGestureDetail {
   Vec2 local_position;
   Vec2 delta;
 } UIGestureDetail;
 
 OPTIONAL_TYPE(UIGestureDetailO, UIGestureDetail, ui_gesture_detail);
+
+extern UIWidgetClass ui_tap_gesture_detector_class;
+
+typedef struct UITapGestureDetectorProps {
+  UIKey key;
+  UIHitTestBehaviour behaviour;
+  u32 button;
+  UIGestureDetailO *tap_down;
+  UIGestureDetailO *tap_up;
+  UIGestureDetailO *tap;
+} UITapGestureDetectorProps;
+
+void ui_tap_gesture_detector_begin(const UITapGestureDetectorProps *props);
+static inline void ui_tap_gesture_detector_end(void) {
+  ui_widget_end(&ui_tap_gesture_detector_class);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// UIGestureDetector
+///
+/// A widget that detects gestures.
+///
+extern UIWidgetClass ui_gesture_detector_class;
 
 typedef struct UIGestureDetectorProps {
   UIKey key;

@@ -58,4 +58,15 @@
     (node)->prev = (node)->next = 0;              \
   } while (0)
 
+#define DLL_CONCAT(first1, last1, first2, last2, prev, next) \
+  do {                                                       \
+    if (last1) {                                             \
+      (last1)->next = first2;                                \
+      (last1) = last2;                                       \
+    } else {                                                 \
+      first1 = first2;                                       \
+      last1 = last2;                                         \
+    }                                                        \
+  } while (0)
+
 #endif  // ZTRACING_SRC_LIST_H_
