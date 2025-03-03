@@ -1174,7 +1174,7 @@ static void ui_profile_screen(ZState *state) {
 
     Vec2 delta = scroll.value.scroll_delta;
     if (delta.y < 0) {
-      duration = i64_max(duration * 0.8f, 1000000);
+      duration = i64_max(duration * 0.8f, 1000);
     } else {
       i64 max_duration = (viewer->max_time_ns - viewer->min_time_ns) * 2.0;
       duration = i64_min(duration * 1.25f, max_duration);

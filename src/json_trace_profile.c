@@ -204,7 +204,8 @@ static void json_trace_profile_process_trace_event(JsonTraceProfile *self,
       }
     } break;
 
-    // Complete event
+    // Complete event and Instant event
+    case 'i':
     case 'X': {
       JsonTraceProcess *process =
           json_trace_profile_upsert_process(self, arena, trace_event.pid);
