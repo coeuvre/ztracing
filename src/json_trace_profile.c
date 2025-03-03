@@ -15,11 +15,11 @@ typedef struct JsonTraceEvent {
   Str8 id;
   Str8 cat;
   u8 ph;
-  i64 ts;
-  i64 tts;
+  f64 ts;
+  f64 tts;
   i64 pid;
   i64 tid;
-  i64 dur;
+  f64 dur;
   JsonValue *args;
 } JsonTraceEvent;
 
@@ -49,18 +49,32 @@ static void json_trace_counter_add_sample(JsonTraceCounter *self, Arena *arena,
   self->max_value = f64_max(self->max_value, value);
 }
 
-static JsonTraceSpan *json_trace_thread_add_span(JsonTraceThread *self,
-                                                 Arena *arena, Str8 name,
-                                                 Str8 cat, i64 begin_time_us,
-                                                 i64 end_time_us) {
+static JsonTraceSpan *json_trace_thread_alloc_span(Arena *arena, Str8 name,
+                                                   Str8 cat,
+                                                   i64 begin_time_us) {
   JsonTraceSpan *span = arena_push_struct(arena, JsonTraceSpan);
   span->name = str8_dup(arena, name);
   span->cat = str8_dup(arena, cat);
   span->begin_time_ns = begin_time_us;
+  return span;
+}
+
+static void json_trace_thread_add_open_span(JsonTraceThread *self, Arena *arena,
+                                            Str8 name, Str8 cat,
+                                            i64 begin_time_us) {
+  JsonTraceSpan *span =
+      json_trace_thread_alloc_span(arena, name, cat, begin_time_us);
+  DLL_APPEND(self->first_open_span, self->last_open_span, span, prev, next);
+}
+
+static void json_trace_thread_add_span(JsonTraceThread *self, Arena *arena,
+                                       Str8 name, Str8 cat, i64 begin_time_us,
+                                       i64 end_time_us) {
+  JsonTraceSpan *span =
+      json_trace_thread_alloc_span(arena, name, cat, begin_time_us);
   span->end_time_ns = end_time_us;
   DLL_APPEND(self->first_span, self->last_span, span, prev, next);
   self->span_count += 1;
-  return span;
 }
 
 static JsonTraceCounter *json_trace_process_upsert_counter(
@@ -145,6 +159,48 @@ static void json_trace_profile_process_trace_event(JsonTraceProfile *self,
           json_trace_counter_add_sample(counter, arena, arg->label, time,
                                         value);
         }
+      }
+    } break;
+
+    // Duration event
+    case 'B': {
+      JsonTraceProcess *process =
+          json_trace_profile_upsert_process(self, arena, trace_event.pid);
+      JsonTraceThread *thread =
+          json_trace_process_upsert_thread(process, arena, trace_event.tid);
+
+      // TODO: Interning string name and cat.
+
+      json_trace_thread_add_open_span(thread, arena, trace_event.name,
+                                      trace_event.cat, time);
+    } break;
+
+    case 'E': {
+      JsonTraceProcess *process =
+          json_trace_profile_upsert_process(self, arena, trace_event.pid);
+      JsonTraceThread *thread =
+          json_trace_process_upsert_thread(process, arena, trace_event.tid);
+
+      if (thread->last_open_span) {
+        JsonTraceSpan *span = thread->last_open_span;
+        DLL_REMOVE(thread->first_open_span, thread->last_open_span, span, prev,
+                   next);
+
+        span->end_time_ns = time;
+
+        // TODO: Interning string name and cat.
+
+        if (str8_eq(span->name, trace_event.name) != 0) {
+          span->name = str8_dup(arena, trace_event.name);
+        }
+        if (str8_eq(span->cat, trace_event.cat) != 0) {
+          span->cat = str8_dup(arena, trace_event.cat);
+        }
+
+        // TODO: handle trace_event.args.
+
+        DLL_APPEND(thread->first_span, thread->last_span, span, prev, next);
+        thread->span_count += 1;
       }
     } break;
 
