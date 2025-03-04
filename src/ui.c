@@ -6,6 +6,7 @@
 
 #include "src/assert.h"
 #include "src/draw.h"
+#include "src/hash_trie.h"
 #include "src/list.h"
 #include "src/math.h"
 #include "src/memory.h"
@@ -1008,8 +1009,8 @@ Arena *ui_get_build_arena(void) {
 void *ui_widget_set_parent_data_(UIWidget *widget, u64 type, usize data_size) {
   UIState *state = ui_state_get();
   UIFrame *frame = ui_state_get_current_frame(state);
-  return ui_parent_data_upsert(&frame->arena, &widget->parent_data, type,
-                               data_size);
+  Str8 key = str8((u8 *)&type, sizeof(type));
+  return hash_trie_upsert_(&widget->parent_data, key, &frame->arena, data_size);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

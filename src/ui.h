@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "src/assert.h"
+#include "src/hash_trie.h"
 #include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
@@ -527,40 +528,6 @@ typedef enum UIParentDataType {
   UI_PARENT_DATA_SLIVER,
 } UIParentDataType;
 
-typedef struct UIParentData UIParentData;
-struct UIParentData {
-  u64 key;
-  usize data_size;
-  UIParentData *slots[4];
-};
-
-static inline void *ui_parent_data_upsert(Arena *arena, UIParentData **t,
-                                          u64 key, usize data_size) {
-  for (u64 hash = key; *t; hash <<= 2) {
-    if (key == t[0]->key) {
-      ASSERT(t[0]->data_size == data_size);
-      return t[0] + 1;
-    }
-    t = t[0]->slots + (hash >> 62);
-  }
-
-  if (arena) {
-    UIParentData *slot =
-        (UIParentData *)arena_push(arena, sizeof(UIParentData) + data_size, 0);
-    slot->key = key;
-    slot->data_size = data_size;
-    *t = slot;
-    return slot + 1;
-  }
-
-  return 0;
-}
-
-static inline void *ui_parent_data_get(UIParentData *root, u64 key,
-                                       usize data_size) {
-  return ui_parent_data_upsert(0, &root, key, data_size);
-}
-
 struct UIWidget {
   UIWidgetClass *klass;
   UIWidget *parent;
@@ -573,7 +540,7 @@ struct UIWidget {
   /// Last child of this widget.
   UIWidget *last;
   u32 child_count;
-  UIParentData *parent_data;
+  HashTrie parent_data;
 
   UIWidgetStatus status;
 
@@ -638,7 +605,8 @@ void *ui_widget_set_parent_data_(UIWidget *widget, u64 type, usize data_size);
 
 static inline void *ui_widget_get_parent_data_(UIWidget *widget, u64 type,
                                                usize data_size) {
-  return ui_parent_data_get(widget->parent_data, type, data_size);
+  Str8 key = str8((u8 *)&type, sizeof(type));
+  return hash_trie_upsert_(&widget->parent_data, key, 0, data_size);
 }
 
 #define ui_widget_get_parent_data(widget, type, Data) \
