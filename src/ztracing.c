@@ -1065,6 +1065,10 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
         UITextStyle text_style = text_style_default().value;
         f32 font_size = text_style.font_size.value;
         UIColor text_color = text_style.color.value;
+        // index-0 color is dark color, use white text color.
+        if (span->color_index == 0) {
+          text_color = ui_color(1, 1, 1, 1);
+        }
 
         f32 text_padding_x = 8;
         if (width - 2 * text_padding_x > 0) {
