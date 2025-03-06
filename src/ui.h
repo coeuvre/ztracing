@@ -561,12 +561,6 @@ UIWidget *ui_widget_get_current(void);
 UIWidget *ui_widget_get_root(void);
 UIWidget *ui_widget_get_last_child(void);
 
-/// Get an arena for storing temporary data that needs to keep across begin and
-/// end.
-///
-/// Allocations MUST be freed before exiting `end` in a FILO (stack) order.
-Arena *ui_get_build_arena(void);
-
 static inline UIKey ui_widget_get_key(UIWidget *widget) {
   UIKey *key_ptr = (UIKey *)(widget + 1);
   return *key_ptr;

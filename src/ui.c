@@ -94,7 +94,6 @@ typedef struct UIWidgetStackEntry {
   UIWidget *widget;
   UIWidget *last_widget;
   UIWidget *last_child;
-  const u8 *build_arena_top;
 } UIWidgetStackEntry;
 
 typedef struct UIWidgetStack {
@@ -110,8 +109,8 @@ static bool ui_widget_stack_is_empty(UIWidgetStack *stack) {
   return arena_is_empty(&stack->arena);
 }
 
-static void ui_widget_stack_push(UIWidgetStack *stack, Arena *build_arena,
-                                 UIWidget *widget, UIWidget *last_widget) {
+static void ui_widget_stack_push(UIWidgetStack *stack, UIWidget *widget,
+                                 UIWidget *last_widget) {
   UIWidgetStackEntry *entry =
       arena_push_array(&stack->arena, UIWidgetStackEntry, 1);
   entry->widget = widget;
@@ -119,23 +118,15 @@ static void ui_widget_stack_push(UIWidgetStack *stack, Arena *build_arena,
   if (last_widget) {
     entry->last_child = last_widget->first;
   }
-  entry->build_arena_top = build_arena->begin;
   stack->current = entry;
 }
 
-static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack, Arena *build_arena) {
+static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack) {
   ASSERT(stack->current);
   UIWidgetStackEntry *entry = stack->current;
   arena_pop(&stack->arena, sizeof(UIWidgetStackEntry));
   ASSERT(entry == arena_seek(&stack->arena, 0));
   stack->current = arena_seek(&stack->arena, sizeof(UIWidgetStackEntry));
-  if (entry->build_arena_top) {
-    ASSERTF(entry->build_arena_top == build_arena->begin,
-            "build arena was not cleaned up properly by the widget");
-  } else {
-    ASSERTF(arena_is_empty(build_arena),
-            "build arena was not cleaned up properly by the widget");
-  }
   return entry->widget;
 }
 
@@ -183,7 +174,6 @@ typedef struct UIState {
   UIFrame *last_frame;
 
   UIWidgetStack widget_stack;
-  Arena build_arena;
   bool should_rebuild;
 
   Vec2 viewport_min;
@@ -910,15 +900,13 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
     ui_widget_mount(widget);
   }
 
-  ui_widget_stack_push(&state->widget_stack, &state->build_arena, widget,
-                       last_widget);
+  ui_widget_stack_push(&state->widget_stack, widget, last_widget);
   return widget;
 }
 
 void ui_widget_end(UIWidgetClass *klass) {
   UIState *state = ui_state_get();
-  UIWidget *widget =
-      ui_widget_stack_pop(&state->widget_stack, &state->build_arena);
+  UIWidget *widget = ui_widget_stack_pop(&state->widget_stack);
   ASSERTF(widget->klass == klass,
           "mismatched begin/end calls. Begin with %s, end with %s",
           widget->klass->name, klass->name);
@@ -955,11 +943,6 @@ UIWidget *ui_widget_get_last_child(void) {
     return current->last;
   }
   return 0;
-}
-
-Arena *ui_get_build_arena(void) {
-  UIState *state = ui_state_get();
-  return &state->build_arena;
 }
 
 void *ui_widget_set_parent_data_(UIWidget *widget, u64 type, usize data_size) {
