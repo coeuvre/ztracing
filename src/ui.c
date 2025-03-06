@@ -149,46 +149,14 @@ static void ui_hit_test_state_clear(UIHitTestState *self) {
   arena_clear(&self->arena);
 }
 
-// Find widget inside the tree rooted at `root` that `widget->old_widget ==
-// entry->widget` using BFS.
-static UIWidget *ui_hit_test_find_widget_bfs(UIHitTestEntry *entry,
-                                             UIWidget *root) {
-  Scratch scratch = scratch_begin(0, 0);
-
-  UIWidget *result = 0;
-  UIWidgetList queue = {0};
-  ui_widget_list_add_last(&queue, scratch.arena, root);
-
-  for (UIWidgetListNode *node = ui_widget_list_remove_first(&queue); node;
-       node = ui_widget_list_remove_first(&queue)) {
-    if (entry->widget == node->widget->old_widget) {
-      result = node->widget;
-      break;
-    }
-
-    for (UIWidget *child = node->widget->first; child; child = child->next) {
-      ui_widget_list_add_last(&queue, scratch.arena, child);
-    }
-  }
-
-  scratch_end(scratch);
-
-  return result;
-}
-
 /// Update widget references in this hit test path from old widget tree to the
 /// new widget tree.
-static void ui_hit_test_state_sync(UIHitTestState *self, UIWidget *new_root) {
+static void ui_hit_test_state_sync(UIHitTestState *self) {
   UIHitTestEntry *entry = self->result.last;
-  if (new_root) {
-    UIWidget *new_widget = new_root;
-    for (; entry; entry = entry->prev) {
-      UIWidget *match = ui_hit_test_find_widget_bfs(entry, new_widget);
-      if (!match) {
-        break;
-      }
-      entry->widget = match;
-      new_widget = match;
+  for (; entry && entry->widget; entry = entry->prev) {
+    entry->widget = entry->widget->doppelganger;
+    if (!entry->widget) {
+      break;
     }
   }
 
@@ -254,6 +222,13 @@ void ui_set_rebuild(bool should_rebuild) {
   state->should_rebuild = should_rebuild;
 }
 
+static void ui_cleanup_last_frame_widget(UIWidget *widget) {
+  for (UIWidget *child = widget->first; child; child = child->next) {
+    ui_cleanup_last_frame_widget(child);
+  }
+  widget->doppelganger = 0;
+}
+
 void ui_begin_frame(void) {
   UIState *state = ui_state_get();
   ASSERT(ui_widget_stack_is_empty(&state->widget_stack));
@@ -275,28 +250,31 @@ void ui_begin_frame(void) {
   frame->open = true;
 
   state->should_rebuild = false;
+
+  if (state->last_frame->root) {
+    ui_cleanup_last_frame_widget(state->last_frame->root);
+  }
 }
 
 static inline void ui_widget_mount(UIWidget *widget) {
-  ASSERT(widget->status == UI_WIDGET_STATUS_UNMOUNTED);
+  ASSERT(!widget->doppelganger);
   if (widget->klass->mount) {
     widget->klass->mount(widget);
   }
-  widget->status = UI_WIDGET_STATUS_MOUNTED;
 }
 
 static inline void ui_widget_update(UIWidget *widget) {
+  ASSERT(widget->doppelganger);
   if (widget->klass->update) {
     widget->klass->update(widget);
   }
 }
 
 static inline void ui_widget_unmount(UIWidget *widget) {
-  ASSERT(widget->status == UI_WIDGET_STATUS_MOUNTED);
+  ASSERT(!widget->doppelganger);
   if (widget->klass->unmount) {
     widget->klass->unmount(widget);
   }
-  widget->status = UI_WIDGET_STATUS_UNMOUNTED;
 }
 
 static void ui_widget_layout_default(UIWidget *widget,
@@ -725,16 +703,12 @@ static bool ui_widget_is_equal(UIWidget *a, UIWidget *b) {
   return ui_key_is_equal(ui_widget_get_key(a), ui_widget_get_key(b));
 }
 
-static void unmount_widgets_if_not(UIWidget *widget) {
-  if (!widget) {
-    return;
-  }
-
+static void ui_unmount_widgets(UIWidget *widget) {
   for (UIWidget *child = widget->first; child; child = child->next) {
-    unmount_widgets_if_not(child);
+    ui_unmount_widgets(child);
   }
 
-  if (widget->status != UI_WIDGET_STATUS_UNMOUNTED) {
+  if (!widget->doppelganger) {
     ui_widget_unmount(widget);
   }
 }
@@ -748,13 +722,15 @@ void ui_end_frame(void) {
 
   // Update widget references in hit tests so we can send events to widgets
   // later.
-  ui_hit_test_state_sync(&state->input.button_down_hit_test, frame->root);
-  ui_hit_test_state_sync(&state->input.button_move_hit_tests[0], frame->root);
-  ui_hit_test_state_sync(&state->input.button_move_hit_tests[1], frame->root);
+  ui_hit_test_state_sync(&state->input.button_down_hit_test);
+  ui_hit_test_state_sync(&state->input.button_move_hit_tests[0]);
+  ui_hit_test_state_sync(&state->input.button_move_hit_tests[1]);
 
   // Layout and paint
   if (frame->root) {
-    unmount_widgets_if_not(state->last_frame->root);
+    if (state->last_frame->root) {
+      ui_unmount_widgets(state->last_frame->root);
+    }
 
     Vec2 viewport_size = vec2_sub(state->viewport_max, state->viewport_min);
     ui_widget_layout(frame->root, ui_box_constraints_tight(viewport_size.x,
@@ -864,8 +840,9 @@ static void ui_widget_append(UIWidget *parent, UIWidget *child,
   }
 }
 
-static inline bool can_reuse_widget(UIWidget *widget, UIWidget *last_widget) {
-  return last_widget && last_widget->status == UI_WIDGET_STATUS_MOUNTED &&
+static inline bool ui_can_reuse_widget(UIWidget *widget,
+                                       UIWidget *last_widget) {
+  return last_widget && !last_widget->doppelganger &&
          ui_widget_is_equal(widget, last_widget);
 }
 
@@ -885,13 +862,13 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
 
       // TODO: Check for global key
       last_widget = ui_widget_get_child_by_key(parent->last_widget, key);
-      if (!can_reuse_widget(widget, last_widget)) {
+      if (!ui_can_reuse_widget(widget, last_widget)) {
         last_widget = 0;
       }
 
       if (!last_widget) {
         last_widget = parent->last_child;
-        if (!can_reuse_widget(widget, last_widget)) {
+        if (!ui_can_reuse_widget(widget, last_widget)) {
           last_widget = 0;
         }
       }
@@ -910,24 +887,21 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
   }
 
   if (last_widget) {
-    ASSERT(last_widget->status == UI_WIDGET_STATUS_MOUNTED);
     ASSERT(last_widget->klass == widget->klass);
+    ASSERT(!last_widget->doppelganger);
 
-    widget->status = UI_WIDGET_STATUS_MOUNTED;
+    last_widget->doppelganger = widget;
     widget->size = last_widget->size;
     widget->offset = last_widget->offset;
-    widget->old_widget = last_widget;
+    widget->doppelganger = last_widget;
 
     if (klass->state_size > 0) {
       memory_copy(ui_widget_get_state_(widget, klass->state_size),
                   ui_widget_get_state_(last_widget, klass->state_size),
                   klass->state_size);
     }
-    ui_widget_update(widget);
 
-    // The state is transfered into current, effectively make last_widget
-    // unmounted.
-    last_widget->status = UI_WIDGET_STATUS_UNMOUNTED;
+    ui_widget_update(widget);
   } else {
     if (widget->klass->state_size > 0) {
       void *state = ui_widget_get_state_(widget, klass->state_size);

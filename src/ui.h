@@ -516,11 +516,6 @@ typedef struct UIWidgetClass {
   void (*handle_pointer_event)(UIWidget *widget, const UIPointerEvent *event);
 } UIWidgetClass;
 
-typedef enum UIWidgetStatus {
-  UI_WIDGET_STATUS_UNMOUNTED,
-  UI_WIDGET_STATUS_MOUNTED,
-} UIWidgetStatus;
-
 typedef enum UIParentDataType {
   UI_PARENT_DATA_UNKNOWN,
   UI_PARENT_DATA_FLEX,
@@ -542,8 +537,6 @@ struct UIWidget {
   u32 child_count;
   HashTrie parent_data;
 
-  UIWidgetStatus status;
-
   /// The size of this box computed during layout.
   ///
   /// The value is initialized to the size of the same widget from last frame
@@ -555,8 +548,11 @@ struct UIWidget {
   /// before layout.
   Vec2 offset;
 
-  // The same widget instance from last frame, if any.
-  UIWidget *old_widget;
+  // The doppelganger of this widget.
+  //
+  // If the widget is from last frame, it's doppelganger is the one from current
+  // frame. Otherwise, it's the one from last frame.
+  UIWidget *doppelganger;
 };
 
 UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props);
