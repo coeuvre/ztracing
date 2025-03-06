@@ -92,7 +92,6 @@ typedef struct UIFrame {
 
 typedef struct UIWidgetStackEntry {
   UIWidget *widget;
-  UIWidget *last_widget;
   UIWidget *last_child;
 } UIWidgetStackEntry;
 
@@ -109,14 +108,12 @@ static bool ui_widget_stack_is_empty(UIWidgetStack *stack) {
   return arena_is_empty(&stack->arena);
 }
 
-static void ui_widget_stack_push(UIWidgetStack *stack, UIWidget *widget,
-                                 UIWidget *last_widget) {
+static void ui_widget_stack_push(UIWidgetStack *stack, UIWidget *widget) {
   UIWidgetStackEntry *entry =
       arena_push_array(&stack->arena, UIWidgetStackEntry, 1);
   entry->widget = widget;
-  entry->last_widget = last_widget;
-  if (last_widget) {
-    entry->last_child = last_widget->first;
+  if (widget->doppelganger) {
+    entry->last_child = widget->doppelganger->first;
   }
   stack->current = entry;
 }
@@ -847,11 +844,12 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
 
   UIWidgetStackEntry *parent = state->widget_stack.current;
   if (parent) {
-    if (parent->last_widget) {
+    if (parent->widget->doppelganger) {
       UIKey key = ui_widget_get_key(widget);
 
       // TODO: Check for global key
-      last_widget = ui_widget_get_child_by_key(parent->last_widget, key);
+      last_widget =
+          ui_widget_get_child_by_key(parent->widget->doppelganger, key);
       if (!ui_can_reuse_widget(widget, last_widget)) {
         last_widget = 0;
       }
@@ -900,7 +898,7 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
     ui_widget_mount(widget);
   }
 
-  ui_widget_stack_push(&state->widget_stack, widget, last_widget);
+  ui_widget_stack_push(&state->widget_stack, widget);
   return widget;
 }
 
