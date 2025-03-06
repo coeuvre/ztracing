@@ -254,20 +254,6 @@ void ui_set_rebuild(bool should_rebuild) {
   state->should_rebuild = should_rebuild;
 }
 
-typedef struct UIRootProps {
-  UIKey key;
-} UIRootProps;
-
-static UIWidgetClass ui_root_class = {
-    .name = "Root",
-    .props_size = sizeof(UIKey),
-};
-
-static inline void ui_root_begin(const UIRootProps *props) {
-  ui_widget_begin(&ui_root_class, props);
-}
-static inline void ui_root_end(void) { ui_widget_end(&ui_root_class); }
-
 void ui_begin_frame(void) {
   UIState *state = ui_state_get();
   ASSERT(ui_widget_stack_is_empty(&state->widget_stack));
@@ -289,8 +275,6 @@ void ui_begin_frame(void) {
   frame->open = true;
 
   state->should_rebuild = false;
-
-  ui_root_begin(&(UIRootProps){0});
 }
 
 static inline void ui_widget_mount(UIWidget *widget) {
@@ -756,8 +740,6 @@ static void unmount_widgets_if_not(UIWidget *widget) {
 }
 
 void ui_end_frame(void) {
-  ui_root_end();
-
   UIState *state = ui_state_get();
   UIFrame *frame = ui_state_get_current_frame(state);
   ASSERTF(ui_widget_stack_is_empty(&state->widget_stack),
@@ -922,7 +904,7 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
       parent->last_child = parent->last_child->next;
     }
   } else {
-    ASSERTF(!frame->root, "root widget already exists.");
+    DEBUG_ASSERTF(!frame->root, "root widget already exists.");
     frame->root = widget;
     last_widget = state->last_frame->root;
   }
