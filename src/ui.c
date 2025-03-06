@@ -84,48 +84,54 @@ static UIWidget *ui_widget_hash_map_get(UIWidgetHashMap *map, UIKey key) {
   return result;
 }
 
-typedef struct UIFrame {
-  Arena arena;
-  UIWidget *root;
-  bool open;
-} UIFrame;
+typedef struct UIWidgetStackEntry UIWidgetStackEntry;
+struct UIWidgetStackEntry {
+  UIWidgetStackEntry *prev;
+  UIWidgetStackEntry *next;
 
-typedef struct UIWidgetStackEntry {
   UIWidget *widget;
   UIWidget *last_child;
-} UIWidgetStackEntry;
+};
 
 typedef struct UIWidgetStack {
-  Arena arena;
-  UIWidgetStackEntry *current;
+  UIWidgetStackEntry *first;
+  UIWidgetStackEntry *last;
+
+  UIWidgetStackEntry *first_free;
+  UIWidgetStackEntry *last_free;
 } UIWidgetStack;
 
 static bool ui_widget_stack_is_empty(UIWidgetStack *stack) {
-  if (stack->current) {
-    return false;
-  }
-
-  return arena_is_empty(&stack->arena);
+  return !stack->first;
 }
 
-static void ui_widget_stack_push(UIWidgetStack *stack, UIWidget *widget) {
-  UIWidgetStackEntry *entry =
-      arena_push_array(&stack->arena, UIWidgetStackEntry, 1);
-  entry->widget = widget;
-  if (widget->doppelganger) {
-    entry->last_child = widget->doppelganger->first;
+static void ui_widget_stack_push(UIWidgetStack *stack, UIWidget *widget,
+                                 Arena *arena) {
+  UIWidgetStackEntry *entry = stack->last_free;
+  if (entry) {
+    DLL_REMOVE(stack->first_free, stack->last_free, entry, prev, next);
+  } else {
+    entry = arena_push_struct(arena, UIWidgetStackEntry);
   }
-  stack->current = entry;
+  entry->widget = widget;
+  entry->last_child = widget->doppelganger ? widget->doppelganger->first : 0;
+  DLL_APPEND(stack->first, stack->last, entry, prev, next);
 }
 
 static UIWidget *ui_widget_stack_pop(UIWidgetStack *stack) {
-  ASSERT(stack->current);
-  UIWidgetStackEntry *entry = stack->current;
-  arena_pop(&stack->arena, sizeof(UIWidgetStackEntry));
-  ASSERT(entry == arena_seek(&stack->arena, 0));
-  stack->current = arena_seek(&stack->arena, sizeof(UIWidgetStackEntry));
+  ASSERTF(stack->last, "mismatched begin/end calls, widget stack is empty");
+  UIWidgetStackEntry *entry = stack->last;
+  DLL_REMOVE(stack->first, stack->last, entry, prev, next);
+  DLL_APPEND(stack->first_free, stack->last_free, entry, prev, next);
   return entry->widget;
 }
+
+typedef struct UIFrame {
+  Arena arena;
+  UIWidgetStack stack;
+  UIWidget *root;
+  bool open;
+} UIFrame;
 
 typedef struct UIHitTestState {
   Arena arena;
@@ -170,7 +176,6 @@ typedef struct UIState {
   UIFrame *current_frame;
   UIFrame *last_frame;
 
-  UIWidgetStack widget_stack;
   bool should_rebuild;
 
   Vec2 viewport_min;
@@ -218,7 +223,6 @@ static void ui_cleanup_last_frame_widget(UIWidget *widget) {
 
 void ui_begin_frame(void) {
   UIState *state = ui_state_get();
-  ASSERT(ui_widget_stack_is_empty(&state->widget_stack));
 
   if (state->input.dt == 0) {
     // Assume 60 FPS if `dt` is not explicitly set.
@@ -233,6 +237,7 @@ void ui_begin_frame(void) {
 
   UIFrame *frame = state->current_frame;
   arena_clear(&frame->arena);
+  frame->stack = (UIWidgetStack){0};
   frame->root = 0;
   frame->open = true;
 
@@ -703,9 +708,9 @@ static void ui_unmount_widgets(UIWidget *widget) {
 void ui_end_frame(void) {
   UIState *state = ui_state_get();
   UIFrame *frame = ui_state_get_current_frame(state);
-  ASSERTF(ui_widget_stack_is_empty(&state->widget_stack),
-          "Mismatched begin/end calls, last begin: %s",
-          state->widget_stack.current->widget->klass->name);
+  ASSERTF(ui_widget_stack_is_empty(&frame->stack),
+          "mismatched begin/end calls, last begin: %s",
+          frame->stack.last->widget->klass->name);
 
   // Update widget references in hit tests so we can send events to widgets
   // later.
@@ -842,7 +847,7 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
   UIWidget *widget = ui_widget_alloc(&frame->arena, klass, props);
   UIWidget *last_widget = 0;
 
-  UIWidgetStackEntry *parent = state->widget_stack.current;
+  UIWidgetStackEntry *parent = frame->stack.last;
   if (parent) {
     if (parent->widget->doppelganger) {
       UIKey key = ui_widget_get_key(widget);
@@ -898,13 +903,14 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
     ui_widget_mount(widget);
   }
 
-  ui_widget_stack_push(&state->widget_stack, widget);
+  ui_widget_stack_push(&frame->stack, widget, &frame->arena);
   return widget;
 }
 
 void ui_widget_end(UIWidgetClass *klass) {
   UIState *state = ui_state_get();
-  UIWidget *widget = ui_widget_stack_pop(&state->widget_stack);
+  UIFrame *frame = state->current_frame;
+  UIWidget *widget = ui_widget_stack_pop(&frame->stack);
   ASSERTF(widget->klass == klass,
           "mismatched begin/end calls. Begin with %s, end with %s",
           widget->klass->name, klass->name);
@@ -912,9 +918,10 @@ void ui_widget_end(UIWidgetClass *klass) {
 
 UIWidget *ui_widget_get_current(void) {
   UIState *state = ui_state_get();
+  UIFrame *frame = state->current_frame;
   UIWidget *result = 0;
-  if (state->widget_stack.current) {
-    result = state->widget_stack.current->widget;
+  if (frame->stack.last) {
+    result = frame->stack.last->widget;
   }
   return result;
 }
