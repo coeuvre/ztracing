@@ -1200,7 +1200,6 @@ extern UIWidgetClass ui_tap_gesture_detector_class;
 typedef struct UITapGestureDetectorProps {
   UIKey key;
   UIHitTestBehaviour behaviour;
-  u32 button;
   UIGestureDetailO *tap_down;
   UIGestureDetailO *tap_up;
   UIGestureDetailO *tap;

@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <string.h>
+#include <sys/stat.h>
 
 #include "src/assert.h"
 #include "src/draw.h"
@@ -192,9 +193,18 @@ typedef struct UIGestureArenaState {
   UIGestureArenaMember *last_free_member;
 } UIGestureArenaState;
 
+typedef struct UIPointerDownState {
+  u32 pointer;
+  u32 button;
+} UIPointerDownState;
+
 typedef struct UIInputState {
+  Arena arena;
+
   f32 dt;
-  u32 current_down_button;
+
+  UIPointerDownState pointer_down_state;
+  u32 prev_pointer;
 
   // hit test state for button down.
   UIHitTestState button_down_hit_test;
@@ -400,8 +410,17 @@ static bool ui_hit_test_state_hit_test(UIHitTestState *self, UIWidget *root,
 
 void ui_on_mouse_button_down(Vec2 pos, u32 button) {
   UIState *state = ui_state_get();
+  UIInputState *input = &state->input;
 
-  state->input.current_down_button |= button;
+  UIPointerDownState *down = &input->pointer_down_state;
+  down->button |= button;
+
+  // TODO: Multiple touch?
+  if (down->pointer) {
+    ui_on_mouse_move(pos);
+    return;
+  }
+  down->pointer = ++input->prev_pointer;
 
   if (state->input.button_down_hit_test.result.first) {
     return;
@@ -419,6 +438,7 @@ void ui_on_mouse_button_down(Vec2 pos, u32 button) {
       ui_widget_handle_pointer_event(
           entry->widget, &(UIPointerEvent){
                              .type = UI_POINTER_EVENT_DOWN,
+                             .pointer = down->pointer,
                              .button = button,
                              .position = pos,
                              .local_position = entry->local_position,
@@ -439,10 +459,17 @@ static void ui_hit_test_update_local_position(UIHitTestResult *result,
 
 void ui_on_mouse_button_up(Vec2 pos, u32 button) {
   UIState *state = ui_state_get();
+  UIInputState *input = &state->input;
 
-  state->input.current_down_button &= (~button);
-  if (state->input.current_down_button ||
-      !state->input.button_down_hit_test.result.first) {
+  UIPointerDownState *down = &input->pointer_down_state;
+  down->button &= (~button);
+  if (!down->pointer || down->button) {
+    return;
+  }
+  u32 pointer = down->pointer;
+  down->pointer = 0;
+
+  if (!state->input.button_down_hit_test.result.first) {
     return;
   }
 
@@ -454,6 +481,7 @@ void ui_on_mouse_button_up(Vec2 pos, u32 button) {
       ui_widget_handle_pointer_event(
           entry->widget, &(UIPointerEvent){
                              .type = UI_POINTER_EVENT_UP,
+                             .pointer = pointer,
                              .button = button,
                              .position = pos,
                              .local_position = entry->local_position,
@@ -467,6 +495,10 @@ void ui_on_mouse_button_up(Vec2 pos, u32 button) {
 void ui_on_mouse_move(Vec2 pos) {
   UIState *state = ui_state_get();
   UIInputState *input = &state->input;
+  UIPointerDownState *down = &input->pointer_down_state;
+  if (!down->pointer) {
+    return;
+  }
 
   if (input->button_down_hit_test.result.first) {
     ui_hit_test_update_local_position(&state->input.button_down_hit_test.result,
@@ -477,6 +509,8 @@ void ui_on_mouse_move(Vec2 pos) {
         ui_widget_handle_pointer_event(
             entry->widget, &(UIPointerEvent){
                                .type = UI_POINTER_EVENT_MOVE,
+                               .pointer = down->pointer,
+                               .button = down->button,
                                .position = pos,
                                .local_position = entry->local_position,
                            });
@@ -502,6 +536,8 @@ void ui_on_mouse_move(Vec2 pos) {
       ui_widget_handle_pointer_event(entry->widget,
                                      &(UIPointerEvent){
                                          .type = UI_POINTER_EVENT_EXIT,
+                                         .pointer = down->pointer,
+                                         .button = down->button,
                                          .position = pos,
                                      });
     }
@@ -513,11 +549,15 @@ void ui_on_mouse_move(Vec2 pos) {
       ui_widget_handle_pointer_event(
           entry->widget, &(UIPointerEvent){
                              .type = UI_POINTER_EVENT_ENTER,
+                             .pointer = down->pointer,
+                             .button = down->button,
                              .position = pos,
                              .local_position = entry->local_position,
                          });
     }
   }
+
+  // TODO: Use pointer tracker
 
   // Only send HOVER events if there isn't button down.
   if (!input->button_down_hit_test.result.first) {
@@ -526,6 +566,8 @@ void ui_on_mouse_move(Vec2 pos) {
       ui_widget_handle_pointer_event(
           entry->widget, &(UIPointerEvent){
                              .type = UI_POINTER_EVENT_HOVER,
+                             .pointer = down->pointer,
+                             .button = down->button,
                              .position = pos,
                              .local_position = entry->local_position,
                          });
@@ -995,11 +1037,15 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
   } else {
     DEBUG_ASSERTF(!frame->root, "root widget already exists.");
     frame->root = widget;
-    last_widget = state->last_frame->root;
+    if (ui_can_reuse_widget(widget, state->last_frame->root)) {
+      last_widget = state->last_frame->root;
+    }
   }
 
   if (last_widget) {
-    ASSERT(last_widget->klass == widget->klass);
+    ASSERTF(last_widget->klass == widget->klass,
+            "last_widget->klass => '%s', widget->klass => '%s'",
+            last_widget->klass->name, widget->klass->name);
     ASSERT(!last_widget->doppelganger);
 
     last_widget->doppelganger = widget;
@@ -2276,12 +2322,15 @@ static void ui_tap_gesture_detector_handle_pointer_event(
       // TODO: claim win
       if (event->pointer == state->pointer) {
         state->pointer = 0;
-        state->tap_up = ui_gesture_detail_some((UIGestureDetail){
-            .local_position = event->local_position,
-        });
-        state->tap = ui_gesture_detail_some((UIGestureDetail){
-            .local_position = event->local_position,
-        });
+
+        if (vec2_contains(event->local_position, vec2_zero(), widget->size)) {
+          state->tap_up = ui_gesture_detail_some((UIGestureDetail){
+              .local_position = event->local_position,
+          });
+          state->tap = ui_gesture_detail_some((UIGestureDetail){
+              .local_position = event->local_position,
+          });
+        }
       }
     } break;
 
@@ -2304,7 +2353,12 @@ void ui_tap_gesture_detector_begin(const UITapGestureDetectorProps *props) {
       ui_widget_get_state(widget, UITapGestureDetectorState);
 
   state->behaviour = props->behaviour;
-  state->button = props->button;
+
+  if (props->tap_down || props->tap_up || props->tap) {
+    state->button |= UI_BUTTON_PRIMARY;
+  } else {
+    state->button &= (~UI_BUTTON_PRIMARY);
+  }
 
   if (props->tap_down) {
     *props->tap_down = state->tap_down;

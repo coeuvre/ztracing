@@ -1,12 +1,10 @@
 const std = @import("std");
-const c = @cImport({
-    @cInclude("src/draw.h");
-    @cInclude("src/math.h");
-    @cInclude("src/ui.h");
-});
+const c = @import("c.zig");
+const utils = @import("utils.zig");
 
 const testing = std.testing;
 const log = std.log;
+const expect_vec2_equal = utils.expect_vec2_equal;
 
 const AlignmentOption = struct {
     alignment: c.UIAlignment,
@@ -30,18 +28,6 @@ const AlignmentOption = struct {
 //     }
 //     return error.TestExpectedEqual;
 // }
-
-fn expect_vec2_equal(expected: c.Vec2, actual: c.Vec2) !void {
-    if (c.vec2_is_equal(expected, actual) == 0) {
-        log.err("expected Vec2({d:.2}, {d:.2}), but got Vec2({d:.2}, {d:.2})", .{
-            expected.x,
-            expected.y,
-            actual.x,
-            actual.y,
-        });
-        return error.TestExpectedEqual;
-    }
-}
 
 // fn sliceFromStr8(str: c.Str8) []u8 {
 //     return str.ptr[0..str.len];
