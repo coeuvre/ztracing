@@ -596,7 +596,6 @@ typedef struct UIWidgetClass {
   // Lifecycle
 
   void (*mount)(UIWidget *widget);
-  void (*update)(UIWidget *widget);
   void (*unmount)(UIWidget *widget);
 
   // Layout

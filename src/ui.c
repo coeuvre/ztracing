@@ -300,13 +300,6 @@ static inline void ui_widget_mount(UIWidget *widget) {
   }
 }
 
-static inline void ui_widget_update(UIWidget *widget) {
-  ASSERT(widget->doppelganger);
-  if (widget->klass->update) {
-    widget->klass->update(widget);
-  }
-}
-
 static inline void ui_widget_unmount(UIWidget *widget) {
   ASSERT(!widget->doppelganger);
   if (widget->klass->unmount) {
@@ -1050,8 +1043,6 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, UIKey key) {
                   ui_widget_get_state_(last_widget, klass->state_size),
                   klass->state_size);
     }
-
-    ui_widget_update(widget);
   } else {
     if (widget->klass->state_size > 0) {
       void *state = ui_widget_get_state_(widget, klass->state_size);
