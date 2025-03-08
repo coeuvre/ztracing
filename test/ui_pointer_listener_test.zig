@@ -141,7 +141,7 @@ test "pointer is different for each pointer down event" {
     c.ui_on_mouse_button_up(c.vec2(50, 50), c.UI_MOUSE_BUTTON_PRIMARY);
 }
 
-test "local_position" {
+test "hover" {
     c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
 
     c.ui_begin_frame();
@@ -169,4 +169,51 @@ test "local_position" {
     c.ui_end_frame();
     try testing.expect(hover.present);
     try expect_vec2_eq(c.vec2(20, 10), hover.value.local_position);
+}
+
+test "enter and exit" {
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
+
+    c.ui_on_mouse_move(c.vec2(0, 0));
+    c.ui_begin_frame();
+    c.ui_stack_begin(&.{});
+    c.ui_positioned_begin(&.{ .left = c.f32_some(10), .top = c.f32_some(20) });
+    c.ui_pointer_listener_begin(&.{ .behaviour = c.UI_HIT_TEST_BEHAVIOUR_OPAQUE });
+    c.ui_container_begin(&.{ .width = c.f32_some(30), .height = c.f32_some(30) });
+    c.ui_container_end();
+    c.ui_pointer_listener_end();
+    c.ui_positioned_end();
+    c.ui_stack_end();
+    c.ui_end_frame();
+
+    var enter = c.ui_pointer_event_none();
+    var exit = c.ui_pointer_event_none();
+    c.ui_on_mouse_move(c.vec2(30, 30));
+    c.ui_begin_frame();
+    c.ui_stack_begin(&.{});
+    c.ui_positioned_begin(&.{ .left = c.f32_some(10), .top = c.f32_some(20) });
+    c.ui_pointer_listener_begin(&.{ .enter = &enter, .exit = &exit, .behaviour = c.UI_HIT_TEST_BEHAVIOUR_OPAQUE });
+    c.ui_container_begin(&.{ .width = c.f32_some(30), .height = c.f32_some(30) });
+    c.ui_container_end();
+    c.ui_pointer_listener_end();
+    c.ui_positioned_end();
+    c.ui_stack_end();
+    c.ui_end_frame();
+    try testing.expect(enter.present);
+    try expect_vec2_eq(c.vec2(20, 10), enter.value.local_position);
+    try testing.expect(!exit.present);
+
+    c.ui_on_mouse_move(c.vec2(0, 0));
+    c.ui_begin_frame();
+    c.ui_stack_begin(&.{});
+    c.ui_positioned_begin(&.{ .left = c.f32_some(10), .top = c.f32_some(20) });
+    c.ui_pointer_listener_begin(&.{ .enter = &enter, .exit = &exit, .behaviour = c.UI_HIT_TEST_BEHAVIOUR_OPAQUE });
+    c.ui_container_begin(&.{ .width = c.f32_some(30), .height = c.f32_some(30) });
+    c.ui_container_end();
+    c.ui_pointer_listener_end();
+    c.ui_positioned_end();
+    c.ui_stack_end();
+    c.ui_end_frame();
+    try testing.expect(!enter.present);
+    try testing.expect(exit.present);
 }

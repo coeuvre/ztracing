@@ -397,11 +397,11 @@ static bool ui_hit_test_state_has_widget(UIHitTestState *self,
 /// Returns true if hit any widget.
 static void ui_hit_test_state_hit_test(UIHitTestState *self, UIWidget *root,
                                        Vec2 pos) {
+  ASSERT(!self->result.first);
   if (!root) {
     return;
   }
 
-  ASSERT(!self->result.first);
   self->result.position = pos;
   self->result.transform = ui_transform_identity();
   self->result.local_position = pos;
@@ -480,6 +480,54 @@ void ui_on_mouse_move(Vec2 pos) {
   UIState *state = ui_state_get();
   UIInputState *input = &state->input;
   UIPointerDownState *down = &input->pointer_down_state;
+
+  UIWidget *root = ui_state_get_root_for_hit_test(state);
+
+  // Handle ENTER/EXIT event
+  {
+    UIHitTestState *last_hit_test =
+        input->button_move_hit_tests + input->button_move_hit_test_index;
+    input->button_move_hit_test_index =
+        (input->button_move_hit_test_index + 1) %
+        ARRAY_COUNT(input->button_move_hit_tests);
+    UIHitTestState *hit_test =
+        input->button_move_hit_tests + input->button_move_hit_test_index;
+    ui_hit_test_state_hit_test(hit_test, root, pos);
+
+    for (UIHitTestEntry *entry = last_hit_test->result.first;
+         entry && entry->widget; entry = entry->next) {
+      if (!ui_hit_test_state_has_widget(hit_test, entry->widget)) {
+        ui_widget_handle_pointer_event(
+            entry->widget,
+            &(UIPointerEvent){
+                .type = UI_POINTER_EVENT_EXIT,
+                .pointer = down->pointer,
+                .button = down->button,
+                .position = pos,
+                .transform = entry->transform,
+                .local_position = ui_transform_dot_vec2(entry->transform, pos),
+            });
+      }
+    }
+
+    for (UIHitTestEntry *entry = hit_test->result.first; entry;
+         entry = entry->next) {
+      if (!ui_hit_test_state_has_widget(last_hit_test, entry->widget)) {
+        ui_widget_handle_pointer_event(
+            entry->widget, &(UIPointerEvent){
+                               .type = UI_POINTER_EVENT_ENTER,
+                               .pointer = down->pointer,
+                               .button = down->button,
+                               .position = pos,
+                               .transform = entry->transform,
+                               .local_position = entry->local_position,
+                           });
+      }
+    }
+
+    ui_hit_test_state_clear(last_hit_test);
+  }
+
   if (down->pointer) {
     for (UIHitTestEntry *entry = input->button_down_hit_test.result.first;
          entry; entry = entry->next) {
@@ -499,14 +547,12 @@ void ui_on_mouse_move(Vec2 pos) {
     return;
   } else {
     // Only send HOVER events if there isn't button down.
-    ui_hit_test_state_hit_test(&state->input.button_down_hit_test,
-                               ui_state_get_root_for_hit_test(state), pos);
+    ui_hit_test_state_hit_test(&state->input.button_down_hit_test, root, pos);
     for (UIHitTestEntry *entry = state->input.button_down_hit_test.result.first;
          entry; entry = entry->next) {
       ui_widget_handle_pointer_event(
           entry->widget, &(UIPointerEvent){
                              .type = UI_POINTER_EVENT_HOVER,
-                             .pointer = down->pointer,
                              .button = down->button,
                              .position = pos,
                              .transform = entry->transform,
@@ -515,50 +561,6 @@ void ui_on_mouse_move(Vec2 pos) {
     }
     ui_hit_test_state_clear(&state->input.button_down_hit_test);
   }
-
-  // TODO: Use pointer tracker
-#if 0
-  if (!root) {
-    return;
-  }
-
-  UIHitTestState *last_hit_test =
-      input->button_move_hit_tests + input->button_move_hit_test_index;
-  input->button_move_hit_test_index = (input->button_move_hit_test_index + 1) %
-                                      ARRAY_COUNT(input->button_move_hit_tests);
-  UIHitTestState *hit_test =
-      input->button_move_hit_tests + input->button_move_hit_test_index;
-  ui_hit_test_state_hit_test(hit_test, root, pos);
-
-  for (UIHitTestEntry *entry = last_hit_test->result.first;
-       entry && entry->widget; entry = entry->next) {
-    if (!ui_hit_test_state_has_widget(hit_test, entry->widget)) {
-      ui_widget_handle_pointer_event(entry->widget,
-                                     &(UIPointerEvent){
-                                         .type = UI_POINTER_EVENT_EXIT,
-                                         .pointer = down->pointer,
-                                         .button = down->button,
-                                         .position = pos,
-                                     });
-    }
-  }
-
-  for (UIHitTestEntry *entry = hit_test->result.first; entry;
-       entry = entry->next) {
-    if (!ui_hit_test_state_has_widget(last_hit_test, entry->widget)) {
-      ui_widget_handle_pointer_event(
-          entry->widget, &(UIPointerEvent){
-                             .type = UI_POINTER_EVENT_ENTER,
-                             .pointer = down->pointer,
-                             .button = down->button,
-                             .position = pos,
-                             .local_position = entry->local_position,
-                         });
-    }
-  }
-
-  ui_hit_test_state_clear(last_hit_test);
-#endif
 }
 
 void ui_on_mouse_scroll(Vec2 pos, Vec2 delta) {
@@ -2266,7 +2268,9 @@ void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
   UIPointerEventO down = ui_pointer_event_none();
   UIPointerEventO move = ui_pointer_event_none();
   UIPointerEventO up = ui_pointer_event_none();
+  UIPointerEventO enter = ui_pointer_event_none();
   UIPointerEventO hover = ui_pointer_event_none();
+  UIPointerEventO exit = ui_pointer_event_none();
   UIPointerEventO cancel = ui_pointer_event_none();
   UIPointerEventO scroll = ui_pointer_event_none();
   for (UIPointerEventQueueEntry *entry = state->event_queue.first; entry;
@@ -2284,8 +2288,16 @@ void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
         up = ui_pointer_event_some(entry->event);
       } break;
 
+      case UI_POINTER_EVENT_ENTER: {
+        enter = ui_pointer_event_some(entry->event);
+      } break;
+
       case UI_POINTER_EVENT_HOVER: {
         hover = ui_pointer_event_some(entry->event);
+      } break;
+
+      case UI_POINTER_EVENT_EXIT: {
+        exit = ui_pointer_event_some(entry->event);
       } break;
 
       case UI_POINTER_EVENT_CANCEL: {
@@ -2310,8 +2322,14 @@ void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
   if (props->up) {
     *props->up = up;
   }
+  if (props->enter) {
+    *props->enter = enter;
+  }
   if (props->hover) {
     *props->hover = hover;
+  }
+  if (props->exit) {
+    *props->exit = exit;
   }
   if (props->cancel) {
     *props->cancel = cancel;
