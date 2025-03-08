@@ -19,15 +19,19 @@ test "multiple buttons down" {
     try testing.expect(!move.present);
     try testing.expect(!up.present);
 
-    // if no button is down, move is ignored
+    // no button is down, UI_POINTER_EVENT_HOVER should be emitted
+    var hover = c.ui_pointer_event_none();
     c.ui_on_mouse_move(c.vec2(50, 50));
     c.ui_begin_frame();
-    c.ui_pointer_listener_begin(&.{ .down = &down, .move = &move, .up = &up, .behaviour = c.UI_HIT_TEST_BEHAVIOUR_OPAQUE });
+    c.ui_pointer_listener_begin(&.{ .down = &down, .move = &move, .hover = &hover, .up = &up, .behaviour = c.UI_HIT_TEST_BEHAVIOUR_OPAQUE });
     c.ui_pointer_listener_end();
     c.ui_end_frame();
     try testing.expect(!down.present);
     try testing.expect(!move.present);
     try testing.expect(!up.present);
+    try testing.expect(hover.present);
+    try testing.expect(hover.value.pointer == 0);
+    try expect_vec2_equal(c.vec2(50, 50), hover.value.local_position);
 
     c.ui_on_mouse_button_down(c.vec2(50, 50), c.UI_MOUSE_BUTTON_PRIMARY);
     c.ui_begin_frame();
@@ -81,7 +85,10 @@ test "multiple buttons down" {
     c.ui_pointer_listener_end();
     c.ui_end_frame();
     try testing.expect(!down.present);
-    try testing.expect(!move.present);
+    try testing.expect(move.present);
+    try testing.expect(move.value.pointer == pointer);
+    try testing.expect(move.value.button == c.UI_BUTTON_SECONDARY);
+    try expect_vec2_equal(c.vec2(30, 50), move.value.local_position);
     try testing.expect(!up.present);
 
     // No button is down, UI_POINTER_EVENT_UP should be emitted.

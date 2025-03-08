@@ -1154,6 +1154,7 @@ typedef struct UIPointerListenerProps {
   UIPointerEventO *down;
   UIPointerEventO *move;
   UIPointerEventO *up;
+  UIPointerEventO *hover;
   UIPointerEventO *cancel;
   UIPointerEventO *scroll;
 } UIPointerListenerProps;
