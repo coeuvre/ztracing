@@ -2324,8 +2324,6 @@ typedef struct UIMouseRegionState {
   UIPointerEventO enter;
   UIPointerEventO hover;
   UIPointerEventO exit;
-
-  bool hovering;
 } UIMouseRegionState;
 
 static void ui_mouse_region_handle_pointer_event(UIWidget *widget,
@@ -2334,14 +2332,12 @@ static void ui_mouse_region_handle_pointer_event(UIWidget *widget,
   switch (event->type) {
     case UI_POINTER_EVENT_ENTER: {
       state->enter = ui_pointer_event_some(*event);
-      state->hovering = true;
     } break;
     case UI_POINTER_EVENT_HOVER: {
       state->hover = ui_pointer_event_some(*event);
     } break;
     case UI_POINTER_EVENT_EXIT: {
       state->exit = ui_pointer_event_some(*event);
-      state->hovering = false;
     } break;
     default: {
     } break;
@@ -2365,9 +2361,6 @@ void ui_mouse_region_begin(const UIMouseRegionProps *props) {
   }
   if (props->exit) {
     *props->exit = state->exit;
-  }
-  if (props->hovering) {
-    *props->hovering = state->hovering;
   }
 
   state->enter = ui_pointer_event_none();
@@ -2669,6 +2662,7 @@ void ui_text(const UITextProps *props) {
 ///
 typedef struct UIButtonState {
   bool down;
+  bool hovering;
 } UIButtonState;
 
 UIWidgetClass ui_button_class = {
@@ -2693,13 +2687,20 @@ void ui_button(UIButtonProps *props) {
   UIWidget *widget = ui_widget_begin(&ui_button_class, props->key);
   UIButtonState *state = ui_widget_get_state(widget, UIButtonState);
 
-  bool hovering;
+  UIPointerEventO enter;
+  UIPointerEventO exit;
+  ui_mouse_region_begin(&(UIMouseRegionProps){
+      .enter = &enter,
+      .exit = &exit,
+  });
+  if (enter.present) {
+    state->hovering = true;
+  } else if (exit.present) {
+    state->hovering = false;
+  }
+
   UIGestureDetailO down;
   UIGestureDetailO up;
-  ui_mouse_region_begin(&(UIMouseRegionProps){
-      .hovering = &hovering,
-  });
-
   UIGestureDetailO tap;
   ui_gesture_detector_begin(&(UIGestureDetectorProps){
       .tap_down = &down,
@@ -2719,8 +2720,8 @@ void ui_button(UIButtonProps *props) {
   }
 
   ui_colored_box_begin(&(UIColoredBoxProps){
-      .color =
-          state->down ? splash_color : (hovering ? hover_color : fill_color),
+      .color = state->down ? splash_color
+                           : (state->hovering ? hover_color : fill_color),
   });
 
   UIEdgeInsets padding = ui_edge_insets_zero();
@@ -3006,6 +3007,7 @@ typedef struct UIScrollableState {
   f32 max_scroll_offset;
   f32 max_scroll_extent;
   bool handle_scrolling;
+  bool hovering;
   f32 handle_down_offset;
   f32 *scroll_output;
 } UIScrollableState;
@@ -3066,10 +3068,17 @@ void ui_scrollable_begin(const UIScrollableProps *props) {
 
 static void ui_scrollable_scrollbar_handle(UIScrollableState *state,
                                            f32 handle_size) {
-  bool hovering;
+  UIPointerEventO enter;
+  UIPointerEventO exit;
   ui_mouse_region_begin(&(UIMouseRegionProps){
-      .hovering = &hovering,
+      .enter = &enter,
+      .exit = &exit,
   });
+  if (enter.present) {
+    state->hovering = true;
+  } else if (exit.present) {
+    state->hovering = false;
+  }
   UIGestureDetailO tap_down;
   UIGestureDetailO tap_up;
   ui_gesture_detector_begin(&(UIGestureDetectorProps){
@@ -3084,8 +3093,8 @@ static void ui_scrollable_scrollbar_handle(UIScrollableState *state,
     state->handle_scrolling = false;
   }
   ui_container_begin(&(UIContainerProps){
-      .color = ui_color_some(hovering ? ui_color(0.58, 0.58, 0.58, 1)
-                                      : ui_color(0.75, 0.75, 0.75, 1)),
+      .color = ui_color_some(state->hovering ? ui_color(0.58, 0.58, 0.58, 1)
+                                             : ui_color(0.75, 0.75, 0.75, 1)),
       .height = f32_some(handle_size),
   });
   ui_container_end();

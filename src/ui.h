@@ -456,9 +456,9 @@ typedef enum UIPointerEventType {
   /// A pointer that has not triggered an UI_POINTER_EVENT_DOWN changes
   /// position.
   UI_POINTER_EVENT_HOVER,
-  /// A pointer has entered this widget.
+  /// A pointer has entered this widget, with or without button pressed.
   UI_POINTER_EVENT_ENTER,
-  /// A pointer has exited this widget when the widget is still mounted.
+  /// A pointer has exited this widget, with or without button pressed.
   UI_POINTER_EVENT_EXIT,
   UI_POINTER_EVENT_SCROLL,
 } UIPointerEventType;
@@ -1134,7 +1134,6 @@ typedef struct UIMouseRegionProps {
   UIPointerEventO *enter;
   UIPointerEventO *hover;
   UIPointerEventO *exit;
-  bool *hovering;
 } UIMouseRegionProps;
 
 void ui_mouse_region_begin(const UIMouseRegionProps *props);
