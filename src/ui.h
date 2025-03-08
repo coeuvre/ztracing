@@ -51,9 +51,7 @@ static inline UIKey ui_key_zero(void) {
   return key;
 }
 static inline bool ui_key_is_zero(UIKey key) { return key.hash == 0; }
-static inline bool ui_key_is_equal(UIKey a, UIKey b) {
-  return a.hash == b.hash;
-}
+static inline bool ui_key_eq(UIKey a, UIKey b) { return a.hash == b.hash; }
 
 typedef struct UIWidget UIWidget;
 
@@ -507,7 +505,6 @@ typedef u64 UIWidgetFlags;
 typedef struct UIWidgetClass {
   const char *name;
   UIWidgetFlags flags;
-  usize props_size;
   usize state_size;
 
   // Lifecycle
@@ -559,6 +556,8 @@ struct UIWidget {
   u32 child_count;
   HashTrie parent_data;
 
+  UIKey key;
+
   /// The size of this box computed during layout.
   ///
   /// The value is initialized to the size of the same widget from last frame
@@ -577,26 +576,11 @@ struct UIWidget {
   UIWidget *doppelganger;
 };
 
-UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props);
+UIWidget *ui_widget_begin(UIWidgetClass *klass, UIKey key);
 void ui_widget_end(UIWidgetClass *klass);
 UIWidget *ui_widget_get_current(void);
 UIWidget *ui_widget_get_root(void);
 UIWidget *ui_widget_get_last_child(void);
-
-static inline UIKey ui_widget_get_key(UIWidget *widget) {
-  UIKey *key_ptr = (UIKey *)(widget + 1);
-  return *key_ptr;
-}
-
-static inline void *ui_widget_get_props_(UIWidget *widget, usize props_size) {
-  ASSERTF(props_size == widget->klass->props_size,
-          "%s: klass.props_size (%d) doesn't match requested props_size (%d)",
-          widget->klass->name, (int)widget->klass->props_size, (int)props_size);
-  return widget + 1;
-}
-
-#define ui_widget_get_props(widget, Props) \
-  ((Props *)ui_widget_get_props_(widget, sizeof(Props)))
 
 static inline void *ui_widget_get_state_(UIWidget *widget, usize state_size) {
   ASSERTF(state_size == widget->klass->state_size,
@@ -604,7 +588,7 @@ static inline void *ui_widget_get_state_(UIWidget *widget, usize state_size) {
           widget->klass->name, (int)widget->klass->state_size, (int)state_size);
   ASSERTF(widget->klass->state_size > 0, "%s doesn't have state",
           widget->klass->name);
-  return ((u8 *)(widget + 1)) + widget->klass->props_size;
+  return widget + 1;
 }
 
 #define ui_widget_get_state(widget, State) \
@@ -638,10 +622,7 @@ typedef struct UILimitedBoxProps {
   f32 max_height;
 } UILimitedBoxProps;
 
-static inline void ui_limited_box_begin(const UILimitedBoxProps *props) {
-  ui_widget_begin(&ui_limited_box_class, props);
-}
-
+void ui_limited_box_begin(const UILimitedBoxProps *props);
 static inline void ui_limited_box_end(void) {
   ui_widget_end(&ui_limited_box_class);
 }
@@ -660,10 +641,7 @@ typedef struct UIColoredBoxProps {
   UIColor color;
 } UIColoredBoxProps;
 
-static inline void ui_colored_box_begin(const UIColoredBoxProps *props) {
-  ui_widget_begin(&ui_colored_box_class, props);
-}
-
+void ui_colored_box_begin(const UIColoredBoxProps *props);
 static inline void ui_colored_box_end(void) {
   ui_widget_end(&ui_colored_box_class);
 }
@@ -680,10 +658,7 @@ typedef struct UIConstrainedBoxProps {
   UIBoxConstraints constraints;
 } UIConstrainedBoxProps;
 
-static inline void ui_constrained_box_begin(
-    const UIConstrainedBoxProps *props) {
-  ui_widget_begin(&ui_constrained_box_class, props);
-}
+void ui_constrained_box_begin(const UIConstrainedBoxProps *props);
 
 static inline void ui_constrained_box_end(void) {
   ui_widget_end(&ui_constrained_box_class);
@@ -784,10 +759,7 @@ typedef struct UIAlignProps {
   f32o height;
 } UIAlignProps;
 
-static inline void ui_align_begin(const UIAlignProps *props) {
-  ui_widget_begin(&ui_align_class, props);
-}
-
+void ui_align_begin(const UIAlignProps *props);
 static inline void ui_align_end(void) { ui_widget_end(&ui_align_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -803,11 +775,7 @@ typedef struct UIUnconstrainedBoxProps {
   UIAlignment alignment;
 } UIUnconstrainedBoxProps;
 
-static inline void ui_unconstrained_box_begin(
-    const UIUnconstrainedBoxProps *props) {
-  ui_widget_begin(&ui_unconstrained_box_class, props);
-}
-
+void ui_unconstrained_box_begin(const UIUnconstrainedBoxProps *props);
 static inline void ui_unconstrained_box_end(void) {
   ui_widget_end(&ui_unconstrained_box_class);
 }
@@ -825,10 +793,7 @@ typedef struct UICenterProps {
   f32o height;
 } UICenterProps;
 
-static inline void ui_center_begin(const UICenterProps *props) {
-  ui_widget_begin(&ui_center_class, props);
-}
-
+void ui_center_begin(const UICenterProps *props);
 static inline void ui_center_end(void) { ui_widget_end(&ui_center_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -874,10 +839,7 @@ typedef struct UIPaddingProps {
   UIEdgeInsets padding;
 } UIPaddingProps;
 
-static inline void ui_padding_begin(const UIPaddingProps *props) {
-  ui_widget_begin(&ui_padding_class, props);
-}
-
+void ui_padding_begin(const UIPaddingProps *props);
 static inline void ui_padding_end(void) { ui_widget_end(&ui_padding_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -978,9 +940,7 @@ typedef struct UIStackProps {
   UIStackFit fit;
 } UIStackProps;
 
-static inline void ui_stack_begin(const UIStackProps *props) {
-  ui_widget_begin(&ui_stack_class, props);
-}
+void ui_stack_begin(const UIStackProps *props);
 static inline void ui_stack_end(void) { ui_widget_end(&ui_stack_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1096,10 +1056,7 @@ typedef struct UIFlexProps {
   f32 spacing;
 } UIFlexProps;
 
-static inline void ui_flex_begin(const UIFlexProps *props) {
-  ui_widget_begin(&ui_flex_class, props);
-}
-
+void ui_flex_begin(const UIFlexProps *props);
 static inline void ui_flex_end(void) { ui_widget_end(&ui_flex_class); }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1251,6 +1208,8 @@ typedef struct UITextProps {
   UIKey key;
   // String must be valid for the whole frame. Consider using
   // `ui_push_str8[fv]` to allocate strings.
+  //
+  // TODO: Remove this requirement.
   Str8 text;
   UITextStyleO style;
 } UITextProps;

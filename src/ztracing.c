@@ -706,11 +706,10 @@ static void ui_loading_screen(ZState *state) {
   }
 }
 
-typedef struct UITimelineProps {
-  UIKey key;
-  f32 begin_time_ns;
-  f32 end_time_ns;
-} UITimelineProps;
+typedef struct UITimelineState {
+  i64 begin_time_ns;
+  i64 end_time_ns;
+} UITimelineState;
 
 static i64 timeline_calc_block_duration(i64 duration, f32 width,
                                         f32 target_block_width) {
@@ -777,10 +776,9 @@ static void ui_timeline_paint(UIWidget *widget, UIPaintingContext *context,
                               Vec2 offset) {
   (void)context;
 
-  UITimelineProps *props = ui_widget_get_props(widget, UITimelineProps);
-
-  i64 begin = props->begin_time_ns;
-  i64 end = props->end_time_ns;
+  UITimelineState *state = ui_widget_get_state(widget, UITimelineState);
+  i64 begin = state->begin_time_ns;
+  i64 end = state->end_time_ns;
 
   UIColor color = ui_color(0, 0, 0, 1);
 
@@ -826,13 +824,16 @@ static void ui_timeline_paint(UIWidget *widget, UIPaintingContext *context,
 
 static UIWidgetClass ui_timeline_class = {
     .name = "Timeline",
-    .props_size = sizeof(UITimelineProps),
+    .state_size = sizeof(UITimelineState),
     .layout = ui_timeline_layout,
     .paint = ui_timeline_paint,
 };
 
-static void ui_timeline(const UITimelineProps *props) {
-  ui_widget_begin(&ui_timeline_class, props);
+static void ui_timeline(i64 begin_time_ns, i64 end_time_ns) {
+  UIWidget *widget = ui_widget_begin(&ui_timeline_class, ui_key_zero());
+  UITimelineState *state = ui_widget_get_state(widget, UITimelineState);
+  state->begin_time_ns = begin_time_ns;
+  state->end_time_ns = end_time_ns;
   ui_widget_end(&ui_timeline_class);
 }
 
@@ -842,12 +843,12 @@ static void ui_profile_item_layout(UIWidget *widget,
       constraints, vec2(F32_INFINITY, PROFILE_ITEM_HEIGHT));
 }
 
-typedef struct UIProfileCounterProps {
+typedef struct UIProfileCounterState {
   UIKey key;
   ZProfileItemCounter *counter;
-  f32 begin_time_ns;
-  f32 end_time_ns;
-} UIProfileCounterProps;
+  i64 begin_time_ns;
+  i64 end_time_ns;
+} UIProfileCounterState;
 
 static usize ui_profile_counter_samples_lower_bound(ZProfileSample *samples,
                                                     usize begin, usize end,
@@ -901,22 +902,22 @@ static void ui_profile_counter_paint(UIWidget *widget,
                                      UIPaintingContext *context, Vec2 offset) {
   (void)context;
 
-  UIProfileCounterProps *props =
-      ui_widget_get_props(widget, UIProfileCounterProps);
+  UIProfileCounterState *state =
+      ui_widget_get_state(widget, UIProfileCounterState);
 
-  ZProfileItemCounter *counter = props->counter;
+  ZProfileItemCounter *counter = state->counter;
   f64 d = (counter->max_value - counter->min_value);
   f32 point_per_ns =
-      (f32)widget->size.x / (f32)(props->end_time_ns - props->begin_time_ns);
+      (f32)widget->size.x / (f32)(state->end_time_ns - state->begin_time_ns);
 
   f32 bin_width = 2.0f;
   f32 ns_per_point = 1.0f / point_per_ns;
   i64 bin_duration = f32_round(ns_per_point * bin_width);
-  i64 bin_begin = props->begin_time_ns / bin_duration;
-  i64 bin_end = props->end_time_ns / bin_duration + 1;
+  i64 bin_begin = state->begin_time_ns / bin_duration;
+  i64 bin_end = state->end_time_ns / bin_duration + 1;
   Vec2 sample_offset =
       vec2(offset.x -
-               (props->begin_time_ns - bin_begin * bin_duration) * point_per_ns,
+               (state->begin_time_ns - bin_begin * bin_duration) * point_per_ns,
            f32_round(offset.y));
 
   for (usize series_index = 0; series_index < counter->series_count;
@@ -981,22 +982,27 @@ static void ui_profile_counter_paint(UIWidget *widget,
 
 static UIWidgetClass ui_profile_counter_class = {
     .name = "ProfileCounter",
-    .props_size = sizeof(UIProfileCounterProps),
+    .state_size = sizeof(UIProfileCounterState),
     .layout = ui_profile_item_layout,
     .paint = ui_profile_counter_paint,
 };
 
-static void ui_profile_counter(const UIProfileCounterProps *props) {
-  ui_widget_begin(&ui_profile_counter_class, props);
+static void ui_profile_counter(ZProfileItemCounter *counter, i64 begin_time_ns,
+                               i64 end_time_ns) {
+  UIWidget *widget = ui_widget_begin(&ui_profile_counter_class, ui_key_zero());
+  UIProfileCounterState *state =
+      ui_widget_get_state(widget, UIProfileCounterState);
+  state->counter = counter;
+  state->begin_time_ns = begin_time_ns;
+  state->end_time_ns = end_time_ns;
   ui_widget_end(&ui_profile_counter_class);
 }
 
-typedef struct UIProfileTrackProps {
-  UIKey key;
+typedef struct UIProfileTrackState {
   ZProfileItemTrack *track;
   i64 begin_time_ns;
   i64 end_time_ns;
-} UIProfileTrackProps;
+} UIProfileTrackState;
 
 // Find the first span with in range [begin, end) whose end_time_ns > time.
 static usize ui_profile_track_spans_upper_bound(ZProfileSpan *spans,
@@ -1022,20 +1028,20 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
                                    Vec2 offset) {
   (void)context;
 
-  UIProfileTrackProps *props = ui_widget_get_props(widget, UIProfileTrackProps);
+  UIProfileTrackState *state = ui_widget_get_state(widget, UIProfileTrackState);
 
   f32 point_per_ns =
-      (f32)widget->size.x / (f32)(props->end_time_ns - props->begin_time_ns);
+      (f32)widget->size.x / (f32)(state->end_time_ns - state->begin_time_ns);
 
   f32 bin_width = 4.0f;
   f32 ns_per_point = 1.0f / point_per_ns;
   i64 bin_duration = f32_round(ns_per_point * bin_width);
-  i64 bin_begin = props->begin_time_ns / bin_duration - 1;
-  i64 bin_end = props->end_time_ns / bin_duration + 1;
-  f32 offset_x = offset.x - (props->begin_time_ns - bin_begin * bin_duration) *
+  i64 bin_begin = state->begin_time_ns / bin_duration - 1;
+  i64 bin_end = state->end_time_ns / bin_duration + 1;
+  f32 offset_x = offset.x - (state->begin_time_ns - bin_begin * bin_duration) *
                                 point_per_ns;
 
-  ZProfileItemTrack *track = props->track;
+  ZProfileItemTrack *track = state->track;
   usize last_span_index = track->span_count;
   for (i64 bin_index = bin_end; bin_index >= bin_begin; --bin_index) {
     i64 bin_begin_time_ns = bin_index * bin_duration;
@@ -1126,13 +1132,18 @@ static void ui_profile_header(ZProfileItemHeader *header) {
 
 static UIWidgetClass ui_profile_track_class = {
     .name = "ProfileTrack",
-    .props_size = sizeof(UIProfileTrackProps),
+    .state_size = sizeof(UIProfileTrackState),
     .layout = ui_profile_item_layout,
     .paint = ui_profile_track_paint,
 };
 
-static void ui_profile_track(const UIProfileTrackProps *props) {
-  ui_widget_begin(&ui_profile_track_class, props);
+static void ui_profile_track(ZProfileItemTrack *track, i64 begin_time_ns,
+                             i64 end_time_ns) {
+  UIWidget *widget = ui_widget_begin(&ui_profile_track_class, ui_key_zero());
+  UIProfileTrackState *state = ui_widget_get_state(widget, UIProfileTrackState);
+  state->track = track;
+  state->begin_time_ns = begin_time_ns;
+  state->end_time_ns = end_time_ns;
   ui_widget_end(&ui_profile_track_class);
 }
 
@@ -1189,10 +1200,7 @@ static void ui_profile_screen(ZState *state) {
   }
 
   ui_column_begin(&(UIColumnProps){0});
-  ui_timeline(&(UITimelineProps){
-      .begin_time_ns = viewer->begin_time_ns,
-      .end_time_ns = viewer->end_time_ns,
-  });
+  ui_timeline(viewer->begin_time_ns, viewer->end_time_ns);
 
   ui_expanded_begin(&(UIExpandedProps){
       .flex = 1,
@@ -1213,19 +1221,13 @@ static void ui_profile_screen(ZState *state) {
       } break;
 
       case Z_PROFILE_ITEM_COUNTER: {
-        ui_profile_counter(&(UIProfileCounterProps){
-            .counter = &item->counter,
-            .begin_time_ns = viewer->begin_time_ns,
-            .end_time_ns = viewer->end_time_ns,
-        });
+        ui_profile_counter(&item->counter, viewer->begin_time_ns,
+                           viewer->end_time_ns);
       } break;
 
       case Z_PROFILE_ITEM_TRACK: {
-        ui_profile_track(&(UIProfileTrackProps){
-            .track = &item->track,
-            .begin_time_ns = viewer->begin_time_ns,
-            .end_time_ns = viewer->end_time_ns,
-        });
+        ui_profile_track(&item->track, viewer->begin_time_ns,
+                         viewer->end_time_ns);
       } break;
 
       default: {
@@ -1347,8 +1349,8 @@ void z_update(void) {
   ui_set_delta_time(dt);
   do {
     ui_begin_frame();
-    // build_ui(state);
-    build_test_ui();
+    build_ui(state);
+    // build_test_ui();
     ui_end_frame();
   } while (ui_should_rebuild());
   ui_paint();

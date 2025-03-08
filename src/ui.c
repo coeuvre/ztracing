@@ -63,7 +63,7 @@ typedef struct UIWidgetHashMap {
 
 static void ui_widget_hash_map_put(UIWidgetHashMap *map, Arena *arena,
                                    UIWidget *widget) {
-  UIKey key = ui_widget_get_key(widget);
+  UIKey key = widget->key;
   UIWidgetHashNode *node = arena_push(arena, sizeof(UIWidgetHashNode), 0);
   UIWidgetHashSlot *slot = map->slots + (key.hash % map->slots_count);
   DLL_APPEND(slot->first, slot->last, node, prev, next);
@@ -76,7 +76,7 @@ static UIWidget *ui_widget_hash_map_get(UIWidgetHashMap *map, UIKey key) {
     UIWidgetHashSlot *slot = map->slots + (key.hash % map->slots_count);
     for (UIWidgetHashNode *node = slot->first; node; node = node->next) {
       UIWidget *widget = (UIWidget *)(node + 1);
-      if (ui_key_is_equal(ui_widget_get_key(widget), key)) {
+      if (ui_key_eq(widget->key, key)) {
         result = widget;
         break;
       }
@@ -758,7 +758,7 @@ static UIWidget *ui_widget_get_child_by_key(UIWidget *parent, UIKey key) {
   if (!ui_key_is_zero(key)) {
     // TODO: Use hash map to speed up the search.
     for (UIWidget *child = parent->first; child; child = child->next) {
-      if (ui_key_is_equal(ui_widget_get_key(child), key)) {
+      if (ui_key_eq(child->key, key)) {
         result = child;
         break;
       }
@@ -776,7 +776,7 @@ static UIWidget *ui_widget_get_child_nth(UIWidget *widget, usize nth) {
   return child;
 }
 
-static bool ui_widget_is_equal(UIWidget *a, UIWidget *b) {
+static bool ui_widget_eq(UIWidget *a, UIWidget *b) {
   if (!a || !b) {
     return false;
   }
@@ -785,7 +785,7 @@ static bool ui_widget_is_equal(UIWidget *a, UIWidget *b) {
     return false;
   }
 
-  return ui_key_is_equal(ui_widget_get_key(a), ui_widget_get_key(b));
+  return ui_key_eq(a->key, b->key);
 }
 
 static void ui_unmount_widgets(UIWidget *widget) {
@@ -957,14 +957,11 @@ static UIKey ui_key_local(UIKey seed, u32 seq, const char *tag, Str8 id) {
 }
 
 /// Allocate a UIWidget in current frame's arena.
-static UIWidget *ui_widget_alloc(Arena *arena, UIWidgetClass *klass,
-                                 const void *props) {
-  UIWidget *widget = arena_push(
-      arena, sizeof(UIWidget) + klass->props_size + klass->state_size,
-      ARENA_PUSH_NO_ZERO);
+static UIWidget *ui_widget_alloc(Arena *arena, UIWidgetClass *klass) {
+  UIWidget *widget = arena_push(arena, sizeof(UIWidget) + klass->state_size,
+                                ARENA_PUSH_NO_ZERO);
   memory_zero(widget, sizeof(UIWidget));
   widget->klass = klass;
-  memory_copy(widget + 1, props, klass->props_size);
   return widget;
 }
 
@@ -986,23 +983,19 @@ static void ui_widget_append(UIWidget *parent, UIWidget *child,
 static inline bool ui_can_reuse_widget(UIWidget *widget,
                                        UIWidget *last_widget) {
   return last_widget && !last_widget->doppelganger &&
-         ui_widget_is_equal(widget, last_widget);
+         ui_widget_eq(widget, last_widget);
 }
 
-UIWidget *ui_widget_begin(UIWidgetClass *klass, const void *props) {
-  ASSERTF(klass->props_size >= sizeof(UIKey),
-          "The first field of props must be a UIKey");
+UIWidget *ui_widget_begin(UIWidgetClass *klass, UIKey key) {
   UIState *state = ui_state_get();
   UIFrame *frame = state->current_frame;
 
-  UIWidget *widget = ui_widget_alloc(&frame->arena, klass, props);
+  UIWidget *widget = ui_widget_alloc(&frame->arena, klass);
   UIWidget *last_widget = 0;
 
   UIWidgetStackEntry *parent = frame->stack.last;
   if (parent) {
     if (parent->widget->doppelganger) {
-      UIKey key = ui_widget_get_key(widget);
-
       // TODO: Check for global key
       last_widget =
           ui_widget_get_child_by_key(parent->widget->doppelganger, key);
@@ -1116,27 +1109,31 @@ void *ui_widget_set_parent_data_(UIWidget *widget, u64 type, usize data_size) {
 ///
 /// UILimitedBox
 ///
+typedef struct UILimitedBoxState {
+  f32 max_width;
+  f32 max_height;
+} UILimitedBoxState;
+
 static UIBoxConstraints ui_limited_box_limit_constraints(
-    UILimitedBoxProps *limited_box, UIBoxConstraints constraints) {
+    UILimitedBoxState *state, UIBoxConstraints constraints) {
   return (UIBoxConstraints){
       .min_width = constraints.min_width,
       .max_width = ui_box_constraints_has_bounded_width(constraints)
                        ? constraints.max_width
-                       : ui_box_constraints_constrain_width(
-                             constraints, limited_box->max_width),
+                       : ui_box_constraints_constrain_width(constraints,
+                                                            state->max_width),
       .min_height = constraints.min_height,
       .max_height = ui_box_constraints_has_bounded_height(constraints)
                         ? constraints.max_height
                         : ui_box_constraints_constrain_height(
-                              constraints, limited_box->max_height),
+                              constraints, state->max_height),
   };
 }
 
 static void ui_limited_box_layout(UIWidget *widget,
                                   UIBoxConstraints constraints) {
-  UILimitedBoxProps *props = ui_widget_get_props(widget, UILimitedBoxProps);
-  UIBoxConstraints limited_constraints =
-      ui_limited_box_limit_constraints(props, constraints);
+  UIBoxConstraints limited_constraints = ui_limited_box_limit_constraints(
+      ui_widget_get_state(widget, UILimitedBoxState), constraints);
 
   UIWidget *child = widget->first;
   if (child) {
@@ -1151,20 +1148,31 @@ static void ui_limited_box_layout(UIWidget *widget,
 
 UIWidgetClass ui_limited_box_class = {
     .name = "LimitedBox",
-    .props_size = sizeof(UILimitedBoxProps),
+    .state_size = sizeof(UILimitedBoxState),
     .layout = ui_limited_box_layout,
 };
+
+void ui_limited_box_begin(const UILimitedBoxProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_limited_box_class, props->key);
+  UILimitedBoxState *state = ui_widget_get_state(widget, UILimitedBoxState);
+  state->max_width = props->max_width;
+  state->max_height = props->max_height;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIColoredBox
 ///
+typedef struct UIColoredBoxState {
+  UIColor color;
+} UIColoredBoxState;
+
 static void ui_colored_box_paint(UIWidget *widget, UIPaintingContext *context,
                                  Vec2 offset) {
-  UIColoredBoxProps *props = ui_widget_get_props(widget, UIColoredBoxProps);
+  UIColoredBoxState *state = ui_widget_get_state(widget, UIColoredBoxState);
   Vec2 size = widget->size;
   if (size.x > 0 && size.y > 0) {
-    fill_rect(offset, vec2_add(offset, size), props->color);
+    fill_rect(offset, vec2_add(offset, size), state->color);
   }
 
   for (UIWidget *child = widget->first; child; child = child->next) {
@@ -1174,22 +1182,32 @@ static void ui_colored_box_paint(UIWidget *widget, UIPaintingContext *context,
 
 UIWidgetClass ui_colored_box_class = {
     .name = "ColoredBox",
-    .props_size = sizeof(UIColoredBoxProps),
+    .state_size = sizeof(UIColoredBoxState),
     .paint = ui_colored_box_paint,
     .hit_test = ui_widget_hit_test_opaque,
 };
+
+void ui_colored_box_begin(const UIColoredBoxProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_colored_box_class, props->key);
+  UIColoredBoxState *state = ui_widget_get_state(widget, UIColoredBoxState);
+  state->color = props->color;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIConstrainedBox
 ///
+typedef struct UIConstrainedBoxState {
+  UIBoxConstraints constraints;
+} UIConstrainedBoxState;
+
 static void ui_constrained_box_layout(UIWidget *widget,
                                       UIBoxConstraints constraints) {
   ASSERT(ui_widget_has_at_most_one_child(widget));
-  UIConstrainedBoxProps *props =
-      ui_widget_get_props(widget, UIConstrainedBoxProps);
+  UIConstrainedBoxState *state =
+      ui_widget_get_state(widget, UIConstrainedBoxState);
   UIBoxConstraints enforced_constraints =
-      ui_box_constraints_enforce(props->constraints, constraints);
+      ui_box_constraints_enforce(state->constraints, constraints);
   UIWidget *child = widget->first;
   if (child) {
     ui_widget_layout(child, enforced_constraints);
@@ -1202,14 +1220,27 @@ static void ui_constrained_box_layout(UIWidget *widget,
 
 UIWidgetClass ui_constrained_box_class = {
     .name = "ConstrainedBox",
-    .props_size = sizeof(UIConstrainedBoxProps),
+    .state_size = sizeof(UIConstrainedBoxState),
     .layout = ui_constrained_box_layout,
 };
+
+void ui_constrained_box_begin(const UIConstrainedBoxProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_constrained_box_class, props->key);
+  UIConstrainedBoxState *state =
+      ui_widget_get_state(widget, UIConstrainedBoxState);
+  state->constraints = props->constraints;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIAlign
 ///
+typedef struct UIAlignState {
+  UIAlignment alignment;
+  f32o width;
+  f32o height;
+} UIAlignState;
+
 static void ui_widget_align_children(UIWidget *widget, UIAlignment alignment) {
   // TODO: UITextDirection
   for (UIWidget *child = widget->first; child; child = child->next) {
@@ -1218,17 +1249,14 @@ static void ui_widget_align_children(UIWidget *widget, UIAlignment alignment) {
   }
 }
 
-static void ui_align_layout_impl(UIWidget *widget, UIAlignProps *props,
+static void ui_align_layout_impl(UIWidget *widget, UIAlignment alignment,
+                                 f32o width, f32o height,
                                  UIBoxConstraints constraints) {
-  f32o width = props->width;
-  f32o height = props->height;
-
   if (width.present) {
     ASSERTF(width.value >= 0, "widget must be positive, got %f", width.value);
   }
   if (height.present) {
-    ASSERTF(props->height.value >= 0, "height must be positive, got %f",
-            props->height.value);
+    ASSERTF(height.value >= 0, "height must be positive, got %f", height.value);
   }
   bool should_shrink_wrap_width =
       width.present || f32_is_infinity(constraints.max_width);
@@ -1251,7 +1279,7 @@ static void ui_align_layout_impl(UIWidget *widget, UIAlignProps *props,
 
     widget->size = ui_box_constraints_constrain(constraints, wrap_size);
 
-    ui_widget_align_children(widget, props->alignment);
+    ui_widget_align_children(widget, alignment);
   } else {
     Vec2 size = vec2(should_shrink_wrap_width ? 0 : F32_INFINITY,
                      should_shrink_wrap_height ? 0 : F32_INFINITY);
@@ -1260,15 +1288,24 @@ static void ui_align_layout_impl(UIWidget *widget, UIAlignProps *props,
 }
 
 static void ui_align_layout(UIWidget *widget, UIBoxConstraints constraints) {
-  UIAlignProps *props = ui_widget_get_props(widget, UIAlignProps);
-  ui_align_layout_impl(widget, props, constraints);
+  UIAlignState *state = ui_widget_get_state(widget, UIAlignState);
+  ui_align_layout_impl(widget, state->alignment, state->width, state->height,
+                       constraints);
 }
 
 UIWidgetClass ui_align_class = {
     .name = "Align",
-    .props_size = sizeof(UIAlignProps),
+    .state_size = sizeof(UIAlignState),
     .layout = ui_align_layout,
 };
+
+void ui_align_begin(const UIAlignProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_align_class, props->key);
+  UIAlignState *state = ui_widget_get_state(widget, UIAlignState);
+  state->alignment = props->alignment;
+  state->width = props->width;
+  state->height = props->height;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -1276,11 +1313,14 @@ UIWidgetClass ui_align_class = {
 ///
 /// A widget that imposes no constraints on its child, allowing it to render
 /// at its "natural" size.
+typedef struct UIUnconstrainedBoxState {
+  UIAlignment alignment;
+} UIUnconstrainedBoxState;
+
 static void ui_unconstrained_box_layout(UIWidget *widget,
                                         UIBoxConstraints constraints) {
-  (void)constraints;
-  UIUnconstrainedBoxProps *props =
-      ui_widget_get_props(widget, UIUnconstrainedBoxProps);
+  UIUnconstrainedBoxState *state =
+      ui_widget_get_state(widget, UIUnconstrainedBoxState);
   UIBoxConstraints child_constraints =
       ui_box_constraints(0, F32_INFINITY, 0, F32_INFINITY);
   UIWidget *child = widget->first;
@@ -1292,40 +1332,58 @@ static void ui_unconstrained_box_layout(UIWidget *widget,
     widget->size = ui_box_constraints_constrain(constraints, vec2_zero());
   }
 
-  ui_widget_align_children(widget, props->alignment);
+  ui_widget_align_children(widget, state->alignment);
 }
 
 UIWidgetClass ui_unconstrained_box_class = {
     .name = "UnconstrainedBox",
-    .props_size = sizeof(UIUnconstrainedBoxProps),
+    .state_size = sizeof(UIUnconstrainedBoxState),
     .layout = ui_unconstrained_box_layout,
 };
+
+void ui_unconstrained_box_begin(const UIUnconstrainedBoxProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_unconstrained_box_class, props->key);
+  UIUnconstrainedBoxState *state =
+      ui_widget_get_state(widget, UIUnconstrainedBoxState);
+  state->alignment = props->alignment;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UICenter
 ///
+typedef struct UICenterState {
+  f32o width;
+  f32o height;
+} UICenterState;
 
 static void ui_center_layout(UIWidget *widget, UIBoxConstraints constraints) {
-  UICenterProps *props = ui_widget_get_props(widget, UICenterProps);
-  UIAlignProps align = {
-      .key = props->key,
-      .width = props->width,
-      .height = props->height,
-  };
-  ui_align_layout_impl(widget, &align, constraints);
+  UICenterState *state = ui_widget_get_state(widget, UICenterState);
+  ui_align_layout_impl(widget, ui_alignment_center(), state->width,
+                       state->height, constraints);
 }
 
 UIWidgetClass ui_center_class = {
     .name = "Center",
-    .props_size = sizeof(UICenterProps),
+    .state_size = sizeof(UICenterState),
     .layout = ui_center_layout,
 };
+
+void ui_center_begin(const UICenterProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_center_class, props->key);
+  UICenterState *state = ui_widget_get_state(widget, UICenterState);
+  state->width = props->width;
+  state->height = props->height;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIPadding
 ///
+typedef struct UIPaddingState {
+  UIEdgeInsets padding;
+} UIPaddingState;
+
 typedef struct UIResolvedEdgeInsets {
   f32 left;
   f32 right;
@@ -1357,13 +1415,13 @@ static inline UIBoxConstraints ui_box_constraints_deflate(
 }
 
 static void ui_padding_layout(UIWidget *widget, UIBoxConstraints constraints) {
-  UIPaddingProps *props = ui_widget_get_props(widget, UIPaddingProps);
+  UIPaddingState *state = ui_widget_get_state(widget, UIPaddingState);
   // TODO: UITextDirection
   UIResolvedEdgeInsets resolved_padding = {
-      .left = props->padding.start,
-      .right = props->padding.end,
-      .top = props->padding.top,
-      .bottom = props->padding.bottom,
+      .left = state->padding.start,
+      .right = state->padding.end,
+      .top = state->padding.top,
+      .bottom = state->padding.bottom,
   };
   f32 horizontal = ui_resolved_edge_insets_get_horizontal(resolved_padding);
   f32 vertical = ui_resolved_edge_insets_get_vertical(resolved_padding);
@@ -1386,60 +1444,80 @@ static void ui_padding_layout(UIWidget *widget, UIBoxConstraints constraints) {
 
 UIWidgetClass ui_padding_class = {
     .name = "Padding",
-    .props_size = sizeof(UIPaddingProps),
+    .state_size = sizeof(UIPaddingState),
     .layout = ui_padding_layout,
 };
+
+void ui_padding_begin(const UIPaddingProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_padding_class, props->key);
+  UIPaddingState *state = ui_widget_get_state(widget, UIPaddingState);
+  state->padding = props->padding;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 /// UIContainer
 ///
+typedef struct UIContainerState {
+  UIAlignmentO alignment;
+  UIEdgeInsetsO padding;
+  UIColorO color;
+
+  UIBoxConstraintsO constraints;
+  UIEdgeInsetsO margin;
+} UIContainerState;
+
 UIWidgetClass ui_container_class = {
     .name = "Container",
-    .props_size = sizeof(UIContainerProps),
+    .state_size = sizeof(UIContainerState),
 };
 
-void ui_container_begin(const UIContainerProps *props_) {
-  UIWidget *widget = ui_widget_begin(&ui_container_class, props_);
-  UIContainerProps *props = ui_widget_get_props(widget, UIContainerProps);
+void ui_container_begin(const UIContainerProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_container_class, props->key);
+  UIContainerState *state = ui_widget_get_state(widget, UIContainerState);
+  state->alignment = props->alignment;
+  state->padding = props->padding;
+  state->color = props->color;
+  state->constraints = props->constraints;
+  state->margin = props->margin;
 
   if (props->width.present || props->height.present) {
-    if (props->constraints.present) {
-      props->constraints = ui_box_constraints_some(ui_box_constraints_tighten(
-          props->constraints.value, props->width, props->height));
+    if (state->constraints.present) {
+      state->constraints = ui_box_constraints_some(ui_box_constraints_tighten(
+          state->constraints.value, props->width, props->height));
     } else {
-      props->constraints = ui_box_constraints_some(
+      state->constraints = ui_box_constraints_some(
           ui_box_constraints_tight_for(props->width, props->height));
     }
   }
 
-  if (props->margin.present) {
+  if (state->margin.present) {
     ui_padding_begin(&(UIPaddingProps){
-        .padding = props->margin.value,
+        .padding = state->margin.value,
     });
   }
 
-  if (props->constraints.present) {
+  if (state->constraints.present) {
     ui_constrained_box_begin(&(UIConstrainedBoxProps){
-        .constraints = props->constraints.value,
+        .constraints = state->constraints.value,
     });
   }
 
-  if (props->color.present) {
+  if (state->color.present) {
     ui_colored_box_begin(&(UIColoredBoxProps){
-        .color = props->color.value,
+        .color = state->color.value,
     });
   }
 
-  if (props->padding.present) {
+  if (state->padding.present) {
     ui_padding_begin(&(UIPaddingProps){
-        .padding = props->padding.value,
+        .padding = state->padding.value,
     });
   }
 
-  if (props->alignment.present) {
+  if (state->alignment.present) {
     ui_align_begin(&(UIAlignProps){
-        .alignment = props->alignment.value,
+        .alignment = state->alignment.value,
     });
   }
 }
@@ -1449,11 +1527,11 @@ void ui_container_end(void) {
   UIWidget *widget =
       ui_widget_find_first_ancestor(current, &ui_container_class);
   ASSERT(widget);
-  UIContainerProps *props = ui_widget_get_props(widget, UIContainerProps);
+  UIContainerState *state = ui_widget_get_state(widget, UIContainerState);
 
   if (!current->first &&
-      (!props->constraints.present ||
-       !ui_box_constraints_is_tight(props->constraints.value))) {
+      (!state->constraints.present ||
+       !ui_box_constraints_is_tight(state->constraints.value))) {
     ui_limited_box_begin(&(UILimitedBoxProps){0});
     ui_constrained_box_begin(&(UIConstrainedBoxProps){
         .constraints = ui_box_constraints(F32_INFINITY, F32_INFINITY,
@@ -1463,23 +1541,23 @@ void ui_container_end(void) {
     ui_limited_box_end();
   }
 
-  if (props->alignment.present) {
+  if (state->alignment.present) {
     ui_align_end();
   }
 
-  if (props->padding.present) {
+  if (state->padding.present) {
     ui_padding_end();
   }
 
-  if (props->color.present) {
+  if (state->color.present) {
     ui_colored_box_end();
   }
 
-  if (props->constraints.present) {
+  if (state->constraints.present) {
     ui_constrained_box_end();
   }
 
-  if (props->margin.present) {
+  if (state->margin.present) {
     ui_padding_end();
   }
 
@@ -1491,10 +1569,11 @@ void ui_container_end(void) {
 /// UIStack
 ///
 typedef struct UIStackState {
+  UIStackFit fit;
   bool has_visual_overflow;
 } UIStackState;
 
-static Vec2 ui_stack_compute_size(UIWidget *widget, UIStackProps *props,
+static Vec2 ui_stack_compute_size(UIWidget *widget, UIStackFit fit,
                                   UIBoxConstraints constraints) {
   if (!widget->first) {
     Vec2 biggest = ui_box_constraints_get_biggest(constraints);
@@ -1508,7 +1587,7 @@ static Vec2 ui_stack_compute_size(UIWidget *widget, UIStackProps *props,
   f32 height = constraints.min_height;
 
   UIBoxConstraints non_positioned_constraints;
-  switch (props->fit) {
+  switch (fit) {
     case UI_STACK_FIT_LOOSE: {
       non_positioned_constraints = ui_box_constraints_loosen(constraints);
     } break;
@@ -1586,11 +1665,10 @@ static bool ui_stack_layout_positioned_child(UIWidget *child,
 }
 
 static void ui_stack_layout(UIWidget *widget, UIBoxConstraints constraints) {
-  UIStackProps *props = ui_widget_get_props(widget, UIStackProps);
-  Vec2 size = ui_stack_compute_size(widget, props, constraints);
+  UIStackState *state = ui_widget_get_state(widget, UIStackState);
+  Vec2 size = ui_stack_compute_size(widget, state->fit, constraints);
   widget->size = size;
 
-  UIStackState *state = ui_widget_get_state(widget, UIStackState);
   state->has_visual_overflow = false;
   for (UIWidget *child = widget->first; child; child = child->next) {
     UIParentDataStack *data = ui_widget_get_parent_data(
@@ -1626,11 +1704,16 @@ static void ui_stack_paint(UIWidget *widget, UIPaintingContext *context,
 UIWidgetClass ui_stack_class = {
     .name = "Stack",
     .flags = UI_WIDGET_MANY_CHILDREN,
-    .props_size = sizeof(UIStackProps),
     .state_size = sizeof(UIStackState),
     .layout = ui_stack_layout,
     .paint = ui_stack_paint,
 };
+
+void ui_stack_begin(const UIStackProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_stack_class, props->key);
+  UIStackState *state = ui_widget_get_state(widget, UIStackState);
+  state->fit = props->fit;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -1638,11 +1721,10 @@ UIWidgetClass ui_stack_class = {
 ///
 UIWidgetClass ui_positioned_class = {
     .name = "Positioned",
-    .props_size = sizeof(UIPositionedProps),
 };
 
 void ui_positioned_begin(const UIPositionedProps *props) {
-  UIWidget *widget = ui_widget_begin(&ui_positioned_class, props);
+  UIWidget *widget = ui_widget_begin(&ui_positioned_class, props->key);
   *ui_widget_set_parent_data(widget, UI_PARENT_DATA_STACK, UIParentDataStack) =
       (UIParentDataStack){
           .left = props->left,
@@ -1660,11 +1742,10 @@ void ui_positioned_begin(const UIPositionedProps *props) {
 ///
 UIWidgetClass ui_flexible_class = {
     .name = "Flexible",
-    .props_size = sizeof(UIFlexibleProps),
 };
 
 void ui_flexible_begin(const UIFlexibleProps *props) {
-  UIWidget *widget = ui_widget_begin(&ui_flexible_class, props);
+  UIWidget *widget = ui_widget_begin(&ui_flexible_class, props->key);
   UIParentDataFlex flex = {
       .flex = props->flex,
       .fit = props->fit,
@@ -1679,11 +1760,10 @@ void ui_flexible_begin(const UIFlexibleProps *props) {
 ///
 UIWidgetClass ui_expanded_class = {
     .name = "Expanded",
-    .props_size = sizeof(UIExpandedProps),
 };
 
 void ui_expanded_begin(const UIExpandedProps *props) {
-  UIWidget *widget = ui_widget_begin(&ui_expanded_class, props);
+  UIWidget *widget = ui_widget_begin(&ui_expanded_class, props->key);
   UIParentDataFlex flex = {
       .flex = props->flex,
       .fit = UI_FLEX_FIT_TIGHT,
@@ -1696,15 +1776,24 @@ void ui_expanded_begin(const UIExpandedProps *props) {
 ///
 /// UIFlex
 ///
+typedef struct UIFlexState {
+  UIAxis direction;
+  UIMainAxisAlignment main_axis_alignment;
+  UIMainAxisSize main_axis_size;
+  UICrossAxisAlignment cross_axis_alignment;
+  f32 spacing;
+} UIFlexState;
+
 static inline UIBoxConstraints ui_box_constraints_for_non_flex_child(
-    UIFlexProps *flex, UIBoxConstraints constraints) {
+    UIAxis direction, UICrossAxisAlignment cross_axis_alignment,
+    UIBoxConstraints constraints) {
   bool should_fill_cross_axis = false;
-  if (flex->cross_axis_alignment == UI_CROSS_AXIS_ALIGNMENT_STRETCH) {
+  if (cross_axis_alignment == UI_CROSS_AXIS_ALIGNMENT_STRETCH) {
     should_fill_cross_axis = true;
   }
 
   UIBoxConstraints result;
-  switch (flex->direction) {
+  switch (direction) {
     case UI_AXIS_HORIZONTAL: {
       if (should_fill_cross_axis) {
         result = ui_box_constraints_tight_height(constraints.max_height);
@@ -1736,7 +1825,8 @@ static inline UIBoxConstraints ui_box_constraints_for_non_flex_child(
 }
 
 static inline UIBoxConstraints ui_box_constraints_for_flex_child(
-    UIFlexProps *flex, UIBoxConstraints constraints, f32 max_child_extent,
+    UIAxis direction, UICrossAxisAlignment cross_axis_alignment,
+    UIBoxConstraints constraints, f32 max_child_extent,
     UIParentDataFlex *data) {
   ASSERT(data->flex > 0);
   ASSERT(max_child_extent >= 0.0f);
@@ -1745,11 +1835,11 @@ static inline UIBoxConstraints ui_box_constraints_for_flex_child(
     min_child_extent = max_child_extent;
   }
   bool should_fill_cross_axis = false;
-  if (flex->cross_axis_alignment == UI_CROSS_AXIS_ALIGNMENT_STRETCH) {
+  if (cross_axis_alignment == UI_CROSS_AXIS_ALIGNMENT_STRETCH) {
     should_fill_cross_axis = true;
   }
   UIBoxConstraints result;
-  if (flex->direction == UI_AXIS_HORIZONTAL) {
+  if (direction == UI_AXIS_HORIZONTAL) {
     result = (UIBoxConstraints){
         .min_width = min_child_extent,
         .max_width = max_child_extent,
@@ -1813,12 +1903,13 @@ typedef struct UIFlexLayoutSize {
   f32 space_per_flex;
 } UIFlexLayoutSize;
 
-static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
-                                             UIFlexProps *flex,
-                                             UIBoxConstraints constraints) {
+static UIFlexLayoutSize ui_flex_compute_size(
+    UIWidget *widget, UIAxis direction, UIMainAxisSize main_axis_size,
+    UICrossAxisAlignment cross_axis_alignment, f32 spacing,
+    UIBoxConstraints constraints) {
   // Determine used flex factor, size inflexible items, calculate free space.
   f32 max_main_size;
-  switch (flex->direction) {
+  switch (direction) {
     case UI_AXIS_HORIZONTAL: {
       max_main_size =
           ui_box_constraints_constrain_width(constraints, F32_INFINITY);
@@ -1832,7 +1923,8 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
   }
   bool can_flex = f32_is_finite(max_main_size);
   UIBoxConstraints non_flex_child_constraints =
-      ui_box_constraints_for_non_flex_child(flex, constraints);
+      ui_box_constraints_for_non_flex_child(direction, cross_axis_alignment,
+                                            constraints);
   // TODO: Baseline aligned
 
   // The first pass lays out non-flex children and computes total flex.
@@ -1841,7 +1933,7 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
   // Initially, accumulated_size is the sum of the spaces between children in
   // the main axis.
   AxisSize accumulated_size =
-      axis_size(flex->spacing * (widget->child_count - 1), 0.0f);
+      axis_size(spacing * (widget->child_count - 1), 0.0f);
   for (UIWidget *child = widget->first; child; child = child->next) {
     i32 child_flex = 0;
     if (can_flex) {
@@ -1859,7 +1951,7 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
       }
     } else {
       ui_widget_layout(child, non_flex_child_constraints);
-      AxisSize child_size = axis_size_from_size(child->size, flex->direction);
+      AxisSize child_size = axis_size_from_size(child->size, direction);
 
       accumulated_size.main += child_size.main;
       accumulated_size.cross =
@@ -1886,9 +1978,9 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
     DEBUG_ASSERT(data->fit == UI_FLEX_FIT_LOOSE ||
                  max_child_extent < F32_INFINITY);
     UIBoxConstraints child_constraints = ui_box_constraints_for_flex_child(
-        flex, constraints, max_child_extent, data);
+        direction, cross_axis_alignment, constraints, max_child_extent, data);
     ui_widget_layout(child, child_constraints);
-    AxisSize child_size = axis_size_from_size(child->size, flex->direction);
+    AxisSize child_size = axis_size_from_size(child->size, direction);
 
     accumulated_size.main += child_size.main;
     accumulated_size.cross = f32_max(accumulated_size.cross, child_size.cross);
@@ -1896,8 +1988,7 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
   DEBUG_ASSERT(total_flex == 0);
 
   f32 ideal_main_size;
-  if (flex->main_axis_size == UI_MAIN_AXIS_SIZE_MAX &&
-      f32_is_finite(max_main_size)) {
+  if (main_axis_size == UI_MAIN_AXIS_SIZE_MAX && f32_is_finite(max_main_size)) {
     ideal_main_size = max_main_size;
   } else {
     ideal_main_size = accumulated_size.main;
@@ -1905,7 +1996,7 @@ static UIFlexLayoutSize ui_flex_compute_size(UIWidget *widget,
 
   AxisSize size = axis_size(ideal_main_size, accumulated_size.cross);
   AxisSize constrained_size =
-      axis_size_constrains(size, constraints, flex->direction);
+      axis_size_constrains(size, constraints, direction);
 
   return (UIFlexLayoutSize){
       .size = constrained_size,
@@ -2015,46 +2106,58 @@ static f32 ui_flex_get_main_size(Vec2 size, UIAxis direction) {
 }
 
 static void ui_flex_layout(UIWidget *widget, UIBoxConstraints constraints) {
-  UIFlexProps *props = ui_widget_get_props(widget, UIFlexProps);
-  UIFlexLayoutSize sizes = ui_flex_compute_size(widget, props, constraints);
+  UIFlexState *state = ui_widget_get_state(widget, UIFlexState);
+  UIFlexLayoutSize sizes = ui_flex_compute_size(
+      widget, state->direction, state->main_axis_size,
+      state->cross_axis_alignment, state->spacing, constraints);
   f32 cross_axis_extent = sizes.size.cross;
   widget->size =
-      convert_size(vec2(sizes.size.main, sizes.size.cross), props->direction);
+      convert_size(vec2(sizes.size.main, sizes.size.cross), state->direction);
   // TODO: Handle overflow.
 
   f32 remaining_space = f32_max(0.0f, sizes.main_axis_free_space);
   // TODO: Handle text direction and vertical direction.
   f32 leading_space;
   f32 between_space;
-  ui_flex_distribute_space(props->main_axis_alignment, remaining_space,
+  ui_flex_distribute_space(state->main_axis_alignment, remaining_space,
                            widget->child_count, /* flipped= */ false,
-                           props->spacing, &leading_space, &between_space);
+                           state->spacing, &leading_space, &between_space);
 
   // Position all children in visual order: starting from the top-left child and
   // work towards the child that's farthest away from the origin.
   f32 child_main_position = leading_space;
   for (UIWidget *child = widget->first; child; child = child->next) {
     f32 child_cross_position = ui_flex_get_child_cross_axis_offset(
-        props->cross_axis_alignment,
+        state->cross_axis_alignment,
         cross_axis_extent -
-            ui_flex_get_cross_size(child->size, props->direction),
+            ui_flex_get_cross_size(child->size, state->direction),
         /* flipped= */ false);
-    if (props->direction == UI_AXIS_HORIZONTAL) {
+    if (state->direction == UI_AXIS_HORIZONTAL) {
       child->offset = vec2(child_main_position, child_cross_position);
     } else {
       child->offset = vec2(child_cross_position, child_main_position);
     }
     child_main_position +=
-        ui_flex_get_main_size(child->size, props->direction) + between_space;
+        ui_flex_get_main_size(child->size, state->direction) + between_space;
   }
 }
 
 UIWidgetClass ui_flex_class = {
     .name = "Flex",
     .flags = UI_WIDGET_MANY_CHILDREN,
-    .props_size = sizeof(UIFlexProps),
+    .state_size = sizeof(UIFlexState),
     .layout = ui_flex_layout,
 };
+
+void ui_flex_begin(const UIFlexProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_flex_class, props->key);
+  UIFlexState *state = ui_widget_get_state(widget, UIFlexState);
+  state->direction = props->direction;
+  state->main_axis_alignment = props->main_axis_alignment;
+  state->main_axis_size = props->main_axis_size;
+  state->cross_axis_alignment = props->cross_axis_alignment;
+  state->spacing = props->spacing;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -2063,20 +2166,18 @@ UIWidgetClass ui_flex_class = {
 UIWidgetClass ui_column_class = {
     .name = "Column",
     .flags = UI_WIDGET_MANY_CHILDREN,
-    .props_size = sizeof(UIFlexProps),
+    .state_size = sizeof(UIFlexState),
     .layout = ui_flex_layout,
 };
 
 void ui_column_begin(const UIColumnProps *props) {
-  UIFlexProps flex = {
-      .key = props->key,
-      .direction = UI_AXIS_VERTICAL,
-      .main_axis_alignment = props->main_axis_alignment,
-      .main_axis_size = props->main_axis_size,
-      .cross_axis_alignment = props->cross_axis_alignment,
-      .spacing = props->spacing,
-  };
-  ui_widget_begin(&ui_column_class, &flex);
+  UIWidget *widget = ui_widget_begin(&ui_column_class, props->key);
+  UIFlexState *state = ui_widget_get_state(widget, UIFlexState);
+  state->direction = UI_AXIS_VERTICAL;
+  state->main_axis_alignment = props->main_axis_alignment;
+  state->main_axis_size = props->main_axis_size;
+  state->cross_axis_alignment = props->cross_axis_alignment;
+  state->spacing = props->spacing;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2086,20 +2187,18 @@ void ui_column_begin(const UIColumnProps *props) {
 UIWidgetClass ui_row_class = {
     .name = "Row",
     .flags = UI_WIDGET_MANY_CHILDREN,
-    .props_size = sizeof(UIFlexProps),
+    .state_size = sizeof(UIFlexState),
     .layout = ui_flex_layout,
 };
 
 void ui_row_begin(const UIRowProps *props) {
-  UIFlexProps flex = {
-      .key = props->key,
-      .direction = UI_AXIS_HORIZONTAL,
-      .main_axis_alignment = props->main_axis_alignment,
-      .main_axis_size = props->main_axis_size,
-      .cross_axis_alignment = props->cross_axis_alignment,
-      .spacing = props->spacing,
-  };
-  ui_widget_begin(&ui_row_class, &flex);
+  UIWidget *widget = ui_widget_begin(&ui_row_class, props->key);
+  UIFlexState *state = ui_widget_get_state(widget, UIFlexState);
+  state->direction = UI_AXIS_HORIZONTAL;
+  state->main_axis_alignment = props->main_axis_alignment;
+  state->main_axis_size = props->main_axis_size;
+  state->cross_axis_alignment = props->cross_axis_alignment;
+  state->spacing = props->spacing;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2119,15 +2218,16 @@ typedef struct UIPointerEventQueue {
 } UIPointerEventQueue;
 
 typedef struct UIPointerListenerState {
+  UIHitTestBehaviour behaviour;
   UIPointerEventQueue event_queue;
 } UIPointerListenerState;
 
 static bool ui_pointer_listener_hit_test(UIWidget *widget, Vec2 local_position,
                                          Arena *arena,
                                          UIHitTestResult *result) {
-  UIPointerListenerProps *props =
-      ui_widget_get_props(widget, UIPointerListenerProps);
-  return ui_widget_hit_test_by_behaviour(widget, props->behaviour,
+  UIPointerListenerState *state =
+      ui_widget_get_state(widget, UIPointerListenerState);
+  return ui_widget_hit_test_by_behaviour(widget, state->behaviour,
                                          local_position, arena, result);
 }
 
@@ -2145,16 +2245,16 @@ static void ui_pointer_listener_handle_pointer_event(
 
 UIWidgetClass ui_pointer_listener_class = {
     .name = "PointerListener",
-    .props_size = sizeof(UIPointerListenerProps),
     .state_size = sizeof(UIPointerListenerState),
     .hit_test = ui_pointer_listener_hit_test,
     .handle_pointer_event = ui_pointer_listener_handle_pointer_event,
 };
 
 void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
-  UIWidget *widget = ui_widget_begin(&ui_pointer_listener_class, props);
+  UIWidget *widget = ui_widget_begin(&ui_pointer_listener_class, props->key);
   UIPointerListenerState *state =
       ui_widget_get_state(widget, UIPointerListenerState);
+  state->behaviour = props->behaviour;
 
   UIPointerEventO down = ui_pointer_event_none();
   UIPointerEventO move = ui_pointer_event_none();
@@ -2213,7 +2313,7 @@ void ui_pointer_listener_begin(const UIPointerListenerProps *props) {
     *props->scroll = scroll;
   }
 
-  *state = (UIPointerListenerState){0};
+  state->event_queue = (UIPointerEventQueue){0};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2250,13 +2350,12 @@ static void ui_mouse_region_handle_pointer_event(UIWidget *widget,
 
 UIWidgetClass ui_mouse_region_class = {
     .name = "MouseRegion",
-    .props_size = sizeof(UIMouseRegionProps),
     .state_size = sizeof(UIMouseRegionState),
     .handle_pointer_event = ui_mouse_region_handle_pointer_event,
 };
 
 void ui_mouse_region_begin(const UIMouseRegionProps *props) {
-  UIWidget *widget = ui_widget_begin(&ui_mouse_region_class, props);
+  UIWidget *widget = ui_widget_begin(&ui_mouse_region_class, props->key);
   UIMouseRegionState *state = ui_widget_get_state(widget, UIMouseRegionState);
   if (props->enter) {
     *props->enter = state->enter;
@@ -2339,14 +2438,14 @@ static void ui_tap_gesture_detector_handle_pointer_event(
 
 UIWidgetClass ui_tap_gesture_detector_class = {
     .name = "TapGestureDetector",
-    .props_size = sizeof(UITapGestureDetectorProps),
     .state_size = sizeof(UITapGestureDetectorState),
     .hit_test = ui_tap_gesture_detector_hit_test,
     .handle_pointer_event = ui_tap_gesture_detector_handle_pointer_event,
 };
 
 void ui_tap_gesture_detector_begin(const UITapGestureDetectorProps *props) {
-  UIWidget *widget = ui_widget_begin(&ui_tap_gesture_detector_class, props);
+  UIWidget *widget =
+      ui_widget_begin(&ui_tap_gesture_detector_class, props->key);
   UITapGestureDetectorState *state =
       ui_widget_get_state(widget, UITapGestureDetectorState);
 
@@ -2387,12 +2486,11 @@ typedef struct UIGestureDetectorState {
 
 UIWidgetClass ui_gesture_detector_class = {
     .name = "GestureDetector",
-    .props_size = sizeof(UIGestureDetectorProps),
     .state_size = sizeof(UIGestureDetectorState),
 };
 
 void ui_gesture_detector_begin(const UIGestureDetectorProps *props) {
-  UIWidget *widget = ui_widget_begin(&ui_gesture_detector_class, props);
+  UIWidget *widget = ui_widget_begin(&ui_gesture_detector_class, props->key);
   UIGestureDetectorState *state =
       ui_widget_get_state(widget, UIGestureDetectorState);
 
@@ -2501,16 +2599,48 @@ void ui_gesture_detector_end(void) {
 ///
 typedef struct UITextState {
   UIBoxConstraints constraints;
+  Str8 text;
+  UIColor color;
   f32 font_size;
 } UITextState;
 
 static void ui_text_layout(UIWidget *widget, UIBoxConstraints constraints) {
   DEBUG_ASSERTF(!widget->first, "UIText should be a leaf node");
 
-  UITextProps *props = ui_widget_get_props(widget, UITextProps);
   UITextState *state = ui_widget_get_state(widget, UITextState);
 
   state->constraints = constraints;
+
+  TextMetrics metrics =
+      layout_text_str8(state->text, state->font_size, constraints.min_width,
+                       constraints.max_width);
+  // TODO: Handle overflow.
+  widget->size = ui_box_constraints_constrain(constraints, metrics.size);
+}
+
+static void ui_text_paint(UIWidget *widget, UIPaintingContext *context,
+                          Vec2 offset) {
+  (void)context;
+
+  UITextState *state = ui_widget_get_state(widget, UITextState);
+
+  draw_text_str8(offset, state->text, state->font_size,
+                 state->constraints.min_width, state->constraints.max_width,
+                 state->color);
+}
+
+UIWidgetClass ui_text_class = {
+    .name = "Text",
+    .state_size = sizeof(UITextState),
+    .layout = ui_text_layout,
+    .paint = ui_text_paint,
+    .hit_test = ui_widget_hit_test_opaque,
+};
+
+void ui_text(const UITextProps *props) {
+  UIWidget *widget = ui_widget_begin(&ui_text_class, props->key);
+  UITextState *state = ui_widget_get_state(widget, UITextState);
+  state->text = props->text;
 
   // TODO: Get default text style from widget tree.
   f32 font_size = 13;
@@ -2521,19 +2651,6 @@ static void ui_text_layout(UIWidget *widget, UIBoxConstraints constraints) {
   }
   state->font_size = font_size;
 
-  TextMetrics metrics = layout_text_str8(
-      props->text, font_size, constraints.min_width, constraints.max_width);
-  // TODO: Handle overflow.
-  widget->size = ui_box_constraints_constrain(constraints, metrics.size);
-}
-
-static void ui_text_paint(UIWidget *widget, UIPaintingContext *context,
-                          Vec2 offset) {
-  (void)context;
-
-  UITextProps *props = ui_widget_get_props(widget, UITextProps);
-  UITextState *state = ui_widget_get_state(widget, UITextState);
-
   // TODO: Get default text style from widget tree.
   UIColor color = ui_color(1, 1, 1, 1);
   if (props->style.present) {
@@ -2541,22 +2658,8 @@ static void ui_text_paint(UIWidget *widget, UIPaintingContext *context,
       color = props->style.value.color.value;
     }
   }
-  draw_text_str8(offset, props->text, state->font_size,
-                 state->constraints.min_width, state->constraints.max_width,
-                 color);
-}
+  state->color = color;
 
-UIWidgetClass ui_text_class = {
-    .name = "Text",
-    .props_size = sizeof(UITextProps),
-    .state_size = sizeof(UITextState),
-    .layout = ui_text_layout,
-    .paint = ui_text_paint,
-    .hit_test = ui_widget_hit_test_opaque,
-};
-
-void ui_text(const UITextProps *props) {
-  ui_widget_begin(&ui_text_class, props);
   ui_widget_end(&ui_text_class);
 }
 
@@ -2570,7 +2673,6 @@ typedef struct UIButtonState {
 
 UIWidgetClass ui_button_class = {
     .name = "Button",
-    .props_size = sizeof(UIButtonProps),
     .state_size = sizeof(UIButtonState),
 };
 
@@ -2588,7 +2690,7 @@ void ui_button(UIButtonProps *props) {
     splash_color = props->splash_color.value;
   }
 
-  UIWidget *widget = ui_widget_begin(&ui_button_class, props);
+  UIWidget *widget = ui_widget_begin(&ui_button_class, props->key);
   UIButtonState *state = ui_widget_get_state(widget, UIButtonState);
 
   bool hovering;
@@ -2646,11 +2748,15 @@ void ui_button(UIButtonProps *props) {
 /// UIViewport
 ///
 typedef struct UIViewportState {
-  bool has_visual_overflow;
-  UIViewportOffset next_offset;
+  UIAxisDirection axis_direction;
+  UIAxisDirection cross_axis_direction;
+  f32 anchor;
+  f32 cache_extent;
   UIViewportOffset offset;
+  UIViewportOffset next_offset;
   f32 max_scroll_extent;
   f32 max_scroll_offset;
+  bool has_visual_overflow;
 } UIViewportState;
 
 static UIScrollDirection ui_scroll_direction_apply_growth_direction(
@@ -2663,8 +2769,8 @@ static UIScrollDirection ui_scroll_direction_apply_growth_direction(
 }
 
 static f32 ui_viewport_layout_children(
-    UIWidget *widget, UIViewportProps *props, UIViewportState *state,
-    UIWidget *child, f32 scroll_offset, f32 overlap, f32 layout_offset,
+    UIWidget *widget, UIViewportState *state, UIWidget *child,
+    f32 scroll_offset, f32 overlap, f32 layout_offset,
     f32 remaining_painting_extent, f32 main_axis_extent, f32 cross_axis_extent,
     UIGrowthDirection growth_direction, f32 remaining_cache_extent,
     f32 cache_origin) {
@@ -2693,7 +2799,7 @@ static f32 ui_viewport_layout_children(
     ui_widget_layout_sliver(
         child,
         &(UISliverConstraints){
-            .axis_direction = props->axis_direction,
+            .axis_direction = state->axis_direction,
             .growth_direction = growth_direction,
             .scroll_direction = scroll_direction,
             .scroll_offset = sliver_scroll_offset,
@@ -2703,7 +2809,7 @@ static f32 ui_viewport_layout_children(
                 f32_max(0, remaining_painting_extent - layout_offset +
                                initial_layout_offset),
             .cross_axis_extent = cross_axis_extent,
-            .cross_axis_direction = props->cross_axis_direction,
+            .cross_axis_direction = state->cross_axis_direction,
             .main_axis_extent = main_axis_extent,
             .remaining_cache_extent =
                 f32_max(0, remaining_cache_extent + cache_extent_correction),
@@ -2718,7 +2824,7 @@ static f32 ui_viewport_layout_children(
     state->has_visual_overflow |= data->geometry.has_visual_overflow;
 
     f32 effective_layout_offset = layout_offset + data->geometry.paint_origin;
-    switch (ui_axis_direction_apply_growth_direction(props->axis_direction,
+    switch (ui_axis_direction_apply_growth_direction(state->axis_direction,
                                                      growth_direction)) {
       case UI_AXIS_DIRECTION_UP: {
         child->offset = vec2(
@@ -2766,17 +2872,16 @@ static f32 ui_viewport_layout_children(
   return 0;
 }
 
-static f32 ui_viewport_attempt_layout(UIWidget *widget, UIViewportProps *props,
-                                      UIViewportState *state,
+static f32 ui_viewport_attempt_layout(UIWidget *widget, UIViewportState *state,
                                       f32 main_axis_extent,
                                       f32 cross_axis_extent, f32 offset) {
-  f32 center_offset = main_axis_extent * props->anchor - offset;
+  f32 center_offset = main_axis_extent * state->anchor - offset;
   f32 reverse_direction_remaining_paint_extent =
       f32_clamp(center_offset, 0, main_axis_extent);
   f32 forward_direction_remaining_paint_extent =
       f32_clamp(main_axis_extent - center_offset, 0, main_axis_extent);
 
-  f32 cache_extent = props->cache_extent;
+  f32 cache_extent = state->cache_extent;
   f32 full_cache_extent = main_axis_extent + 2 * cache_extent;
   f32 center_cache_offset = center_offset + cache_extent;
   f32 reverse_direction_remaining_cache_extent =
@@ -2788,7 +2893,7 @@ static f32 ui_viewport_attempt_layout(UIWidget *widget, UIViewportProps *props,
   state->max_scroll_offset = cache_extent;
   state->max_scroll_extent = cache_extent;
   return ui_viewport_layout_children(
-      widget, props, state, /* child= */ widget->first,
+      widget, state, /* child= */ widget->first,
       /* scroll_offset= */ f32_max(0, -center_offset),
       /* overlap= */ f32_min(0, -center_offset),
       /* layout_offset= */ center_offset >= main_axis_extent
@@ -2801,7 +2906,6 @@ static f32 ui_viewport_attempt_layout(UIWidget *widget, UIViewportProps *props,
 }
 
 static void ui_viewport_layout(UIWidget *widget, UIBoxConstraints constraints) {
-  UIViewportProps *props = ui_widget_get_props(widget, UIViewportProps);
   UIViewportState *state = ui_widget_get_state(widget, UIViewportState);
 
   Vec2 size = ui_box_constraints_get_biggest(constraints);
@@ -2818,7 +2922,7 @@ static void ui_viewport_layout(UIWidget *widget, UIBoxConstraints constraints) {
 
   f32 main_axis_extent = size.x;
   f32 cross_axis_extent = size.y;
-  if (ui_axis_direction_to_axis(props->axis_direction) == UI_AXIS_VERTICAL) {
+  if (ui_axis_direction_to_axis(state->axis_direction) == UI_AXIS_VERTICAL) {
     main_axis_extent = size.y;
     cross_axis_extent = size.x;
   }
@@ -2827,7 +2931,7 @@ static void ui_viewport_layout(UIWidget *widget, UIBoxConstraints constraints) {
   u32 layout_index = 0;
   for (; layout_index < max_layout_counts; ++layout_index) {
     f32 correction =
-        ui_viewport_attempt_layout(widget, props, state, main_axis_extent,
+        ui_viewport_attempt_layout(widget, state, main_axis_extent,
                                    cross_axis_extent, state->offset.points);
     if (correction != 0.0f) {
       UNREACHABLE;
@@ -2864,7 +2968,6 @@ static void ui_viewport_paint(UIWidget *widget, UIPaintingContext *context,
 UIWidgetClass ui_viewport_class = {
     .name = "Viewport",
     .flags = UI_WIDGET_MANY_CHILDREN,
-    .props_size = sizeof(UIViewportProps),
     .state_size = sizeof(UIViewportState),
     .layout = ui_viewport_layout,
     .paint = ui_viewport_paint,
@@ -2872,12 +2975,16 @@ UIWidgetClass ui_viewport_class = {
 };
 
 void ui_viewport_begin(const UIViewportProps *props) {
-  UIWidget *widget = ui_widget_begin(&ui_viewport_class, props);
+  UIWidget *widget = ui_widget_begin(&ui_viewport_class, props->key);
   UIViewportState *state = ui_widget_get_state(widget, UIViewportState);
+  state->axis_direction = props->axis_direction;
+  state->cross_axis_direction = props->cross_axis_direction;
+  state->anchor = props->anchor;
   // Artificially delay the change of offset by 1 frame so that slivers using
   // builder pattern have time to build new children.
   state->offset = state->next_offset;
   state->next_offset = props->offset;
+  state->cache_extent = props->cache_extent;
   if (props->max_scroll_offset) {
     *props->max_scroll_offset = state->max_scroll_offset;
   }
@@ -2891,12 +2998,16 @@ void ui_viewport_begin(const UIViewportProps *props) {
 /// UIScrollable
 ///
 typedef struct UIScrollableState {
+  UIAxisDirection axis_direction;
+  UIAxisDirection cross_axis_direction;
+  f32 cache_extent;
   f32 scroll_offset;
   f32 target_scroll_offset;
   f32 max_scroll_offset;
   f32 max_scroll_extent;
   bool handle_scrolling;
   f32 handle_down_offset;
+  f32 *scroll_output;
 } UIScrollableState;
 
 static void ui_scrollable_mount(UIWidget *widget) {
@@ -2908,19 +3019,22 @@ static void ui_scrollable_mount(UIWidget *widget) {
 
 UIWidgetClass ui_scrollable_class = {
     .name = "Scrollable",
-    .props_size = sizeof(UIScrollableProps),
     .state_size = sizeof(UIScrollableState),
     .mount = ui_scrollable_mount,
 };
 
 void ui_scrollable_begin(const UIScrollableProps *props) {
-  UIWidget *widget = ui_widget_begin(&ui_scrollable_class, props);
+  UIWidget *widget = ui_widget_begin(&ui_scrollable_class, props->key);
   UIScrollableState *state = ui_widget_get_state(widget, UIScrollableState);
+  state->axis_direction = props->axis_direction;
+  state->cross_axis_direction = props->cross_axis_direction;
+  state->cache_extent = props->cache_extent;
 
   if (props->scroll) {
     state->target_scroll_offset =
         f32_clamp(*props->scroll, 0, state->max_scroll_offset);
   }
+  state->scroll_output = props->scroll;
 
   state->scroll_offset =
       ui_animate_fast_f32(state->scroll_offset, state->target_scroll_offset);
@@ -3034,14 +3148,13 @@ void ui_scrollable_end(void) {
   UIWidget *widget = ui_widget_find_first_ancestor(ui_widget_get_current(),
                                                    &ui_scrollable_class);
   ASSERT(widget);
-  UIScrollableProps *props = ui_widget_get_props(widget, UIScrollableProps);
   UIScrollableState *state = ui_widget_get_state(widget, UIScrollableState);
   ui_scrollable_scrollbar(widget, state);
 
   state->target_scroll_offset =
       f32_clamp(state->target_scroll_offset, 0, state->max_scroll_offset);
-  if (props->scroll) {
-    *props->scroll = state->target_scroll_offset;
+  if (state->scroll_output) {
+    *state->scroll_output = state->target_scroll_offset;
   }
 
   ui_row_end();
@@ -3057,12 +3170,15 @@ typedef struct UISliverFixedExtentListState {
   bool init;
   UISliverConstraints last_constraints;
   f32 next_scroll_offset;
+  f32 item_extent;
+  i32 item_count;
+  bool has_builder;
 } UISliverFixedExtentListState;
 
 static void ui_sliver_fixed_extent_list_mount(UIWidget *widget) {
-  UISliverFixedExtentListProps *props =
-      ui_widget_get_props(widget, UISliverFixedExtentListProps);
-  if (props->builder) {
+  UISliverFixedExtentListState *state =
+      ui_widget_get_state(widget, UISliverFixedExtentListState);
+  if (state->has_builder) {
     // If call site uses builder, set rebuild because the builder is empty
     // for the first frame.
     ui_set_rebuild(true);
@@ -3118,8 +3234,6 @@ static void ui_sliver_fixed_extent_list_calc_item_count(
 static void ui_sliver_fixed_extent_list_layout_sliver(
     UIWidget *widget, const UISliverConstraints *constraints,
     UISliverGeometry *geometry) {
-  UISliverFixedExtentListProps *props =
-      ui_widget_get_props(widget, UISliverFixedExtentListProps);
   UISliverFixedExtentListState *state =
       ui_widget_get_state(widget, UISliverFixedExtentListState);
 
@@ -3128,16 +3242,16 @@ static void ui_sliver_fixed_extent_list_layout_sliver(
   f32 remaining_extent = constraints->remaining_cache_extent;
   ASSERT(remaining_extent >= 0.0f);
 
-  f32 item_extent = props->item_extent;
+  f32 item_extent = state->item_extent;
   i32 first_index;
   i32 target_last_index;
   ui_sliver_fixed_extent_list_calc_item_count(item_extent, scroll_offset,
                                               remaining_extent, &first_index,
                                               &target_last_index);
 
-  i32 item_count = props->item_count;
+  i32 item_count = state->item_count;
   i32 child_index = 0;
-  if (props->builder) {
+  if (state->has_builder) {
     child_index = first_index;
   }
 
@@ -3209,7 +3323,6 @@ static void ui_sliver_fixed_extent_list_paint(UIWidget *widget,
 UIWidgetClass ui_sliver_fixed_extent_list_class = {
     .name = "SliverFixedExtentList",
     .flags = UI_WIDGET_MANY_CHILDREN,
-    .props_size = sizeof(UISliverFixedExtentListProps),
     .state_size = sizeof(UISliverFixedExtentListState),
     .mount = ui_sliver_fixed_extent_list_mount,
     .layout = ui_widget_layout_for_sliver,
@@ -3219,9 +3332,14 @@ UIWidgetClass ui_sliver_fixed_extent_list_class = {
 
 void ui_sliver_fixed_extent_list_begin(
     const UISliverFixedExtentListProps *props) {
-  UIWidget *widget = ui_widget_begin(&ui_sliver_fixed_extent_list_class, props);
+  UIWidget *widget =
+      ui_widget_begin(&ui_sliver_fixed_extent_list_class, props->key);
   UISliverFixedExtentListState *state =
       ui_widget_get_state(widget, UISliverFixedExtentListState);
+
+  state->item_extent = props->item_extent;
+  state->item_count = props->item_count;
+  state->has_builder = props->builder != 0;
 
   f32 scroll_offset = scroll_offset =
       state->next_scroll_offset + state->last_constraints.cache_origin;
