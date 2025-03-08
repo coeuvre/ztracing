@@ -4,7 +4,7 @@ const utils = @import("utils.zig");
 
 const testing = std.testing;
 const log = std.log;
-const expect_vec2_equal = utils.expect_vec2_equal;
+const expect_vec2_eq = utils.expect_vec2_eq;
 
 const AlignmentOption = struct {
     alignment: c.UIAlignment,
@@ -38,11 +38,11 @@ const AlignmentOption = struct {
 // }
 //
 fn expect_widget_size(widget: [*c]c.UIWidget, expected_size: c.Vec2) !void {
-    try expect_vec2_equal(expected_size, widget.*.size);
+    try expect_vec2_eq(expected_size, widget.*.size);
 }
 
 fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
-    try expect_vec2_equal(expected_offset, widget.*.offset);
+    try expect_vec2_eq(expected_offset, widget.*.offset);
 }
 
 // const State = extern struct {

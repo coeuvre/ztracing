@@ -53,6 +53,77 @@ static inline UIKey ui_key_zero(void) {
 static inline bool ui_key_is_zero(UIKey key) { return key.hash == 0; }
 static inline bool ui_key_eq(UIKey a, UIKey b) { return a.hash == b.hash; }
 
+typedef struct UITransform {
+  f32 m11;
+  f32 m12;
+  f32 m21;
+  f32 m22;
+  f32 tx;
+  f32 ty;
+} UITransform;
+
+static inline UITransform ui_transform_identity(void) {
+  UITransform t;
+  t.m11 = 1;
+  t.m12 = 0;
+  t.m21 = 0;
+  t.m22 = 1;
+  t.tx = 0;
+  t.ty = 0;
+  return t;
+}
+
+static inline UITransform ui_transform_offset(f32 x, f32 y) {
+  UITransform t;
+  t.m11 = 1;
+  t.m12 = 0;
+  t.m21 = 0;
+  t.m22 = 1;
+  t.tx = x;
+  t.ty = y;
+  return t;
+}
+
+static inline UITransform ui_transform_scale(f32 x, f32 y) {
+  UITransform t;
+  t.m11 = x;
+  t.m12 = 0;
+  t.m21 = 0;
+  t.m22 = y;
+  t.tx = 0;
+  t.ty = 0;
+  return t;
+}
+
+static inline UITransform ui_transform_rotate(f32 rad) {
+  f32 cos = f32_cos(rad);
+  f32 sin = f32_sin(rad);
+  UITransform t;
+  t.m11 = cos;
+  t.m12 = -sin;
+  t.m21 = sin;
+  t.m22 = cos;
+  t.tx = 0;
+  t.ty = 0;
+  return t;
+}
+
+static inline UITransform ui_transform_dot(UITransform a, UITransform b) {
+  UITransform t;
+  t.m11 = a.m11 * b.m11 + a.m12 * b.m21;
+  t.m12 = a.m11 * b.m12 + a.m12 * b.m22;
+  t.m21 = a.m21 * b.m11 + a.m22 * a.m21;
+  t.m22 = a.m21 * b.m12 + a.m22 * b.m22;
+  t.tx = a.m11 * b.tx + a.m12 * b.ty + a.tx;
+  t.ty = a.m21 * b.tx + a.m22 * b.ty + a.ty;
+  return t;
+}
+
+static inline Vec2 ui_transform_dot_vec2(UITransform a, Vec2 b) {
+  return vec2(a.m11 * b.x + a.m12 * b.y + a.tx,
+              a.m21 * b.x + a.m22 * b.y + a.ty);
+}
+
 typedef struct UIWidget UIWidget;
 
 typedef struct UIBoxConstraints {
@@ -421,18 +492,30 @@ struct UIHitTestEntry {
   UIHitTestEntry *next;
 
   UIWidget *widget;
+  /// Describing how `UIPointerEvent`s delivered to this `UIHitTestEntry` should
+  /// be transformed from the global coordinate space of the screen to the local
+  /// coordinate space of `widget`.
+  UITransform transform;
   Vec2 local_position;
 };
 
 typedef struct UIHitTestResult {
   UIHitTestEntry *first;
   UIHitTestEntry *last;
+
+  /// position in the screen coordinate space.
+  Vec2 position;
+  /// Describing how `position` was transformed to `local_position`.
+  UITransform transform;
+  /// Position relative to widget's local coordinate system. (0, 0) is the
+  /// top-left of the box.
+  Vec2 local_position;
 } UIHitTestResult;
 
 // Add hit test entry to the result in a front-to-back order. i.e. the first
 // widget received the hit should be the first, the root should be the last.
-void ui_hit_test_result_add(UIHitTestResult *self, Arena *arena,
-                            UIWidget *widget, Vec2 local_position);
+void ui_hit_test_result_add(UIHitTestResult *self, UIWidget *widget,
+                            Arena *arena);
 
 typedef enum UIHitTestBehaviour {
   UI_HIT_TEST_BEHAVIOUR_DEFER_TO_CHILD,
@@ -474,6 +557,9 @@ typedef struct UIPointerEvent {
   /// Coordinate of the position of the pointer, in logical pixels in the global
   /// coordinate space.
   Vec2 position;
+  /// The transformation used to transform this event from the global coordinate
+  /// space into the coordinate space of the event receiver.
+  UITransform transform;
   /// The position transformed into the event receiver's local coordinate
   /// system.
   Vec2 local_position;
@@ -527,11 +613,7 @@ typedef struct UIWidgetClass {
   // EVENT HANDLING
 
   /// Returns true if hit.
-  ///
-  /// local_position: position relative to UIWidget's local coordinate system.
-  /// (0, 0) is the top-left of the box.
-  bool (*hit_test)(UIWidget *widget, Vec2 local_position, Arena *arena,
-                   UIHitTestResult *result);
+  bool (*hit_test)(UIWidget *widget, UIHitTestResult *result, Arena *arena);
   void (*handle_pointer_event)(UIWidget *widget, const UIPointerEvent *event);
 } UIWidgetClass;
 

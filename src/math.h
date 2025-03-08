@@ -15,6 +15,9 @@ static inline bool f32_is_nan(f32 a) { return isnan(a); }
 static inline bool f32_is_finite(f32 a) { return a != F32_INFINITY; }
 static inline bool f32_is_infinity(f32 a) { return a == F32_INFINITY; }
 
+static inline f32 f32_cos(f32 a) { return cosf(a); }
+static inline f32 f32_sin(f32 a) { return sinf(a); }
+
 static inline f32 f32_pow(f32 a, f32 b) {
   f32 result = powf(a, b);
   return result;
@@ -115,7 +118,7 @@ static inline b32 vec2_is_zero(Vec2 a) {
   return result;
 }
 
-static inline b32 vec2_is_equal(Vec2 a, Vec2 b) {
+static inline b32 vec2_eq(Vec2 a, Vec2 b) {
   b32 result = a.x == b.x && a.y == b.y;
   return result;
 }

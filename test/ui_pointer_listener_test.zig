@@ -3,7 +3,7 @@ const c = @import("c.zig");
 const utils = @import("utils.zig");
 
 const testing = std.testing;
-const expect_vec2_equal = utils.expect_vec2_equal;
+const expect_vec2_eq = utils.expect_vec2_eq;
 
 test "multiple buttons down" {
     c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
@@ -31,7 +31,7 @@ test "multiple buttons down" {
     try testing.expect(!up.present);
     try testing.expect(hover.present);
     try testing.expect(hover.value.pointer == 0);
-    try expect_vec2_equal(c.vec2(50, 50), hover.value.local_position);
+    try expect_vec2_eq(c.vec2(50, 50), hover.value.local_position);
 
     c.ui_on_mouse_button_down(c.vec2(50, 50), c.UI_MOUSE_BUTTON_PRIMARY);
     c.ui_begin_frame();
@@ -39,7 +39,7 @@ test "multiple buttons down" {
     c.ui_pointer_listener_end();
     c.ui_end_frame();
     try testing.expect(down.present);
-    try expect_vec2_equal(c.vec2(50, 50), down.value.local_position);
+    try expect_vec2_eq(c.vec2(50, 50), down.value.local_position);
     const pointer = down.value.pointer;
     try testing.expect(down.value.button == c.UI_BUTTON_PRIMARY);
     try testing.expect(!move.present);
@@ -52,7 +52,7 @@ test "multiple buttons down" {
     c.ui_end_frame();
     try testing.expect(!down.present);
     try testing.expect(move.present);
-    try expect_vec2_equal(c.vec2(75, 50), move.value.local_position);
+    try expect_vec2_eq(c.vec2(75, 50), move.value.local_position);
     try testing.expect(move.value.pointer == pointer);
     try testing.expect(move.value.button == c.UI_BUTTON_PRIMARY);
     try testing.expect(!up.present);
@@ -73,7 +73,7 @@ test "multiple buttons down" {
     c.ui_end_frame();
     try testing.expect(!down.present);
     try testing.expect(move.present);
-    try expect_vec2_equal(c.vec2(80, 50), move.value.local_position);
+    try expect_vec2_eq(c.vec2(80, 50), move.value.local_position);
     try testing.expect(move.value.pointer == pointer);
     try testing.expect(move.value.button == (c.UI_BUTTON_PRIMARY | c.UI_BUTTON_SECONDARY));
     try testing.expect(!up.present);
@@ -88,7 +88,7 @@ test "multiple buttons down" {
     try testing.expect(move.present);
     try testing.expect(move.value.pointer == pointer);
     try testing.expect(move.value.button == c.UI_BUTTON_SECONDARY);
-    try expect_vec2_equal(c.vec2(30, 50), move.value.local_position);
+    try expect_vec2_eq(c.vec2(30, 50), move.value.local_position);
     try testing.expect(!up.present);
 
     // No button is down, UI_POINTER_EVENT_UP should be emitted.
@@ -101,7 +101,7 @@ test "multiple buttons down" {
     try testing.expect(!move.present);
     try testing.expect(up.present);
     try testing.expect(up.value.pointer == pointer);
-    try expect_vec2_equal(c.vec2(20, 50), up.value.local_position);
+    try expect_vec2_eq(c.vec2(20, 50), up.value.local_position);
 }
 
 test "pointer is different for each pointer down event" {
@@ -137,4 +137,36 @@ test "pointer is different for each pointer down event" {
     try testing.expect(down.present);
     const pointer2 = down.value.pointer;
     try testing.expect(pointer1 != pointer2);
+
+    c.ui_on_mouse_button_up(c.vec2(50, 50), c.UI_MOUSE_BUTTON_PRIMARY);
+}
+
+test "local_position" {
+    c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
+
+    c.ui_begin_frame();
+    c.ui_stack_begin(&.{});
+    c.ui_positioned_begin(&.{ .left = c.f32_some(10), .top = c.f32_some(20) });
+    c.ui_pointer_listener_begin(&.{ .behaviour = c.UI_HIT_TEST_BEHAVIOUR_OPAQUE });
+    c.ui_container_begin(&.{ .width = c.f32_some(30), .height = c.f32_some(30) });
+    c.ui_container_end();
+    c.ui_pointer_listener_end();
+    c.ui_positioned_end();
+    c.ui_stack_end();
+    c.ui_end_frame();
+
+    var hover = c.ui_pointer_event_none();
+    c.ui_on_mouse_move(c.vec2(30, 30));
+    c.ui_begin_frame();
+    c.ui_stack_begin(&.{});
+    c.ui_positioned_begin(&.{ .left = c.f32_some(10), .top = c.f32_some(20) });
+    c.ui_pointer_listener_begin(&.{ .hover = &hover, .behaviour = c.UI_HIT_TEST_BEHAVIOUR_OPAQUE });
+    c.ui_container_begin(&.{ .width = c.f32_some(30), .height = c.f32_some(30) });
+    c.ui_container_end();
+    c.ui_pointer_listener_end();
+    c.ui_positioned_end();
+    c.ui_stack_end();
+    c.ui_end_frame();
+    try testing.expect(hover.present);
+    try expect_vec2_eq(c.vec2(20, 10), hover.value.local_position);
 }

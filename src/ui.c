@@ -350,17 +350,15 @@ static inline void ui_widget_paint(UIWidget *widget, UIPaintingContext *context,
 }
 
 static bool ui_widget_hit_test_defer_to_children(UIWidget *widget,
-                                                 Vec2 local_position,
-                                                 Arena *arena,
-                                                 UIHitTestResult *result);
+                                                 UIHitTestResult *result,
+                                                 Arena *arena);
 
-static inline bool ui_widget_hit_test(UIWidget *widget, Vec2 local_position,
-                                      Arena *arena, UIHitTestResult *result) {
+static inline bool ui_widget_hit_test(UIWidget *widget, UIHitTestResult *result,
+                                      Arena *arena) {
   if (widget->klass->hit_test) {
-    return widget->klass->hit_test(widget, local_position, arena, result);
+    return widget->klass->hit_test(widget, result, arena);
   } else {
-    return ui_widget_hit_test_defer_to_children(widget, local_position, arena,
-                                                result);
+    return ui_widget_hit_test_defer_to_children(widget, result, arena);
   }
 }
 
@@ -404,7 +402,12 @@ static void ui_hit_test_state_hit_test(UIHitTestState *self, UIWidget *root,
   }
 
   ASSERT(!self->result.first);
-  if (!ui_widget_hit_test(root, pos, &self->arena, &self->result)) {
+  self->result.position = pos;
+  self->result.transform = ui_transform_identity();
+  self->result.local_position = pos;
+  bool hit = ui_widget_hit_test(root, &self->result, &self->arena);
+  DEBUG_ASSERT(vec2_eq(self->result.local_position, pos));
+  if (!hit) {
     ui_hit_test_state_clear(self);
   }
 }
@@ -435,20 +438,10 @@ void ui_on_mouse_button_down(Vec2 pos, u32 button) {
                              .pointer = down->pointer,
                              .button = down->button,
                              .position = pos,
+                             .transform = entry->transform,
                              .local_position = entry->local_position,
                          });
     }
-  }
-}
-
-static void ui_hit_test_update_local_position(UIHitTestResult *result,
-                                              Vec2 pos) {
-  Vec2 local_position = pos;
-  for (UIHitTestEntry *entry = result->last; entry && entry->widget;
-       entry = entry->prev) {
-    // TODO: use transform
-    local_position = vec2_sub(local_position, entry->widget->offset);
-    entry->local_position = local_position;
   }
 }
 
@@ -460,19 +453,19 @@ void ui_on_mouse_button_up(Vec2 pos, u32 button) {
   if (!down->button) {
     ASSERT(down->pointer);
     // Only send UP event when no button is down.
-    ui_hit_test_update_local_position(&state->input.button_down_hit_test.result,
-                                      pos);
     for (UIHitTestEntry *entry = state->input.button_down_hit_test.result.first;
          entry; entry = entry->next) {
       if (entry->widget) {
         ui_widget_handle_pointer_event(
-            entry->widget, &(UIPointerEvent){
-                               .type = UI_POINTER_EVENT_UP,
-                               .pointer = down->pointer,
-                               .button = button,
-                               .position = pos,
-                               .local_position = entry->local_position,
-                           });
+            entry->widget,
+            &(UIPointerEvent){
+                .type = UI_POINTER_EVENT_UP,
+                .pointer = down->pointer,
+                .button = button,
+                .position = pos,
+                .transform = entry->transform,
+                .local_position = ui_transform_dot_vec2(entry->transform, pos),
+            });
       }
     }
 
@@ -488,19 +481,19 @@ void ui_on_mouse_move(Vec2 pos) {
   UIInputState *input = &state->input;
   UIPointerDownState *down = &input->pointer_down_state;
   if (down->pointer) {
-    ui_hit_test_update_local_position(&state->input.button_down_hit_test.result,
-                                      pos);
     for (UIHitTestEntry *entry = input->button_down_hit_test.result.first;
          entry; entry = entry->next) {
       if (entry->widget) {
         ui_widget_handle_pointer_event(
-            entry->widget, &(UIPointerEvent){
-                               .type = UI_POINTER_EVENT_MOVE,
-                               .pointer = down->pointer,
-                               .button = down->button,
-                               .position = pos,
-                               .local_position = entry->local_position,
-                           });
+            entry->widget,
+            &(UIPointerEvent){
+                .type = UI_POINTER_EVENT_MOVE,
+                .pointer = down->pointer,
+                .button = down->button,
+                .position = pos,
+                .transform = entry->transform,
+                .local_position = ui_transform_dot_vec2(entry->transform, pos),
+            });
       }
     }
     return;
@@ -516,6 +509,7 @@ void ui_on_mouse_move(Vec2 pos) {
                              .pointer = down->pointer,
                              .button = down->button,
                              .position = pos,
+                             .transform = entry->transform,
                              .local_position = entry->local_position,
                          });
     }
@@ -576,12 +570,16 @@ void ui_on_mouse_scroll(Vec2 pos, Vec2 delta) {
 
   Scratch scratch = scratch_begin(0, 0);
   UIHitTestResult result = {0};
-  if (ui_widget_hit_test(root, pos, scratch.arena, &result)) {
+  result.position = pos;
+  result.transform = ui_transform_identity();
+  result.local_position = pos;
+  if (ui_widget_hit_test(root, &result, scratch.arena)) {
     for (UIHitTestEntry *entry = result.first; entry; entry = entry->next) {
       ui_widget_handle_pointer_event(
           entry->widget, &(UIPointerEvent){
                              .type = UI_POINTER_EVENT_SCROLL,
                              .position = pos,
+                             .transform = entry->transform,
                              .local_position = entry->local_position,
                              .scroll_delta = delta,
                          });
@@ -600,11 +598,14 @@ void ui_on_focus_lost(Vec2 pos) {
   for (UIHitTestEntry *entry = state->input.button_down_hit_test.result.first;
        entry; entry = entry->next) {
     if (entry->widget) {
-      ui_widget_handle_pointer_event(entry->widget,
-                                     &(UIPointerEvent){
-                                         .type = UI_POINTER_EVENT_CANCEL,
-                                         .position = pos,
-                                     });
+      ui_widget_handle_pointer_event(
+          entry->widget,
+          &(UIPointerEvent){
+              .type = UI_POINTER_EVENT_CANCEL,
+              .position = pos,
+              .transform = entry->transform,
+              .local_position = ui_transform_dot_vec2(entry->transform, pos),
+          });
     }
   }
 
@@ -654,88 +655,94 @@ static void ui_widget_paint_default(UIWidget *widget,
 }
 
 static bool ui_widget_hit_test_children_default(UIWidget *widget,
-                                                Vec2 local_position,
-                                                Arena *arena,
-                                                UIHitTestResult *result) {
+                                                UIHitTestResult *result,
+                                                Arena *arena) {
   for (UIWidget *child = widget->last; child; child = child->prev) {
-    if (ui_widget_hit_test(child, vec2_sub(local_position, child->offset),
-                           arena, result)) {
+    UITransform transform = result->transform;
+    Vec2 local_position = result->local_position;
+
+    result->transform = ui_transform_dot(
+        transform, ui_transform_offset(-child->offset.x, -child->offset.y));
+    result->local_position = vec2_sub(result->local_position, child->offset);
+
+    bool hit = ui_widget_hit_test(child, result, arena);
+
+    result->transform = transform;
+    result->local_position = local_position;
+
+    if (hit) {
       return true;
     }
   }
   return false;
 }
 
-void ui_hit_test_result_add(UIHitTestResult *self, Arena *arena,
-                            UIWidget *widget, Vec2 local_position) {
+void ui_hit_test_result_add(UIHitTestResult *self, UIWidget *widget,
+                            Arena *arena) {
   UIHitTestEntry *entry = arena_push_struct(arena, UIHitTestEntry);
   entry->widget = widget;
-  entry->local_position = local_position;
+  entry->transform = self->transform;
+  entry->local_position = self->local_position;
   DLL_APPEND(self->first, self->last, entry, prev, next);
 }
 
 static bool ui_widget_hit_test_defer_to_children(UIWidget *widget,
-                                                 Vec2 local_position,
-                                                 Arena *arena,
-                                                 UIHitTestResult *result) {
-  if (!vec2_contains(local_position, vec2_zero(), widget->size)) {
+                                                 UIHitTestResult *result,
+                                                 Arena *arena) {
+  if (!vec2_contains(result->local_position, vec2_zero(), widget->size)) {
     return false;
   }
 
-  if (!ui_widget_hit_test_children_default(widget, local_position, arena,
-                                           result)) {
+  if (!ui_widget_hit_test_children_default(widget, result, arena)) {
     return false;
   }
 
-  ui_hit_test_result_add(result, arena, widget, local_position);
+  ui_hit_test_result_add(result, widget, arena);
   return true;
 }
 
 static bool ui_widget_hit_test_transluscent(UIWidget *widget,
-                                            Vec2 local_position, Arena *arena,
-                                            UIHitTestResult *result) {
-  if (!vec2_contains(local_position, vec2_zero(), widget->size)) {
+                                            UIHitTestResult *result,
+                                            Arena *arena) {
+  if (!vec2_contains(result->local_position, vec2_zero(), widget->size)) {
     return false;
   }
 
-  bool hit_children = ui_widget_hit_test_children_default(
-      widget, local_position, arena, result);
+  bool hit_children =
+      ui_widget_hit_test_children_default(widget, result, arena);
 
-  ui_hit_test_result_add(result, arena, widget, local_position);
+  ui_hit_test_result_add(result, widget, arena);
 
   return hit_children;
 }
 
-static bool ui_widget_hit_test_opaque(UIWidget *widget, Vec2 local_position,
-                                      Arena *arena, UIHitTestResult *result) {
-  if (!vec2_contains(local_position, vec2_zero(), widget->size)) {
+static bool ui_widget_hit_test_opaque(UIWidget *widget, UIHitTestResult *result,
+                                      Arena *arena) {
+  if (!vec2_contains(result->local_position, vec2_zero(), widget->size)) {
     return false;
   }
 
-  ui_widget_hit_test_children_default(widget, local_position, arena, result);
+  ui_widget_hit_test_children_default(widget, result, arena);
 
-  ui_hit_test_result_add(result, arena, widget, local_position);
+  ui_hit_test_result_add(result, widget, arena);
   return true;
 }
 
 static inline bool ui_widget_hit_test_by_behaviour(UIWidget *widget,
                                                    UIHitTestBehaviour behaviour,
-                                                   Vec2 local_position,
-                                                   Arena *arena,
-                                                   UIHitTestResult *result) {
+                                                   UIHitTestResult *result,
+                                                   Arena *arena) {
   switch (behaviour) {
     case UI_HIT_TEST_BEHAVIOUR_DEFER_TO_CHILD: {
-      return ui_widget_hit_test_defer_to_children(widget, local_position, arena,
-                                                  result);
+      return ui_widget_hit_test_defer_to_children(widget, result, arena);
     } break;
 
     case UI_HIT_TEST_BEHAVIOUR_TRANSLUCENT: {
-      return ui_widget_hit_test_transluscent(widget, local_position, arena,
-                                             result);
+      return ui_widget_hit_test_transluscent(widget, result, arena);
     } break;
 
     case UI_HIT_TEST_BEHAVIOUR_OPAQUE: {
-      return ui_widget_hit_test_opaque(widget, local_position, arena, result);
+      return ui_widget_hit_test_opaque(widget, result, arena);
     } break;
 
     default:
@@ -2222,13 +2229,13 @@ typedef struct UIPointerListenerState {
   UIPointerEventQueue event_queue;
 } UIPointerListenerState;
 
-static bool ui_pointer_listener_hit_test(UIWidget *widget, Vec2 local_position,
-                                         Arena *arena,
-                                         UIHitTestResult *result) {
+static bool ui_pointer_listener_hit_test(UIWidget *widget,
+                                         UIHitTestResult *result,
+                                         Arena *arena) {
   UIPointerListenerState *state =
       ui_widget_get_state(widget, UIPointerListenerState);
-  return ui_widget_hit_test_by_behaviour(widget, state->behaviour,
-                                         local_position, arena, result);
+  return ui_widget_hit_test_by_behaviour(widget, state->behaviour, result,
+                                         arena);
 }
 
 static void ui_pointer_listener_handle_pointer_event(
@@ -2383,12 +2390,12 @@ typedef struct UITapGestureDetectorState {
 } UITapGestureDetectorState;
 
 static bool ui_tap_gesture_detector_hit_test(UIWidget *widget,
-                                             Vec2 local_position, Arena *arena,
-                                             UIHitTestResult *result) {
+                                             UIHitTestResult *result,
+                                             Arena *arena) {
   UITapGestureDetectorState *state =
       ui_widget_get_state(widget, UITapGestureDetectorState);
-  return ui_widget_hit_test_by_behaviour(widget, state->behaviour,
-                                         local_position, arena, result);
+  return ui_widget_hit_test_by_behaviour(widget, state->behaviour, result,
+                                         arena);
 }
 
 static void ui_tap_gesture_detector_handle_pointer_event(
