@@ -1349,8 +1349,8 @@ void z_update(void) {
   ui_set_delta_time(dt);
   do {
     ui_begin_frame();
-    build_ui(state);
-    // build_test_ui();
+    // build_ui(state);
+    build_test_ui();
     ui_end_frame();
   } while (ui_should_rebuild());
   ui_paint();

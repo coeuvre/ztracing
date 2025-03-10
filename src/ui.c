@@ -164,7 +164,8 @@ typedef struct UIGestureArenaMember UIGestureArenaMember;
 struct UIGestureArenaMember {
   UIGestureArenaMember *prev;
   UIGestureArenaMember *next;
-  UIGestureRecognizer recognizer;
+  UIWidget *widget;
+  UIGestureArenaCallback callback;
 };
 
 typedef struct UIGestureArena UIGestureArena;
@@ -174,11 +175,72 @@ struct UIGestureArena {
   u32 pointer;
   UIGestureArenaMember *first_member;
   UIGestureArenaMember *last_member;
+  UIGestureArenaMember *eager_winner;
+  bool open;
 };
 
 static inline void ui_gesture_arena_add_member(UIGestureArena *self,
                                                UIGestureArenaMember *member) {
+  DEBUG_ASSERTF(self->open, "arena is closed");
   DLL_APPEND(self->first_member, self->last_member, member, prev, next);
+}
+
+static void ui_gesture_arena_free(UIGestureArena *arena);
+
+static inline void ui_gesture_arena_resolve_by_default(UIGestureArena *self) {
+  ASSERT(!self->open);
+  ASSERT(self->first_member && self->first_member == self->last_member);
+  self->first_member->callback.accept(self->first_member->widget,
+                                      self->pointer);
+  ui_gesture_arena_free(self);
+}
+
+static inline void ui_gesture_arena_resolve_in_favor_of(
+    UIGestureArena *self, UIGestureArenaMember *winner) {
+  ASSERT(!self->open);
+  ASSERT(!self->eager_winner || self->eager_winner == winner);
+
+  for (UIGestureArenaMember *member = self->first_member; member;
+       member = member->next) {
+    if (member != winner) {
+      member->callback.reject(member->widget, self->pointer);
+    }
+  }
+  winner->callback.accept(winner->widget, self->pointer);
+  ui_gesture_arena_free(self);
+}
+
+static inline void ui_gesture_arena_try_resolve(UIGestureArena *self) {
+  if (!self->first_member) {
+    ui_gesture_arena_free(self);
+  } else if (self->first_member == self->last_member) {
+    ui_gesture_arena_resolve_by_default(self);
+  } else if (self->eager_winner) {
+    ui_gesture_arena_resolve_in_favor_of(self, self->eager_winner);
+  }
+}
+
+static inline void ui_gesture_arena_close(UIGestureArena *self) {
+  self->open = false;
+  ui_gesture_arena_try_resolve(self);
+}
+
+static inline void ui_gesture_arena_sweep(UIGestureArena *self) {
+  if (!self) {
+    return;
+  }
+
+  ASSERT(!self->open);
+  UIGestureArenaMember *winner = self->first_member;
+  if (winner) {
+    winner->callback.accept(winner->widget, self->pointer);
+
+    for (UIGestureArenaMember *member = winner->next; member;
+         member = member->next) {
+      member->callback.reject(member->widget, self->pointer);
+    }
+  }
+  ui_gesture_arena_free(self);
 }
 
 typedef struct UIGestureArenaState {
@@ -240,6 +302,69 @@ static inline UIFrame *ui_state_get_current_frame(UIState *state) {
     frame = state->frames;
   }
   return frame;
+}
+
+static UIGestureArena *ui_gesture_arena_state_open_arena(
+    UIGestureArenaState *self, u32 pointer) {
+  UIGestureArena *gesture_arena = self->first_free_arena;
+  if (gesture_arena) {
+    DLL_REMOVE(self->first_free_arena, self->last_free_arena, gesture_arena,
+               prev, next);
+    *gesture_arena = (UIGestureArena){0};
+  } else {
+    gesture_arena = arena_push_struct(&self->arena, UIGestureArena);
+  }
+
+  gesture_arena->pointer = pointer;
+  gesture_arena->open = true;
+
+  DLL_APPEND(self->first_arena, self->last_arena, gesture_arena, prev, next);
+
+  return gesture_arena;
+}
+
+static UIGestureArena *ui_gesture_arena_state_get_arena(
+    UIGestureArenaState *self, u32 pointer) {
+  for (UIGestureArena *gesture_arena = self->first_arena; gesture_arena;
+       gesture_arena = gesture_arena->next) {
+    if (gesture_arena->pointer == pointer) {
+      return gesture_arena;
+    }
+  }
+
+  return 0;
+}
+
+static inline void ui_gesture_arena_member_free(UIGestureArenaMember *self,
+                                                UIGestureArenaState *state,
+                                                UIGestureArena *gesture_arena) {
+  DLL_REMOVE(gesture_arena->first_member, gesture_arena->last_member, self,
+             prev, next);
+  DLL_APPEND(state->first_free_member, state->last_free_member, self, prev,
+             next);
+}
+
+static void ui_gesture_arena_sync(UIGestureArena *self,
+                                  UIGestureArenaState *state) {
+  for (UIGestureArenaMember *member = self->first_member; member;) {
+    UIWidget *doppelganger = member->widget->doppelganger;
+    if (!doppelganger) {
+      member->callback.reject(member->widget, self->pointer);
+      UIGestureArenaMember *next = member->next;
+      ui_gesture_arena_member_free(member, state, self);
+      member = next;
+    } else {
+      member->widget = doppelganger;
+      member = member->next;
+    }
+  }
+}
+
+static void ui_gesture_arena_state_sync(UIGestureArenaState *self) {
+  for (UIGestureArena *gesture_arena = self->first_arena; gesture_arena;
+       gesture_arena = gesture_arena->next) {
+    ui_gesture_arena_sync(gesture_arena, self);
+  }
 }
 
 void ui_set_viewport(Vec2 min, Vec2 max) {
@@ -421,6 +546,9 @@ void ui_on_mouse_button_down(Vec2 pos, u32 button) {
 
     ASSERT(down->button == button);
 
+    UIGestureArena *gesture_arena = ui_gesture_arena_state_open_arena(
+        &input->gesture_arena_state, down->pointer);
+
     ui_hit_test_state_hit_test(&state->input.button_down_hit_test,
                                ui_state_get_root_for_hit_test(state), pos);
     for (UIHitTestEntry *entry = state->input.button_down_hit_test.result.first;
@@ -435,6 +563,8 @@ void ui_on_mouse_button_down(Vec2 pos, u32 button) {
                              .local_position = entry->local_position,
                          });
     }
+
+    ui_gesture_arena_close(gesture_arena);
   }
 }
 
@@ -463,6 +593,10 @@ void ui_on_mouse_button_up(Vec2 pos, u32 button) {
     }
 
     ui_hit_test_state_clear(&state->input.button_down_hit_test);
+
+    ui_gesture_arena_sweep(ui_gesture_arena_state_get_arena(
+        &input->gesture_arena_state, down->pointer));
+
     down->pointer = 0;
   } else {
     ui_on_mouse_move(pos);
@@ -812,13 +946,14 @@ void ui_end_frame(void) {
   ui_hit_test_state_sync(&state->input.button_down_hit_test);
   ui_hit_test_state_sync(&state->input.button_move_hit_tests[0]);
   ui_hit_test_state_sync(&state->input.button_move_hit_tests[1]);
+  ui_gesture_arena_state_sync(&state->input.gesture_arena_state);
+
+  if (state->last_frame->root) {
+    ui_unmount_widgets(state->last_frame->root);
+  }
 
   // Layout and paint
   if (frame->root) {
-    if (state->last_frame->root) {
-      ui_unmount_widgets(state->last_frame->root);
-    }
-
     Vec2 viewport_size = vec2_sub(state->viewport_max, state->viewport_min);
     ui_widget_layout(frame->root, ui_box_constraints_tight(viewport_size.x,
                                                            viewport_size.y));
@@ -865,62 +1000,61 @@ f32 ui_animate_fast_f32(f32 value, f32 target) {
   return result;
 }
 
-void ui_gesture_arena_add(u32 pointer, UIGestureRecognizer recognizer) {
+void ui_gesture_arena_add(UIWidget *widget, u32 pointer,
+                          UIGestureArenaCallback callback) {
   UIGestureArenaState *state = &ui_state_get()->input.gesture_arena_state;
+  UIGestureArena *gesture_arena =
+      ui_gesture_arena_state_get_arena(state, pointer);
+  ASSERT(gesture_arena);
+
   UIGestureArenaMember *member = state->last_free_member;
   if (member) {
     DLL_REMOVE(state->first_free_member, state->last_free_member, member, prev,
                next);
+    (*member) = (UIGestureArenaMember){0};
   } else {
     member = arena_push_struct(&state->arena, UIGestureArenaMember);
   }
-  member->recognizer = recognizer;
+  member->widget = widget;
+  member->callback = callback;
 
-  bool added = false;
-  for (UIGestureArena *gesture_arena = state->first_arena; gesture_arena;
-       gesture_arena = gesture_arena->next) {
-    if (gesture_arena->pointer == pointer) {
-      ui_gesture_arena_add_member(gesture_arena, member);
-      added = true;
+  ui_gesture_arena_add_member(gesture_arena, member);
+}
+
+void ui_gesture_arena_resolve(UIWidget *widget, u32 pointer, bool accepted) {
+  UIGestureArenaState *state = &ui_state_get()->input.gesture_arena_state;
+  UIGestureArena *gesture_arena =
+      ui_gesture_arena_state_get_arena(state, pointer);
+  ASSERTF(gesture_arena, "gesture arena not found for pointer %u", pointer);
+
+  UIGestureArenaMember *resolving_member = 0;
+  for (UIGestureArenaMember *member = gesture_arena->first_member; member;
+       member = member->next) {
+    if (widget == member->widget) {
+      resolving_member = member;
       break;
     }
   }
 
-  if (!added) {
-    UIGestureArena *gesture_arena = state->first_free_arena;
-    if (gesture_arena) {
-      DLL_REMOVE(state->first_free_arena, state->last_free_arena, gesture_arena,
-                 prev, next);
+  if (resolving_member) {
+    if (accepted) {
+      ui_gesture_arena_resolve_in_favor_of(gesture_arena, resolving_member);
     } else {
-      gesture_arena = arena_push_struct(&state->arena, UIGestureArena);
+      resolving_member->callback.reject(widget, pointer);
+      ui_gesture_arena_member_free(resolving_member, state, gesture_arena);
     }
-    gesture_arena->pointer = pointer;
-    DLL_APPEND(state->first_arena, state->last_arena, gesture_arena, prev,
-               next);
-
-    ui_gesture_arena_add_member(gesture_arena, member);
   }
 }
 
-static void ui_gesture_arena_free(u32 pointer) {
+static void ui_gesture_arena_free(UIGestureArena *self) {
   UIGestureArenaState *state = &ui_state_get()->input.gesture_arena_state;
 
-  for (UIGestureArena *gesture_arena = state->first_arena; gesture_arena;
-       gesture_arena = gesture_arena->next) {
-    if (gesture_arena->pointer == pointer) {
-      DLL_REMOVE(state->first_arena, state->last_arena, gesture_arena, prev,
-                 next);
+  DLL_REMOVE(state->first_arena, state->last_arena, self, prev, next);
 
-      DLL_CONCAT(state->first_free_member, state->last_free_member,
-                 gesture_arena->first_member, gesture_arena->last_member, prev,
-                 next);
-      gesture_arena->first_member = gesture_arena->last_member = 0;
+  DLL_CONCAT(state->first_free_member, state->last_free_member,
+             self->first_member, self->last_member, prev, next);
 
-      DLL_APPEND(state->first_free_arena, state->last_free_arena, gesture_arena,
-                 prev, next);
-      break;
-    }
-  }
+  DLL_APPEND(state->first_free_arena, state->last_free_arena, self, prev, next);
 }
 
 static UIKey ui_key_from_str8(UIKey seed, Str8 str) {
@@ -993,6 +1127,7 @@ UIWidget *ui_widget_begin(UIWidgetClass *klass, UIKey key) {
   UIFrame *frame = state->current_frame;
 
   UIWidget *widget = ui_widget_alloc(&frame->arena, klass);
+  widget->frame_index = state->frame_index;
   UIWidget *last_widget = 0;
 
   UIWidgetStackEntry *parent = frame->stack.last;
@@ -2393,6 +2528,9 @@ typedef struct UITapGestureDetectorState {
   UIHitTestBehaviour behaviour;
   u32 button;
   u32 pointer;
+  UIPointerEventO down;
+  UIPointerEventO up;
+
   UIGestureDetailO tap_down;
   UIGestureDetailO tap_up;
   UIGestureDetailO tap;
@@ -2407,36 +2545,81 @@ static bool ui_tap_gesture_detector_hit_test(UIWidget *widget,
                                          arena);
 }
 
+static void ui_tap_gesture_detector_reset(UITapGestureDetectorState *state) {
+  state->pointer = 0;
+  state->down = ui_pointer_event_none();
+  state->up = ui_pointer_event_none();
+}
+
+static void ui_tap_gesture_detector_finalize(UITapGestureDetectorState *state) {
+  ASSERT(state->up.present);
+
+  state->tap_up = ui_gesture_detail_some((UIGestureDetail){
+      .local_position = state->up.value.local_position,
+  });
+  state->tap = ui_gesture_detail_some((UIGestureDetail){
+      .local_position = state->up.value.local_position,
+  });
+
+  ui_tap_gesture_detector_reset(state);
+}
+
+static void ui_tap_gesture_detector_accept(UIWidget *widget, u32 pointer) {
+  UITapGestureDetectorState *state =
+      ui_widget_get_state(widget, UITapGestureDetectorState);
+
+  if (state->pointer == pointer) {
+    ASSERT(state->down.present);
+
+    state->tap_down = ui_gesture_detail_some((UIGestureDetail){
+        .local_position = state->down.value.local_position,
+    });
+
+    if (state->up.present) {
+      ui_tap_gesture_detector_finalize(state);
+    } else {
+      state->down = ui_pointer_event_none();
+    }
+  } else {
+    ui_tap_gesture_detector_reset(state);
+  }
+}
+
+static void ui_tap_gesture_detector_reject(UIWidget *widget, u32 pointer) {
+  (void)pointer;
+  UITapGestureDetectorState *state =
+      ui_widget_get_state(widget, UITapGestureDetectorState);
+  ui_tap_gesture_detector_reset(state);
+}
+
 static void ui_tap_gesture_detector_handle_pointer_event(
     UIWidget *widget, const UIPointerEvent *event) {
   UITapGestureDetectorState *state =
       ui_widget_get_state(widget, UITapGestureDetectorState);
 
-  // TODO: check for state: ready, possible, defunct?
   switch (event->type) {
     case UI_POINTER_EVENT_DOWN: {
       if ((event->button & state->button) && !state->pointer) {
-        // TODO: add to gesture arena
         state->pointer = event->pointer;
-        state->tap_down = ui_gesture_detail_some((UIGestureDetail){
-            .local_position = event->local_position,
-        });
+        state->down = ui_pointer_event_some(*event);
+        ui_gesture_arena_add(widget, state->pointer,
+                             (UIGestureArenaCallback){
+                                 .accept = ui_tap_gesture_detector_accept,
+                                 .reject = ui_tap_gesture_detector_reject,
+                             });
       }
     } break;
 
     case UI_POINTER_EVENT_UP: {
-      // TODO: claim win
-      if (event->pointer == state->pointer) {
-        state->pointer = 0;
-
-        if (vec2_contains(event->local_position, vec2_zero(), widget->size)) {
-          state->tap_up = ui_gesture_detail_some((UIGestureDetail){
-              .local_position = event->local_position,
-          });
-          state->tap = ui_gesture_detail_some((UIGestureDetail){
-              .local_position = event->local_position,
-          });
+      if (event->pointer == state->pointer &&
+          vec2_contains(event->local_position, vec2_zero(), widget->size)) {
+        state->up = ui_pointer_event_some(*event);
+        if (!state->down.present) {
+          ui_tap_gesture_detector_finalize(state);
         }
+      } else if (state->pointer) {
+        ui_gesture_arena_resolve(widget, state->pointer,
+                                 /* accepted= */ false);
       }
     } break;
 

@@ -568,19 +568,16 @@ typedef struct UIPointerEvent {
 
 OPTIONAL_TYPE(UIPointerEventO, UIPointerEvent, ui_pointer_event);
 
-typedef struct UIGestureRecognizerVTable {
+typedef struct UIGestureArenaCallback {
   /// Called when this member wins the arena for the given pointer id.
-  void (*accept)(void *self, int pointer);
+  void (*accept)(UIWidget *widget, u32 pointer);
   /// Called when this member loses the arena for the given pointer id.
-  void (*reject)(void *self, int pointer);
-} UIGestureRecognizerVTable;
+  void (*reject)(UIWidget *widget, u32 pointer);
+} UIGestureArenaCallback;
 
-typedef struct UIGestureRecognizer {
-  void *self;
-  UIGestureRecognizerVTable *vtable;
-} UIGestureRecognizer;
-
-void ui_gesture_arena_add(u32 pointer, UIGestureRecognizer recognizer);
+void ui_gesture_arena_add(UIWidget *widget, u32 pointer,
+                          UIGestureArenaCallback callback);
+void ui_gesture_arena_resolve(UIWidget *widget, u32 pointer, bool accepted);
 
 #define UI_U64_LIT(v) (v##ULL)
 
@@ -638,6 +635,7 @@ struct UIWidget {
   HashTrie parent_data;
 
   UIKey key;
+  u64 frame_index;
 
   /// The size of this box computed during layout.
   ///
