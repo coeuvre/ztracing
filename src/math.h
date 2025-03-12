@@ -18,6 +18,8 @@ static inline bool f32_is_infinity(f32 a) { return a == F32_INFINITY; }
 static inline f32 f32_cos(f32 a) { return cosf(a); }
 static inline f32 f32_sin(f32 a) { return sinf(a); }
 
+static inline f32 f32_sqrt(f32 a) { return sqrtf(a); }
+
 static inline f32 f32_pow(f32 a, f32 b) {
   f32 result = powf(a, b);
   return result;
@@ -109,7 +111,7 @@ static inline Vec2 vec2(f32 x, f32 y) {
 }
 
 static inline Vec2 vec2_zero(void) {
-  Vec2 result = {0};
+  Vec2 result = ZERO_INIT;
   return result;
 }
 
@@ -122,6 +124,8 @@ static inline b32 vec2_eq(Vec2 a, Vec2 b) {
   b32 result = a.x == b.x && a.y == b.y;
   return result;
 }
+
+static inline f32 vec2_len(Vec2 a) { return f32_sqrt(a.x * a.x + a.y * a.y); }
 
 // Vec2 is treated as one-dimension range, Vec2.x is begin, Vec2.y is end.
 static inline Vec2 vec2_from_intersection(Vec2 a, Vec2 b) {
@@ -296,7 +300,7 @@ static inline Rect2 rect2(Vec2 min, Vec2 max) {
 }
 
 static inline Rect2 rect2_zero(void) {
-  Rect2 result = {0};
+  Rect2 result = ZERO_INIT;
   return result;
 }
 

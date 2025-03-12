@@ -1025,7 +1025,9 @@ void ui_gesture_arena_resolve(UIWidget *widget, u32 pointer, bool accepted) {
   UIGestureArenaState *state = &ui_state_get()->input.gesture_arena_state;
   UIGestureArena *gesture_arena =
       ui_gesture_arena_state_get_arena(state, pointer);
-  ASSERTF(gesture_arena, "gesture arena not found for pointer %u", pointer);
+  if (!gesture_arena) {
+    return;
+  }
 
   UIGestureArenaMember *resolving_member = 0;
   for (UIGestureArenaMember *member = gesture_arena->first_member; member;
@@ -1035,14 +1037,15 @@ void ui_gesture_arena_resolve(UIWidget *widget, u32 pointer, bool accepted) {
       break;
     }
   }
+  if (!resolving_member) {
+    return;
+  }
 
-  if (resolving_member) {
-    if (accepted) {
-      ui_gesture_arena_resolve_in_favor_of(gesture_arena, resolving_member);
-    } else {
-      resolving_member->callback.reject(widget, pointer);
-      ui_gesture_arena_member_free(resolving_member, state, gesture_arena);
-    }
+  if (accepted) {
+    ui_gesture_arena_resolve_in_favor_of(gesture_arena, resolving_member);
+  } else {
+    resolving_member->callback.reject(widget, pointer);
+    ui_gesture_arena_member_free(resolving_member, state, gesture_arena);
   }
 }
 
@@ -2527,9 +2530,12 @@ void ui_mouse_region_begin(const UIMouseRegionProps *props) {
 typedef struct UITapGestureDetectorState {
   UIHitTestBehaviour behaviour;
   u32 button;
+
   u32 pointer;
   UIPointerEventO down;
   UIPointerEventO up;
+  bool won_arena;
+  bool sent_down;
 
   UIGestureDetailO tap_down;
   UIGestureDetailO tap_up;
@@ -2549,10 +2555,26 @@ static void ui_tap_gesture_detector_reset(UITapGestureDetectorState *state) {
   state->pointer = 0;
   state->down = ui_pointer_event_none();
   state->up = ui_pointer_event_none();
+  state->won_arena = false;
+  state->sent_down = false;
 }
 
-static void ui_tap_gesture_detector_finalize(UITapGestureDetectorState *state) {
-  ASSERT(state->up.present);
+static void ui_tap_gesture_detector_check_down(
+    UITapGestureDetectorState *state) {
+  if (state->sent_down) {
+    return;
+  }
+
+  state->tap_down = ui_gesture_detail_some((UIGestureDetail){
+      .local_position = state->down.value.local_position,
+  });
+  state->sent_down = true;
+}
+
+static void ui_tap_gesture_detector_check_up(UITapGestureDetectorState *state) {
+  if (!state->won_arena || !state->up.present) {
+    return;
+  }
 
   state->tap_up = ui_gesture_detail_some((UIGestureDetail){
       .local_position = state->up.value.local_position,
@@ -2567,28 +2589,33 @@ static void ui_tap_gesture_detector_finalize(UITapGestureDetectorState *state) {
 static void ui_tap_gesture_detector_accept(UIWidget *widget, u32 pointer) {
   UITapGestureDetectorState *state =
       ui_widget_get_state(widget, UITapGestureDetectorState);
-
   if (state->pointer == pointer) {
     ASSERT(state->down.present);
-
-    state->tap_down = ui_gesture_detail_some((UIGestureDetail){
-        .local_position = state->down.value.local_position,
-    });
-
-    if (state->up.present) {
-      ui_tap_gesture_detector_finalize(state);
-    } else {
-      state->down = ui_pointer_event_none();
-    }
-  } else {
-    ui_tap_gesture_detector_reset(state);
+    ui_tap_gesture_detector_check_down(state);
+    state->won_arena = true;
+    ui_tap_gesture_detector_check_up(state);
   }
 }
 
 static void ui_tap_gesture_detector_reject(UIWidget *widget, u32 pointer) {
-  (void)pointer;
   UITapGestureDetectorState *state =
       ui_widget_get_state(widget, UITapGestureDetectorState);
+  if (state->pointer == pointer) {
+    if (state->sent_down) {
+      // TODO: check_cancel
+    }
+    ui_tap_gesture_detector_reset(state);
+  }
+}
+
+static void ui_tap_gesture_detector_resolve(UIWidget *widget,
+                                            UITapGestureDetectorState *state,
+                                            bool accepted) {
+  u32 pointer = state->pointer;
+  if (state->won_arena && !accepted) {
+    // TODO: check_cancel
+  }
+  ui_gesture_arena_resolve(widget, pointer, accepted);
   ui_tap_gesture_detector_reset(state);
 }
 
@@ -2610,16 +2637,23 @@ static void ui_tap_gesture_detector_handle_pointer_event(
       }
     } break;
 
+    case UI_POINTER_EVENT_MOVE: {
+      if (state->down.present) {
+        f32 dist =
+            vec2_len(vec2_sub(event->position, state->down.value.position));
+        if (dist > 18) {
+          ui_tap_gesture_detector_resolve(widget, state, /* accepted= */ false);
+        }
+      }
+    } break;
+
     case UI_POINTER_EVENT_UP: {
       if (event->pointer == state->pointer &&
           vec2_contains(event->local_position, vec2_zero(), widget->size)) {
         state->up = ui_pointer_event_some(*event);
-        if (!state->down.present) {
-          ui_tap_gesture_detector_finalize(state);
-        }
+        ui_tap_gesture_detector_check_up(state);
       } else if (state->pointer) {
-        ui_gesture_arena_resolve(widget, state->pointer,
-                                 /* accepted= */ false);
+        ui_tap_gesture_detector_resolve(widget, state, /* accepted= */ false);
       }
     } break;
 
