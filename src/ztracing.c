@@ -1281,21 +1281,43 @@ static void build_ui(ZState *state) {
 }
 
 static void build_test_ui(void) {
+  UIGestureDetailO tap_down_outer;
   UIGestureDetailO tap_outer;
+  UIGestureDetailO tap_cancel_outer;
+
+  UIGestureDetailO tap_down_inner;
   UIGestureDetailO tap_inner;
+  UIGestureDetailO tap_cancel_inner;
   ui_tap_gesture_detector_begin(&(UITapGestureDetectorProps){
+      .tap_down = &tap_down_outer,
       .tap = &tap_outer,
+      .tap_cancel = &tap_cancel_outer,
       .behaviour = UI_HIT_TEST_BEHAVIOUR_OPAQUE,
   });
   ui_center_begin(&(UICenterProps){0});
   ui_tap_gesture_detector_begin(&(UITapGestureDetectorProps){
+      .tap_down = &tap_down_inner,
       .tap = &tap_inner,
+      .tap_cancel = &tap_cancel_inner,
   });
+  if (tap_down_inner.present) {
+    INFO("inner: TAP DOWN!");
+  }
   if (tap_inner.present) {
-    INFO("TAP (inner)!");
+    INFO("inner: TAP!");
+  }
+  if (tap_cancel_inner.present) {
+    INFO("inner: TAP CANCEL!");
+  }
+
+  if (tap_down_outer.present) {
+    INFO("outer: TAP DOWN!");
   }
   if (tap_outer.present) {
-    INFO("TAP (outer)!");
+    INFO("outer: TAP!");
+  }
+  if (tap_cancel_outer.present) {
+    INFO("outer: TAP CANCEL!");
   }
   ui_container_begin(&(UIContainerProps){
       .width = f32_some(100),

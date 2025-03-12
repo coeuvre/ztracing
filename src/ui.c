@@ -389,6 +389,11 @@ void ui_set_delta_time(f32 dt) {
   state->fast_animation_rate = 1.0f - f32_exp(-50.f * dt);
 }
 
+f32 ui_get_delta_time(void) {
+  UIState *state = ui_state_get();
+  return state->input.dt;
+}
+
 void ui_set_rebuild(bool should_rebuild) {
   UIState *state = ui_state_get();
   state->should_rebuild = should_rebuild;
@@ -2544,10 +2549,12 @@ typedef struct UITapGestureDetectorState {
   UIPointerEventO up;
   bool won_arena;
   bool sent_down;
+  f32 time;
 
   UIGestureDetailO tap_down;
   UIGestureDetailO tap_up;
   UIGestureDetailO tap;
+  UIGestureDetailO tap_cancel;
 } UITapGestureDetectorState;
 
 static bool ui_tap_gesture_detector_hit_test(UIWidget *widget,
@@ -2565,6 +2572,7 @@ static void ui_tap_gesture_detector_reset(UITapGestureDetectorState *state) {
   state->up = ui_pointer_event_none();
   state->won_arena = false;
   state->sent_down = false;
+  state->time = 0;
 }
 
 static void ui_tap_gesture_detector_check_down(
@@ -2577,6 +2585,12 @@ static void ui_tap_gesture_detector_check_down(
       .local_position = state->down.value.local_position,
   });
   state->sent_down = true;
+}
+
+static void ui_tap_gesture_detector_check_cancel(
+    UITapGestureDetectorState *state) {
+  ASSERT(state->sent_down);
+  state->tap_cancel = ui_gesture_detail_some((UIGestureDetail){0});
 }
 
 static void ui_tap_gesture_detector_check_up(UITapGestureDetectorState *state) {
@@ -2598,8 +2612,8 @@ static void ui_tap_gesture_detector_resolve(UIWidget *widget,
                                             UITapGestureDetectorState *state,
                                             bool accepted) {
   u32 pointer = state->pointer;
-  if (state->won_arena && !accepted) {
-    // TODO: check_cancel
+  if (state->sent_down && !accepted) {
+    ui_tap_gesture_detector_check_cancel(state);
   }
   ui_gesture_arena_resolve(widget, pointer, accepted);
   ui_tap_gesture_detector_reset(state);
@@ -2639,6 +2653,12 @@ static void ui_tap_gesture_detector_handle_pointer_event(
       }
     } break;
 
+    case UI_POINTER_EVENT_CANCEL: {
+      if (state->pointer) {
+        ui_tap_gesture_detector_resolve(widget, state, /* accepted= */ false);
+      }
+    } break;
+
     default: {
     } break;
   }
@@ -2662,7 +2682,7 @@ static void ui_tap_gesture_detector_reject_gesture(UIWidget *widget,
       ui_widget_get_state(widget, UITapGestureDetectorState);
   if (state->pointer == pointer) {
     if (state->sent_down) {
-      // TODO: check_cancel
+      ui_tap_gesture_detector_check_cancel(state);
     }
     ui_tap_gesture_detector_reset(state);
   }
@@ -2682,6 +2702,13 @@ void ui_tap_gesture_detector_begin(const UITapGestureDetectorProps *props) {
       ui_widget_begin(&ui_tap_gesture_detector_class, props->key);
   UITapGestureDetectorState *state =
       ui_widget_get_state(widget, UITapGestureDetectorState);
+
+  if (state->down.present && !state->sent_down) {
+    state->time += ui_get_delta_time();
+    if (state->time >= 0.1f) {
+      ui_tap_gesture_detector_check_down(state);
+    }
+  }
 
   state->behaviour = props->behaviour;
 
@@ -2705,6 +2732,11 @@ void ui_tap_gesture_detector_begin(const UITapGestureDetectorProps *props) {
     *props->tap = state->tap;
   }
   state->tap = ui_gesture_detail_none();
+
+  if (props->tap_cancel) {
+    *props->tap_cancel = state->tap_cancel;
+  }
+  state->tap_cancel = ui_gesture_detail_none();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

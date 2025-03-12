@@ -26,6 +26,8 @@ void ui_set_viewport(Vec2 min, Vec2 max);
 void ui_set_delta_time(f32 dt);
 void ui_set_rebuild(bool should_rebuild);
 
+f32 ui_get_delta_time(void);
+
 void ui_on_focus_lost(Vec2 pos);
 void ui_on_mouse_move(Vec2 pos);
 void ui_on_mouse_scroll(Vec2 pos, Vec2 delta);
@@ -1237,6 +1239,7 @@ typedef struct UITapGestureDetectorProps {
   UIGestureDetailO *tap_down;
   UIGestureDetailO *tap_up;
   UIGestureDetailO *tap;
+  UIGestureDetailO *tap_cancel;
 } UITapGestureDetectorProps;
 
 void ui_tap_gesture_detector_begin(const UITapGestureDetectorProps *props);
