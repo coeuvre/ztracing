@@ -568,15 +568,7 @@ typedef struct UIPointerEvent {
 
 OPTIONAL_TYPE(UIPointerEventO, UIPointerEvent, ui_pointer_event);
 
-typedef struct UIGestureArenaCallback {
-  /// Called when this member wins the arena for the given pointer id.
-  void (*accept)(UIWidget *widget, u32 pointer);
-  /// Called when this member loses the arena for the given pointer id.
-  void (*reject)(UIWidget *widget, u32 pointer);
-} UIGestureArenaCallback;
-
-void ui_gesture_arena_add(UIWidget *widget, u32 pointer,
-                          UIGestureArenaCallback callback);
+void ui_gesture_arena_add(UIWidget *widget, u32 pointer);
 void ui_gesture_arena_resolve(UIWidget *widget, u32 pointer, bool accepted);
 
 #define UI_U64_LIT(v) (v##ULL)
@@ -611,6 +603,10 @@ typedef struct UIWidgetClass {
   /// Returns true if hit.
   bool (*hit_test)(UIWidget *widget, UIHitTestResult *result, Arena *arena);
   void (*handle_pointer_event)(UIWidget *widget, const UIPointerEvent *event);
+  /// Called when this widget wins the arena for the given pointer id.
+  void (*accept_gesture)(UIWidget *widget, u32 pointer);
+  /// Called when this widget loses the arena for the given pointer id.
+  void (*reject_gesture)(UIWidget *widget, u32 pointer);
 } UIWidgetClass;
 
 typedef enum UIParentDataType {
