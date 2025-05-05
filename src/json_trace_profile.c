@@ -353,6 +353,9 @@ static bool SkipObjectValue(JsonTraceProfile *self, Arena *arena,
       case JsonTokenType_CloseBrace:
       case JsonTokenType_CloseBracket: {
         open--;
+        if (open == 0) {
+          running = false;
+        }
       } break;
 
       case JsonTokenType_Eof: {
