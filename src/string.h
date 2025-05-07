@@ -3,31 +3,21 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <string.h>
 
+#include "src/flick.h"
 #include "src/memory.h"
 #include "src/types.h"
 
-/// A slice of u8, can be used to represent utf-8 string, or a buffer.
-typedef struct Str8 {
-  u8 *ptr;
-  /// The number of bytes in the buffer
-  usize len;
-} Str8;
+typedef FL_Str Str8;
 
-#define STR8_LIT(s) (Str8){(u8 *)(s), sizeof(s) - 1}
+#define STR8_LIT(s) FL_STR_C(s)
 
-static inline Str8 str8(u8 *ptr, usize len) {
-  Str8 s;
-  s.ptr = ptr;
-  s.len = len;
-  return s;
-}
+static inline Str8 str8(char *ptr, ptrdiff_t len) { return (Str8){ptr, len}; }
 
 static inline Str8 str8_from_cstr(const char *str) {
-  Str8 result;
-  result.ptr = (u8 *)str;
-  result.len = strlen(str);
+  Str8 result = {(char *)str, (ptrdiff_t)strlen(str)};
   return result;
 }
 
@@ -68,12 +58,12 @@ static inline u64 str8_hash(Str8 str) {
 }
 
 static inline Str8 arena_push_str8(Arena *arena, usize len) {
-  u8 *ptr = arena_push_array(arena, u8, len);
-  return str8(ptr, len);
+  char *ptr = arena_push_array(arena, char, len);
+  return str8(ptr, (ptrdiff_t)len);
 }
 
 static inline Str8 arena_push_str8_no_zero(Arena *arena, usize len) {
-  u8 *ptr = arena_push_array_no_zero(arena, u8, len);
+  char *ptr = arena_push_array_no_zero(arena, char, len);
   return str8(ptr, len);
 }
 
@@ -91,7 +81,7 @@ static inline Str8 str8_dup(Arena *arena, Str8 s) {
   if (str8_is_empty(s)) {
     return str8_zero();
   }
-  return str8((u8 *)arena_dup(arena, s.ptr, s.len), s.len);
+  return str8((char *)arena_dup(arena, s.ptr, s.len), s.len);
 }
 
 static inline u8 u8_to_uppercase(u8 c) {
@@ -103,7 +93,7 @@ static inline u8 u8_to_uppercase(u8 c) {
 
 static inline Str8 str8_to_uppercase(Str8 s, Arena *arena) {
   Str8 result = arena_push_str8(arena, s.len);
-  for (usize i = 0; i < s.len; ++i) {
+  for (ptrdiff_t i = 0; i < s.len; ++i) {
     result.ptr[i] = u8_to_uppercase(s.ptr[i]);
   }
   return result;

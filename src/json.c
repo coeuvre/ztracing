@@ -1,6 +1,7 @@
 #include "src/json.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "src/assert.h"
 #include "src/list.h"
@@ -123,15 +124,15 @@ static inline void json_parser__skip_whitespace(JsonParser *self) {
   }
 }
 
-static void json_parser__append(Arena *arena, Str8 *buf, usize *cursor_ptr,
+static void json_parser__append(Arena *arena, Str8 *buf, ptrdiff_t *cursor_ptr,
                                 u8 val) {
-  usize cursor = *cursor_ptr;
+  ptrdiff_t cursor = *cursor_ptr;
   if (cursor >= buf->len) {
     if (arena_seek(arena, buf->len) == buf) {
       arena_pop(arena, buf->len);
     }
     usize new_len = buf->len << 1;
-    u8 *new_ptr = arena_push(arena, new_len, ARENA_PUSH_NO_ZERO);
+    char *new_ptr = arena_push(arena, new_len, ARENA_PUSH_NO_ZERO);
     if (new_ptr != buf->ptr) {
       memory_copy(new_ptr, buf->ptr, buf->len);
       buf->ptr = new_ptr;
@@ -153,7 +154,7 @@ static void json_parser__shrink(Arena *arena, Str8 *buf, usize cursor) {
 }
 
 static bool json_parser__parse_digits(JsonParser *self, Arena *arena, Str8 *buf,
-                                      usize *cursor) {
+                                      ptrdiff_t *cursor) {
   bool has_digits = false;
   for (;;) {
     u8 val = json_parser__take_input_u8(self);

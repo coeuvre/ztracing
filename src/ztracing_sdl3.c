@@ -3,12 +3,12 @@
 #include "src/assert.h"
 #include "src/draw.h"
 #include "src/draw_sdl3.h"
+#include "src/flick.h"
 #include "src/math.h"
 #include "src/memory.h"
 #include "src/platform_sdl3.h"
 #include "src/string.h"
 #include "src/types.h"
-#include "src/ui.h"
 #include "src/ztracing.h"
 
 #define SDL_MAIN_USE_CALLBACKS 1
@@ -113,17 +113,19 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   SDL_SetRenderVSync(renderer, 1);
 
   init_draw_sdl3(window, renderer);
-  // ui_init();
+  FL_Init(&(FL_InitOptions){
+      .canvas = get_canvas(),
+  });
 
   return SDL_APP_CONTINUE;
 }
 
 static u32 g_sdl_button_to_ui_button[] = {
-    [SDL_BUTTON_LEFT] = UI_MOUSE_BUTTON_PRIMARY,
-    [SDL_BUTTON_MIDDLE] = UI_MOUSE_BUTTON_TERTIARY,
-    [SDL_BUTTON_RIGHT] = UI_MOUSE_BUTTON_SECONDARY,
-    [SDL_BUTTON_X1] = UI_MOUSE_BUTTON_FORWARD,
-    [SDL_BUTTON_X2] = UI_MOUSE_BUTTON_BACK,
+    [SDL_BUTTON_LEFT] = FL_MOUSE_BUTTON_PRIMARY,
+    [SDL_BUTTON_MIDDLE] = FL_MOUSE_BUTTON_TERTIARY,
+    [SDL_BUTTON_RIGHT] = FL_MOUSE_BUTTON_SECONDARY,
+    [SDL_BUTTON_X1] = FL_MOUSE_BUTTON_FORWARD,
+    [SDL_BUTTON_X2] = FL_MOUSE_BUTTON_BACK,
 };
 
 static Vec2 mouse_pos_from_sdl(Vec2 pos) {
@@ -153,28 +155,28 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     } break;
 
     case SDL_EVENT_WINDOW_FOCUS_LOST: {
-      ui_on_focus_lost(get_global_window_relative_mouse_pos());
+      // ui_on_focus_lost(get_global_window_relative_mouse_pos());
     } break;
 
     case SDL_EVENT_MOUSE_BUTTON_UP: {
       Vec2 mouse_pos =
           mouse_pos_from_sdl(vec2(event->button.x, event->button.y));
-      ui_on_mouse_button_up(mouse_pos,
-                            g_sdl_button_to_ui_button[event->button.button]);
+      FL_OnMouseButtonUp(mouse_pos,
+                         g_sdl_button_to_ui_button[event->button.button]);
     } break;
 
     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
       Vec2 mouse_pos =
           mouse_pos_from_sdl(vec2(event->button.x, event->button.y));
-      ui_on_mouse_button_down(mouse_pos,
-                              g_sdl_button_to_ui_button[event->button.button]);
+      FL_OnMouseButtonDown(mouse_pos,
+                           g_sdl_button_to_ui_button[event->button.button]);
     } break;
 
     case SDL_EVENT_MOUSE_WHEEL: {
       Vec2 mouse_pos =
           mouse_pos_from_sdl(get_global_window_relative_mouse_pos());
       Vec2 delta = vec2(event->wheel.x, -event->wheel.y);
-      ui_on_mouse_scroll(mouse_pos, vec2_mul(delta, 10.0f));
+      FL_OnMouseScroll(mouse_pos, vec2_mul(delta, 10.0f));
     } break;
 
     default: {
@@ -186,9 +188,8 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
 
-  ui_set_viewport(vec2_zero(), get_screen_size());
-  ui_on_mouse_move(get_global_window_relative_mouse_pos());
-  z_update();
+  FL_OnMouseMove(get_global_window_relative_mouse_pos());
+  z_update(get_screen_size());
 
   if (!window_shown) {
     SDL_ShowWindow(window);

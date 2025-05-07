@@ -5,6 +5,7 @@
 #include <math.h>
 
 #include "src/assert.h"
+#include "src/flick.h"
 #include "src/types.h"
 
 #define F32_INFINITY ((f32)(INFINITY))
@@ -85,10 +86,7 @@ static inline f64 f64_max(f64 a, f64 b) { return MAX(a, b); }
 
 static inline f64 f64_min(f64 a, f64 b) { return MIN(a, b); }
 
-typedef struct Vec2 {
-  f32 x;
-  f32 y;
-} Vec2;
+typedef FL_Vec2 Vec2;
 
 static inline f32 vec2_get(Vec2 v, usize index) {
   DEBUG_ASSERT(index < 2);

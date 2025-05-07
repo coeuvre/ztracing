@@ -23,7 +23,7 @@ fn addDeps(b: *Build, exe: *Build.Step.Compile) void {
     exe.addIncludePath(b.path("."));
 }
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const test_filters = b.option([]const []const u8, "test-filter", "Skip tests that do not match any filter") orelse &[0][]const u8{};
@@ -34,7 +34,7 @@ pub fn build(b: *std.Build) void {
         "src/json_trace_profile.c",
         "src/memory.c",
         "src/string.c",
-        "src/ui.c",
+        "src/flick.c",
 
         "src/draw_sdl3.c",
         "src/platform_sdl3.c",
@@ -46,6 +46,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    _ = try ztracing.step.addDirectoryWatchInput(b.path("src"));
     ztracing.addCSourceFiles(.{
         .files = &(srcs ++ [_][]const u8{
             "src/ztracing.c",

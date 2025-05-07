@@ -1,10 +1,10 @@
 #ifndef ZTRACING_SRC_DRAW_H_
 #define ZTRACING_SRC_DRAW_H_
 
+#include "src/flick.h"
 #include "src/math.h"
 #include "src/string.h"
 #include "src/types.h"
-#include "src/ui.h"
 
 // Get the DPI scale of the screen. It's the ratio for (pixels / point).
 f32 get_screen_content_scale(void);
@@ -23,12 +23,14 @@ typedef struct TextMetrics {
 TextMetrics layout_text_str8(Str8 text, f32 height, f32 min_width,
                              f32 max_width);
 void draw_text_str8(Vec2 pos, Str8 text, f32 height, f32 min_width,
-                    f32 max_width, UIColor color);
+                    f32 max_width, FL_Color color);
 
 void clear_draw(void);
 void present_draw(void);
 
-void fill_rect(Vec2 min, Vec2 max, UIColor color);
-void stroke_rect(Vec2 min, Vec2 max, UIColor color, f32 thickness);
+void fill_rect(Vec2 min, Vec2 max, FL_Color color);
+void stroke_rect(Vec2 min, Vec2 max, FL_Color color, f32 thickness);
+
+FL_Canvas get_canvas(void);
 
 #endif  // ZTRACING_SRC_DRAW_H_

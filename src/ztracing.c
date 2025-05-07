@@ -5,6 +5,7 @@
 
 #include "src/assert.h"
 #include "src/draw.h"
+#include "src/flick.h"
 #include "src/hash_trie.h"
 #include "src/json.h"
 #include "src/json_trace_profile.h"
@@ -15,11 +16,10 @@
 #include "src/platform.h"
 #include "src/string.h"
 #include "src/types.h"
-#include "src/ui.h"
 
 #define RGB(r, g, b) {r / 255.0f, g / 255.0f, b / 255.0f, 1.0f}
 
-static UIColor COLORS[] = {
+static FL_Color COLORS[] = {
     RGB(38, 70, 83),   RGB(42, 157, 143), RGB(233, 196, 106),
     RGB(244, 162, 97), RGB(231, 111, 81),
 };
@@ -596,11 +596,11 @@ typedef struct ZState {
   ZProfileViewer *viewer;
 } ZState;
 
-static UITextStyleO text_style_default(void) {
+static FL_TextStyleO DefaultTextStyle(void) {
 #define FONT_SIZE_DEFAULT 13
-  return ui_text_style_some((UITextStyle){
-      .color = ui_color_some(ui_color(0, 0, 0, 1)),
-      .font_size = f32_some(FONT_SIZE_DEFAULT),
+  return FL_TextStyle_Some((FL_TextStyle){
+      .color = FL_Color_Some((FL_Color){0, 0, 0, 1}),
+      .font_size = FL_f32_Some(FONT_SIZE_DEFAULT),
   });
 }
 
@@ -609,58 +609,56 @@ typedef enum ButtonType {
   BUTTON_SECONDARY,
 } ButtonType;
 
-static bool do_button(Str8 text, ButtonType type) {
-  bool pressed;
-  ui_button(&(UIButtonProps){
-      .text = text,
-      .text_style = text_style_default(),
+// static bool do_button(Str8 text, ButtonType type) {
+//   bool pressed;
+//   ui_button(&(UIButtonProps){
+//       .text = text,
+//       .text_style = DefaultTextStyle(),
+//
+//       .pressed = &pressed,
+//       .fill_color = (type == BUTTON_PRIMARY)
+//                         ? ui_color_some(ui_color(0.73, 0.83, 0.95, 1))
+//                         : ui_color_none(),
+//       .hover_color = ui_color_some(ui_color(0.29, 0.49, 0.72, 1)),
+//       .splash_color = ui_color_some(ui_color(0.29, 0.44, 0.62, 1)),
+//       .padding = ui_edge_insets_some(ui_edge_insets_symmetric(6, 3)),
+//   });
+//   return pressed;
+// }
 
-      .pressed = &pressed,
-      .fill_color = (type == BUTTON_PRIMARY)
-                        ? ui_color_some(ui_color(0.73, 0.83, 0.95, 1))
-                        : ui_color_none(),
-      .hover_color = ui_color_some(ui_color(0.29, 0.49, 0.72, 1)),
-      .splash_color = ui_color_some(ui_color(0.29, 0.44, 0.62, 1)),
-      .padding = ui_edge_insets_some(ui_edge_insets_symmetric(6, 3)),
-  });
-  return pressed;
-}
-
-static void global_menu_bar(ZState *state) {
-  ui_padding_begin(&(UIPaddingProps){
-      .padding = ui_edge_insets_symmetric(6, 4),
-  });
-  ui_row_begin(&(UIRowProps){0});
-  {
-    Str8 name = str8_zero();
-    if (state->loader) {
-      name = state->loader->file->name;
-    } else if (state->viewer) {
-      name = state->viewer->name;
-    }
-
-    ui_text(&(UITextProps){
-        .text = name,
-        .style = text_style_default(),
-    });
-
-    ui_expanded_begin(&(UIExpandedProps){.flex = 1});
-    ui_expanded_end();
-
-    ui_text(&(UITextProps){
-        .text = ui_push_str8f(
-            "%.1fMB %.1fms",
-            (f32)((f64)platform_memory_get_allocated_bytes() / 1024.0 / 1024.0),
-            state->frame_time * 1000.0f),
-        .style = text_style_default(),
-    });
+static FL_Widget *global_menu_bar(ZState *state) {
+  Str8 name = {0};
+  if (state->loader) {
+    name = state->loader->file->name;
+  } else if (state->viewer) {
+    name = state->viewer->name;
   }
-  ui_row_end();
-  ui_padding_end();
+
+  return FL_Padding(&(FL_PaddingProps){
+      .padding = FL_EdgeInsets_Symmetric(6, 4),
+      .child = FL_Row(&(FL_RowProps){
+          .children = FL_WidgetList_Make((FL_Widget *[]){
+              FL_Text(&(FL_TextProps){
+                  .text = name,
+                  .style = DefaultTextStyle(),
+              }),
+              FL_Expanded(&(FL_ExpandedProps){.flex = 1}),
+              FL_Text(&(FL_TextProps){
+                  .text = FL_Format(
+                      "%.1fMB %.1fms",
+                      (f32)((f64)platform_memory_get_allocated_bytes() /
+                            1024.0 / 1024.0),
+                      state->frame_time * 1000.0f),
+                  .style = DefaultTextStyle(),
+              }),
+              0,
+          }),
+      }),
+  });
 }
 
-static void ui_welcome_screen(void) {
-  Str8 logo = STR8_LIT(
+static FL_Widget *welcome_screen(void) {
+  Str8 logo = FL_STR_C(
       // clang-format off
       " ________  _________  _______          _        ______  _____  ____  _____   ______\n"
       "|  __   _||  _   _  ||_   __ \\        / \\     .' ___  ||_   _||_   \\|_   _|.' ___  |\n"
@@ -670,42 +668,46 @@ static void ui_welcome_screen(void) {
       "|________|  |_____|  |____| |___||____| |____|`.____ .'|_____||_____|\\____|`._____.'"
       // clang-format on
   );
-  ui_column_begin(&(UIColumnProps){
-      .main_axis_alignment = UI_MAIN_AXIS_ALIGNMENT_CENTER,
+  return FL_Column(&(FL_ColumnProps){
+      .main_axis_alignment = FL_MainAxisAlignment_Center,
+      .children = FL_WidgetList_Make((FL_Widget *[]){
+          FL_Text(&(FL_TextProps){
+              .text = logo,
+              .style = DefaultTextStyle(),
+          }),
+          FL_Padding(&(FL_PaddingProps){
+              .padding = FL_EdgeInsets_Symmetric(0, 10),
+          }),
+          FL_Text(&(FL_TextProps){
+              .text = FL_STR_C("Drag & Drop a json trace profile to start."),
+              .style = DefaultTextStyle(),
+          }),
+          0,
+      }),
   });
-  ui_text(&(UITextProps){
-      .text = logo,
-      .style = text_style_default(),
-  });
-  ui_padding_begin(&(UIPaddingProps){
-      .padding = ui_edge_insets_symmetric(0, 10),
-  });
-  ui_padding_end();
-  ui_text(&(UITextProps){
-      .text = STR8_LIT("Drag & Drop a json trace profile to start."),
-      .style = text_style_default(),
-  });
-  ui_column_end();
 }
 
-static void ui_loading_screen(ZState *state) {
+static FL_Widget *loading_screen(ZState *state) {
   ZFileLoader *loader = state->loader;
 
-  ui_center_begin(&(UICenterProps){0});
-  ui_text(&(UITextProps){
-      .text = ui_push_str8f("Loading (%.1f MiB) ...",
+  FL_Widget *widget = FL_Center(&(FL_CenterProps){
+      .child = FL_Text(&(FL_TextProps){
+          .text = FL_Format("Loading (%.1f MiB) ...",
                             (f64)loader->file->nread / 1024.0 / 1024.0),
-      .style = text_style_default(),
+          .style = DefaultTextStyle(),
+      }),
   });
-  ui_center_end();
 
   if (z_file_loader_is_done(loader)) {
     state->viewer = (ZProfileViewer *)loader->viewer;
     state->loader = 0;
     z_file_loader_free(loader);
   }
+
+  return widget;
 }
 
+#if 0
 typedef struct UITimelineState {
   i64 begin_time_ns;
   i64 end_time_ns;
@@ -780,10 +782,10 @@ static void ui_timeline_paint(UIWidget *widget, UIPaintingContext *context,
   i64 begin = state->begin_time_ns;
   i64 end = state->end_time_ns;
 
-  UIColor color = ui_color(0, 0, 0, 1);
+  FLColor color = ui_color(0, 0, 0, 1);
 
   Vec2 size = widget->size;
-  f32 font_size = text_style_default().value.font_size.value;
+  f32 font_size = DefaultTextStyle().value.font_size.value;
 
   i64 duration = end - begin;
   i64 block_duration =
@@ -1068,9 +1070,9 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
         fill_rect(min, max, COLORS[span->color_index]);
         stroke_rect(min, max, ui_color(0, 0, 0, 0.5), 1);
 
-        UITextStyle text_style = text_style_default().value;
+        UITextStyle text_style = DefaultTextStyle().value;
         f32 font_size = text_style.font_size.value;
-        UIColor text_color = text_style.color.value;
+        FLColor text_color = text_style.color.value;
         // index-0 color is dark color, use white text color.
         if (span->color_index == 0) {
           text_color = ui_color(1, 1, 1, 1);
@@ -1101,7 +1103,7 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
 }
 
 static void ui_profile_header(ZProfileItemHeader *header) {
-  UIColor line_color = ui_color(0.5, 0.5, 0.5, 1);
+  FLColor line_color = ui_color(0.5, 0.5, 0.5, 1);
   f32 line_height = 2;
   ui_row_begin(&(UIRowProps){0});
   ui_container_begin(&(UIContainerProps){
@@ -1115,7 +1117,7 @@ static void ui_profile_header(ZProfileItemHeader *header) {
   });
   ui_text(&(UITextProps){
       .text = header->name,
-      .style = text_style_default(),
+      .style = DefaultTextStyle(),
   });
   ui_padding_end();
   ui_expanded_begin(&(UIExpandedProps){
@@ -1154,7 +1156,7 @@ static void ui_profile_screen(ZState *state) {
     ui_text(&(UITextProps){
         .text = ui_push_str8f("error: %.*s", (int)viewer->error.len,
                               viewer->error.ptr),
-        .style = text_style_default(),
+        .style = DefaultTextStyle(),
     });
     ui_center_end();
     return;
@@ -1255,7 +1257,7 @@ static void main_screen(ZState *state) {
 }
 
 static void build_ui(ZState *state) {
-  ui_colored_box_begin(&(UIColoredBoxProps){
+  ui_colored_box_begin(&(FLColoredBoxProps){
       .color = ui_color(0.94, 0.94, 0.94, 1.0),
   });
   ui_column_begin(&(UIColumnProps){0});
@@ -1279,55 +1281,18 @@ static void build_ui(ZState *state) {
   ui_column_end();
   ui_colored_box_end();
 }
+#endif
 
-static void build_test_ui(void) {
-  UIGestureDetailO tap_down_outer;
-  UIGestureDetailO tap_outer;
-  UIGestureDetailO tap_cancel_outer;
-
-  UIGestureDetailO tap_down_inner;
-  UIGestureDetailO tap_inner;
-  UIGestureDetailO tap_cancel_inner;
-  ui_tap_gesture_detector_begin(&(UITapGestureDetectorProps){
-      .tap_down = &tap_down_outer,
-      .tap = &tap_outer,
-      .tap_cancel = &tap_cancel_outer,
-      .behaviour = UI_HIT_TEST_BEHAVIOUR_OPAQUE,
+static FL_Widget *build_test_ui(ZState *state) {
+  return FL_ColoredBox(&(FL_ColoredBoxProps){
+      .color = (FL_Color){0.94f, 0.94f, 0.94f, 1.0f},
+      .child = FL_Center(&(FL_CenterProps){
+          .child = FL_Text(&(FL_TextProps){
+              .text = FL_Format("ztracing %.1fms", state->frame_time * 1000.0f),
+              .style = DefaultTextStyle(),
+          }),
+      }),
   });
-  ui_center_begin(&(UICenterProps){0});
-  ui_tap_gesture_detector_begin(&(UITapGestureDetectorProps){
-      .tap_down = &tap_down_inner,
-      .tap = &tap_inner,
-      .tap_cancel = &tap_cancel_inner,
-  });
-  if (tap_down_inner.present) {
-    INFO("inner: TAP DOWN!");
-  }
-  if (tap_inner.present) {
-    INFO("inner: TAP!");
-  }
-  if (tap_cancel_inner.present) {
-    INFO("inner: TAP CANCEL!");
-  }
-
-  if (tap_down_outer.present) {
-    INFO("outer: TAP DOWN!");
-  }
-  if (tap_outer.present) {
-    INFO("outer: TAP!");
-  }
-  if (tap_cancel_outer.present) {
-    INFO("outer: TAP CANCEL!");
-  }
-  ui_container_begin(&(UIContainerProps){
-      .width = f32_some(100),
-      .height = f32_some(100),
-      .color = ui_color_some(ui_color(1, 0, 0, 1)),
-  });
-  ui_container_end();
-  ui_tap_gesture_detector_end();
-  ui_center_end();
-  ui_tap_gesture_detector_end();
 }
 
 static ZState g_z_state;
@@ -1349,7 +1314,7 @@ void z_load_file(ZFile *file) {
   z_file_loader_start(state->loader);
 }
 
-void z_update(void) {
+void z_update(Vec2 viewport_size) {
   static u64 last_counter;
   static f32 last_frame_time;
 
@@ -1368,14 +1333,17 @@ void z_update(void) {
 
   clear_draw();
 
-  ui_set_delta_time(dt);
-  do {
-    ui_begin_frame();
-    // build_ui(state);
-    build_test_ui();
-    ui_end_frame();
-  } while (ui_should_rebuild());
-  ui_paint();
+  FL_Run(&(FL_RunOptions){
+      .widget = build_test_ui(state),
+      .viewport =
+          {
+              .left = 0,
+              .right = viewport_size.x,
+              .top = 0,
+              .bottom = viewport_size.y,
+          },
+      .delta_time = dt,
+  });
 
   last_frame_time = (f32)((f64)(platform_get_perf_counter() - last_counter) /
                           (f64)platform_get_perf_freq());

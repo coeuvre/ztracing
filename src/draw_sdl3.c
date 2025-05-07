@@ -5,12 +5,12 @@
 
 #include "src/assert.h"
 #include "src/draw.h"
+#include "src/flick.h"
 #include "src/list.h"
 #include "src/math.h"
 #include "src/memory.h"
 #include "src/string.h"
 #include "src/types.h"
-#include "src/ui.h"
 
 #define STB_RECT_PACK_IMPLEMENTATION
 #define STBRP_STATIC
@@ -185,7 +185,7 @@ typedef struct ColorU32 {
   u8 b;
 } ColorU32;
 
-static inline ColorU32 color_u32_from_ui_color(UIColor color) {
+static inline ColorU32 color_u32_from_ui_color(FL_Color color) {
   ColorU32 result;
   result.r = f32_round(color.r * color.a * 255.0f);
   result.g = f32_round(color.g * color.a * 255.0f);
@@ -194,7 +194,7 @@ static inline ColorU32 color_u32_from_ui_color(UIColor color) {
   return result;
 }
 
-void fill_rect(Vec2 min, Vec2 max, UIColor color) {
+void fill_rect(Vec2 min, Vec2 max, FL_Color color) {
   min = vec2_mul(min, get_screen_content_scale());
   max = vec2_mul(max, get_screen_content_scale());
 
@@ -303,7 +303,7 @@ TextMetrics layout_text_str8(Str8 text, f32 height, f32 min_width,
 }
 
 void draw_text_str8(Vec2 pos, Str8 text, f32 height, f32 min_width,
-                    f32 max_width, UIColor color) {
+                    f32 max_width, FL_Color color) {
   (void)min_width;
 
   Scratch scratch = scratch_begin(0, 0);
