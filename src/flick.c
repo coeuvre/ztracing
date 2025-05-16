@@ -1724,26 +1724,20 @@ FL_Widget *FL_Container(const FL_ContainerProps *props) {
   }
 
   FL_Widget *widget = props->child;
-  if (!widget) {
-    if (!constraints.present || !FL_BoxConstraints_IsTight(constraints.value)) {
-      widget = FL_LimitedBox(&(FL_LimitedBoxProps){
-          .child = FL_ConstrainedBox(&(FL_ConstrainedBoxProps){
-              .constraints =
-                  (FL_BoxConstraints){
-                      FL_INFINITY,
-                      FL_INFINITY,
-                      FL_INFINITY,
-                      FL_INFINITY,
-                  },
-          }),
-      });
-    } else {
-      widget = FL_ConstrainedBox(
-          &(FL_ConstrainedBoxProps){.constraints = constraints.value});
-    }
-  }
-
-  if (props->alignment.present) {
+  if (!widget &&
+      (!constraints.present || !FL_BoxConstraints_IsTight(constraints.value))) {
+    widget = FL_LimitedBox(&(FL_LimitedBoxProps){
+        .child = FL_ConstrainedBox(&(FL_ConstrainedBoxProps){
+            .constraints =
+                (FL_BoxConstraints){
+                    FL_INFINITY,
+                    FL_INFINITY,
+                    FL_INFINITY,
+                    FL_INFINITY,
+                },
+        }),
+    });
+  } else if (props->alignment.present) {
     widget = FL_Align(&(FL_AlignProps){
         .alignment = props->alignment.value,
         .child = widget,
@@ -1764,9 +1758,9 @@ FL_Widget *FL_Container(const FL_ContainerProps *props) {
     });
   }
 
-  if (props->constraints.present) {
+  if (constraints.present) {
     widget = FL_ConstrainedBox(&(FL_ConstrainedBoxProps){
-        .constraints = props->constraints.value,
+        .constraints = constraints.value,
         .child = widget,
     });
   }
@@ -1777,6 +1771,8 @@ FL_Widget *FL_Container(const FL_ContainerProps *props) {
         .child = widget,
     });
   }
+
+  FL_ASSERT(widget);
 
   return widget;
 }

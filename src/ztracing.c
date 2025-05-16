@@ -626,7 +626,7 @@ typedef enum ButtonType {
 //   return pressed;
 // }
 
-static FL_Widget *global_menu_bar(ZState *state) {
+static FL_Widget *UI_GlobalMenuBar(ZState *state) {
   Str8 name = {0};
   if (state->loader) {
     name = state->loader->file->name;
@@ -657,7 +657,7 @@ static FL_Widget *global_menu_bar(ZState *state) {
   });
 }
 
-static FL_Widget *welcome_screen(void) {
+static FL_Widget *UI_WelcomeScreen(void) {
   Str8 logo = FL_STR_C(
       // clang-format off
       " ________  _________  _______          _        ______  _____  ____  _____   ______\n"
@@ -687,7 +687,7 @@ static FL_Widget *welcome_screen(void) {
   });
 }
 
-static FL_Widget *loading_screen(ZState *state) {
+static FL_Widget *UI_LoadingScreen(ZState *state) {
   ZFileLoader *loader = state->loader;
 
   FL_Widget *widget = FL_Center(&(FL_CenterProps){
@@ -707,11 +707,10 @@ static FL_Widget *loading_screen(ZState *state) {
   return widget;
 }
 
-#if 0
-typedef struct UITimelineState {
+typedef struct UI_TimelineProps {
   i64 begin_time_ns;
   i64 end_time_ns;
-} UITimelineState;
+} UI_TimelineProps;
 
 static i64 timeline_calc_block_duration(i64 duration, f32 width,
                                         f32 target_block_width) {
@@ -756,7 +755,7 @@ static Str8 timeline_format_time(Arena *arena, i64 time, i64 duration) {
   }
 
   Str8 buf = arena_push_str8f(arena, "%.1lf%s", t, TIME_UNITS[time_unit_index]);
-  u8 *period = buf.ptr + buf.len - 1;
+  char *period = buf.ptr + buf.len - 1;
   while (*period != '.') {
     period--;
   }
@@ -767,22 +766,23 @@ static Str8 timeline_format_time(Arena *arena, i64 time, i64 duration) {
   return buf;
 }
 
-#define PROFILE_ITEM_HEIGHT 20
+#define UI_ProfileItemHeight 20
 
-static void ui_timeline_layout(UIWidget *widget, UIBoxConstraints constraints) {
-  widget->size = ui_box_constraints_constrain(
-      constraints, vec2(F32_INFINITY, PROFILE_ITEM_HEIGHT));
+static void UI_Timeline_Layout(FL_Widget *widget,
+                               FL_BoxConstraints constraints) {
+  widget->size = FL_BoxConstraints_Constrain(
+      constraints, (Vec2){F32_INFINITY, UI_ProfileItemHeight});
 }
 
-static void ui_timeline_paint(UIWidget *widget, UIPaintingContext *context,
+static void UI_Timeline_Paint(FL_Widget *widget, FL_PaintingContext *context,
                               Vec2 offset) {
   (void)context;
 
-  UITimelineState *state = ui_widget_get_state(widget, UITimelineState);
-  i64 begin = state->begin_time_ns;
-  i64 end = state->end_time_ns;
+  UI_TimelineProps *props = FL_Widget_GetProps(widget, UI_TimelineProps);
+  i64 begin = props->begin_time_ns;
+  i64 end = props->end_time_ns;
 
-  FLColor color = ui_color(0, 0, 0, 1);
+  FL_Color color = {0, 0, 0, 1};
 
   Vec2 size = widget->size;
   f32 font_size = DefaultTextStyle().value.font_size.value;
@@ -824,37 +824,32 @@ static void ui_timeline_paint(UIWidget *widget, UIPaintingContext *context,
   }
 }
 
-static UIWidgetClass ui_timeline_class = {
+static FL_WidgetClass UI_TimelineClass = {
     .name = "Timeline",
-    .state_size = sizeof(UITimelineState),
-    .layout = ui_timeline_layout,
-    .paint = ui_timeline_paint,
+    .props_size = FL_SIZE_OF(UI_TimelineProps),
+    .layout = UI_Timeline_Layout,
+    .paint = UI_Timeline_Paint,
 };
 
-static void ui_timeline(i64 begin_time_ns, i64 end_time_ns) {
-  UIWidget *widget = ui_widget_begin(&ui_timeline_class, ui_key_zero());
-  UITimelineState *state = ui_widget_get_state(widget, UITimelineState);
-  state->begin_time_ns = begin_time_ns;
-  state->end_time_ns = end_time_ns;
-  ui_widget_end(&ui_timeline_class);
+static FL_Widget *UI_Timeline(const UI_TimelineProps *props) {
+  return FL_Widget_Create(&UI_TimelineClass, FL_Key_Zero(), props);
 }
 
-static void ui_profile_item_layout(UIWidget *widget,
-                                   UIBoxConstraints constraints) {
-  widget->size = ui_box_constraints_constrain(
-      constraints, vec2(F32_INFINITY, PROFILE_ITEM_HEIGHT));
+static void UI_ProfileItem_Layout(FL_Widget *widget,
+                                  FL_BoxConstraints constraints) {
+  widget->size = FL_BoxConstraints_Constrain(
+      constraints, vec2(F32_INFINITY, UI_ProfileItemHeight));
 }
 
-typedef struct UIProfileCounterState {
-  UIKey key;
+typedef struct UI_ProfileCounterProps {
   ZProfileItemCounter *counter;
   i64 begin_time_ns;
   i64 end_time_ns;
-} UIProfileCounterState;
+} UI_ProfileCounterProps;
 
-static usize ui_profile_counter_samples_lower_bound(ZProfileSample *samples,
-                                                    usize begin, usize end,
-                                                    i64 time) {
+static usize UI_ProfileCounter_FindSamplesLowerBound(ZProfileSample *samples,
+                                                     usize begin, usize end,
+                                                     i64 time) {
   usize low = begin;
   usize high = end;
 
@@ -871,10 +866,12 @@ static usize ui_profile_counter_samples_lower_bound(ZProfileSample *samples,
   return low;
 }
 
-static void ui_profile_counter_paint_sample(
-    Vec2 size, Vec2 offset, i64 bin_begin, i64 bin_duration, f32 bin_width,
-    f32o *prev_x, f32o *prev_h, f32 d, ZProfileItemCounter *counter,
-    ZProfileSeries *series, ZProfileSample *sample) {
+static void UI_ProfileCounter_PaintSample(Vec2 size, Vec2 offset, i64 bin_begin,
+                                          i64 bin_duration, f32 bin_width,
+                                          f32o *prev_x, f32o *prev_h, f32 d,
+                                          ZProfileItemCounter *counter,
+                                          ZProfileSeries *series,
+                                          ZProfileSample *sample) {
   f32 bottom = offset.y + size.y;
   i64 sample_bin_begin = sample->time / bin_duration;
   f32 x = offset.x + (sample_bin_begin - bin_begin) * bin_width;
@@ -889,37 +886,38 @@ static void ui_profile_counter_paint_sample(
     fill_rect(min, max, COLORS[series->color_index]);
     if (height != ph) {
       fill_rect(vec2(max.x - 1, top), vec2(max.x, bottom - height),
-                ui_color(0, 0, 0, 0.5f));
+                (FL_Color){0, 0, 0, 0.5f});
     }
-    fill_rect(vec2(min.x, top), vec2(max.x, top + 1), ui_color(0, 0, 0, 0.5f));
+    fill_rect(vec2(min.x, top), vec2(max.x, top + 1),
+              (FL_Color){0, 0, 0, 0.5f});
   } else {
     fill_rect(vec2(x - 1, bottom - height), vec2(x, bottom),
-              ui_color(0, 0, 0, 0.5f));
+              (FL_Color){0, 0, 0, 0.5f});
   }
   *prev_x = f32_some(x);
   *prev_h = f32_some(height);
 }
 
-static void ui_profile_counter_paint(UIWidget *widget,
-                                     UIPaintingContext *context, Vec2 offset) {
+static void UI_ProfileCounter_Paint(FL_Widget *widget,
+                                    FL_PaintingContext *context, Vec2 offset) {
   (void)context;
 
-  UIProfileCounterState *state =
-      ui_widget_get_state(widget, UIProfileCounterState);
+  UI_ProfileCounterProps *props =
+      FL_Widget_GetProps(widget, UI_ProfileCounterProps);
 
-  ZProfileItemCounter *counter = state->counter;
+  ZProfileItemCounter *counter = props->counter;
   f64 d = (counter->max_value - counter->min_value);
   f32 point_per_ns =
-      (f32)widget->size.x / (f32)(state->end_time_ns - state->begin_time_ns);
+      (f32)widget->size.x / (f32)(props->end_time_ns - props->begin_time_ns);
 
   f32 bin_width = 2.0f;
   f32 ns_per_point = 1.0f / point_per_ns;
   i64 bin_duration = f32_round(ns_per_point * bin_width);
-  i64 bin_begin = state->begin_time_ns / bin_duration;
-  i64 bin_end = state->end_time_ns / bin_duration + 1;
+  i64 bin_begin = props->begin_time_ns / bin_duration;
+  i64 bin_end = props->end_time_ns / bin_duration + 1;
   Vec2 sample_offset =
       vec2(offset.x -
-               (state->begin_time_ns - bin_begin * bin_duration) * point_per_ns,
+               (props->begin_time_ns - bin_begin * bin_duration) * point_per_ns,
            f32_round(offset.y));
 
   for (usize series_index = 0; series_index < counter->series_count;
@@ -931,44 +929,44 @@ static void ui_profile_counter_paint(UIWidget *widget,
 
     usize prev_sample_index = 0;
     {
-      usize first_sample_index = ui_profile_counter_samples_lower_bound(
+      usize first_sample_index = UI_ProfileCounter_FindSamplesLowerBound(
           series->samples, 0, series->sample_count, bin_begin * bin_duration);
       if (first_sample_index > 0) {
         usize sample_index = first_sample_index - 1;
         prev_sample_index = sample_index;
         ZProfileSample *sample = series->samples + sample_index;
-        ui_profile_counter_paint_sample(widget->size, sample_offset, bin_begin,
-                                        bin_duration, bin_width, &prev_x,
-                                        &prev_h, d, counter, series, sample);
+        UI_ProfileCounter_PaintSample(widget->size, sample_offset, bin_begin,
+                                      bin_duration, bin_width, &prev_x, &prev_h,
+                                      d, counter, series, sample);
       }
     }
 
     for (i64 bin_index = bin_begin; bin_index < bin_end; ++bin_index) {
       i64 bin_begin_time_ns = bin_index * bin_duration;
       i64 bin_end_time_ns = bin_begin_time_ns + bin_duration;
-      usize sample_index = ui_profile_counter_samples_lower_bound(
+      usize sample_index = UI_ProfileCounter_FindSamplesLowerBound(
           series->samples, prev_sample_index, series->sample_count,
           bin_begin_time_ns);
       if (sample_index < series->sample_count) {
         prev_sample_index = sample_index;
         ZProfileSample *sample = series->samples + sample_index;
         if (sample->time < bin_end_time_ns) {
-          ui_profile_counter_paint_sample(
-              widget->size, sample_offset, bin_begin, bin_duration, bin_width,
-              &prev_x, &prev_h, d, counter, series, sample);
+          UI_ProfileCounter_PaintSample(widget->size, sample_offset, bin_begin,
+                                        bin_duration, bin_width, &prev_x,
+                                        &prev_h, d, counter, series, sample);
         }
       }
     }
 
     {
-      usize last_sample_index = ui_profile_counter_samples_lower_bound(
+      usize last_sample_index = UI_ProfileCounter_FindSamplesLowerBound(
           series->samples, 0, series->sample_count, bin_end * bin_duration);
       if (last_sample_index < series->sample_count) {
         usize sample_index = last_sample_index;
         ZProfileSample *sample = series->samples + sample_index;
-        ui_profile_counter_paint_sample(widget->size, sample_offset, bin_begin,
-                                        bin_duration, bin_width, &prev_x,
-                                        &prev_h, d, counter, series, sample);
+        UI_ProfileCounter_PaintSample(widget->size, sample_offset, bin_begin,
+                                      bin_duration, bin_width, &prev_x, &prev_h,
+                                      d, counter, series, sample);
       }
     }
 
@@ -977,39 +975,32 @@ static void ui_profile_counter_paint(UIWidget *widget,
       f32 x = prev_x.value;
       f32 height = prev_h.value;
       fill_rect(vec2(x, bottom - height), vec2(x + 1, bottom),
-                ui_color(0, 0, 0, 0.5f));
+                (FL_Color){0, 0, 0, 0.5f});
     }
   }
 }
 
-static UIWidgetClass ui_profile_counter_class = {
+static FL_WidgetClass UI_ProfileCounterClass = {
     .name = "ProfileCounter",
-    .state_size = sizeof(UIProfileCounterState),
-    .layout = ui_profile_item_layout,
-    .paint = ui_profile_counter_paint,
+    .props_size = FL_SIZE_OF(UI_ProfileCounterProps),
+    .layout = UI_ProfileItem_Layout,
+    .paint = UI_ProfileCounter_Paint,
 };
 
-static void ui_profile_counter(ZProfileItemCounter *counter, i64 begin_time_ns,
-                               i64 end_time_ns) {
-  UIWidget *widget = ui_widget_begin(&ui_profile_counter_class, ui_key_zero());
-  UIProfileCounterState *state =
-      ui_widget_get_state(widget, UIProfileCounterState);
-  state->counter = counter;
-  state->begin_time_ns = begin_time_ns;
-  state->end_time_ns = end_time_ns;
-  ui_widget_end(&ui_profile_counter_class);
+static FL_Widget *UI_ProfileCounter(const UI_ProfileCounterProps *props) {
+  return FL_Widget_Create(&UI_ProfileCounterClass, FL_Key_Zero(), props);
 }
 
-typedef struct UIProfileTrackState {
+typedef struct UI_ProfileTrackProps {
   ZProfileItemTrack *track;
   i64 begin_time_ns;
   i64 end_time_ns;
-} UIProfileTrackState;
+} UI_ProfileTrackProps;
 
 // Find the first span with in range [begin, end) whose end_time_ns > time.
-static usize ui_profile_track_spans_upper_bound(ZProfileSpan *spans,
-                                                usize begin, usize end,
-                                                i64 time) {
+static usize UI_ProfileTrack_FindSpansUpperBound(ZProfileSpan *spans,
+                                                 usize begin, usize end,
+                                                 i64 time) {
   usize low = begin;
   usize high = end;
 
@@ -1026,28 +1017,29 @@ static usize ui_profile_track_spans_upper_bound(ZProfileSpan *spans,
   return low;
 }
 
-static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
-                                   Vec2 offset) {
+static void UI_ProfileTrack_Paint(FL_Widget *widget,
+                                  FL_PaintingContext *context, Vec2 offset) {
   (void)context;
 
-  UIProfileTrackState *state = ui_widget_get_state(widget, UIProfileTrackState);
+  UI_ProfileTrackProps *props =
+      FL_Widget_GetProps(widget, UI_ProfileTrackProps);
 
   f32 point_per_ns =
-      (f32)widget->size.x / (f32)(state->end_time_ns - state->begin_time_ns);
+      (f32)widget->size.x / (f32)(props->end_time_ns - props->begin_time_ns);
 
   f32 bin_width = 4.0f;
   f32 ns_per_point = 1.0f / point_per_ns;
   i64 bin_duration = f32_round(ns_per_point * bin_width);
-  i64 bin_begin = state->begin_time_ns / bin_duration - 1;
-  i64 bin_end = state->end_time_ns / bin_duration + 1;
-  f32 offset_x = offset.x - (state->begin_time_ns - bin_begin * bin_duration) *
+  i64 bin_begin = props->begin_time_ns / bin_duration - 1;
+  i64 bin_end = props->end_time_ns / bin_duration + 1;
+  f32 offset_x = offset.x - (props->begin_time_ns - bin_begin * bin_duration) *
                                 point_per_ns;
 
-  ZProfileItemTrack *track = state->track;
+  ZProfileItemTrack *track = props->track;
   usize last_span_index = track->span_count;
   for (i64 bin_index = bin_end; bin_index >= bin_begin; --bin_index) {
     i64 bin_begin_time_ns = bin_index * bin_duration;
-    usize span_index = ui_profile_track_spans_upper_bound(
+    usize span_index = UI_ProfileTrack_FindSpansUpperBound(
         track->spans, 0, last_span_index, bin_begin_time_ns);
     if (span_index < last_span_index) {
       last_span_index = span_index;
@@ -1068,14 +1060,14 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
         f32 width = max.x - min.x;
         f32 height = max.y - min.y;
         fill_rect(min, max, COLORS[span->color_index]);
-        stroke_rect(min, max, ui_color(0, 0, 0, 0.5), 1);
+        stroke_rect(min, max, (FL_Color){0, 0, 0, 0.5}, 1);
 
-        UITextStyle text_style = DefaultTextStyle().value;
+        FL_TextStyle text_style = DefaultTextStyle().value;
         f32 font_size = text_style.font_size.value;
-        FLColor text_color = text_style.color.value;
+        FL_Color text_color = text_style.color.value;
         // index-0 color is dark color, use white text color.
         if (span->color_index == 0) {
-          text_color = ui_color(1, 1, 1, 1);
+          text_color = (FL_Color){1, 1, 1, 1};
         }
 
         f32 text_padding_x = 8;
@@ -1102,186 +1094,177 @@ static void ui_profile_track_paint(UIWidget *widget, UIPaintingContext *context,
   }
 }
 
-static void ui_profile_header(ZProfileItemHeader *header) {
-  FLColor line_color = ui_color(0.5, 0.5, 0.5, 1);
+static FL_Widget *UI_ProfileHeader(ZProfileItemHeader *header) {
+  FL_Color line_color = {0.5, 0.5, 0.5, 1};
   f32 line_height = 2;
-  ui_row_begin(&(UIRowProps){0});
-  ui_container_begin(&(UIContainerProps){
-      .width = f32_some(16),
-      .height = f32_some(line_height),
-      .color = ui_color_some(line_color),
+  return FL_Row(&(FL_RowProps){
+      .children = FL_WidgetList_Make((FL_Widget *[]){
+          FL_Container(&(FL_ContainerProps){
+              .width = FL_f32_Some(16),
+              .height = FL_f32_Some(line_height),
+              .color = FL_Color_Some(line_color),
+          }),
+          FL_Padding(&(FL_PaddingProps){
+              .padding = FL_EdgeInsets_Symmetric(8, 0),
+              .child = FL_Text(&(FL_TextProps){
+                  .text = header->name,
+                  .style = DefaultTextStyle(),
+              }),
+          }),
+          FL_Expanded(&(FL_ExpandedProps){
+              .flex = 1,
+              .child = FL_Container(&(FL_ContainerProps){
+                  .height = FL_f32_Some(line_height),
+                  .color = FL_Color_Some(line_color),
+              }),
+          }),
+          0,
+      }),
   });
-  ui_container_end();
-  ui_padding_begin(&(UIPaddingProps){
-      .padding = ui_edge_insets_symmetric(8, 0),
-  });
-  ui_text(&(UITextProps){
-      .text = header->name,
-      .style = DefaultTextStyle(),
-  });
-  ui_padding_end();
-  ui_expanded_begin(&(UIExpandedProps){
-      .flex = 1,
-  });
-  ui_container_begin(&(UIContainerProps){
-      .height = f32_some(line_height),
-      .color = ui_color_some(line_color),
-  });
-  ui_container_end();
-  ui_expanded_end();
-  ui_row_end();
 }
 
-static UIWidgetClass ui_profile_track_class = {
+static FL_WidgetClass UI_ProfileTrackClass = {
     .name = "ProfileTrack",
-    .state_size = sizeof(UIProfileTrackState),
-    .layout = ui_profile_item_layout,
-    .paint = ui_profile_track_paint,
+    .props_size = FL_SIZE_OF(UI_ProfileTrackProps),
+    .layout = UI_ProfileItem_Layout,
+    .paint = UI_ProfileTrack_Paint,
 };
 
-static void ui_profile_track(ZProfileItemTrack *track, i64 begin_time_ns,
-                             i64 end_time_ns) {
-  UIWidget *widget = ui_widget_begin(&ui_profile_track_class, ui_key_zero());
-  UIProfileTrackState *state = ui_widget_get_state(widget, UIProfileTrackState);
-  state->track = track;
-  state->begin_time_ns = begin_time_ns;
-  state->end_time_ns = end_time_ns;
-  ui_widget_end(&ui_profile_track_class);
+static FL_Widget *UI_ProfileTrack(const UI_ProfileTrackProps *props) {
+  return FL_Widget_Create(&UI_ProfileTrackClass, FL_Key_Zero(), props);
 }
 
-static void ui_profile_screen(ZState *state) {
+static FL_Widget *UI_ProfileItem(void *ctx, FL_i32 item_index) {
+  ZProfileViewer *viewer = ctx;
+  ZProfileItem *item = viewer->items + item_index;
+  switch (item->type) {
+    case Z_PROFILE_ITEM_HEADER: {
+      return UI_ProfileHeader(&item->header);
+    } break;
+
+    case Z_PROFILE_ITEM_COUNTER: {
+      return UI_ProfileCounter(&(UI_ProfileCounterProps){
+          .counter = &item->counter,
+          .begin_time_ns = viewer->begin_time_ns,
+          .end_time_ns = viewer->end_time_ns,
+      });
+    } break;
+
+    case Z_PROFILE_ITEM_TRACK: {
+      return UI_ProfileTrack(&(UI_ProfileTrackProps){
+          .track = &item->track,
+          .begin_time_ns = viewer->begin_time_ns,
+          .end_time_ns = viewer->end_time_ns,
+      });
+    } break;
+
+    default: {
+      UNREACHABLE;
+    } break;
+  }
+}
+
+static FL_Widget *UI_ProfileScreen(ZState *state) {
   ZProfileViewer *viewer = state->viewer;
   if (!str8_is_empty(viewer->error)) {
-    ui_center_begin(&(UICenterProps){0});
-    ui_text(&(UITextProps){
-        .text = ui_push_str8f("error: %.*s", (int)viewer->error.len,
+    return FL_Center(&(FL_CenterProps){
+        .child = FL_Text(&(FL_TextProps){
+            .text = FL_Format("error: %.*s", (int)viewer->error.len,
                               viewer->error.ptr),
-        .style = DefaultTextStyle(),
+            .style = DefaultTextStyle(),
+        }),
     });
-    ui_center_end();
-    return;
   }
 
-  UIGestureDetailO drag_update;
-  ui_gesture_detector_begin(&(UIGestureDetectorProps){
-      .behaviour = UI_HIT_TEST_BEHAVIOUR_OPAQUE,
-      .drag_update = &drag_update,
+  // UIGestureDetailO drag_update;
+  // ui_gesture_detector_begin(&(UIGestureDetectorProps){
+  //     .behaviour = UI_HIT_TEST_BEHAVIOUR_OPAQUE,
+  //     .drag_update = &drag_update,
+  // });
+  // UIPointerEventO scroll;
+  // ui_pointer_listener_begin(&(UIPointerListenerProps){
+  //     .scroll = &scroll,
+  // });
+  // if (drag_update.present) {
+  //   UIWidget *widget = ui_widget_get_current();
+  //   Vec2 delta = drag_update.value.delta;
+  //   i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
+  //   f64 ns_per_point = (f64)duration / (f64)widget->size.x;
+  //   i64 offset = (i64)(ns_per_point * (f64)delta.x);
+  //   viewer->begin_time_ns -= offset;
+  //   viewer->end_time_ns = viewer->begin_time_ns + duration;
+  //
+  //   viewer->scroll -= delta.y;
+  // }
+  //
+  // if (scroll.present /* && ctrl */) {
+  //   UIWidget *widget = ui_widget_get_current();
+  //   f32 pivot = scroll.value.local_position.x / widget->size.x;
+  //   i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
+  //   i64 pivot_time = viewer->begin_time_ns + pivot * duration;
+  //
+  //   Vec2 delta = scroll.value.scroll_delta;
+  //   if (delta.y < 0) {
+  //     duration = i64_max(duration * 0.8f, 1000);
+  //   } else {
+  //     i64 max_duration = (viewer->max_time_ns - viewer->min_time_ns) * 2.0;
+  //     duration = i64_min(duration * 1.25f, max_duration);
+  //   }
+  //
+  //   viewer->begin_time_ns = pivot_time - pivot * duration;
+  //   viewer->end_time_ns = viewer->begin_time_ns + duration;
+  // }
+
+  return FL_Column(&(FL_ColumnProps){
+      .children = FL_WidgetList_Make((FL_Widget *[]){
+          UI_Timeline(&(UI_TimelineProps){
+              .begin_time_ns = viewer->begin_time_ns,
+              .end_time_ns = viewer->end_time_ns,
+          }),
+          FL_Expanded(&(FL_ExpandedProps){
+              .flex = 1,
+              .child = FL_ListView(&(FL_ListViewProps){
+                  .item_extent = UI_ProfileItemHeight,
+                  .item_count = viewer->item_count,
+                  .item_builder = {.build = UI_ProfileItem, .ptr = viewer},
+              }),
+          }),
+          0,
+      }),
   });
-  UIPointerEventO scroll;
-  ui_pointer_listener_begin(&(UIPointerListenerProps){
-      .scroll = &scroll,
-  });
-  if (drag_update.present) {
-    UIWidget *widget = ui_widget_get_current();
-    Vec2 delta = drag_update.value.delta;
-    i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
-    f64 ns_per_point = (f64)duration / (f64)widget->size.x;
-    i64 offset = (i64)(ns_per_point * (f64)delta.x);
-    viewer->begin_time_ns -= offset;
-    viewer->end_time_ns = viewer->begin_time_ns + duration;
-
-    viewer->scroll -= delta.y;
-  }
-
-  if (scroll.present /* && ctrl */) {
-    UIWidget *widget = ui_widget_get_current();
-    f32 pivot = scroll.value.local_position.x / widget->size.x;
-    i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
-    i64 pivot_time = viewer->begin_time_ns + pivot * duration;
-
-    Vec2 delta = scroll.value.scroll_delta;
-    if (delta.y < 0) {
-      duration = i64_max(duration * 0.8f, 1000);
-    } else {
-      i64 max_duration = (viewer->max_time_ns - viewer->min_time_ns) * 2.0;
-      duration = i64_min(duration * 1.25f, max_duration);
-    }
-
-    viewer->begin_time_ns = pivot_time - pivot * duration;
-    viewer->end_time_ns = viewer->begin_time_ns + duration;
-  }
-
-  ui_column_begin(&(UIColumnProps){0});
-  ui_timeline(viewer->begin_time_ns, viewer->end_time_ns);
-
-  ui_expanded_begin(&(UIExpandedProps){
-      .flex = 1,
-  });
-  UIListBuilder builder;
-  ui_list_view_begin(&(UIListViewProps){
-      .item_extent = PROFILE_ITEM_HEIGHT,
-      .item_count = viewer->item_count,
-      .builder = &builder,
-      .scroll = &viewer->scroll,
-  });
-  for (i32 item_index = builder.first_index; item_index <= builder.last_index;
-       ++item_index) {
-    ZProfileItem *item = viewer->items + item_index;
-    switch (item->type) {
-      case Z_PROFILE_ITEM_HEADER: {
-        ui_profile_header(&item->header);
-      } break;
-
-      case Z_PROFILE_ITEM_COUNTER: {
-        ui_profile_counter(&item->counter, viewer->begin_time_ns,
-                           viewer->end_time_ns);
-      } break;
-
-      case Z_PROFILE_ITEM_TRACK: {
-        ui_profile_track(&item->track, viewer->begin_time_ns,
-                         viewer->end_time_ns);
-      } break;
-
-      default: {
-        UNREACHABLE;
-      } break;
-    }
-  }
-  ui_list_view_end();
-  ui_expanded_end();
-
-  ui_column_end();
-
-  ui_pointer_listener_end();
-  ui_gesture_detector_end();
 }
 
-static void main_screen(ZState *state) {
+static FL_Widget *UI_MainScreen(ZState *state) {
   if (state->loader) {
-    ui_loading_screen(state);
+    return UI_LoadingScreen(state);
   } else if (state->viewer) {
-    ui_profile_screen(state);
+    return UI_ProfileScreen(state);
   } else {
-    ui_welcome_screen();
+    return UI_WelcomeScreen();
   }
 }
 
-static void build_ui(ZState *state) {
-  ui_colored_box_begin(&(FLColoredBoxProps){
-      .color = ui_color(0.94, 0.94, 0.94, 1.0),
+static FL_Widget *UI_Build(ZState *state) {
+  return FL_ColoredBox(&(FL_ColoredBoxProps){
+      .color = {0.94, 0.94, 0.94, 1.0},
+      .child = FL_Column(&(FL_ColumnProps){
+          .children = FL_WidgetList_Make((FL_Widget *[]){
+              UI_GlobalMenuBar(state),
+              // Simulate a bottom border.
+              // TODO: Impl DecorationBox.
+              FL_Container(&(FL_ContainerProps){
+                  .height = FL_f32_Some(1),
+                  .color = FL_Color_Some((FL_Color){0.6, 0.6, 0.6, 1.0}),
+              }),
+              FL_Expanded(&(FL_ExpandedProps){
+                  .flex = 1,
+                  .child = UI_MainScreen(state),
+              }),
+              0,
+          }),
+      }),
   });
-  ui_column_begin(&(UIColumnProps){0});
-  {
-    global_menu_bar(state);
-
-    // Simulate a bottom border.
-    // TODO: Impl DecorationBox.
-    ui_container_begin(&(UIContainerProps){
-        .height = f32_some(1),
-        .color = ui_color_some(ui_color(0.6, 0.6, 0.6, 1.0)),
-    });
-    ui_container_end();
-
-    ui_expanded_begin(&(UIExpandedProps){
-        .flex = 1,
-    });
-    main_screen(state);
-    ui_expanded_end();
-  }
-  ui_column_end();
-  ui_colored_box_end();
 }
-#endif
 
 static FL_Widget *build_test_ui(ZState *state) {
   return FL_ColoredBox(&(FL_ColoredBoxProps){
@@ -1334,7 +1317,7 @@ void z_update(Vec2 viewport_size) {
   clear_draw();
 
   FL_Run(&(FL_RunOptions){
-      .widget = build_test_ui(state),
+      .widget = UI_Build(state),
       .viewport =
           {
               .left = 0,
