@@ -112,8 +112,6 @@ static inline Str32 str32(u32 *ptr, usize len) {
   return s;
 }
 
-static inline Str32 str32_zero(void) { return str32(0, 0); }
-
-Str32 arena_push_str32_from_str8(Arena *arena, Str8 str);
+Str32 Arena_PushStr32FromStr8(FL_Arena *arena, Str8 str);
 
 #endif  // ZTRACING_SRC_STRING_H_

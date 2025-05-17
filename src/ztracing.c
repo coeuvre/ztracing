@@ -4,7 +4,6 @@
 #include <stdlib.h>
 
 #include "src/assert.h"
-#include "src/draw.h"
 #include "src/flick.h"
 #include "src/hash_trie.h"
 #include "src/json.h"
@@ -794,8 +793,11 @@ static void UI_Timeline_Paint(FL_Widget *widget, FL_PaintingContext *context,
   i64 large_block_duration = block_duration * 5;
 
   f32 line_thickness = 1.0f;
-  fill_rect(vec2(offset.x, offset.y + size.y - line_thickness),
-            vec2(offset.x + size.x, offset.y + size.y), color);
+  FL_Canvas_FillRect(
+      context->canvas,
+      (FL_Rect){offset.x, offset.x + size.x, offset.y + size.y - line_thickness,
+                offset.y + size.y},
+      color);
 
   f32 point_per_ns = (f32)size.x / (f32)(duration);
   f32 large_block_width = large_block_duration * point_per_ns;
@@ -810,14 +812,15 @@ static void UI_Timeline_Paint(FL_Widget *widget, FL_PaintingContext *context,
     f32 x = offset.x + (t - begin) * point_per_ns;
     bool is_large_block = t % large_block_duration == 0;
     f32 height = is_large_block ? size.y * 0.4f : size.y * 0.2f;
-    fill_rect(vec2(x, bottom - height), vec2(x + line_thickness, bottom),
-              color);
+    FL_Canvas_FillRect(
+        context->canvas,
+        (FL_Rect){x, x + line_thickness, bottom - height, bottom}, color);
 
     if (is_large_block) {
       Scratch scratch = scratch_begin(0, 0);
-      draw_text_str8(vec2(x + 4, bottom - 2 - font_size),
-                     timeline_format_time(scratch.arena, t, duration),
-                     font_size, 0, large_block_width - 4, color);
+      // draw_text_str8(vec2(x + 4, bottom - 2 - font_size),
+      //                timeline_format_time(scratch.arena, t, duration),
+      //                font_size, 0, large_block_width - 4, color);
       scratch_end(scratch);
     }
 
@@ -867,7 +870,8 @@ static usize UI_ProfileCounter_FindSamplesLowerBound(ZProfileSample *samples,
   return low;
 }
 
-static void UI_ProfileCounter_PaintSample(Vec2 size, Vec2 offset, i64 bin_begin,
+static void UI_ProfileCounter_PaintSample(FL_PaintingContext *context,
+                                          Vec2 size, Vec2 offset, i64 bin_begin,
                                           i64 bin_duration, f32 bin_width,
                                           f32o *prev_x, f32o *prev_h, f32 d,
                                           ZProfileItemCounter *counter,
@@ -881,19 +885,24 @@ static void UI_ProfileCounter_PaintSample(Vec2 size, Vec2 offset, i64 bin_begin,
     f32 px = prev_x->value;
     f32 ph = prev_h->value;
     f32 top = bottom - ph;
+    f32 left = px;
     f32 width = x - px;
-    Vec2 min = vec2(px, top);
-    Vec2 max = vec2(px + width, bottom);
-    fill_rect(min, max, COLORS[series->color_index]);
+    f32 right = px + width;
+    // Vec2 min = vec2(px, top);
+    // Vec2 max = vec2(px + width, bottom);
+    FL_Canvas_FillRect(context->canvas, (FL_Rect){left, right, top, bottom},
+                       COLORS[series->color_index]);
     if (height != ph) {
-      fill_rect(vec2(max.x - 1, top), vec2(max.x, bottom - height),
-                (FL_Color){0, 0, 0, 0.5f});
+      FL_Canvas_FillRect(context->canvas,
+                         (FL_Rect){right - 1, right, top, bottom - height},
+                         (FL_Color){0, 0, 0, 0.5f});
     }
-    fill_rect(vec2(min.x, top), vec2(max.x, top + 1),
-              (FL_Color){0, 0, 0, 0.5f});
+    FL_Canvas_FillRect(context->canvas, (FL_Rect){left, right, top, top + 1},
+                       (FL_Color){0, 0, 0, 0.5f});
   } else {
-    fill_rect(vec2(x - 1, bottom - height), vec2(x, bottom),
-              (FL_Color){0, 0, 0, 0.5f});
+    FL_Canvas_FillRect(context->canvas,
+                       (FL_Rect){x - 1, x, bottom - height, bottom},
+                       (FL_Color){0, 0, 0, 0.5f});
   }
   *prev_x = f32_some(x);
   *prev_h = f32_some(height);
@@ -936,9 +945,9 @@ static void UI_ProfileCounter_Paint(FL_Widget *widget,
         usize sample_index = first_sample_index - 1;
         prev_sample_index = sample_index;
         ZProfileSample *sample = series->samples + sample_index;
-        UI_ProfileCounter_PaintSample(widget->size, sample_offset, bin_begin,
-                                      bin_duration, bin_width, &prev_x, &prev_h,
-                                      d, counter, series, sample);
+        UI_ProfileCounter_PaintSample(
+            context, widget->size, sample_offset, bin_begin, bin_duration,
+            bin_width, &prev_x, &prev_h, d, counter, series, sample);
       }
     }
 
@@ -952,9 +961,9 @@ static void UI_ProfileCounter_Paint(FL_Widget *widget,
         prev_sample_index = sample_index;
         ZProfileSample *sample = series->samples + sample_index;
         if (sample->time < bin_end_time_ns) {
-          UI_ProfileCounter_PaintSample(widget->size, sample_offset, bin_begin,
-                                        bin_duration, bin_width, &prev_x,
-                                        &prev_h, d, counter, series, sample);
+          UI_ProfileCounter_PaintSample(
+              context, widget->size, sample_offset, bin_begin, bin_duration,
+              bin_width, &prev_x, &prev_h, d, counter, series, sample);
         }
       }
     }
@@ -965,9 +974,9 @@ static void UI_ProfileCounter_Paint(FL_Widget *widget,
       if (last_sample_index < series->sample_count) {
         usize sample_index = last_sample_index;
         ZProfileSample *sample = series->samples + sample_index;
-        UI_ProfileCounter_PaintSample(widget->size, sample_offset, bin_begin,
-                                      bin_duration, bin_width, &prev_x, &prev_h,
-                                      d, counter, series, sample);
+        UI_ProfileCounter_PaintSample(
+            context, widget->size, sample_offset, bin_begin, bin_duration,
+            bin_width, &prev_x, &prev_h, d, counter, series, sample);
       }
     }
 
@@ -975,8 +984,9 @@ static void UI_ProfileCounter_Paint(FL_Widget *widget,
       f32 bottom = offset.y + widget->size.y;
       f32 x = prev_x.value;
       f32 height = prev_h.value;
-      fill_rect(vec2(x, bottom - height), vec2(x + 1, bottom),
-                (FL_Color){0, 0, 0, 0.5f});
+      FL_Canvas_FillRect(context->canvas,
+                         (FL_Rect){x, x + 1, bottom - height, bottom},
+                         (FL_Color){0, 0, 0, 0.5f});
     }
   }
 }
@@ -1060,8 +1070,12 @@ static void UI_ProfileTrack_Paint(FL_Widget *widget,
         Vec2 max = vec2(right, offset.y + widget->size.y);
         f32 width = max.x - min.x;
         f32 height = max.y - min.y;
-        fill_rect(min, max, COLORS[span->color_index]);
-        stroke_rect(min, max, (FL_Color){0, 0, 0, 0.5}, 1);
+        FL_Canvas_FillRect(context->canvas,
+                           (FL_Rect){min.x, max.x, min.y, max.y},
+                           COLORS[span->color_index]);
+        FL_Canvas_StrokeRect(context->canvas,
+                             (FL_Rect){min.x, max.x, min.y, max.y},
+                             (FL_Color){0, 0, 0, 0.5}, 1);
 
         FL_TextStyle text_style = DefaultTextStyle().value;
         f32 font_size = text_style.font_size.value;
@@ -1073,21 +1087,27 @@ static void UI_ProfileTrack_Paint(FL_Widget *widget,
 
         f32 text_padding_x = 8;
         if (width - 2 * text_padding_x > 0) {
-          TextMetrics metrics =
-              layout_text_str8(span->name, font_size, 0, F32_INFINITY);
+          FL_TextMetrics metrics =
+              FL_Canvas_MeasureText(context->canvas, span->name, font_size);
 
           f32 text_left = f32_max(left + text_padding_x,
-                                  left + (width - metrics.size.x) / 2.0f);
-          f32 text_top = offset.y + (height - metrics.size.y) / 2.0f;
-          bool should_clip = metrics.size.x + 2 * text_padding_x > width;
+                                  left + (width - metrics.width) / 2.0f);
+          f32 text_top = offset.y +
+                         (height - (metrics.font_bounding_box_ascent +
+                                    metrics.font_bounding_box_descent)) /
+                             2.0f +
+                         metrics.font_bounding_box_ascent;
+          bool should_clip = metrics.width + 2 * text_padding_x > width;
           if (should_clip) {
-            push_clip_rect(vec2(min.x + text_padding_x, min.y),
-                           vec2(max.x - text_padding_x, max.y));
+            FL_Canvas_Save(context->canvas);
+            FL_Canvas_ClipRect(context->canvas,
+                               (FL_Rect){min.x + text_padding_x,
+                                         max.x - text_padding_x, min.y, max.y});
           }
-          draw_text_str8(vec2(text_left, text_top), span->name, font_size, 0,
-                         F32_INFINITY, text_color);
+          FL_Canvas_FillText(context->canvas, span->name, text_left, text_top,
+                             font_size, text_color);
           if (should_clip) {
-            pop_clip_rect();
+            FL_Canvas_Restore(context->canvas);
           }
         }
       }
@@ -1279,18 +1299,6 @@ static FL_Widget *UI_Build(ZState *state) {
   });
 }
 
-static FL_Widget *build_test_ui(ZState *state) {
-  return FL_ColoredBox(&(FL_ColoredBoxProps){
-      .color = (FL_Color){0.94f, 0.94f, 0.94f, 1.0f},
-      .child = FL_Center(&(FL_CenterProps){
-          .child = FL_Text(&(FL_TextProps){
-              .text = FL_Format("ztracing %.1fms", state->frame_time * 1000.0f),
-              .style = DefaultTextStyle(),
-          }),
-      }),
-  });
-}
-
 static ZState g_z_state;
 
 void z_load_file(ZFile *file) {
@@ -1327,8 +1335,6 @@ void z_update(Vec2 viewport_size) {
   state->dt = dt;
   state->frame_time = last_frame_time;
 
-  clear_draw();
-
   FL_Run(&(FL_RunOptions){
       .widget = UI_Build(state),
       .viewport =
@@ -1343,8 +1349,6 @@ void z_update(Vec2 viewport_size) {
 
   last_frame_time = (f32)((f64)(platform_get_perf_counter() - last_counter) /
                           (f64)platform_get_perf_freq());
-
-  present_draw();
 }
 
 void z_quit(void) {

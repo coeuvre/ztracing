@@ -1,8 +1,7 @@
 #include <stdlib.h>
 
 #include "src/assert.h"
-#include "src/draw.h"
-#include "src/draw_sdl3.h"
+#include "src/canvas_sdl3.h"
 #include "src/flick.h"
 #include "src/math.h"
 #include "src/memory.h"
@@ -16,15 +15,33 @@
 #include <SDL3/SDL_main.h>
 
 static SDL_Window *window;
+static SDL_Renderer *renderer;
 static b32 window_shown;
 static b32 window_coordinate_is_in_pixels;
+
+static f32 GetScreenContentScale(void) {
+  f32 result = SDL_GetWindowDisplayScale(window);
+  if (result == 0) {
+    result = 1;
+  }
+  return result;
+}
+
+Vec2 GetScreenSize(void) {
+  Vec2I screen_size_in_pixel = {0};
+  SDL_GetCurrentRenderOutputSize(renderer, &screen_size_in_pixel.x,
+                                 &screen_size_in_pixel.y);
+  Vec2 result = vec2_mul(vec2_from_vec2i(screen_size_in_pixel),
+                         1.0f / GetScreenContentScale());
+  return result;
+}
 
 static Vec2 get_window_size(void) {
   int w, h;
   SDL_GetWindowSizeInPixels(window, &w, &h);
   Vec2 size = vec2(w, h);
   if (window_coordinate_is_in_pixels) {
-    size = vec2_mul(size, 1.0f / get_screen_content_scale());
+    size = vec2_mul(size, 1.0f / GetScreenContentScale());
   }
   return size;
 }
@@ -108,13 +125,12 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
     SDL_SetWindowSize(window, width, height);
   }
 
-  SDL_Renderer *renderer = SDL_CreateRenderer(window, 0);
+  renderer = SDL_CreateRenderer(window, 0);
   ASSERTF(renderer, "Failed to create renderer: %s", SDL_GetError());
   SDL_SetRenderVSync(renderer, 1);
 
-  init_draw_sdl3(window, renderer);
   FL_Init(&(FL_InitOptions){
-      .canvas = get_canvas(),
+      .canvas = Canvas_Init(window, renderer),
   });
 
   return SDL_APP_CONTINUE;
@@ -131,7 +147,7 @@ static u32 g_sdl_button_to_ui_button[] = {
 static Vec2 mouse_pos_from_sdl(Vec2 pos) {
   Vec2 result = pos;
   if (window_coordinate_is_in_pixels) {
-    result = vec2_mul(result, 1.0f / get_screen_content_scale());
+    result = vec2_mul(result, 1.0f / GetScreenContentScale());
   }
   return result;
 }
@@ -189,7 +205,8 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
   (void)appstate;
 
   FL_OnMouseMove(get_global_window_relative_mouse_pos());
-  z_update(get_screen_size());
+  z_update(GetScreenSize());
+  SDL_RenderPresent(renderer);
 
   if (!window_shown) {
     SDL_ShowWindow(window);

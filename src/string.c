@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "src/assert.h"
+#include "src/flick.h"
 #include "src/memory.h"
 #include "src/types.h"
 
@@ -88,21 +89,21 @@ static UnicodeDecode utf_decode(u8 *ptr, usize len) {
   return result;
 }
 
-Str32 arena_push_str32_from_str8(Arena *arena, Str8 str) {
+Str32 Arena_PushStr32FromStr8(FL_Arena *arena, Str8 str) {
   if (str8_is_empty(str)) {
-    return str32_zero();
+    return (Str32){0};
   }
 
   usize cap = str.len;
-  u32 *ptr = arena_push_array_no_zero(arena, u32, cap);
+  u32 *ptr = FL_Arena_PushArray(arena, u32, cap);
   u32 len = 0;
-  u8 *end = str.ptr + str.len;
+  char *end = str.ptr + str.len;
   UnicodeDecode decode;
-  for (u8 *cursor = str.ptr; cursor < end; cursor += decode.increment) {
-    decode = utf_decode(cursor, end - cursor);
+  for (char *cursor = str.ptr; cursor < end; cursor += decode.increment) {
+    decode = utf_decode((u8 *)cursor, end - cursor);
     ptr[len++] = decode.codepoint;
   }
   DEBUG_ASSERT(len <= cap);
-  arena_pop(arena, (cap - len) * 4);
+  FL_Arena_Pop(arena, (cap - len) * 4);
   return (Str32){.ptr = ptr, .len = len};
 }

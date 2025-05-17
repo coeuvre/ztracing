@@ -29,14 +29,13 @@ pub fn build(b: *std.Build) !void {
     const test_filters = b.option([]const []const u8, "test-filter", "Skip tests that do not match any filter") orelse &[0][]const u8{};
 
     const srcs = [_][]const u8{
-        "src/draw.c",
         "src/json.c",
         "src/json_trace_profile.c",
         "src/memory.c",
         "src/string.c",
         "src/flick.c",
 
-        "src/draw_sdl3.c",
+        "src/canvas_sdl3.c",
         "src/platform_sdl3.c",
         "src/log_sdl3.c",
     };
