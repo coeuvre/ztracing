@@ -88,6 +88,7 @@ typedef struct ZProfileViewer {
   usize item_count;
   ZProfileItem *items;
   f32 scroll;
+  FL_Widget *list_view;
 } ZProfileViewer;
 
 static ZProfileViewer *z_profile_viewer_alloc(void) {
@@ -1134,16 +1135,38 @@ static FL_Widget *UI_ProfileTrack(const UI_ProfileTrackProps *props) {
   return FL_Widget_Create(&UI_ProfileTrackClass, FL_Key_Zero(), props);
 }
 
+static void UI_ProfileItem_OnScroll(void *ctx, FL_PointerEvent event) {
+  ZProfileViewer *viewer = ctx;
+  FL_Widget *widget = viewer->list_view;
+  if (FL_PointerEventResolver_Register(widget)) {
+    f32 pivot = event.local_position.x / widget->size.x;
+    i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
+    i64 pivot_time = viewer->begin_time_ns + pivot * duration;
+
+    Vec2 delta = event.delta;
+    if (delta.y < 0) {
+      duration = i64_max(duration * 0.8f, 1000);
+    } else {
+      i64 max_duration = (viewer->max_time_ns - viewer->min_time_ns) * 2.0;
+      duration = i64_min(duration * 1.25f, max_duration);
+    }
+
+    viewer->begin_time_ns = pivot_time - pivot * duration;
+    viewer->end_time_ns = viewer->begin_time_ns + duration;
+  }
+}
+
 static FL_Widget *UI_ProfileItem(void *ctx, FL_i32 item_index) {
   ZProfileViewer *viewer = ctx;
   ZProfileItem *item = viewer->items + item_index;
+  FL_Widget *child;
   switch (item->type) {
     case Z_PROFILE_ITEM_HEADER: {
-      return UI_ProfileHeader(&item->header);
+      child = UI_ProfileHeader(&item->header);
     } break;
 
     case Z_PROFILE_ITEM_COUNTER: {
-      return UI_ProfileCounter(&(UI_ProfileCounterProps){
+      child = UI_ProfileCounter(&(UI_ProfileCounterProps){
           .counter = &item->counter,
           .begin_time_ns = viewer->begin_time_ns,
           .end_time_ns = viewer->end_time_ns,
@@ -1151,7 +1174,7 @@ static FL_Widget *UI_ProfileItem(void *ctx, FL_i32 item_index) {
     } break;
 
     case Z_PROFILE_ITEM_TRACK: {
-      return UI_ProfileTrack(&(UI_ProfileTrackProps){
+      child = UI_ProfileTrack(&(UI_ProfileTrackProps){
           .track = &item->track,
           .begin_time_ns = viewer->begin_time_ns,
           .end_time_ns = viewer->end_time_ns,
@@ -1162,6 +1185,25 @@ static FL_Widget *UI_ProfileItem(void *ctx, FL_i32 item_index) {
       UNREACHABLE;
     } break;
   }
+
+  return FL_PointerListener(&(FL_PointerListenerProps){
+      .context = viewer,
+      .on_scroll = UI_ProfileItem_OnScroll,
+      .child = child,
+  });
+}
+
+static void UI_ProfileScreen_OnDragUpdate(void *ctx,
+                                          FL_GestureDetails details) {
+  ZProfileViewer *viewer = ctx;
+  FL_Widget *widget = viewer->list_view;
+  Vec2 delta = details.delta;
+  i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
+  f64 ns_per_point = (f64)duration / (f64)widget->size.x;
+  i64 offset = (i64)(ns_per_point * (f64)delta.x);
+  viewer->begin_time_ns -= offset;
+  viewer->end_time_ns = viewer->begin_time_ns + duration;
+  viewer->scroll -= delta.y;
 }
 
 static FL_Widget *UI_ProfileScreen(ZState *state) {
@@ -1176,44 +1218,12 @@ static FL_Widget *UI_ProfileScreen(ZState *state) {
     });
   }
 
-  // UIGestureDetailO drag_update;
-  // ui_gesture_detector_begin(&(UIGestureDetectorProps){
-  //     .behaviour = UI_HIT_TEST_BEHAVIOUR_OPAQUE,
-  //     .drag_update = &drag_update,
-  // });
-  // UIPointerEventO scroll;
-  // ui_pointer_listener_begin(&(UIPointerListenerProps){
-  //     .scroll = &scroll,
-  // });
-  // if (drag_update.present) {
-  //   UIWidget *widget = ui_widget_get_current();
-  //   Vec2 delta = drag_update.value.delta;
-  //   i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
-  //   f64 ns_per_point = (f64)duration / (f64)widget->size.x;
-  //   i64 offset = (i64)(ns_per_point * (f64)delta.x);
-  //   viewer->begin_time_ns -= offset;
-  //   viewer->end_time_ns = viewer->begin_time_ns + duration;
-  //
-  //   viewer->scroll -= delta.y;
-  // }
-  //
-  // if (scroll.present /* && ctrl */) {
-  //   UIWidget *widget = ui_widget_get_current();
-  //   f32 pivot = scroll.value.local_position.x / widget->size.x;
-  //   i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
-  //   i64 pivot_time = viewer->begin_time_ns + pivot * duration;
-  //
-  //   Vec2 delta = scroll.value.scroll_delta;
-  //   if (delta.y < 0) {
-  //     duration = i64_max(duration * 0.8f, 1000);
-  //   } else {
-  //     i64 max_duration = (viewer->max_time_ns - viewer->min_time_ns) * 2.0;
-  //     duration = i64_min(duration * 1.25f, max_duration);
-  //   }
-  //
-  //   viewer->begin_time_ns = pivot_time - pivot * duration;
-  //   viewer->end_time_ns = viewer->begin_time_ns + duration;
-  // }
+  viewer->list_view = FL_ListView(&(FL_ListViewProps){
+      .item_extent = UI_ProfileItemHeight,
+      .item_count = viewer->item_count,
+      .item_builder = {.build = UI_ProfileItem, .ptr = viewer},
+      .scroll = &viewer->scroll,
+  });
 
   return FL_Column(&(FL_ColumnProps){
       .children = FL_WidgetList_Make((FL_Widget *[]){
@@ -1223,11 +1233,14 @@ static FL_Widget *UI_ProfileScreen(ZState *state) {
           }),
           FL_Expanded(&(FL_ExpandedProps){
               .flex = 1,
-              .child = FL_ListView(&(FL_ListViewProps){
-                  .item_extent = UI_ProfileItemHeight,
-                  .item_count = viewer->item_count,
-                  .item_builder = {.build = UI_ProfileItem, .ptr = viewer},
+              .child = FL_Scrollbar(&(FL_ScrollbarProps){
+                  .child = FL_GestureDetector(&(FL_GestureDetectorProps){
+                      .context = viewer,
+                      .drag_update = UI_ProfileScreen_OnDragUpdate,
+                      .child = viewer->list_view,
+                  }),
               }),
+
           }),
           0,
       }),
