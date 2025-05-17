@@ -933,7 +933,7 @@ void FL_Widget_Paint_Default(FL_Widget *widget, FL_PaintingContext *context,
 
 void FL_Widget_SendNotification(FL_Widget *widget, FL_NotificationID id,
                                 void *data) {
-  for (FL_Widget *parent = widget->parent; parent; parent = parent->next) {
+  for (FL_Widget *parent = widget->parent; parent; parent = parent->parent) {
     if (parent->klass->on_notification &&
         parent->klass->on_notification(parent, id, data)) {
       break;
@@ -981,6 +981,20 @@ FL_f32 FL_Widget_AnimateFast(FL_Widget *widget, FL_f32 value, FL_f32 target) {
   return result;
 }
 
+FL_i64 FL_Widget_AnimateFasti64(FL_Widget *widget, FL_i64 value,
+                                FL_i64 target) {
+  Build *build = widget->build;
+  FL_i64 result;
+  FL_i64 diff = (target - value);
+  if (FL_Absi64(diff) < 1) {
+    result = target;
+  } else {
+    result = (FL_i64)FL_Roundf64(
+        (FL_f64)value + (FL_f64)diff * (FL_f64)build->fast_animation_rate);
+  }
+  return result;
+}
+
 FL_Arena *FL_Widget_GetArena(FL_Widget *widget) {
   Build *build = widget->build;
   return build->arena;
@@ -1005,38 +1019,24 @@ static void Build_Init(Build *build, State *state, FL_isize index,
 
 static void Build_Deinit(Build *build) { FL_Arena_Destroy(build->arena); }
 
-static void FL_Canvas_Save_Stub(void *ctx) { (void)ctx; }
+static void FL_Canvas_Save_Stub(void *ctx) {}
 
-static void FL_Canvas_Restore_Stub(void *ctx) { (void)ctx; }
+static void FL_Canvas_Restore_Stub(void *ctx) {}
 
-static void FL_Canvas_ClipRect_Stub(void *ctx, FL_Rect rect) {
-  (void)ctx;
-  (void)rect;
-}
+static void FL_Canvas_ClipRect_Stub(void *ctx, FL_Rect rect) {}
 
-static void FL_Canvas_FillRect_Stub(void *ctx, FL_Rect rect, FL_Color color) {
-  (void)ctx;
-  (void)rect;
-  (void)color;
-}
+static void FL_Canvas_FillRect_Stub(void *ctx, FL_Rect rect, FL_Color color) {}
+
+static void FL_Canvas_StrokeRect_Stub(void *ctx, FL_Rect rect, FL_Color color,
+                                      FL_f32 line_width) {}
 
 static FL_TextMetrics FL_Canvas_MeasureText_Stub(void *ctx, FL_Str text,
                                                  FL_f32 font_size) {
-  (void)ctx;
-  (void)text;
-  (void)font_size;
   return (FL_TextMetrics){0};
 }
 
 static void FL_Canvas_FillText_Stub(void *ctx, FL_Str text, FL_f32 x, FL_f32 y,
-                                    FL_f32 font_size, FL_Color color) {
-  (void)ctx;
-  (void)text;
-  (void)x;
-  (void)y;
-  (void)font_size;
-  (void)color;
-}
+                                    FL_f32 font_size, FL_Color color) {}
 
 static void MaybeSetCanvasStub(FL_Canvas *canvas) {
   if (!canvas->save) {
@@ -1050,6 +1050,9 @@ static void MaybeSetCanvasStub(FL_Canvas *canvas) {
   }
   if (!canvas->fill_rect) {
     canvas->fill_rect = FL_Canvas_FillRect_Stub;
+  }
+  if (!canvas->stroke_rect) {
+    canvas->stroke_rect = FL_Canvas_StrokeRect_Stub;
   }
   if (!canvas->measure_text) {
     canvas->measure_text = FL_Canvas_MeasureText_Stub;
@@ -3110,7 +3113,11 @@ static FL_NotificationID FL_ScrollNotification_ID;
 typedef struct FL_ScrollNotification {
   /** The number of viewports that this notification has bubbled through. */
   FL_i32 depth;
-  FL_f32 target_scroll_offset;
+  FL_f32 scroll_offset;
+  FL_f32 max_scroll_extent;
+
+  FL_Widget *scrollable;
+  void (*scroll_to)(FL_Widget *widget, FL_f32 to);
 } FL_ScrollNotification;
 
 typedef struct FL_ViewportState {
@@ -3416,27 +3423,23 @@ FL_Widget *FL_Viewport(const FL_ViewportProps *props) {
 }
 
 typedef struct FL_ScrollbarState {
-  bool hovering;
+  FL_ScrollNotification scroll;
+
   FL_f32 ratio;
   FL_f32 handle_padding_top;
   FL_f32 handle_extent;
+
+  bool hovering;
 } FL_ScrollbarState;
-
-typedef struct FL_ScrollbarProps {
-  FL_Key key;
-  FL_f32 max_scroll_extent;
-  FL_f32 scroll_offset;
-
-  void (*scroll)(FL_Widget *widget, FL_f32 delta);
-} FL_ScrollbarProps;
 
 static void FL_Scrollbar_ScrollTo(void *ctx, FL_GestureDetails details) {
   FL_Widget *widget = ctx;
-  FL_ScrollbarProps *props = FL_Widget_GetProps(widget, FL_ScrollbarProps);
   FL_ScrollbarState *state = FL_Widget_GetState(widget, FL_ScrollbarState);
 
   FL_f32 offset = details.local_position.y - state->handle_extent / 2.0f;
-  props->scroll(widget->parent, offset / state->ratio);
+  if (state->scroll.scroll_to) {
+    state->scroll.scroll_to(state->scroll.scrollable, offset / state->ratio);
+  }
 }
 
 static void FL_Scrollbar_OnEnterHandle(void *ctx, FL_PointerEvent event) {
@@ -3453,21 +3456,46 @@ static void FL_Scrollbar_OnExitHandle(void *ctx, FL_PointerEvent event) {
   state->hovering = false;
 }
 
+static bool FL_Scrollbar_OnNotification(FL_Widget *widget, FL_NotificationID id,
+                                        void *data) {
+  if (id == FL_ScrollNotification_ID) {
+    FL_ScrollNotification *scroll = data;
+    if (scroll->depth == 0) {
+      FL_ScrollbarState *state = FL_Widget_GetState(widget, FL_ScrollbarState);
+      state->scroll = *scroll;
+      return true;
+    }
+  }
+
+  return false;
+}
+
 static void FL_Scrollbar_Layout(FL_Widget *widget,
                                 FL_BoxConstraints constraints) {
   FL_ScrollbarProps *props = FL_Widget_GetProps(widget, FL_ScrollbarProps);
   FL_ScrollbarState *state = FL_Widget_GetState(widget, FL_ScrollbarState);
+  FL_Widget *child = props->child;
 
-  FL_Vec2 size = FL_BoxConstraints_GetBiggest(constraints);
-  widget->size = size;
+  if (!child) {
+    return;
+  }
 
-  state->ratio = size.y / props->max_scroll_extent;
+  FL_Widget_Mount(widget, child);
+
+  FL_f32 scrollbar_width = 10;
+  FL_Widget_Layout(child,
+                   FL_BoxConstraints_Deflate(constraints, scrollbar_width, 0));
+
+  widget->size = FL_Vec2_Add(child->size, (FL_Vec2){scrollbar_width, 0});
+  FL_Vec2 size = widget->size;
+
+  state->ratio = size.y / state->scroll.max_scroll_extent;
   state->handle_extent = FL_Max(4, state->ratio * size.y);
-  state->handle_padding_top = props->scroll_offset * state->ratio;
+  state->handle_padding_top = state->scroll.scroll_offset * state->ratio;
   FL_f32 handle_padding_bottom =
       size.y - state->handle_padding_top - state->handle_extent;
 
-  FL_Widget *child = FL_GestureDetector(&(FL_GestureDetectorProps){
+  FL_Widget *scrollbar = FL_GestureDetector(&(FL_GestureDetectorProps){
       .context = widget,
       .drag_start = FL_Scrollbar_ScrollTo,
       .drag_update = FL_Scrollbar_ScrollTo,
@@ -3489,9 +3517,9 @@ static void FL_Scrollbar_Layout(FL_Widget *widget,
       }),
   });
 
-  FL_Widget_Mount(widget, child);
-
-  FL_Widget_Layout(child, FL_BoxConstraints_Tight(size.x, size.y));
+  FL_Widget_Mount(widget, scrollbar);
+  FL_Widget_Layout(scrollbar, FL_BoxConstraints_Tight(scrollbar_width, size.y));
+  scrollbar->offset.x = child->size.x;
 }
 
 static FL_WidgetClass FL_ScrollbarClass = {
@@ -3499,6 +3527,7 @@ static FL_WidgetClass FL_ScrollbarClass = {
     .props_size = FL_SIZE_OF(FL_ScrollbarProps),
     .state_size = FL_SIZE_OF(FL_ScrollbarState),
     .layout = FL_Scrollbar_Layout,
+    .on_notification = FL_Scrollbar_OnNotification,
 };
 
 FL_Widget *FL_Scrollbar(const FL_ScrollbarProps *props) {
@@ -3513,13 +3542,13 @@ typedef struct FL_ScrollableState {
 
 static void FL_Scrollable_ScrollTo(FL_Widget *widget,
                                    FL_f32 target_scroll_offset) {
+  FL_ScrollableProps *props = FL_Widget_GetProps(widget, FL_ScrollableProps);
   FL_ScrollableState *state = FL_Widget_GetState(widget, FL_ScrollableState);
   state->target_scroll_offset =
       FL_Clamp(target_scroll_offset, 0, state->max_scroll_offset);
-  FL_ScrollNotification data = {
-      .target_scroll_offset = state->target_scroll_offset,
-  };
-  FL_Widget_SendNotification(widget, FL_ScrollNotification_ID, &data);
+  if (props->scroll) {
+    *props->scroll = state->target_scroll_offset;
+  }
 }
 
 static void FL_Scrollable_Layout(FL_Widget *widget,
@@ -3527,8 +3556,8 @@ static void FL_Scrollable_Layout(FL_Widget *widget,
   FL_ScrollableProps *props = FL_Widget_GetProps(widget, FL_ScrollableProps);
   FL_ScrollableState *state = FL_Widget_GetState(widget, FL_ScrollableState);
 
-  if (props->scroll.present) {
-    FL_Scrollable_ScrollTo(widget, props->scroll.value);
+  if (props->scroll) {
+    FL_Scrollable_ScrollTo(widget, *props->scroll);
   }
 
   state->scroll_offset = FL_Widget_AnimateFast(widget, state->scroll_offset,
@@ -3546,26 +3575,20 @@ static void FL_Scrollable_Layout(FL_Widget *widget,
   });
   FL_Widget_Mount(widget, viewport);
 
-  FL_f32 scrollbar_width = 10;
-  FL_Widget_Layout(viewport,
-                   FL_BoxConstraints_Deflate(constraints, scrollbar_width, 0));
+  FL_Widget_Layout(viewport, constraints);
+  widget->size = viewport->size;
+
   FL_ViewportState *viewport_state =
       FL_Widget_GetState(viewport, FL_ViewportState);
   state->max_scroll_offset = viewport_state->max_scroll_offset;
 
-  FL_Widget *scrollbar = FL_Scrollbar(&(FL_ScrollbarProps){
-      .max_scroll_extent = viewport_state->max_scroll_extent,
+  FL_ScrollNotification data = {
       .scroll_offset = state->scroll_offset,
-      .scroll = FL_Scrollable_ScrollTo,
-  });
-  FL_Widget_Mount(widget, scrollbar);
-
-  FL_Widget_Layout(scrollbar,
-                   FL_BoxConstraints_Tight(scrollbar_width, viewport->size.y));
-  scrollbar->offset.x = viewport->size.x;
-
-  widget->size =
-      (FL_Vec2){viewport->size.x + scrollbar_width, viewport->size.y};
+      .max_scroll_extent = viewport_state->max_scroll_extent,
+      .scrollable = widget,
+      .scroll_to = FL_Scrollable_ScrollTo,
+  };
+  FL_Widget_SendNotification(widget, FL_ScrollNotification_ID, &data);
 }
 
 static void FL_Scrollable_OnPointerEvent(FL_Widget *widget,

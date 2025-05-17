@@ -33,6 +33,8 @@
 
 typedef int32_t FL_i32;
 typedef uint32_t FL_u32;
+typedef int64_t FL_i64;
+typedef uint64_t FL_u64;
 typedef ptrdiff_t FL_isize;
 typedef size_t FL_usize;
 
@@ -129,6 +131,10 @@ static inline bool FL_Contains(FL_f32 val, FL_f32 begin, FL_f32 end) {
 }
 
 FL_OPTIONAL_TYPE(FL_f32o, FL_f32)
+
+static inline FL_i64 FL_Absi64(FL_i64 a) { return a >= 0 ? a : -a; }
+
+static inline FL_f64 FL_Roundf64(FL_f64 a) { return round(a); }
 
 typedef struct FL_Vec2 {
   FL_f32 x;
@@ -826,6 +832,9 @@ typedef struct FL_Canvas {
 
   void (*fill_rect)(void *ctx, FL_Rect rect, FL_Color color);
 
+  void (*stroke_rect)(void *ctx, FL_Rect rect, FL_Color color,
+                      FL_f32 line_width);
+
   FL_TextMetrics (*measure_text)(void *ctx, FL_Str text, FL_f32 font_size);
 
   void (*fill_text)(void *ctx, FL_Str text, FL_f32 x, FL_f32 y,
@@ -847,6 +856,11 @@ static inline void FL_Canvas_ClipRect(FL_Canvas *canvas, FL_Rect rect) {
 static inline void FL_Canvas_FillRect(FL_Canvas *canvas, FL_Rect rect,
                                       FL_Color color) {
   canvas->fill_rect(canvas->ctx, rect, color);
+}
+
+static inline void FL_Canvas_StrokeRect(FL_Canvas *canvas, FL_Rect rect,
+                                        FL_Color color, FL_f32 line_width) {
+  canvas->stroke_rect(canvas->ctx, rect, color, line_width);
 }
 
 static inline FL_TextMetrics FL_Canvas_MeasureText(FL_Canvas *canvas,
@@ -1154,6 +1168,8 @@ void FL_Widget_SendNotification(FL_Widget *widget, FL_NotificationID id,
 FL_f32 FL_Widget_GetDeltaTime(FL_Widget *widget);
 
 FL_f32 FL_Widget_AnimateFast(FL_Widget *widget, FL_f32 value, FL_f32 target);
+
+FL_i64 FL_Widget_AnimateFasti64(FL_Widget *widget, FL_i64 value, FL_i64 target);
 
 FL_Arena *FL_Widget_GetArena(FL_Widget *widget);
 
@@ -1702,8 +1718,8 @@ typedef struct FL_ScrollableProps {
   // FL_AxisDirection cross_axis_direction;
   // FL_f32 cache_extent;
 
-  // TODO: ScrollController
-  FL_f32o scroll;
+  /** The pointer must be valid longer than the widget. */
+  FL_f32 *scroll;
 
   // TODO: ViewportBuilder
   FL_WidgetList slivers;
@@ -1714,6 +1730,13 @@ typedef struct FL_ScrollableProps {
  * `FL_Viewport` through which the content is viewed.
  */
 FL_Widget *FL_Scrollable(const FL_ScrollableProps *props);
+
+typedef struct FL_ScrollbarProps {
+  FL_Key key;
+  FL_Widget *child;
+} FL_ScrollbarProps;
+
+FL_Widget *FL_Scrollbar(const FL_ScrollbarProps *props);
 
 typedef struct FL_ItemBuilder {
   void *ptr;
@@ -1738,7 +1761,8 @@ typedef struct FL_ListViewProps {
   FL_f32 item_extent;
   FL_i32 item_count;
   FL_ItemBuilder item_builder;
-  FL_f32o scroll;
+  /** The pointer must be valid longer than the widget. */
+  FL_f32 *scroll;
 } FL_ListViewProps;
 
 FL_Widget *FL_ListView(const FL_ListViewProps *props);
