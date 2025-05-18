@@ -355,7 +355,7 @@ FL_TextMetrics Canvas_MeasureText(void *ctx, FL_Str text, FL_f32 font_size) {
   stbtt_fontinfo *font = &canvas->font;
   PackedFont *packed_font = GetOrPackFont(canvas, font, font_size);
 
-  f32 scale = stbtt_ScaleForPixelHeight(font, font_size * content_scale);
+  f32 scale = stbtt_ScaleForPixelHeight(font, font_size);
   i32 ascent, descent, line_gap;
   stbtt_GetFontVMetrics(font, &ascent, &descent, &line_gap);
   f32 line_height = (ascent - descent) * scale;

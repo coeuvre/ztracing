@@ -661,19 +661,24 @@ static FL_Widget *UI_WelcomeScreen(void) {
                                     }));
   }
 
-  FL_WidgetList_Append(&children, FL_Padding(&(FL_PaddingProps){
-                                      .padding = FL_EdgeInsets_Symmetric(0, 10),
-                                  }));
-  FL_WidgetList_Append(
-      &children,
-      FL_Text(&(FL_TextProps){
-          .text = FL_STR_C("Drag & Drop a json trace profile to start."),
-          .style = DefaultTextStyle(),
-      }));
+  FL_Widget *logo_widget = FL_Column(&(FL_ColumnProps){
+      .cross_axis_alignment = FL_CrossAxisAlignment_Start,
+      .children = children,
+  });
 
   return FL_Column(&(FL_ColumnProps){
       .main_axis_alignment = FL_MainAxisAlignment_Center,
-      .children = children,
+      .children = FL_WidgetList_Make((FL_Widget *[]){
+          logo_widget,
+          FL_Padding(&(FL_PaddingProps){
+              .padding = FL_EdgeInsets_Symmetric(0, 10),
+          }),
+          FL_Text(&(FL_TextProps){
+              .text = STR_C("Drag & Drop a json trace profile to start."),
+              .style = DefaultTextStyle(),
+          }),
+          0,
+      }),
   });
 }
 
