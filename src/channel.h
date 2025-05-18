@@ -13,7 +13,7 @@ struct ChannelItem {
 
 typedef struct Channel {
   Arena arena;
-  PlatformMutex *mutex;
+  Platform_Mutex *mutex;
   Platform_Condition *condition;
   u32 cap;
   u32 len;

@@ -9,7 +9,7 @@
 Channel *Channel_Create(u32 cap, usize item_size) {
   ASSERT(cap > 0);
   Arena arena_ = {0};
-  PlatformMutex *mutex = Platform_Mutex_Create();
+  Platform_Mutex *mutex = Platform_Mutex_Create();
   Platform_Condition *condition = Platform_Condition_Create();
   Channel *channel = arena_push_struct_no_zero(&arena_, Channel);
   *channel = (Channel){

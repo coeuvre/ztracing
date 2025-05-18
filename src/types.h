@@ -39,7 +39,7 @@ static inline int CompareI64(i64 a, i64 b) {
   return (a == b) ? 0 : (a < b ? -1 : 1);
 }
 
-#define COUNT_OF(a) (sizeof(a) / sizeof((a)[0]))
+#define COUNT_OF(a) ((isize)(sizeof(a) / sizeof((a)[0])))
 
 static inline usize MaxI32(i32 a, i32 b) {
   usize result = MAX(a, b);
@@ -48,6 +48,11 @@ static inline usize MaxI32(i32 a, i32 b) {
 
 static inline usize MinUsize(usize a, usize b) {
   usize result = MIN(a, b);
+  return result;
+}
+
+static inline isize MinIsize(isize a, isize b) {
+  isize result = MIN(a, b);
   return result;
 }
 

@@ -277,14 +277,7 @@ static void FileLoader_BuildTrackWithThread(JsonTraceThread *thread,
   }
 }
 
-#ifdef OS_WINDOWS
-static int FileLoader_CompareThread(void *context, const void *a,
-                                    const void *b) {
-#else
-static int FileLoader_CompareThread(const void *a, const void *b,
-                                    void *context) {
-#endif
-  Arena *scratch = context;
+static int FileLoader_CompareThread(const void *a, const void *b) {
   JsonTraceThread *ta = *(JsonTraceThread *const *)a;
   JsonTraceThread *tb = *(JsonTraceThread *const *)b;
   if (ta->sort_index.present) {
@@ -297,9 +290,7 @@ static int FileLoader_CompareThread(const void *a, const void *b,
     return 1;
   }
 
-  int result = Str_Compare(Str_ToUppercase(ta->name, scratch),
-                           Str_ToUppercase(tb->name, scratch));
-  return result;
+  return Str_CompareIgnoringCase(ta->name, tb->name);
 }
 
 static void FileLoader_BuildTrackWithProcess(JsonTraceProcess *process,
@@ -313,8 +304,8 @@ static void FileLoader_BuildTrackWithProcess(JsonTraceProcess *process,
   while ((thread = HashTrie_Next(&thread_iter, JsonTraceThread))) {
     threads[thread_index++] = thread;
   }
-  qsort_s(threads, process->thread_count, sizeof(*threads),
-          FileLoader_CompareThread, &scratch);
+  qsort(threads, process->thread_count, sizeof(*threads),
+        FileLoader_CompareThread);
 
   for (thread_index = 0; thread_index < process->thread_count; ++thread_index) {
     FileLoader_BuildTrackWithThread(threads[thread_index], builder, arena,
@@ -366,19 +357,10 @@ static void FileLoader_CollectSeries(ProfileItem_Counter *c,
   }
 }
 
-#ifdef OS_WINDOWS
-static int FileLoader_CompareCounter(void *context, const void *a,
-                                     const void *b) {
-#else
-static int FileLoader_CompareCounter(const void *a, const void *b,
-                                     void *context) {
-#endif
-  Arena *scratch = context;
+static int FileLoader_CompareCounter(const void *a, const void *b) {
   JsonTraceCounter *const *ca = a;
   JsonTraceCounter *const *cb = b;
-  int result = Str_Compare(Str_ToUppercase((*ca)->name, scratch),
-                           Str_ToUppercase((*cb)->name, scratch));
-  return result;
+  return Str_CompareIgnoringCase((*ca)->name, (*cb)->name);
 }
 
 static void FileLoader_CollectCounters(ProfileItem *items, usize *item_index,
@@ -394,8 +376,8 @@ static void FileLoader_CollectCounters(ProfileItem *items, usize *item_index,
       sorted_counters[counter_index++] = counter;
     }
   }
-  qsort_s(sorted_counters, process->counter_count, sizeof(*sorted_counters),
-          FileLoader_CompareCounter, &scratch);
+  qsort(sorted_counters, process->counter_count, sizeof(*sorted_counters),
+        FileLoader_CompareCounter);
 
   for (usize counter_index = 0; counter_index < process->counter_count;
        ++counter_index) {
@@ -660,32 +642,38 @@ static FL_Widget *UI_GlobalMenuBar(App *app) {
 }
 
 static FL_Widget *UI_WelcomeScreen(void) {
-  Str logo = FL_STR_C(
+  Str logo[] = {
       // clang-format off
-      " ________  _________  _______          _        ______  _____  ____  _____   ______\n"
-      "|  __   _||  _   _  ||_   __ \\        / \\     .' ___  ||_   _||_   \\|_   _|.' ___  |\n"
-      "|_/  / /  |_/ | | \\_|  | |__) |      / _ \\   / .'   \\_|  | |    |   \\ | | / .'   \\_|\n"
-      "   .'.' _     | |      |  __ /      / ___ \\  | |         | |    | |\\ \\| | | |   ____\n"
-      " _/ /__/ |   _| |_    _| |  \\ \\_  _/ /   \\ \\_\\ `.___.'\\ _| |_  _| |_\\   |_\\ `.___]  |\n"
-      "|________|  |_____|  |____| |___||____| |____|`.____ .'|_____||_____|\\____|`._____.'"
+      STR_C(" ________  _________  _______          _        ______  _____  ____  _____   ______"),
+      STR_C("|  __   _||  _   _  ||_   __ \\        / \\     .' ___  ||_   _||_   \\|_   _|.' ___  |"),
+      STR_C("|_/  / /  |_/ | | \\_|  | |__) |      / _ \\   / .'   \\_|  | |    |   \\ | | / .'   \\_|"),
+      STR_C("   .'.' _     | |      |  __ /      / ___ \\  | |         | |    | |\\ \\| | | |   ____"),
+      STR_C(" _/ /__/ |   _| |_    _| |  \\ \\_  _/ /   \\ \\_\\ `.___.'\\ _| |_  _| |_\\   |_\\ `.___]  |"),
+      STR_C("|________|  |_____|  |____| |___||____| |____|`.____ .'|_____||_____|\\____|`._____.'"),
       // clang-format on
-  );
+  };
+
+  FL_WidgetList children = {0};
+  for (isize i = 0; i < COUNT_OF(logo); ++i) {
+    FL_WidgetList_Append(&children, FL_Text(&(FL_TextProps){
+                                        .text = logo[i],
+                                        .style = DefaultTextStyle(),
+                                    }));
+  }
+
+  FL_WidgetList_Append(&children, FL_Padding(&(FL_PaddingProps){
+                                      .padding = FL_EdgeInsets_Symmetric(0, 10),
+                                  }));
+  FL_WidgetList_Append(
+      &children,
+      FL_Text(&(FL_TextProps){
+          .text = FL_STR_C("Drag & Drop a json trace profile to start."),
+          .style = DefaultTextStyle(),
+      }));
+
   return FL_Column(&(FL_ColumnProps){
       .main_axis_alignment = FL_MainAxisAlignment_Center,
-      .children = FL_WidgetList_Make((FL_Widget *[]){
-          FL_Text(&(FL_TextProps){
-              .text = logo,
-              .style = DefaultTextStyle(),
-          }),
-          FL_Padding(&(FL_PaddingProps){
-              .padding = FL_EdgeInsets_Symmetric(0, 10),
-          }),
-          FL_Text(&(FL_TextProps){
-              .text = FL_STR_C("Drag & Drop a json trace profile to start."),
-              .style = DefaultTextStyle(),
-          }),
-          0,
-      }),
+      .children = children,
   });
 }
 

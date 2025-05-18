@@ -102,7 +102,7 @@ static void ParseJson(App *app, const char *path, Allocator allocator) {
 }
 
 typedef struct Platform_Allocator {
-  PlatformMutex *allocated_bytes_mutex;
+  Platform_Mutex *allocated_bytes_mutex;
   isize allocated_bytes;
 } Platform_Allocator;
 

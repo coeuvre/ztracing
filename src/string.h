@@ -40,9 +40,27 @@ static inline bool Str_IsEqual(Str a, Str b) {
 }
 
 static inline int Str_Compare(Str a, Str b) {
-  usize len = MinUsize(a.len, b.len);
-  for (usize i = 0; i < len; ++i) {
+  isize len = MinIsize(a.len, b.len);
+  for (isize i = 0; i < len; ++i) {
     int r = a.ptr[i] - b.ptr[i];
+    if (r != 0) {
+      return r;
+    }
+  }
+  return a.len < b.len ? -1 : 1;
+}
+
+static inline u8 ToUppercase(u8 c) {
+  if (c >= 'a' && c <= 'z') {
+    return 'A' + c - 'a';
+  }
+  return c;
+}
+
+static inline int Str_CompareIgnoringCase(Str a, Str b) {
+  isize len = MinIsize(a.len, b.len);
+  for (isize i = 0; i < len; ++i) {
+    int r = ToUppercase(a.ptr[i]) - ToUppercase(b.ptr[i]);
     if (r != 0) {
       return r;
     }
@@ -61,13 +79,6 @@ static inline Str Str_Dup(FL_Arena *arena, Str s) {
     return Str_Zero();
   }
   return (Str){(char *)Arena_Dup(arena, s.ptr, s.len, 1), s.len};
-}
-
-static inline u8 ToUppercase(u8 c) {
-  if (c >= 'a' && c <= 'z') {
-    return 'A' + c - 'a';
-  }
-  return c;
 }
 
 static inline Str Arena_PushStr(Arena *arena, isize len) {

@@ -6,16 +6,16 @@
 u64 Platform_GetPerformanceCounter(void);
 u64 Platform_GetPerformanceFrequency(void);
 
-typedef struct PlatformMutex PlatformMutex;
-PlatformMutex *Platform_Mutex_Create(void);
-void Platform_Mutex_Lock(PlatformMutex *mutex);
-void Platform_Mutex_Unlock(PlatformMutex *mutex);
-void Platform_Mutex_Destroy(PlatformMutex *mutex);
+typedef struct Platform_Mutex Platform_Mutex;
+Platform_Mutex *Platform_Mutex_Create(void);
+void Platform_Mutex_Lock(Platform_Mutex *mutex);
+void Platform_Mutex_Unlock(Platform_Mutex *mutex);
+void Platform_Mutex_Destroy(Platform_Mutex *mutex);
 
 typedef struct Platform_Condition Platform_Condition;
 Platform_Condition *Platform_Condition_Create(void);
 void Platform_Condition_Wait(Platform_Condition *condition,
-                             PlatformMutex *mutex);
+                             Platform_Mutex *mutex);
 void Platform_Condition_Signal(Platform_Condition *condition);
 void Platform_Condition_Broadcast(Platform_Condition *condition);
 void Platform_Condition_Destroy(Platform_Condition *condition);

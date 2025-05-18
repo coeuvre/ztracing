@@ -941,8 +941,7 @@ void FL_Widget_SendNotification(FL_Widget *widget, FL_NotificationID id,
   }
 }
 
-static inline void FL_WidgetList_Append(FL_WidgetList *list,
-                                        FL_Widget *widget) {
+void FL_WidgetList_Append(FL_WidgetList *list, FL_Widget *widget) {
   Build *build = widget->build;
   FL_WidgetListEntry *entry =
       FL_Arena_PushStruct(build->arena, FL_WidgetListEntry);

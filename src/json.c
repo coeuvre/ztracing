@@ -10,7 +10,7 @@
 #include "src/string.h"
 #include "src/types.h"
 
-static inline f64 ParseSign(Str buf, usize *cursor) {
+static inline f64 ParseSign(Str buf, isize *cursor) {
   f64 sign = 1.0;
   if (*cursor < buf.len) {
     u8 ch = buf.ptr[*cursor];
@@ -24,7 +24,7 @@ static inline f64 ParseSign(Str buf, usize *cursor) {
   return sign;
 }
 
-static f64 ParseNumber(Str buf, usize *cursor) {
+static f64 ParseNumber(Str buf, isize *cursor) {
   f64 result = 0;
   while (*cursor < buf.len) {
     u8 val = buf.ptr[*cursor] - '0';
@@ -43,7 +43,7 @@ f64 JsonValue_ToF64(JsonValue *value) {
   if (Str_IsEmpty(buf)) {
     return 0;
   }
-  usize cursor = 0;
+  isize cursor = 0;
   f64 sign = ParseSign(buf, &cursor);
   f64 number = ParseNumber(buf, &cursor);
 

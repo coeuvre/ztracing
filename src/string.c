@@ -11,7 +11,7 @@
 u64 Str_HashWithSeed(Str s, u64 seed) {
   // FNV-style hash
   u64 h = seed;
-  for (usize i = 0; i < s.len; i++) {
+  for (isize i = 0; i < s.len; i++) {
     h ^= s.ptr[i];
     h *= 1111111111111111111u;
   }

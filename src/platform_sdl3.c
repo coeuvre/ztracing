@@ -14,23 +14,23 @@ u64 Platform_GetPerformanceFrequency(void) {
   return result;
 }
 
-PlatformMutex *Platform_Mutex_Create(void) {
+Platform_Mutex *Platform_Mutex_Create(void) {
   SDL_Mutex *mutex = SDL_CreateMutex();
   ASSERTF(mutex, "%s", SDL_GetError());
-  return (PlatformMutex *)mutex;
+  return (Platform_Mutex *)mutex;
 }
 
-void Platform_Mutex_Lock(PlatformMutex *mutex_) {
+void Platform_Mutex_Lock(Platform_Mutex *mutex_) {
   SDL_Mutex *mutex = (SDL_Mutex *)mutex_;
   SDL_LockMutex(mutex);
 }
 
-void Platform_Mutex_Unlock(PlatformMutex *mutex_) {
+void Platform_Mutex_Unlock(Platform_Mutex *mutex_) {
   SDL_Mutex *mutex = (SDL_Mutex *)mutex_;
   SDL_UnlockMutex(mutex);
 }
 
-void Platform_Mutex_Destroy(PlatformMutex *mutex_) {
+void Platform_Mutex_Destroy(Platform_Mutex *mutex_) {
   SDL_Mutex *mutex = (SDL_Mutex *)mutex_;
   SDL_DestroyMutex(mutex);
 }
@@ -42,7 +42,7 @@ Platform_Condition *Platform_Condition_Create(void) {
 }
 
 void Platform_Condition_Wait(Platform_Condition *condition_,
-                             PlatformMutex *mutex_) {
+                             Platform_Mutex *mutex_) {
   SDL_Condition *condition = (SDL_Condition *)condition_;
   SDL_Mutex *mutex = (SDL_Mutex *)mutex_;
   SDL_WaitCondition(condition, mutex);

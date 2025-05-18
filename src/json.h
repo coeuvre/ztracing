@@ -82,7 +82,7 @@ f64 JsonValue_ToF64(JsonValue *value);
 typedef struct JsonParser {
   u8 tmp;
   Str buf;
-  usize cursor;
+  isize cursor;
   JsonGetInputFn *get_input;
   void *get_input_context;
 } JsonParser;

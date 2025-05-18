@@ -6,6 +6,7 @@
 #include "src/flick.h"
 #include "src/math.h"
 #include "src/string.h"
+#include "src/types.h"
 
 typedef struct LoadingFile {
   Str name;

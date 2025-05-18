@@ -1015,6 +1015,8 @@ typedef struct FL_WidgetList {
   FL_WidgetListEntry *last;
 } FL_WidgetList;
 
+void FL_WidgetList_Append(FL_WidgetList *list, FL_Widget *widget);
+
 /**
  * Constructs `FL_WidgetList` from an array of `FL_Widget *`.
  *
