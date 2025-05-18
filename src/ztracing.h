@@ -22,7 +22,7 @@ App *App_Create(FL_Allocator allocator);
 
 void App_LoadFile(App *app, LoadingFile *file);
 
-void App_Update(App *app, Vec2 viewport_size);
+void App_Update(App *app, Vec2 viewport_size, isize allocated_bytes);
 
 void App_Destroy(App *app);
 

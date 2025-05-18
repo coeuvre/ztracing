@@ -53,7 +53,7 @@ bool Channel_Send_(Channel *self, usize item_size, void *item) {
       DLL_APPEND(self->first, self->last, ci, prev, next);
     }
 
-    memory_copy(ci + 1, item, item_size);
+    CopyMemory(ci + 1, item, item_size);
     self->len += 1;
 
     Platform_Condition_Broadcast(self->condition);
@@ -82,7 +82,7 @@ bool Channel_Receive_(Channel *self, usize item_size, void *item) {
     DLL_REMOVE(self->first, self->last, ci, prev, next);
     self->len -= 1;
 
-    memory_copy(item, ci + 1, item_size);
+    CopyMemory(item, ci + 1, item_size);
 
     DLL_PREPEND(self->free_first, self->free_last, ci, prev, next);
 

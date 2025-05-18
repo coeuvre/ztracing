@@ -6,7 +6,6 @@
 
 #include "src/assert.h"
 #include "src/flick.h"
-#include "src/memory.h"
 #include "src/types.h"
 
 u64 Str_HashWithSeed(Str s, u64 seed) {
@@ -17,55 +16,6 @@ u64 Str_HashWithSeed(Str s, u64 seed) {
     h *= 1111111111111111111u;
   }
   return h;
-}
-
-Str arena_push_str8fv(Arena *arena, const char *format, va_list ap) {
-#define INIT_BUFFER_SIZE 256
-  usize buf_len = INIT_BUFFER_SIZE;
-  char *buf_ptr = arena_push_array(arena, char, buf_len);
-
-  va_list args;
-  va_copy(args, ap);
-  usize str_len = vsnprintf(buf_ptr, buf_len, format, args);
-
-  if (str_len <= buf_len) {
-    // Free the unused part of the buffer.
-    arena_pop(arena, buf_len - str_len);
-  } else {
-    // The buffer was too small. We need to resize it and try again.
-    arena_pop(arena, buf_len);
-    buf_len = str_len;
-    buf_ptr = arena_push_array(arena, char, buf_len);
-    va_copy(args, ap);
-    vsnprintf(buf_ptr, buf_len, format, args);
-  }
-
-  Str result = {buf_ptr, str_len};
-  return result;
-}
-
-Str Arena_PushStrFV(FL_Arena *arena, const char *format, va_list ap) {
-#define INIT_BUFFER_SIZE 256
-  usize buf_len = INIT_BUFFER_SIZE;
-  char *buf_ptr = Arena_PushArray(arena, char, buf_len);
-
-  va_list args;
-  va_copy(args, ap);
-  usize str_len = vsnprintf(buf_ptr, buf_len, format, args);
-
-  if (str_len <= buf_len) {
-    // Free the unused part of the buffer.
-    Arena_Pop(arena, buf_len - str_len);
-  } else {
-    // The buffer was too small. We need to resize it and try again.
-    Arena_Pop(arena, buf_len);
-    buf_len = str_len;
-    buf_ptr = Arena_PushArray(arena, char, buf_len);
-    va_copy(args, ap);
-    vsnprintf(buf_ptr, buf_len, format, args);
-  }
-
-  return (Str){buf_ptr, str_len};
 }
 
 typedef struct UnicodeDecode UnicodeDecode;

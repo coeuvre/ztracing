@@ -1,6 +1,7 @@
 #ifndef ZTRACING_SRC_HASH_TRIE_H_
 #define ZTRACING_SRC_HASH_TRIE_H_
 
+#include <stdalign.h>
 #include <string.h>
 
 #include "src/assert.h"
@@ -36,11 +37,15 @@ static inline void *HashTrie_Upsert_(HashTrie *self, Str key, Arena *arena,
   }
 
   if (arena) {
-    HashTrieSlot *slot =
-        (HashTrieSlot *)arena_push(arena, sizeof(HashTrieSlot) + value_size, 0);
-    slot->key = Str_Dup(arena, key);
+    HashTrieSlot *slot = (HashTrieSlot *)Arena_Push(
+        arena, sizeof(HashTrieSlot) + value_size, alignof(HashTrieSlot));
+    *slot = (HashTrieSlot){
+        .key = Str_Dup(arena, key),
+    };
     *t = slot;
-    return slot + 1;
+    void *value = slot + 1;
+    ZeroMemory(value, value_size);
+    return value;
   }
 
   return 0;
@@ -75,9 +80,11 @@ static inline void HashTrieIter_Append(HashTrieIter *self, HashTrieSlot *slot) {
   if (item) {
     DLL_REMOVE(self->free_first, self->free_last, item, prev, next);
   } else {
-    item = arena_push_struct(self->arena, HashTrieIterItem);
+    item = Arena_PushStruct(self->arena, HashTrieIterItem);
   }
-  item->slot = slot;
+  *item = (HashTrieIterItem){
+      .slot = slot,
+  };
   DLL_APPEND(self->first, self->last, item, prev, next);
 }
 

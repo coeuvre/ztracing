@@ -77,7 +77,7 @@ typedef union ProfileItem {
 } ProfileItem;
 
 typedef struct ProfileViewer {
-  Arena arena;
+  Arena *arena;
   Str name;
   Str error;
   i64 min_time_ns;
@@ -90,30 +90,32 @@ typedef struct ProfileViewer {
   FL_Widget *list_view;
 } ProfileViewer;
 
-static ProfileViewer *ProfileViewer_Create(void) {
-  Arena arena_ = {0};
-  ProfileViewer *viewer = arena_push_struct(&arena_, ProfileViewer);
-  viewer->arena = arena_;
+static ProfileViewer *ProfileViewer_Create(Allocator allocator) {
+  Arena *arena = Arena_Create(&(ArenaOptions){.allocator = allocator});
+  ProfileViewer *viewer = Arena_PushStruct(arena, ProfileViewer);
+  *viewer = (ProfileViewer){.arena = arena};
   return viewer;
 }
 
 static void ProfileViewer_Destroy(ProfileViewer *self) {
-  arena_free(&self->arena);
+  Arena_Destroy(self->arena);
 }
 
 typedef struct FileLoader {
-  Arena arena;
+  Arena *arena;
   LoadingFile *file;
   Platform_Thread *thread;
 
   volatile ProfileViewer *viewer;
 } FileLoader;
 
-static FileLoader *FileLoader_Create(LoadingFile *file) {
-  Arena arena_ = {0};
-  FileLoader *state = arena_push_struct(&arena_, FileLoader);
-  state->arena = arena_;
-  state->file = file;
+static FileLoader *FileLoader_Create(LoadingFile *file, Allocator allocator) {
+  Arena *arena = Arena_Create(&(ArenaOptions){.allocator = allocator});
+  FileLoader *state = Arena_PushStruct(arena, FileLoader);
+  *state = (FileLoader){
+      .arena = arena,
+      .file = file,
+  };
   return state;
 }
 
@@ -155,8 +157,10 @@ struct ProfileTrackNode {
 static ProfileSpanNode *ProfileTrackNode_AddSpan(ProfileTrackNode *self,
                                                  Arena *arena,
                                                  JsonTraceSpan *span) {
-  ProfileSpanNode *node = arena_push_struct(arena, ProfileSpanNode);
-  node->span = span;
+  ProfileSpanNode *node = Arena_PushStruct(arena, ProfileSpanNode);
+  *node = (ProfileSpanNode){
+      .span = span,
+  };
   DLL_APPEND(self->first_span, self->last_span, node, prev, next);
   self->span_count += 1;
   return node;
@@ -183,8 +187,10 @@ static ProfileTrackNode *ProfileThreadNode_UpsertTrack(ProfileThreadNode *self,
   }
 
   while (i > 0 || !track) {
-    track = arena_push_struct(arena, ProfileTrackNode);
-    track->level = level;
+    track = Arena_PushStruct(arena, ProfileTrackNode);
+    *track = (ProfileTrackNode){
+        .level = level,
+    };
     DLL_APPEND(self->first_track, self->last_track, track, prev, next);
     self->track_count += 1;
     i--;
@@ -203,8 +209,10 @@ typedef struct ProfileTrackBuilder {
 
 static ProfileThreadNode *ProfileTrackBuilder_AddThread(
     ProfileTrackBuilder *self, JsonTraceThread *thread, Arena *arena) {
-  ProfileThreadNode *thread_node = arena_push_struct(arena, ProfileThreadNode);
-  thread_node->thread = thread;
+  ProfileThreadNode *thread_node = Arena_PushStruct(arena, ProfileThreadNode);
+  *thread_node = (ProfileThreadNode){
+      .thread = thread,
+  };
   DLL_APPEND(self->first_thread, self->last_thread, thread_node, prev, next);
   self->thread_count += 1;
   return thread_node;
@@ -241,15 +249,14 @@ static usize FileLoader_MergeSpans(Arena *arena, ProfileThreadNode *thread,
 }
 
 static void FileLoader_BuildTrackWithThread(JsonTraceThread *thread,
-                                            Arena *arena,
-                                            ProfileTrackBuilder *builder) {
+                                            ProfileTrackBuilder *builder,
+                                            Arena *arena, Arena scratch) {
   ProfileThreadNode *thread_node =
       ProfileTrackBuilder_AddThread(builder, thread, arena);
 
-  Scratch scratch = scratch_begin(&arena, 1);
   if (thread->span_count > 0) {
-    JsonTraceSpan **spans = arena_push_array_no_zero(
-        scratch.arena, JsonTraceSpan *, thread->span_count);
+    JsonTraceSpan **spans =
+        Arena_PushArray(&scratch, JsonTraceSpan *, thread->span_count);
     usize span_index = 0;
     for (JsonTraceSpan *span = thread->first_span; span; span = span->next) {
       spans[span_index++] = span;
@@ -268,10 +275,16 @@ static void FileLoader_BuildTrackWithThread(JsonTraceThread *thread,
     FileLoader_MergeSpans(arena, thread_node, 0, begin_time_ns, end_time_ns,
                           spans, thread->span_count, 0, &total_duration_ns);
   }
-  scratch_end(scratch);
 }
 
-static int FileLoader_CompareThread(const void *a, const void *b) {
+#ifdef OS_WINDOWS
+static int FileLoader_CompareThread(void *context, const void *a,
+                                    const void *b) {
+#else
+static int FileLoader_CompareThread(const void *a, const void *b,
+                                    void *context) {
+#endif
+  Arena *scratch = context;
   JsonTraceThread *ta = *(JsonTraceThread *const *)a;
   JsonTraceThread *tb = *(JsonTraceThread *const *)b;
   if (ta->sort_index.present) {
@@ -284,45 +297,39 @@ static int FileLoader_CompareThread(const void *a, const void *b) {
     return 1;
   }
 
-  Scratch scratch = scratch_begin(0, 0);
-  int result = Str_Compare(Str_ToUppercase(ta->name, scratch.arena),
-                           Str_ToUppercase(tb->name, scratch.arena));
-  scratch_end(scratch);
+  int result = Str_Compare(Str_ToUppercase(ta->name, scratch),
+                           Str_ToUppercase(tb->name, scratch));
   return result;
 }
 
 static void FileLoader_BuildTrackWithProcess(JsonTraceProcess *process,
-                                             Arena *arena,
-                                             ProfileTrackBuilder *builder) {
-  Scratch scratch = scratch_begin(&arena, 1);
-
-  JsonTraceThread **threads = arena_push_array_no_zero(
-      scratch.arena, JsonTraceThread *, process->thread_count);
+                                             ProfileTrackBuilder *builder,
+                                             Arena *arena, Arena scratch) {
+  JsonTraceThread **threads =
+      Arena_PushArray(&scratch, JsonTraceThread *, process->thread_count);
   usize thread_index = 0;
-  HashTrieIter thread_iter = HashTrie_Iter(&process->threads, scratch.arena);
+  HashTrieIter thread_iter = HashTrie_Iter(&process->threads, &scratch);
   JsonTraceThread *thread;
   while ((thread = HashTrie_Next(&thread_iter, JsonTraceThread))) {
     threads[thread_index++] = thread;
   }
-  qsort(threads, process->thread_count, sizeof(*threads),
-        FileLoader_CompareThread);
+  qsort_s(threads, process->thread_count, sizeof(*threads),
+          FileLoader_CompareThread, &scratch);
 
   for (thread_index = 0; thread_index < process->thread_count; ++thread_index) {
-    FileLoader_BuildTrackWithThread(threads[thread_index], arena, builder);
+    FileLoader_BuildTrackWithThread(threads[thread_index], builder, arena,
+                                    scratch);
   }
-
-  scratch_end(scratch);
 }
 
-static void FileLoader_BuildTrack(JsonTraceProfile *profile, Arena *arena,
-                                  ProfileTrackBuilder *builder) {
-  Scratch scratch = scratch_begin(&arena, 1);
-  HashTrieIter process_iter = HashTrie_Iter(&profile->processes, scratch.arena);
+static void FileLoader_BuildTrack(JsonTraceProfile *profile,
+                                  ProfileTrackBuilder *builder, Arena *arena,
+                                  Arena scratch) {
+  HashTrieIter process_iter = HashTrie_Iter(&profile->processes, &scratch);
   JsonTraceProcess *process;
   while ((process = HashTrie_Next(&process_iter, JsonTraceProcess))) {
-    FileLoader_BuildTrackWithProcess(process, arena, builder);
+    FileLoader_BuildTrackWithProcess(process, builder, arena, scratch);
   }
-  scratch_end(scratch);
 }
 
 static int FileLoader_CompareSample(const void *a, const void *b) {
@@ -331,10 +338,10 @@ static int FileLoader_CompareSample(const void *a, const void *b) {
   return CompareI64(sa->time, sb->time);
 }
 
-static void FileLoader_CollectSeries(Arena *arena, ProfileItem_Counter *c,
-                                     JsonTraceCounter *counter) {
-  Scratch scratch = scratch_begin(&arena, 1);
-  HashTrieIter series_iter = HashTrie_Iter(&counter->series, scratch.arena);
+static void FileLoader_CollectSeries(ProfileItem_Counter *c,
+                                     JsonTraceCounter *counter, Arena *arena,
+                                     Arena scratch) {
+  HashTrieIter series_iter = HashTrie_Iter(&counter->series, &scratch);
   usize series_index = 0;
   JsonTraceSeries *series;
   while ((series = HashTrie_Next(&series_iter, JsonTraceSeries))) {
@@ -343,7 +350,7 @@ static void FileLoader_CollectSeries(Arena *arena, ProfileItem_Counter *c,
     s->name = Str_Dup(arena, series->name);
     s->color_index = Str_Hash(s->name) % COUNT_OF(COLORS);
     s->sample_count = series->sample_count;
-    s->samples = arena_push_array(arena, ProfileSample, s->sample_count);
+    s->samples = Arena_PushArray(arena, ProfileSample, s->sample_count);
 
     usize sample_index = 0;
     for (JsonTraceSample *sample = series->first; sample;
@@ -357,37 +364,38 @@ static void FileLoader_CollectSeries(Arena *arena, ProfileItem_Counter *c,
     qsort(s->samples, s->sample_count, sizeof(*s->samples),
           FileLoader_CompareSample);
   }
-  scratch_end(scratch);
 }
 
-static int FileLoader_CompareCounter(const void *a, const void *b) {
-  Scratch scratch = scratch_begin(0, 0);
+#ifdef OS_WINDOWS
+static int FileLoader_CompareCounter(void *context, const void *a,
+                                     const void *b) {
+#else
+static int FileLoader_CompareCounter(const void *a, const void *b,
+                                     void *context) {
+#endif
+  Arena *scratch = context;
   JsonTraceCounter *const *ca = a;
   JsonTraceCounter *const *cb = b;
-  int result = Str_Compare(Str_ToUppercase((*ca)->name, scratch.arena),
-                           Str_ToUppercase((*cb)->name, scratch.arena));
-  scratch_end(scratch);
+  int result = Str_Compare(Str_ToUppercase((*ca)->name, scratch),
+                           Str_ToUppercase((*cb)->name, scratch));
   return result;
 }
 
-static void FileLoader_CollectCounters(Arena *arena, ProfileItem *items,
-                                       usize *item_index,
-                                       JsonTraceProcess *process) {
-  Scratch scratch = scratch_begin(&arena, 1);
-
-  JsonTraceCounter **sorted_counters = arena_push_array(
-      scratch.arena, JsonTraceCounter *, process->counter_count);
+static void FileLoader_CollectCounters(ProfileItem *items, usize *item_index,
+                                       JsonTraceProcess *process, Arena *arena,
+                                       Arena scratch) {
+  JsonTraceCounter **sorted_counters =
+      Arena_PushArray(&scratch, JsonTraceCounter *, process->counter_count);
   {
     usize counter_index = 0;
-    HashTrieIter counter_iter =
-        HashTrie_Iter(&process->counters, scratch.arena);
+    HashTrieIter counter_iter = HashTrie_Iter(&process->counters, &scratch);
     JsonTraceCounter *counter;
     while ((counter = HashTrie_Next(&counter_iter, JsonTraceCounter))) {
       sorted_counters[counter_index++] = counter;
     }
   }
-  qsort(sorted_counters, process->counter_count, sizeof(*sorted_counters),
-        FileLoader_CompareCounter);
+  qsort_s(sorted_counters, process->counter_count, sizeof(*sorted_counters),
+          FileLoader_CompareCounter, &scratch);
 
   for (usize counter_index = 0; counter_index < process->counter_count;
        ++counter_index) {
@@ -406,17 +414,16 @@ static void FileLoader_CollectCounters(Arena *arena, ProfileItem *items,
     };
     c.name = Str_Dup(arena, counter->name);
     c.series_count = counter->series_count;
-    c.series = arena_push_array(arena, ProfileSeries, c.series_count);
+    c.series = Arena_PushArray(arena, ProfileSeries, c.series_count);
     c.min_value = counter->min_value;
     c.max_value = counter->max_value;
 
-    FileLoader_CollectSeries(arena, &c, counter);
+    FileLoader_CollectSeries(&c, counter, arena, scratch);
 
     items[(*item_index)++] = (ProfileItem){
         .counter = c,
     };
   }
-  scratch_end(scratch);
 }
 
 static int FileLoader_CompareProfileSpan(const void *a, const void *b) {
@@ -436,7 +443,7 @@ static void FileLoader_CollectTracks(Arena *arena, ProfileItem *items,
        thread = thread->next) {
     Str name;
     if (Str_IsEmpty(thread->thread->name)) {
-      name = arena_push_str8f(arena, "Thread %lld", thread->thread->tid);
+      name = Str_Format(arena, "Thread %lld", thread->thread->tid);
     } else {
       name = Str_Dup(arena, thread->thread->name);
     }
@@ -451,7 +458,7 @@ static void FileLoader_CollectTracks(Arena *arena, ProfileItem *items,
     for (ProfileTrackNode *track = thread->first_track; track;
          track = track->next) {
       ProfileSpan *spans =
-          arena_push_array_no_zero(arena, ProfileSpan, track->span_count);
+          Arena_PushArray(arena, ProfileSpan, track->span_count);
 
       ProfileSpanNode *span_node = track->first_span;
       for (usize span_index = 0; span_index < track->span_count; ++span_index) {
@@ -478,27 +485,25 @@ static void FileLoader_CollectTracks(Arena *arena, ProfileItem *items,
   }
 }
 
-static void FileLoader_CollectItems(Arena *arena, ProfileItem *items,
+static void FileLoader_CollectItems(ProfileItem *items,
                                     JsonTraceProfile *profile,
-                                    ProfileTrackBuilder *track_builder) {
-  Scratch scratch = scratch_begin(&arena, 1);
+                                    ProfileTrackBuilder *track_builder,
+                                    Arena *arena, Arena scratch) {
   usize item_index = 0;
-  HashTrieIter process_iter = HashTrie_Iter(&profile->processes, scratch.arena);
+  HashTrieIter process_iter = HashTrie_Iter(&profile->processes, &scratch);
   JsonTraceProcess *process;
   while ((process = HashTrie_Next(&process_iter, JsonTraceProcess))) {
-    FileLoader_CollectCounters(arena, items, &item_index, process);
+    FileLoader_CollectCounters(items, &item_index, process, arena, scratch);
   }
 
   FileLoader_CollectTracks(arena, items, &item_index, track_builder);
-
-  scratch_end(scratch);
 }
 
 static i32 FileLoader_CountItems(JsonTraceProfile *profile,
-                                 ProfileTrackBuilder *track_builder) {
+                                 ProfileTrackBuilder *track_builder,
+                                 Arena scratch) {
   i32 item_count = 0;
-  Scratch scratch = scratch_begin(0, 0);
-  HashTrieIter process_iter = HashTrie_Iter(&profile->processes, scratch.arena);
+  HashTrieIter process_iter = HashTrie_Iter(&profile->processes, &scratch);
   JsonTraceProcess *process;
   while ((process = HashTrie_Next(&process_iter, JsonTraceProcess))) {
     item_count += 2 * process->counter_count;
@@ -510,21 +515,20 @@ static i32 FileLoader_CountItems(JsonTraceProfile *profile,
     item_count += thread->track_count;
   }
 
-  scratch_end(scratch);
   return item_count;
 }
 
 static void FileLoader_ConvertProfile(ProfileViewer *viewer,
-                                      JsonTraceProfile *profile) {
-  Scratch scratch = scratch_begin(0, 0);
+                                      JsonTraceProfile *profile,
+                                      Arena scratch) {
   ProfileTrackBuilder track_builder = {0};
-  FileLoader_BuildTrack(profile, scratch.arena, &track_builder);
+  FileLoader_BuildTrack(profile, &track_builder, &scratch, *viewer->arena);
 
-  viewer->item_count = FileLoader_CountItems(profile, &track_builder);
+  viewer->item_count = FileLoader_CountItems(profile, &track_builder, scratch);
   viewer->items =
-      arena_push_array(&viewer->arena, ProfileItem, viewer->item_count);
-  FileLoader_CollectItems(&viewer->arena, viewer->items, profile,
-                          &track_builder);
+      Arena_PushArray(viewer->arena, ProfileItem, viewer->item_count);
+  FileLoader_CollectItems(viewer->items, profile, &track_builder, viewer->arena,
+                          scratch);
 
   viewer->min_time_ns = profile->min_time_ns;
   viewer->max_time_ns = profile->max_time_ns;
@@ -533,20 +537,21 @@ static void FileLoader_ConvertProfile(ProfileViewer *viewer,
   i64 offset = (i64)RoundF64((f64)duration * 0.1);
   viewer->begin_time_ns = profile->min_time_ns - offset;
   viewer->end_time_ns = profile->max_time_ns + offset;
-  scratch_end(scratch);
 }
 
 static int FileLoader_Thread(void *self_) {
   FileLoader *self = self_;
   LoadingFile *file = self->file;
 
-  ProfileViewer *viewer = ProfileViewer_Create();
-  viewer->name = Str_Dup(&viewer->arena, file->name);
+  ProfileViewer *viewer = ProfileViewer_Create(Arena_GetAllocator(self->arena));
+  viewer->name = Str_Dup(viewer->arena, file->name);
 
-  Scratch scratch = scratch_begin(0, 0);
+  Arena *scratch = Arena_Create(&(ArenaOptions){
+      .allocator = Arena_GetAllocator(viewer->arena),
+  });
   JsonParser parser = json_parser(GetInput, file);
   u64 before = Platform_GetPerformanceCounter();
-  JsonTraceProfile *profile = JsonTraceProfile_Parse(scratch.arena, &parser);
+  JsonTraceProfile *profile = JsonTraceProfile_Parse(scratch, &parser);
   u64 after = Platform_GetPerformanceCounter();
 
   if (!file->interrupted) {
@@ -556,16 +561,14 @@ static int FileLoader_Thread(void *self_) {
          mb / secs);
 
     if (Str_IsEmpty(profile->error)) {
-      FileLoader_ConvertProfile(viewer, profile);
+      FileLoader_ConvertProfile(viewer, profile, *scratch);
     } else {
-      viewer->error = Str_Dup(&viewer->arena, profile->error);
+      viewer->error = Str_Dup(viewer->arena, profile->error);
     }
 
     self->viewer = viewer;
   }
-
-  scratch_end(scratch);
-  scratch_free_all();
+  Arena_Destroy(scratch);
 
   return 0;
 }
@@ -581,13 +584,17 @@ static void FileLoader_Destroy(FileLoader *self) {
   Platform_Thread_Wait(self->thread);
 
   self->file->close(self->file);
-  arena_free(&self->arena);
+  Arena_Destroy(self->arena);
 }
 
 typedef struct App {
   FL_Arena *arena;
+
+  isize allocated_bytes;
+  u64 last_counter;
   f32 dt;
   f32 frame_time;
+
   FileLoader *loader;
   ProfileViewer *viewer;
 } App;
@@ -640,10 +647,10 @@ static FL_Widget *UI_GlobalMenuBar(App *app) {
               }),
               FL_Expanded(&(FL_ExpandedProps){.flex = 1}),
               FL_Text(&(FL_TextProps){
-                  .text = FL_Format(
-                      "%.1fMB %.1fms",
-                      ((f64)Platform_GetAllocatedBytes() / 1024.0 / 1024.0),
-                      (f64)app->frame_time * 1000.0),
+                  .text =
+                      FL_Format("%.1fMB %.1fms",
+                                ((f64)app->allocated_bytes / 1024.0 / 1024.0),
+                                (f64)app->frame_time * 1000.0),
                   .style = DefaultTextStyle(),
               }),
               0,
@@ -749,13 +756,13 @@ static Str UI_Timeline_FormatTime(FL_Arena *arena, i64 time, i64 duration) {
     }
   }
 
-  Str buf = Arena_PushStrF(arena, "%.1lf%s", t, TIME_UNITS[time_unit_index]);
+  Str buf = Str_Format(arena, "%.1lf%s", t, TIME_UNITS[time_unit_index]);
   char *period = buf.ptr + buf.len - 1;
   while (*period != '.') {
     period--;
   }
   if (*(period + 1) == '0') {
-    memory_move(period, period + 2, buf.ptr + buf.len - period - 1);
+    MoveMemory(period, period + 2, buf.ptr + buf.len - period - 1);
     buf.len -= 2;
   }
   return buf;
@@ -1317,24 +1324,21 @@ void App_LoadFile(App *app, LoadingFile *file) {
     app->viewer = 0;
   }
 
-  app->loader = FileLoader_Create(file);
+  app->loader = FileLoader_Create(file, Arena_GetAllocator(app->arena));
   FileLoader_Start(app->loader);
 }
 
-void App_Update(App *app, Vec2 viewport_size) {
-  static u64 last_counter;
-  static f32 last_frame_time;
-
+void App_Update(App *app, Vec2 viewport_size, isize allocated_bytes) {
   f32 dt = 0.0f;
   u64 current_counter = Platform_GetPerformanceCounter();
-  if (last_counter) {
-    dt = (f32)((f64)(current_counter - last_counter) /
+  if (app->last_counter) {
+    dt = (f32)((f64)(current_counter - app->last_counter) /
                (f64)Platform_GetPerformanceFrequency());
   }
-  last_counter = current_counter;
+  app->last_counter = current_counter;
 
+  app->allocated_bytes = allocated_bytes;
   app->dt = dt;
-  app->frame_time = last_frame_time;
 
   FL_Run(&(FL_RunOptions){
       .widget = UI_Build(app),
@@ -1348,8 +1352,8 @@ void App_Update(App *app, Vec2 viewport_size) {
       .delta_time = dt,
   });
 
-  last_frame_time =
-      (f32)((f64)(Platform_GetPerformanceCounter() - last_counter) /
+  app->frame_time =
+      (f32)((f64)(Platform_GetPerformanceCounter() - app->last_counter) /
             (f64)Platform_GetPerformanceFrequency());
 }
 

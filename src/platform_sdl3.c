@@ -4,37 +4,6 @@
 #include "src/platform.h"
 #include "src/types.h"
 
-static PlatformMutex *g_allocated_bytes_mutex;
-static usize g_allocated_bytes;
-
-void *Platform_AllocMemory(usize size) {
-  usize total_size = size + sizeof(usize);
-  usize *p = SDL_malloc(total_size);
-  ASSERTF(p, "%s", SDL_GetError());
-  *p = size;
-  Platform_Mutex_Lock(g_allocated_bytes_mutex);
-  g_allocated_bytes += total_size;
-  Platform_Mutex_Unlock(g_allocated_bytes_mutex);
-  return p + 1;
-}
-
-void Platform_FreeMemory(void *ptr, usize size) {
-  usize total_size = size + sizeof(usize);
-  usize *p = ((usize *)ptr) - 1;
-  ASSERTF(*p == size, "free size (%zu) doesn't match alloc size (%zu)", *p,
-          size);
-  SDL_free(p);
-  Platform_Mutex_Lock(g_allocated_bytes_mutex);
-  g_allocated_bytes -= total_size;
-  Platform_Mutex_Unlock(g_allocated_bytes_mutex);
-}
-
-usize Platform_GetAllocatedBytes(void) { return g_allocated_bytes; }
-
-void SDL3Platform_Init(void) {
-  g_allocated_bytes_mutex = Platform_Mutex_Create();
-}
-
 u64 Platform_GetPerformanceCounter(void) {
   u64 result = SDL_GetPerformanceCounter();
   return result;
@@ -116,7 +85,7 @@ void Platform_Semaphore_Destroy(Platform_Semaphore *semaphore_) {
 }
 
 Platform_Thread *Platform_Thread_Start(Platform_ThreadFunction func,
-                                      const char *name, void *data) {
+                                       const char *name, void *data) {
   SDL_Thread *thread = SDL_CreateThread(func, name, data);
   ASSERTF(thread, "%s", SDL_GetError());
   return (Platform_Thread *)thread;

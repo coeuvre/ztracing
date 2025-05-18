@@ -3,10 +3,6 @@
 
 #include "src/types.h"
 
-void *Platform_AllocMemory(usize size);
-void Platform_FreeMemory(void *ptr, usize size);
-usize Platform_GetAllocatedBytes(void);
-
 u64 Platform_GetPerformanceCounter(void);
 u64 Platform_GetPerformanceFrequency(void);
 

@@ -3,7 +3,7 @@
 
 #include <string.h>
 
-#include "src/platform.h"
+#include "src/flick.h"
 #include "src/types.h"
 
 #define KB(n) (((u64)(n)) << 10)
@@ -11,79 +11,45 @@
 #define GB(n) (((u64)(n)) << 30)
 #define TB(n) (((u64)(n)) << 40)
 
-static inline void memory_zero(void *ptr, usize size) { memset(ptr, 0, size); }
+typedef FL_Allocator Allocator;
+typedef FL_AllocatorOps AllocatorOps;
 
-static inline void *memory_alloc(usize size) {
-  void *result = Platform_AllocMemory(size);
-  memory_zero(result, size);
-  return result;
-}
-
-static inline void *memory_alloc_no_zero(usize size) {
-  return Platform_AllocMemory(size);
-}
-
-static inline void memory_free(void *ptr, usize size) {
-  return Platform_FreeMemory(ptr, size);
-}
-
-static inline void *memory_copy(void *dst, const void *src, usize size) {
+static inline void *CopyMemory(void *dst, const void *src, isize size) {
   return memcpy(dst, src, size);
 }
 
-static inline void *memory_move(void *dst, const void *src, usize size) {
+static inline void *MoveMemory(void *dst, const void *src, isize size) {
   return memmove(dst, src, size);
 }
 
+static inline void ZeroMemory(void *dst, isize size) { memset(dst, 0, size); }
+
+typedef FL_ArenaOptions ArenaOptions;
+
+typedef FL_Arena Arena;
+
+static inline Arena *Arena_Create(const ArenaOptions *opts) {
+  return FL_Arena_Create(opts);
+}
+
+#define Arena_Destroy(arena) FL_Arena_Destroy(arena);
+
+#define Arena_Push(arena, size, alignment) FL_Arena_Push(arena, size, alignment)
+
+#define Arena_PushStruct(arena, S) FL_Arena_PushStruct(arena, S)
+
 #define Arena_PushArray(arena, S, n) FL_Arena_PushArray(arena, S, n)
+
 #define Arena_Pop(arena, size) FL_Arena_Pop(arena, size)
 
-typedef struct Arena Arena;
-struct Arena {
-  u8 *begin;
-  u8 *end;
-};
+#define Arena_Dup(arena, src, size, alignment) \
+  FL_Arena_Dup(arena, src, size, alignment)
 
-enum ArenaPushFlag {
-  ARENA_PUSH_NO_ZERO = (1 << 0),
-};
-
-void arena_free(Arena *arena);
-void arena_clear(Arena *arena);
-void *arena_push(Arena *arena, usize size, u32 flags);
-/// Returns top pointer after pop.
-void *arena_pop(Arena *arena, usize size);
-// Get a pointer from the stack that is `size` down away from the current top.
-void *arena_seek(Arena *arena, usize size);
-bool arena_is_empty(Arena *arena);
-
-#define arena_push_array(arena, Type, len) \
-  (Type *)arena_push(arena, sizeof(Type) * len, 0)
-#define arena_push_array_no_zero(arena, Type, len) \
-  (Type *)arena_push(arena, sizeof(Type) * len, ARENA_PUSH_NO_ZERO)
-
-#define arena_push_struct(arena, Type) arena_push_array(arena, Type, 1)
-#define arena_push_struct_no_zero(arena, Type) \
-  arena_push_array_no_zero(arena, Type, 1)
-
-static inline void *arena_dup(Arena *arena, void *src, usize size) {
-  void *dst = arena_push(arena, size, ARENA_PUSH_NO_ZERO);
-  memory_copy(dst, src, size);
-  return dst;
+static inline void *Arena_Seek(Arena *arena, isize n) {
+  Arena scratch = *arena;
+  return Arena_Pop(&scratch, n);
 }
 
-#define arena_dup_struct(arena, src) arena_dup(arena, src, sizeof(*(src)))
-
-typedef struct Scratch {
-  Arena checkpoint;
-  Arena *arena;
-} Scratch;
-
-Scratch scratch_begin(Arena **conflicts, usize len);
-static inline void scratch_end(Scratch scratch) {
-  *scratch.arena = scratch.checkpoint;
-}
-
-void scratch_free_all(void);
+#define Arena_GetAllocator(arena) FL_Arena_GetAllocator(arena)
 
 #endif  // ZTRACING_SRC_MEMORY_H_

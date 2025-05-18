@@ -53,54 +53,32 @@ static inline int Str_Compare(Str a, Str b) {
 u64 Str_HashWithSeed(Str str, u64 seed);
 static inline u64 Str_Hash(Str str) { return Str_HashWithSeed(str, 0x100); }
 
-static inline Str arena_push_str8(Arena *arena, usize len) {
-  char *ptr = arena_push_array(arena, char, len);
-  return (Str){ptr, (ptrdiff_t)len};
-}
+#define Str_Format(arena, format, ...) \
+  FL_Str_Format(arena, format, ##__VA_ARGS__)
 
-static inline Str arena_push_str8_no_zero(Arena *arena, usize len) {
-  char *ptr = arena_push_array_no_zero(arena, char, len);
-  return (Str){ptr, len};
-}
-
-Str arena_push_str8fv(Arena *arena, const char *format, va_list ap);
-
-static inline Str arena_push_str8f(Arena *arena, const char *format, ...) {
-  va_list ap;
-  va_start(ap, format);
-  Str result = arena_push_str8fv(arena, format, ap);
-  va_end(ap);
-  return result;
-}
-
-Str Arena_PushStrFV(FL_Arena *arena, const char *format, va_list ap);
-
-static inline Str Arena_PushStrF(FL_Arena *arena, const char *format, ...) {
-  va_list ap;
-  va_start(ap, format);
-  Str result = Arena_PushStrFV(arena, format, ap);
-  va_end(ap);
-  return result;
-}
-
-static inline Str Str_Dup(Arena *arena, Str s) {
+static inline Str Str_Dup(FL_Arena *arena, Str s) {
   if (Str_IsEmpty(s)) {
     return Str_Zero();
   }
-  return (Str){(char *)arena_dup(arena, s.ptr, s.len), s.len};
+  return (Str){(char *)Arena_Dup(arena, s.ptr, s.len, 1), s.len};
 }
 
-static inline u8 u8_ToUppercase(u8 c) {
+static inline u8 ToUppercase(u8 c) {
   if (c >= 'a' && c <= 'z') {
     return 'A' + c - 'a';
   }
   return c;
 }
 
+static inline Str Arena_PushStr(Arena *arena, isize len) {
+  char *ptr = Arena_PushArray(arena, char, len);
+  return (Str){ptr, len};
+}
+
 static inline Str Str_ToUppercase(Str s, Arena *arena) {
-  Str result = arena_push_str8(arena, s.len);
-  for (ptrdiff_t i = 0; i < s.len; ++i) {
-    result.ptr[i] = u8_ToUppercase(s.ptr[i]);
+  Str result = Arena_PushStr(arena, s.len);
+  for (isize i = 0; i < s.len; ++i) {
+    result.ptr[i] = ToUppercase(s.ptr[i]);
   }
   return result;
 }
@@ -108,15 +86,8 @@ static inline Str Str_ToUppercase(Str s, Arena *arena) {
 typedef struct Str32 Str32;
 struct Str32 {
   u32 *ptr;
-  usize len;
+  isize len;
 };
-
-static inline Str32 str32(u32 *ptr, usize len) {
-  Str32 s;
-  s.ptr = ptr;
-  s.len = len;
-  return s;
-}
 
 Str32 Arena_PushStr32FromStr(FL_Arena *arena, Str str);
 

@@ -6,6 +6,7 @@
 #include "src/flick.h"
 #include "src/list.h"
 #include "src/math.h"
+#include "src/memory.h"
 #include "src/string.h"
 #include "src/types.h"
 
@@ -173,13 +174,13 @@ static void Canvas_StrokeRect(void *ctx, FL_Rect rect, FL_Color color,
 
 static PackedFont PackFont(Canvas *canvas, stbtt_fontinfo *info,
                            f32 font_size) {
-  FL_Arena scratch = *canvas->arena;
+  FL_Arena *scratch = Arena_Create(
+      &(ArenaOptions){.allocator = Arena_GetAllocator(canvas->arena)});
   PackedFont result = {0};
   result.font = info;
   result.width = 1024;
   result.height = 1024;
-  u8 *pixels_u8 =
-      FL_Arena_PushArray(&scratch, u8, result.width * result.height);
+  u8 *pixels_u8 = FL_Arena_PushArray(scratch, u8, result.width * result.height);
   stbtt_pack_context spc;
   ASSERT(stbtt_PackBegin(&spc, pixels_u8, result.width, result.height, 0, 1,
                          0) == 1);
@@ -193,7 +194,7 @@ static PackedFont PackFont(Canvas *canvas, stbtt_fontinfo *info,
       canvas->arena, i32, result.range.num_chars * result.range.num_chars);
   {
     stbrp_rect *rects =
-        FL_Arena_PushArray(&scratch, stbrp_rect, result.range.num_chars);
+        FL_Arena_PushArray(scratch, stbrp_rect, result.range.num_chars);
     int n =
         stbtt_PackFontRangesGatherRects(&spc, info, &result.range, 1, rects);
     stbtt_PackFontRangesPackRects(&spc, rects, n);
@@ -204,7 +205,7 @@ static PackedFont PackFont(Canvas *canvas, stbtt_fontinfo *info,
 
   int pw = result.width;
   int ph = result.height;
-  u32 *pixels_u32 = FL_Arena_PushArray(&scratch, u32, pw * ph * sizeof(u32));
+  u32 *pixels_u32 = FL_Arena_PushArray(scratch, u32, pw * ph * sizeof(u32));
   u32 *dst_row = pixels_u32;
   u8 *src_row = pixels_u8;
   for (i32 y = 0; y < ph; ++y) {
@@ -224,6 +225,8 @@ static PackedFont PackFont(Canvas *canvas, stbtt_fontinfo *info,
   result.texture = SDL_CreateTextureFromSurface(canvas->renderer, surface);
   ASSERT(result.texture);
   SDL_DestroySurface(surface);
+
+  Arena_Destroy(scratch);
 
   return result;
 }
@@ -251,7 +254,7 @@ static PackedFont *GetOrPackFont(Canvas *canvas, stbtt_fontinfo *font,
 static inline i32 GetCharIndex(PackedFont *packed_font, u32 ch) {
   i32 result =
       ClampI32(ch - packed_font->range.first_unicode_codepoint_in_range, 0,
-                packed_font->range.num_chars - 1);
+               packed_font->range.num_chars - 1);
   return result;
 }
 
@@ -385,8 +388,9 @@ FL_TextMetrics Canvas_MeasureText(void *ctx, FL_Str text, FL_f32 font_size) {
   return result;
 }
 
-FL_Canvas Canvas_Init(SDL_Window *window, SDL_Renderer *renderer) {
-  FL_Arena *arena = FL_Arena_Create(&(FL_ArenaOptions){0});
+FL_Canvas Canvas_Init(SDL_Window *window, SDL_Renderer *renderer,
+                      Allocator allocator) {
+  FL_Arena *arena = FL_Arena_Create(&(FL_ArenaOptions){.allocator = allocator});
   Canvas *canvas = FL_Arena_PushStruct(arena, Canvas);
   *canvas = (Canvas){
       .arena = arena,

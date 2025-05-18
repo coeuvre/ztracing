@@ -38,9 +38,11 @@ static JsonTraceSeries *UpsertSeries(JsonTraceCounter *self, Arena *arena,
 static void AddSample(JsonTraceCounter *self, Arena *arena, Str name, i64 time,
                       f64 value) {
   JsonTraceSeries *series = UpsertSeries(self, arena, name);
-  JsonTraceSample *sample = arena_push_struct(arena, JsonTraceSample);
-  sample->time = time;
-  sample->value = value;
+  JsonTraceSample *sample = Arena_PushStruct(arena, JsonTraceSample);
+  *sample = (JsonTraceSample){
+      .time = time,
+      .value = value,
+  };
   DLL_APPEND(series->first, series->last, sample, prev, next);
   series->sample_count++;
 
@@ -50,10 +52,12 @@ static void AddSample(JsonTraceCounter *self, Arena *arena, Str name, i64 time,
 
 static JsonTraceSpan *CreateSpan(Arena *arena, Str name, Str cat,
                                  i64 begin_time_us) {
-  JsonTraceSpan *span = arena_push_struct(arena, JsonTraceSpan);
-  span->name = Str_Dup(arena, name);
-  span->cat = Str_Dup(arena, cat);
-  span->begin_time_ns = begin_time_us;
+  JsonTraceSpan *span = Arena_PushStruct(arena, JsonTraceSpan);
+  *span = (JsonTraceSpan){
+      .name = Str_Dup(arena, name),
+      .cat = Str_Dup(arena, cat),
+      .begin_time_ns = begin_time_us,
+  };
   return span;
 }
 
@@ -255,7 +259,6 @@ static bool ParseArrayFormat(JsonTraceProfile *self, Arena *arena,
       case JsonValueType_Object: {
         ProcessTraceEvent(self, arena, value);
 
-        Arena scratch_ = scratch;
         JsonToken token = JsonParser_ParseToken(parser, &scratch_);
         switch (token.type) {
           case JsonTokenType_Comma: {
@@ -272,9 +275,8 @@ static bool ParseArrayFormat(JsonTraceProfile *self, Arena *arena,
           } break;
 
           default: {
-            self->error =
-                arena_push_str8f(arena, "expecting ',' or ']', got '%.*s'",
-                                 (int)token.value.len, token.value.ptr);
+            self->error = Str_Format(arena, "expecting ',' or ']', got '%.*s'",
+                                     (int)token.value.len, token.value.ptr);
             running = false;
             eof = true;
           } break;
@@ -289,9 +291,9 @@ static bool ParseArrayFormat(JsonTraceProfile *self, Arena *arena,
 
       default: {
         self->error =
-            arena_push_str8f(arena, "expecting 'object', but got '%s': %.*s",
-                             JsonValueType_ToString(value->type),
-                             (int)value->value.len, value->value.ptr);
+            Str_Format(arena, "expecting 'object', but got '%s': %.*s",
+                       JsonValueType_ToString(value->type),
+                       (int)value->value.len, value->value.ptr);
         running = false;
         eof = true;
       } break;
@@ -316,8 +318,8 @@ static bool ExpectingOpenBracket(JsonTraceProfile *self, Arena *arena,
     } break;
 
     default: {
-      self->error = arena_push_str8f(arena, "expecting '[', got '%.*s'",
-                                     (int)token.value.len, token.value.ptr);
+      self->error = Str_Format(arena, "expecting '[', got '%.*s'",
+                               (int)token.value.len, token.value.ptr);
       eof = true;
     } break;
   }
@@ -395,9 +397,8 @@ static void ParseObjectFormat(JsonTraceProfile *self, Arena *arena,
               running = false;
             } break;
             default: {
-              self->error =
-                  arena_push_str8f(arena, "expecting ':', but got '%.*s'",
-                                   (int)token.value.len, token.value.ptr);
+              self->error = Str_Format(arena, "expecting ':', but got '%.*s'",
+                                       (int)token.value.len, token.value.ptr);
               running = false;
             } break;
           }
@@ -409,7 +410,7 @@ static void ParseObjectFormat(JsonTraceProfile *self, Arena *arena,
       case JsonTokenType_Comma: {
         if (!has_value) {
           self->error =
-              arena_push_str8f(arena, "expecting 'string' or '}', but got ','");
+              Str_Format(arena, "expecting 'string' or '}', but got ','");
           running = false;
         }
       } break;
@@ -424,9 +425,8 @@ static void ParseObjectFormat(JsonTraceProfile *self, Arena *arena,
       } break;
 
       default: {
-        self->error =
-            arena_push_str8f(arena, "expecting 'string' or '}', got '%.*s'",
-                             (int)token.value.len, token.value.ptr);
+        self->error = Str_Format(arena, "expecting 'string' or '}', got '%.*s'",
+                                 (int)token.value.len, token.value.ptr);
         running = false;
       } break;
     }
@@ -434,20 +434,23 @@ static void ParseObjectFormat(JsonTraceProfile *self, Arena *arena,
 }
 
 JsonTraceProfile *JsonTraceProfile_Parse(Arena *arena, JsonParser *parser) {
-  JsonTraceProfile *self = arena_push_struct(arena, JsonTraceProfile);
-  self->min_time_ns = I64_MAX;
-  self->max_time_ns = I64_MIN;
+  JsonTraceProfile *self = Arena_PushStruct(arena, JsonTraceProfile);
+  *self = (JsonTraceProfile){
+      .min_time_ns = I64_MAX,
+      .max_time_ns = I64_MIN,
+  };
 
-  Scratch scratch = scratch_begin(&arena, 1);
-  Arena scratch_ = *scratch.arena;
-  JsonToken token = JsonParser_ParseToken(parser, &scratch_);
+  Arena *scratch = Arena_Create(&(ArenaOptions){
+      .allocator = Arena_GetAllocator(arena),
+  });
+  JsonToken token = JsonParser_ParseToken(parser, scratch);
   switch (token.type) {
     case JsonTokenType_OpenBrace: {
-      ParseObjectFormat(self, arena, parser, *scratch.arena);
+      ParseObjectFormat(self, arena, parser, *scratch);
     } break;
 
     case JsonTokenType_OpenBracket: {
-      ParseArrayFormat(self, arena, parser, *scratch.arena);
+      ParseArrayFormat(self, arena, parser, *scratch);
     } break;
 
     case JsonTokenType_Error: {
@@ -455,11 +458,11 @@ JsonTraceProfile *JsonTraceProfile_Parse(Arena *arena, JsonParser *parser) {
     } break;
 
     default: {
-      self->error = arena_push_str8f(arena, "expecting '{' or '[', got '%.*s'",
-                                     (int)token.value.len, token.value.ptr);
+      self->error = Str_Format(arena, "expecting '{' or '[', got '%.*s'",
+                               (int)token.value.len, token.value.ptr);
     } break;
   }
-  scratch_end(scratch);
+  Arena_Destroy(scratch);
 
   self->min_time_ns = MinI64(self->min_time_ns, 0);
   self->max_time_ns = MaxI64(self->max_time_ns, self->min_time_ns);

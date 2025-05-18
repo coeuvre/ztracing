@@ -49,7 +49,7 @@ static Vec2 GetWindowSize(void) {
 
 typedef struct SDL3LoadingFile {
   LoadingFile file;
-  Arena arena;
+  Arena *arena;
   SDL_IOStream *io;
   Str buf;
 } SDL3LoadingFile;
@@ -68,16 +68,19 @@ static Str SDL3LoadingFile_Read(void *self_) {
 static void SDL3LoadingFile_Close(void *self_) {
   SDL3LoadingFile *self = self_;
   SDL_CloseIO(self->io);
-  arena_free(&self->arena);
+  Arena_Destroy(self->arena);
 }
 
-static LoadingFile *SDL3LoadingFile_Open(const char *path, usize buf_len) {
+static LoadingFile *SDL3LoadingFile_Open(const char *path, usize buf_len,
+                                         Allocator allocator) {
   SDL_IOStream *io = SDL_IOFromFile(path, "r");
   ASSERTF(io, "%s", SDL_GetError());
-  Arena arena_ = {0};
-  SDL3LoadingFile *file = arena_push_struct(&arena_, SDL3LoadingFile);
-  Str name = Str_Dup(&arena_, Str_FromCStr(path));
-  Str buf = arena_push_str8(&arena_, buf_len);
+  Arena *arena = Arena_Create(&(ArenaOptions){
+      .allocator = allocator,
+  });
+  SDL3LoadingFile *file = Arena_PushStruct(arena, SDL3LoadingFile);
+  Str name = Str_Dup(arena, Str_FromCStr(path));
+  Str buf = Arena_PushStr(arena, buf_len);
   *file = (SDL3LoadingFile){
       .file =
           {
@@ -85,25 +88,48 @@ static LoadingFile *SDL3LoadingFile_Open(const char *path, usize buf_len) {
               .read = SDL3LoadingFile_Read,
               .close = SDL3LoadingFile_Close,
           },
-      .arena = arena_,
+      .arena = arena,
       .io = io,
       .buf = buf,
   };
   return (LoadingFile *)file;
 }
 
-static void ParseJson(App *app, const char *path) {
+static void ParseJson(App *app, const char *path, Allocator allocator) {
   usize buf_len = 1024 * 1024;
-  LoadingFile *file = SDL3LoadingFile_Open(path, buf_len);
+  LoadingFile *file = SDL3LoadingFile_Open(path, buf_len, allocator);
   App_LoadFile(app, file);
 }
 
+typedef struct Platform_Allocator {
+  PlatformMutex *allocated_bytes_mutex;
+  isize allocated_bytes;
+} Platform_Allocator;
+
 static void *Platform_Allocator_Alloc(void *ctx, FL_isize size) {
-  return Platform_AllocMemory(size);
+  Platform_Allocator *allocator = ctx;
+
+  isize total_size = size + sizeof(isize);
+  isize *p = SDL_malloc(total_size);
+  ASSERTF(p, "%s", SDL_GetError());
+  *p = size;
+  Platform_Mutex_Lock(allocator->allocated_bytes_mutex);
+  allocator->allocated_bytes += total_size;
+  Platform_Mutex_Unlock(allocator->allocated_bytes_mutex);
+  return p + 1;
 }
 
 static void Platform_Allocator_Free(void *ctx, void *ptr, FL_isize size) {
-  Platform_FreeMemory(ptr, size);
+  Platform_Allocator *allocator = ctx;
+
+  isize total_size = size + sizeof(isize);
+  isize *p = ((isize *)ptr) - 1;
+  ASSERTF(*p == size, "free size (%zu) doesn't match alloc size (%zu)", *p,
+          size);
+  SDL_free(p);
+  Platform_Mutex_Lock(allocator->allocated_bytes_mutex);
+  allocator->allocated_bytes -= total_size;
+  Platform_Mutex_Unlock(allocator->allocated_bytes_mutex);
 }
 
 static FL_AllocatorOps Platform_Allocator_Ops = {
@@ -111,10 +137,13 @@ static FL_AllocatorOps Platform_Allocator_Ops = {
     .free = Platform_Allocator_Free,
 };
 
-SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
-  SDL3Platform_Init();
+static Platform_Allocator global_allocator;
 
-  FL_Allocator allocator = {.ops = &Platform_Allocator_Ops};
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
+  global_allocator.allocated_bytes_mutex = Platform_Mutex_Create();
+
+  FL_Allocator allocator = {.ptr = &global_allocator,
+                            .ops = &Platform_Allocator_Ops};
 
   ASSERTF(SDL_Init(SDL_INIT_VIDEO), "Failed to init SDL3: %s", SDL_GetError());
 
@@ -141,14 +170,14 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
 
   FL_Init(&(FL_InitOptions){
       .allocator = allocator,
-      .canvas = Canvas_Init(window, renderer),
+      .canvas = Canvas_Init(window, renderer, allocator),
   });
 
   App *app = App_Create(allocator);
   *appstate = app;
 
   if (argc > 1) {
-    ParseJson(app, argv[1]);
+    ParseJson(app, argv[1], allocator);
   }
 
   return SDL_APP_CONTINUE;
@@ -218,7 +247,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
 
 SDL_AppResult SDL_AppIterate(void *app) {
   FL_OnMouseMove(GetGlobalMousePosRelativeToWindow());
-  App_Update(app, GetScreenSize());
+  App_Update(app, GetScreenSize(), global_allocator.allocated_bytes);
   SDL_RenderPresent(renderer);
 
   if (!window_shown) {
