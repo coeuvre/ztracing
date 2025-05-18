@@ -311,46 +311,45 @@ typedef struct FL_ArenaState {
   FL_isize page_size;
 } FL_ArenaState;
 
-static inline bool is_power_of_two(FL_isize val) {
-  return (val & (val - 1)) == 0;
-}
+static inline bool IsPowerOfTwo(FL_isize val) { return (val & (val - 1)) == 0; }
 
-static FL_isize align_backward(FL_isize addr, FL_isize alignment) {
-  FL_DEBUG_ASSERT(is_power_of_two(alignment));
+static FL_isize AlignBackward(FL_isize addr, FL_isize alignment) {
+  FL_DEBUG_ASSERT(IsPowerOfTwo(alignment));
   return addr & ~(alignment - 1);
 }
 
-static FL_isize align_forward(FL_isize addr, FL_isize alignment) {
-  FL_DEBUG_ASSERT(is_power_of_two(alignment));
-  return align_backward(addr + (alignment - 1), alignment);
+static FL_isize AlignForward(FL_isize addr, FL_isize alignment) {
+  FL_DEBUG_ASSERT(IsPowerOfTwo(alignment));
+  return AlignBackward(addr + (alignment - 1), alignment);
 }
 
-static bool is_aligned(FL_isize addr, FL_isize alignment) {
-  return align_backward(addr, alignment) == addr;
+static bool IsAligned(FL_isize addr, FL_isize alignment) {
+  return AlignBackward(addr, alignment) == addr;
 }
 
-static FL_MemoryBlock *fl_memory_block_alloc(FL_isize size,
+static FL_MemoryBlock *FL_MemoryBlock_Create(FL_isize size,
                                              FL_ArenaState *state) {
   FL_isize block_size =
-      align_forward(sizeof(FL_MemoryBlock) + size, state->page_size);
-  FL_MemoryBlock *block = FL_Allocator_Alloc(state->allocator, block_size);
+      AlignForward(size + sizeof(FL_MemoryBlock), state->page_size);
+  char *ptr = FL_Allocator_Alloc(state->allocator, block_size);
+  FL_MemoryBlock *block = (FL_MemoryBlock *)(ptr + block_size) - 1;
   FL_ASSERTF(block, "out of memory");
-  FL_ASSERT(is_aligned((FL_isize)block, alignof(FL_MemoryBlock)));
-  block->prev = block->next = 0;
-  block->state = state;
-  block->end = (char *)block + block_size;
+  FL_ASSERT(IsAligned((FL_isize)block, alignof(FL_MemoryBlock)));
+  *block = (FL_MemoryBlock){
+      .state = state,
+      .begin = ptr,
+  };
   return block;
 }
 
-static void fl_memory_block_free(FL_MemoryBlock *block) {
-  FL_isize block_size = block->end - (char *)block;
+static void FL_MemoryBlock_Destroy(FL_MemoryBlock *block) {
+  FL_isize block_size = (char *)block - block->begin + sizeof(FL_MemoryBlock);
   FL_ArenaState *state = block->state;
-  FL_Allocator_Free(state->allocator, block, block_size);
+  FL_Allocator_Free(state->allocator, block->begin, block_size);
 }
 
 FL_Arena *FL_Arena_Create(const FL_ArenaOptions *opts) {
-  FL_ASSERTF(is_power_of_two(opts->page_size),
-             "page_size must be power of two");
+  FL_ASSERTF(IsPowerOfTwo(opts->page_size), "page_size must be power of two");
   FL_ArenaState tmp_state = {
       .allocator = opts->allocator,
       .page_size = opts->page_size,
@@ -362,11 +361,11 @@ FL_Arena *FL_Arena_Create(const FL_ArenaOptions *opts) {
     tmp_state.page_size = 4096;
   }
 
-  FL_MemoryBlock *block = fl_memory_block_alloc(
+  FL_MemoryBlock *block = FL_MemoryBlock_Create(
       sizeof(FL_ArenaState) + sizeof(FL_Arena), &tmp_state);
   FL_Arena bootstrap = {
-      .begin = (char *)(block + 1),
-      .end = block->end,
+      .begin = block->begin,
+      .end = (char *)block,
   };
 
   FL_ArenaState *state = FL_Arena_PushStruct(&bootstrap, FL_ArenaState);
@@ -381,23 +380,23 @@ FL_Arena *FL_Arena_Create(const FL_ArenaOptions *opts) {
 
 void FL_Arena_Destroy(FL_Arena *arena) {
   FL_MemoryBlock *block = FL_Arena_GetMemoryBlock(arena);
-  while (block->prev) {
-    block = block->prev;
+  while (block->next) {
+    block = block->next;
   }
   while (block) {
-    FL_MemoryBlock *next = block->next;
-    fl_memory_block_free(block);
-    block = next;
+    FL_MemoryBlock *prev = block->prev;
+    FL_MemoryBlock_Destroy(block);
+    block = prev;
   }
 }
 
 void FL_Arena_Reset(FL_Arena *arena) {
   FL_MemoryBlock *block = FL_Arena_GetMemoryBlock(arena);
-  while (block->next) {
-    block = block->next;
+  while (block->prev) {
+    block = block->prev;
   }
-  arena->begin = (char *)(block + 1);
-  arena->end = block->end;
+  arena->begin = block->begin;
+  arena->end = (char *)block;
 
   // Keep the memory space for internal state. See FL_Arena_Create.
   FL_Arena_PushStruct(arena, FL_ArenaState);
@@ -405,7 +404,7 @@ void FL_Arena_Reset(FL_Arena *arena) {
 }
 
 FL_MemoryBlock *FL_Arena_GetMemoryBlock(FL_Arena *arena) {
-  return (FL_MemoryBlock *)arena->begin - 1;
+  return (FL_MemoryBlock *)arena->end;
 }
 
 FL_Allocator FL_Arena_GetAllocator(FL_Arena *arena) {
@@ -416,22 +415,22 @@ FL_Allocator FL_Arena_GetAllocator(FL_Arena *arena) {
 
 void *FL_Arena_Push(FL_Arena *arena, FL_isize size, FL_isize alignment) {
   FL_ASSERT(size >= 0);
-  char *addr = (char *)align_backward((FL_isize)(arena->end - size), alignment);
-  while (addr < arena->begin) {
+  char *addr = (char *)AlignForward((FL_isize)arena->begin, alignment);
+  while ((addr + size) >= arena->end) {
     FL_MemoryBlock *block = FL_Arena_GetMemoryBlock(arena);
-    FL_MemoryBlock *prev = block->prev;
-    if (!prev) {
-      prev = fl_memory_block_alloc(size, block->state);
-      prev->next = block;
-      block->prev = prev;
+    FL_MemoryBlock *next = block->next;
+    if (!next) {
+      next = FL_MemoryBlock_Create(size, block->state);
+      next->prev = block;
+      block->next = next;
     }
-    arena->begin = (char *)(prev + 1);
-    arena->end = prev->end;
+    arena->begin = next->begin;
+    arena->end = (char *)next;
 
-    addr = (char *)align_backward((FL_isize)(arena->end - size), alignment);
+    addr = (char *)AlignForward((FL_isize)arena->begin, alignment);
   }
 
-  arena->end = addr;
+  arena->begin = addr + size;
 
   return addr;
 }
@@ -439,16 +438,17 @@ void *FL_Arena_Push(FL_Arena *arena, FL_isize size, FL_isize alignment) {
 void *FL_Arena_Pop(FL_Arena *arena, FL_isize size) {
   FL_MemoryBlock *block = FL_Arena_GetMemoryBlock(arena);
   while (block) {
-    char *new_end = arena->end + size;
-    if (new_end <= block->end) {
-      return new_end;
+    char *new_begin = arena->begin - size;
+    if (new_begin >= block->begin) {
+      arena->begin = new_begin;
+      return new_begin;
     }
 
-    size -= block->end - arena->end;
-    block = block->next;
+    size -= arena->begin - block->begin;
+    block = block->prev;
     FL_ASSERTF(block, "arena overflow");
-    arena->begin = (char *)(block + 1);
-    arena->end = arena->begin;
+    arena->end = (char *)block;
+    arena->begin = arena->end;
   }
   FL_UNREACHABLE;
 }
@@ -977,20 +977,6 @@ FL_f32 FL_Widget_AnimateFast(FL_Widget *widget, FL_f32 value, FL_f32 target) {
     result = target;
   } else {
     result = value + diff * build->fast_animation_rate;
-  }
-  return result;
-}
-
-FL_i64 FL_Widget_AnimateFasti64(FL_Widget *widget, FL_i64 value,
-                                FL_i64 target) {
-  Build *build = widget->build;
-  FL_i64 result;
-  FL_i64 diff = (target - value);
-  if (FL_Absi64(diff) < 1) {
-    result = target;
-  } else {
-    result = (FL_i64)FL_Roundf64(
-        (FL_f64)value + (FL_f64)diff * (FL_f64)build->fast_animation_rate);
   }
   return result;
 }

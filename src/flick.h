@@ -33,8 +33,6 @@
 
 typedef int32_t FL_i32;
 typedef uint32_t FL_u32;
-typedef int64_t FL_i64;
-typedef uint64_t FL_u64;
 typedef ptrdiff_t FL_isize;
 typedef size_t FL_usize;
 
@@ -131,10 +129,6 @@ static inline bool FL_Contains(FL_f32 val, FL_f32 begin, FL_f32 end) {
 }
 
 FL_OPTIONAL_TYPE(FL_f32o, FL_f32)
-
-static inline FL_i64 FL_Absi64(FL_i64 a) { return a >= 0 ? a : -a; }
-
-static inline FL_f64 FL_Roundf64(FL_f64 a) { return round(a); }
 
 typedef struct FL_Vec2 {
   FL_f32 x;
@@ -265,7 +259,7 @@ struct FL_MemoryBlock {
   FL_MemoryBlock *next;
 
   void *state;
-  char *end;
+  char *begin;
 };
 
 typedef struct FL_Arena {
@@ -1168,8 +1162,6 @@ void FL_Widget_SendNotification(FL_Widget *widget, FL_NotificationID id,
 FL_f32 FL_Widget_GetDeltaTime(FL_Widget *widget);
 
 FL_f32 FL_Widget_AnimateFast(FL_Widget *widget, FL_f32 value, FL_f32 target);
-
-FL_i64 FL_Widget_AnimateFasti64(FL_Widget *widget, FL_i64 value, FL_i64 target);
 
 FL_Arena *FL_Widget_GetArena(FL_Widget *widget);
 
