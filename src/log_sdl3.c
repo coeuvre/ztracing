@@ -3,14 +3,14 @@
 #include "SDL3/SDL_log.h"
 #include "src/log.h"
 
-static SDL_LogPriority kLogLevelToPriority[LOG_LEVEL_COUNT] = {
+static SDL_LogPriority kLogLevelToPriority[LogLevel_Count] = {
     SDL_LOG_PRIORITY_DEBUG,
     SDL_LOG_PRIORITY_INFO,
     SDL_LOG_PRIORITY_WARN,
     SDL_LOG_PRIORITY_ERROR,
 };
 
-void log_message(LogLevel level, const char *fmt, ...) {
+void LogMessage(LogLevel level, const char *fmt, ...) {
   int category = SDL_LOG_CATEGORY_APPLICATION;
   SDL_LogPriority priority = kLogLevelToPriority[level];
   if (priority >= SDL_GetLogPriority(category)) {

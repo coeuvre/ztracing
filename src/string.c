@@ -9,7 +9,7 @@
 #include "src/memory.h"
 #include "src/types.h"
 
-u64 str8_hash_with_seed(Str8 s, u64 seed) {
+u64 Str_HashWithSeed(Str s, u64 seed) {
   // FNV-style hash
   u64 h = seed;
   for (usize i = 0; i < s.len; i++) {
@@ -19,7 +19,7 @@ u64 str8_hash_with_seed(Str8 s, u64 seed) {
   return h;
 }
 
-Str8 arena_push_str8fv(Arena *arena, const char *format, va_list ap) {
+Str arena_push_str8fv(Arena *arena, const char *format, va_list ap) {
 #define INIT_BUFFER_SIZE 256
   usize buf_len = INIT_BUFFER_SIZE;
   char *buf_ptr = arena_push_array(arena, char, buf_len);
@@ -40,8 +40,32 @@ Str8 arena_push_str8fv(Arena *arena, const char *format, va_list ap) {
     vsnprintf(buf_ptr, buf_len, format, args);
   }
 
-  Str8 result = {(u8 *)buf_ptr, str_len};
+  Str result = {buf_ptr, str_len};
   return result;
+}
+
+Str Arena_PushStrFV(FL_Arena *arena, const char *format, va_list ap) {
+#define INIT_BUFFER_SIZE 256
+  usize buf_len = INIT_BUFFER_SIZE;
+  char *buf_ptr = Arena_PushArray(arena, char, buf_len);
+
+  va_list args;
+  va_copy(args, ap);
+  usize str_len = vsnprintf(buf_ptr, buf_len, format, args);
+
+  if (str_len <= buf_len) {
+    // Free the unused part of the buffer.
+    Arena_Pop(arena, buf_len - str_len);
+  } else {
+    // The buffer was too small. We need to resize it and try again.
+    Arena_Pop(arena, buf_len);
+    buf_len = str_len;
+    buf_ptr = Arena_PushArray(arena, char, buf_len);
+    va_copy(args, ap);
+    vsnprintf(buf_ptr, buf_len, format, args);
+  }
+
+  return (Str){buf_ptr, str_len};
 }
 
 typedef struct UnicodeDecode UnicodeDecode;
@@ -50,7 +74,7 @@ struct UnicodeDecode {
   u32 increment;
 };
 
-static UnicodeDecode utf_decode(u8 *ptr, usize len) {
+static UnicodeDecode DecodeUTF8(u8 *ptr, usize len) {
 #define VALID_PREFIX(b) (((b) & 0b11000000) == 0b10000000)
   UnicodeDecode result;
   result.codepoint = 0xFFFD;
@@ -89,8 +113,8 @@ static UnicodeDecode utf_decode(u8 *ptr, usize len) {
   return result;
 }
 
-Str32 Arena_PushStr32FromStr8(FL_Arena *arena, Str8 str) {
-  if (str8_is_empty(str)) {
+Str32 Arena_PushStr32FromStr(FL_Arena *arena, Str str) {
+  if (Str_IsEmpty(str)) {
     return (Str32){0};
   }
 
@@ -100,7 +124,7 @@ Str32 Arena_PushStr32FromStr8(FL_Arena *arena, Str8 str) {
   char *end = str.ptr + str.len;
   UnicodeDecode decode;
   for (char *cursor = str.ptr; cursor < end; cursor += decode.increment) {
-    decode = utf_decode((u8 *)cursor, end - cursor);
+    decode = DecodeUTF8((u8 *)cursor, end - cursor);
     ptr[len++] = decode.codepoint;
   }
   DEBUG_ASSERT(len <= cap);

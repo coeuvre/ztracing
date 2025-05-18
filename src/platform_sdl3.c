@@ -7,122 +7,122 @@
 static PlatformMutex *g_allocated_bytes_mutex;
 static usize g_allocated_bytes;
 
-void *platform_memory_alloc(usize size) {
+void *Platform_AllocMemory(usize size) {
   usize total_size = size + sizeof(usize);
   usize *p = SDL_malloc(total_size);
   ASSERTF(p, "%s", SDL_GetError());
   *p = size;
-  platform_mutex_lock(g_allocated_bytes_mutex);
+  Platform_Mutex_Lock(g_allocated_bytes_mutex);
   g_allocated_bytes += total_size;
-  platform_mutex_unlock(g_allocated_bytes_mutex);
+  Platform_Mutex_Unlock(g_allocated_bytes_mutex);
   return p + 1;
 }
 
-void platform_memory_free(void *ptr, usize size) {
+void Platform_FreeMemory(void *ptr, usize size) {
   usize total_size = size + sizeof(usize);
   usize *p = ((usize *)ptr) - 1;
   ASSERTF(*p == size, "free size (%zu) doesn't match alloc size (%zu)", *p,
           size);
   SDL_free(p);
-  platform_mutex_lock(g_allocated_bytes_mutex);
+  Platform_Mutex_Lock(g_allocated_bytes_mutex);
   g_allocated_bytes -= total_size;
-  platform_mutex_unlock(g_allocated_bytes_mutex);
+  Platform_Mutex_Unlock(g_allocated_bytes_mutex);
 }
 
-usize platform_memory_get_allocated_bytes(void) { return g_allocated_bytes; }
+usize Platform_GetAllocatedBytes(void) { return g_allocated_bytes; }
 
-void platform_sdl3_init(void) {
-  g_allocated_bytes_mutex = platform_mutex_alloc();
+void SDL3Platform_Init(void) {
+  g_allocated_bytes_mutex = Platform_Mutex_Create();
 }
 
-u64 platform_get_perf_counter(void) {
+u64 Platform_GetPerformanceCounter(void) {
   u64 result = SDL_GetPerformanceCounter();
   return result;
 }
 
-u64 platform_get_perf_freq(void) {
+u64 Platform_GetPerformanceFrequency(void) {
   u64 result = SDL_GetPerformanceFrequency();
   return result;
 }
 
-PlatformMutex *platform_mutex_alloc(void) {
+PlatformMutex *Platform_Mutex_Create(void) {
   SDL_Mutex *mutex = SDL_CreateMutex();
   ASSERTF(mutex, "%s", SDL_GetError());
   return (PlatformMutex *)mutex;
 }
 
-void platform_mutex_lock(PlatformMutex *mutex_) {
+void Platform_Mutex_Lock(PlatformMutex *mutex_) {
   SDL_Mutex *mutex = (SDL_Mutex *)mutex_;
   SDL_LockMutex(mutex);
 }
 
-void platform_mutex_unlock(PlatformMutex *mutex_) {
+void Platform_Mutex_Unlock(PlatformMutex *mutex_) {
   SDL_Mutex *mutex = (SDL_Mutex *)mutex_;
   SDL_UnlockMutex(mutex);
 }
 
-void platform_mutex_free(PlatformMutex *mutex_) {
+void Platform_Mutex_Destroy(PlatformMutex *mutex_) {
   SDL_Mutex *mutex = (SDL_Mutex *)mutex_;
   SDL_DestroyMutex(mutex);
 }
 
-PlatformCondition *platform_condition_alloc(void) {
+Platform_Condition *Platform_Condition_Create(void) {
   SDL_Condition *condition = SDL_CreateCondition();
   ASSERTF(condition, "%s", SDL_GetError());
-  return (PlatformCondition *)condition;
+  return (Platform_Condition *)condition;
 }
 
-void platform_condition_wait(PlatformCondition *condition_,
+void Platform_Condition_Wait(Platform_Condition *condition_,
                              PlatformMutex *mutex_) {
   SDL_Condition *condition = (SDL_Condition *)condition_;
   SDL_Mutex *mutex = (SDL_Mutex *)mutex_;
   SDL_WaitCondition(condition, mutex);
 }
 
-void platform_condition_signal(PlatformCondition *condition_) {
+void Platform_Condition_Signal(Platform_Condition *condition_) {
   SDL_Condition *condition = (SDL_Condition *)condition_;
   SDL_SignalCondition(condition);
 }
 
-void platform_condition_broadcast(PlatformCondition *condition_) {
+void Platform_Condition_Broadcast(Platform_Condition *condition_) {
   SDL_Condition *condition = (SDL_Condition *)condition_;
   SDL_BroadcastCondition(condition);
 }
 
-void platform_condition_free(PlatformCondition *condition_) {
+void Platform_Condition_Destroy(Platform_Condition *condition_) {
   SDL_Condition *condition = (SDL_Condition *)condition_;
   SDL_DestroyCondition(condition);
 }
 
-PlatformSemaphore *platform_semaphore_alloc(u32 initial_value) {
+Platform_Semaphore *Platform_Semaphore_Create(u32 initial_value) {
   SDL_Semaphore *semaphore = SDL_CreateSemaphore(initial_value);
   ASSERTF(semaphore, "%s", SDL_GetError());
-  return (PlatformSemaphore *)semaphore;
+  return (Platform_Semaphore *)semaphore;
 }
 
-void platform_semaphore_acquire(PlatformSemaphore *semaphore_) {
+void Platform_Semaphore_Acquire(Platform_Semaphore *semaphore_) {
   SDL_Semaphore *semaphore = (SDL_Semaphore *)semaphore_;
   SDL_WaitSemaphore(semaphore);
 }
 
-void platform_semaphore_release(PlatformSemaphore *semaphore_) {
+void Platform_Semaphore_Release(Platform_Semaphore *semaphore_) {
   SDL_Semaphore *semaphore = (SDL_Semaphore *)semaphore_;
   SDL_SignalSemaphore(semaphore);
 }
 
-void platform_semaphore_free(PlatformSemaphore *semaphore_) {
+void Platform_Semaphore_Destroy(Platform_Semaphore *semaphore_) {
   SDL_Semaphore *semaphore = (SDL_Semaphore *)semaphore_;
   SDL_DestroySemaphore(semaphore);
 }
 
-PlatformThread *platform_thread_start(PlatformThreadFunction func,
+Platform_Thread *Platform_Thread_Start(Platform_ThreadFunction func,
                                       const char *name, void *data) {
   SDL_Thread *thread = SDL_CreateThread(func, name, data);
   ASSERTF(thread, "%s", SDL_GetError());
-  return (PlatformThread *)thread;
+  return (Platform_Thread *)thread;
 }
 
-int platform_thread_wait(PlatformThread *thread_) {
+int Platform_Thread_Wait(Platform_Thread *thread_) {
   SDL_Thread *thread = (SDL_Thread *)thread_;
   int status;
   SDL_WaitThread(thread, &status);

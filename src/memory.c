@@ -160,7 +160,7 @@ THREAD_LOCAL Arena t_scrach_arenas[2];
 
 Scratch scratch_begin(Arena **conflicts, usize len) {
   for (u32 scratch_arena_index = 0;
-       scratch_arena_index < ARRAY_COUNT(t_scrach_arenas);
+       scratch_arena_index < COUNT_OF(t_scrach_arenas);
        ++scratch_arena_index) {
     Arena *scratch = t_scrach_arenas + scratch_arena_index;
 
@@ -190,7 +190,7 @@ Scratch scratch_begin(Arena **conflicts, usize len) {
 
 void scratch_free_all(void) {
   for (u32 scratch_arena_index = 0;
-       scratch_arena_index < ARRAY_COUNT(t_scrach_arenas);
+       scratch_arena_index < COUNT_OF(t_scrach_arenas);
        ++scratch_arena_index) {
     Arena *scratch = t_scrach_arenas + scratch_arena_index;
     arena_free(scratch);

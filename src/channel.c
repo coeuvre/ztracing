@@ -6,11 +6,11 @@
 #include "src/platform.h"
 #include "src/types.h"
 
-Channel *channel_alloc(u32 cap, usize item_size) {
+Channel *Channel_Create(u32 cap, usize item_size) {
   ASSERT(cap > 0);
   Arena arena_ = {0};
-  PlatformMutex *mutex = platform_mutex_alloc();
-  PlatformCondition *condition = platform_condition_alloc();
+  PlatformMutex *mutex = Platform_Mutex_Create();
+  Platform_Condition *condition = Platform_Condition_Create();
   Channel *channel = arena_push_struct_no_zero(&arena_, Channel);
   *channel = (Channel){
       .arena = arena_,
@@ -24,20 +24,20 @@ Channel *channel_alloc(u32 cap, usize item_size) {
 
 static void channel__free(Channel *self) {
   ASSERT(self->rx_closed && self->tx_closed);
-  platform_condition_free(self->condition);
-  platform_mutex_free(self->mutex);
+  Platform_Condition_Destroy(self->condition);
+  Platform_Mutex_Destroy(self->mutex);
   arena_free(&self->arena);
 }
 
-bool channel_send_(Channel *self, usize item_size, void *item) {
+bool Channel_Send_(Channel *self, usize item_size, void *item) {
   ASSERT(self->item_size == item_size);
 
   bool sent = false;
 
-  platform_mutex_lock(self->mutex);
+  Platform_Mutex_Lock(self->mutex);
 
   while (!(self->len < self->cap || self->rx_closed)) {
-    platform_condition_wait(self->condition, self->mutex);
+    Platform_Condition_Wait(self->condition, self->mutex);
   }
 
   if (!self->rx_closed) {
@@ -56,23 +56,23 @@ bool channel_send_(Channel *self, usize item_size, void *item) {
     memory_copy(ci + 1, item, item_size);
     self->len += 1;
 
-    platform_condition_broadcast(self->condition);
+    Platform_Condition_Broadcast(self->condition);
   }
 
-  platform_mutex_unlock(self->mutex);
+  Platform_Mutex_Unlock(self->mutex);
 
   return sent;
 }
 
-bool channel_receive_(Channel *self, usize item_size, void *item) {
+bool Channel_Receive_(Channel *self, usize item_size, void *item) {
   ASSERT(self->item_size == item_size);
 
   bool received = false;
 
-  platform_mutex_lock(self->mutex);
+  Platform_Mutex_Lock(self->mutex);
 
   while (!(self->len || self->tx_closed)) {
-    platform_condition_wait(self->condition, self->mutex);
+    Platform_Condition_Wait(self->condition, self->mutex);
   }
 
   if (self->len) {
@@ -86,24 +86,24 @@ bool channel_receive_(Channel *self, usize item_size, void *item) {
 
     DLL_PREPEND(self->free_first, self->free_last, ci, prev, next);
 
-    platform_condition_broadcast(self->condition);
+    Platform_Condition_Broadcast(self->condition);
   }
 
-  platform_mutex_unlock(self->mutex);
+  Platform_Mutex_Unlock(self->mutex);
 
   return received;
 }
 
-bool channel_close_rx(Channel *self) {
-  platform_mutex_lock(self->mutex);
+bool Channel_CloseRx(Channel *self) {
+  Platform_Mutex_Lock(self->mutex);
 
   ASSERT(!self->rx_closed);
   self->rx_closed = true;
-  platform_condition_broadcast(self->condition);
+  Platform_Condition_Broadcast(self->condition);
 
   bool all_closed = self->rx_closed && self->tx_closed;
 
-  platform_mutex_unlock(self->mutex);
+  Platform_Mutex_Unlock(self->mutex);
 
   if (all_closed) {
     channel__free(self);
@@ -112,16 +112,16 @@ bool channel_close_rx(Channel *self) {
   return all_closed;
 }
 
-bool channel_close_tx(Channel *self) {
-  platform_mutex_lock(self->mutex);
+bool Channel_CloseTx(Channel *self) {
+  Platform_Mutex_Lock(self->mutex);
 
   ASSERT(!self->tx_closed);
   self->tx_closed = true;
-  platform_condition_broadcast(self->condition);
+  Platform_Condition_Broadcast(self->condition);
 
   bool all_closed = self->rx_closed && self->tx_closed;
 
-  platform_mutex_unlock(self->mutex);
+  Platform_Mutex_Unlock(self->mutex);
 
   if (all_closed) {
     channel__free(self);

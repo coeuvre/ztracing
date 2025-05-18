@@ -1,8 +1,8 @@
 #ifndef ZTRACING_SRC_CONFIG_H_
 #define ZTRACING_SRC_CONFIG_H_
 
-// ----------------------------------------------------------------------------
 // Clang OS/Arch Detection
+// ----------------------------------------------------------------------------
 
 #if defined(__clang__)
 
@@ -31,8 +31,8 @@
 #error Architecture not supported.
 #endif
 
-// ----------------------------------------------------------------------------
 // MSVC OS/Arch Detection
+// ----------------------------------------------------------------------------
 
 #elif defined(_MSC_VER)
 
@@ -61,7 +61,7 @@
 #endif
 
 #if !defined(NDEBUG)
-#define BUILD_DEBUG 1
+#define ZTRACING_DEBUG 1
 #endif
 
 #endif  // ZTRACING_SRC_CONFIG_H_

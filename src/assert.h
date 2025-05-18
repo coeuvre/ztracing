@@ -28,7 +28,7 @@
     }                                                         \
   } while (0)
 
-#if BUILD_DEBUG
+#if ZTRACING_DEBUG
 #define DEBUG_ASSERT(x) ASSERT(x)
 #define DEBUG_ASSERTF(x, fmt, ...) ASSERTF(x, fmt, ##__VA_ARGS__)
 #else

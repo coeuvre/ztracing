@@ -3,37 +3,37 @@
 
 #include "src/types.h"
 
-void *platform_memory_alloc(usize size);
-void platform_memory_free(void *ptr, usize size);
-usize platform_memory_get_allocated_bytes(void);
+void *Platform_AllocMemory(usize size);
+void Platform_FreeMemory(void *ptr, usize size);
+usize Platform_GetAllocatedBytes(void);
 
-u64 platform_get_perf_counter(void);
-u64 platform_get_perf_freq(void);
+u64 Platform_GetPerformanceCounter(void);
+u64 Platform_GetPerformanceFrequency(void);
 
 typedef struct PlatformMutex PlatformMutex;
-PlatformMutex *platform_mutex_alloc(void);
-void platform_mutex_lock(PlatformMutex *mutex);
-void platform_mutex_unlock(PlatformMutex *mutex);
-void platform_mutex_free(PlatformMutex *mutex);
+PlatformMutex *Platform_Mutex_Create(void);
+void Platform_Mutex_Lock(PlatformMutex *mutex);
+void Platform_Mutex_Unlock(PlatformMutex *mutex);
+void Platform_Mutex_Destroy(PlatformMutex *mutex);
 
-typedef struct PlatformCondition PlatformCondition;
-PlatformCondition *platform_condition_alloc(void);
-void platform_condition_wait(PlatformCondition *condition,
+typedef struct Platform_Condition Platform_Condition;
+Platform_Condition *Platform_Condition_Create(void);
+void Platform_Condition_Wait(Platform_Condition *condition,
                              PlatformMutex *mutex);
-void platform_condition_signal(PlatformCondition *condition);
-void platform_condition_broadcast(PlatformCondition *condition);
-void platform_condition_free(PlatformCondition *condition);
+void Platform_Condition_Signal(Platform_Condition *condition);
+void Platform_Condition_Broadcast(Platform_Condition *condition);
+void Platform_Condition_Destroy(Platform_Condition *condition);
 
-typedef struct PlatformSemaphore PlatformSemaphore;
-PlatformSemaphore *platform_semaphore_alloc(u32 initial_value);
-void platform_semaphore_acquire(PlatformSemaphore *semaphore);
-void platform_semaphore_release(PlatformSemaphore *semaphore);
-void platform_semaphore_free(PlatformSemaphore *semaphore);
+typedef struct Platform_Semaphore Platform_Semaphore;
+Platform_Semaphore *Platform_Semaphore_Create(u32 initial_value);
+void Platform_Semaphore_Acquire(Platform_Semaphore *semaphore);
+void Platform_Semaphore_Release(Platform_Semaphore *semaphore);
+void Platform_Semaphore_Destroy(Platform_Semaphore *semaphore);
 
-typedef int PlatformThreadFunction(void *data);
-typedef struct PlatformThread PlatformThread;
-PlatformThread *platform_thread_start(PlatformThreadFunction func,
-                                      const char *name, void *data);
-int platform_thread_wait(PlatformThread *thread);
+typedef int Platform_ThreadFunction(void *data);
+typedef struct Platform_Thread Platform_Thread;
+Platform_Thread *Platform_Thread_Start(Platform_ThreadFunction func,
+                                       const char *name, void *data);
+int Platform_Thread_Wait(Platform_Thread *thread);
 
 #endif  // ZTRACING_SRC_PLATFORM_H_

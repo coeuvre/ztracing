@@ -3,7 +3,10 @@
 
 #include "src/hash_trie.h"
 #include "src/json.h"
+#include "src/math.h"
+#include "src/memory.h"
 #include "src/string.h"
+#include "src/types.h"
 
 typedef struct JsonTraceSample JsonTraceSample;
 struct JsonTraceSample {
@@ -14,14 +17,14 @@ struct JsonTraceSample {
 };
 
 typedef struct JsonTraceSeries {
-  Str8 name;
+  Str name;
   usize sample_count;
   JsonTraceSample *first;
   JsonTraceSample *last;
 } JsonTraceSeries;
 
 typedef struct JsonTraceCounter {
-  Str8 name;
+  Str name;
   usize series_count;
   HashTrie series;
   f64 min_value;
@@ -32,8 +35,8 @@ typedef struct JsonTraceSpan JsonTraceSpan;
 struct JsonTraceSpan {
   JsonTraceSpan *prev;
   JsonTraceSpan *next;
-  Str8 name;
-  Str8 cat;
+  Str name;
+  Str cat;
   i64 begin_time_ns;
   i64 end_time_ns;
 };
@@ -41,7 +44,7 @@ struct JsonTraceSpan {
 typedef struct JsonTraceThread {
   bool init;
   i64 tid;
-  Str8 name;
+  Str name;
   i64o sort_index;
   usize span_count;
   JsonTraceSpan *first_span;
@@ -67,9 +70,9 @@ typedef struct JsonTraceProfile {
   i64 max_time_ns;
   usize process_count;
   HashTrie processes;
-  Str8 error;
+  Str error;
 } JsonTraceProfile;
 
-JsonTraceProfile *json_trace_profile_parse(Arena *arena, JsonParser *parser);
+JsonTraceProfile *JsonTraceProfile_Parse(Arena *arena, JsonParser *parser);
 
 #endif  // ZTRACING_SRC_JSON_TRACE_H_

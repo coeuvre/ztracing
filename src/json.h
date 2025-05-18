@@ -1,61 +1,64 @@
 #ifndef ZTRACING_SRC_JSON_H_
 #define ZTRACING_SRC_JSON_H_
 
+#include "src/memory.h"
 #include "src/string.h"
+#include "src/types.h"
+
 typedef enum JsonTokenType {
-  JSON_TOKEN_EOF,
-  JSON_TOKEN_ERROR,
+  JsonTokenType_Eof,
+  JsonTokenType_Error,
 
-  JSON_TOKEN_OPEN_BRACE,
-  JSON_TOKEN_CLOSE_BRACE,
-  JSON_TOKEN_OPEN_BRACKET,
-  JSON_TOKEN_CLOSE_BRACKET,
-  JSON_TOKEN_COMMA,
-  JSON_TOKEN_COLON,
-  JSON_TOKEN_STRING_LITERAL,
-  JSON_TOKEN_NUMBER,
-  JSON_TOKEN_TRUE,
-  JSON_TOKEN_FALSE,
-  JSON_TOKEN_NULL,
+  JsonTokenType_OpenBrace,
+  JsonTokenType_CloseBrace,
+  JsonTokenType_OpenBracket,
+  JsonTokenType_CloseBracket,
+  JsonTokenType_Comma,
+  JsonTokenType_Colon,
+  JsonTokenType_StringLiteral,
+  JsonTokenType_Number,
+  JsonTokenType_True,
+  JsonTokenType_False,
+  JsonTokenType_Null,
 
-  JSON_TOKEN_COUNT,
+  JsonTokenType_Count,
 } JsonTokenType;
 
 typedef struct JsonToken {
   JsonTokenType type;
-  Str8 value;
+  Str value;
 } JsonToken;
 
-typedef Str8 JsonGetInputFn(void *context);
+typedef Str JsonGetInputFn(void *context);
 
 typedef enum JsonValueType {
-  JSON_VALUE_ERROR,
-  JSON_VALUE_OBJECT,
-  JSON_VALUE_ARRAY,
-  JSON_VALUE_STRING,
-  JSON_VALUE_NUMBER,
-  JSON_VALUE_TRUE,
-  JSON_VALUE_FALSE,
-  JSON_VALUE_NULL,
+  JsonValueType_Error,
+  JsonValueType_Object,
+  JsonValueType_Array,
+  JsonValueType_String,
+  JsonValueType_Number,
+  JsonValueType_True,
+  JsonValueType_False,
+  JsonValueType_Null,
 } JsonValueType;
 
-static inline const char *json_value_type_string(JsonValueType type) {
+static inline const char *JsonValueType_ToString(JsonValueType type) {
   switch (type) {
-    case JSON_VALUE_ERROR:
+    case JsonValueType_Error:
       return "error";
-    case JSON_VALUE_OBJECT:
+    case JsonValueType_Object:
       return "object";
-    case JSON_VALUE_ARRAY:
+    case JsonValueType_Array:
       return "array";
-    case JSON_VALUE_STRING:
+    case JsonValueType_String:
       return "string";
-    case JSON_VALUE_NUMBER:
+    case JsonValueType_Number:
       return "number";
-    case JSON_VALUE_TRUE:
+    case JsonValueType_True:
       return "true";
-    case JSON_VALUE_FALSE:
+    case JsonValueType_False:
       return "false";
-    case JSON_VALUE_NULL:
+    case JsonValueType_Null:
       return "null";
     default:
       return "unknown";
@@ -70,15 +73,15 @@ struct JsonValue {
   JsonValue *last;
 
   JsonValueType type;
-  Str8 label;
-  Str8 value;
+  Str label;
+  Str value;
 };
 
-f64 json_value_as_f64(JsonValue *value);
+f64 JsonValue_ToF64(JsonValue *value);
 
 typedef struct JsonParser {
   u8 tmp;
-  Str8 buf;
+  Str buf;
   usize cursor;
   JsonGetInputFn *get_input;
   void *get_input_context;
@@ -93,7 +96,7 @@ static inline JsonParser json_parser(JsonGetInputFn get_input,
   return self;
 }
 
-JsonToken json_parser_parse_token(JsonParser *self, Arena *arena);
-JsonValue *json_parser_parse_value(JsonParser *self, Arena *arena);
+JsonToken JsonParser_ParseToken(JsonParser *self, Arena *arena);
+JsonValue *JsonParser_ParseValue(JsonParser *self, Arena *arena);
 
 #endif  // ZTRACING_SRC_JSON_H_

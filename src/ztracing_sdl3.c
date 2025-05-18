@@ -5,6 +5,7 @@
 #include "src/flick.h"
 #include "src/math.h"
 #include "src/memory.h"
+#include "src/platform.h"
 #include "src/platform_sdl3.h"
 #include "src/string.h"
 #include "src/types.h"
@@ -16,8 +17,8 @@
 
 static SDL_Window *window;
 static SDL_Renderer *renderer;
-static b32 window_shown;
-static b32 window_coordinate_is_in_pixels;
+static bool window_shown;
+static bool window_coordinate_is_in_pixels;
 
 static f32 GetScreenContentScale(void) {
   f32 result = SDL_GetWindowDisplayScale(window);
@@ -31,80 +32,89 @@ Vec2 GetScreenSize(void) {
   Vec2I screen_size_in_pixel = {0};
   SDL_GetCurrentRenderOutputSize(renderer, &screen_size_in_pixel.x,
                                  &screen_size_in_pixel.y);
-  Vec2 result = vec2_mul(vec2_from_vec2i(screen_size_in_pixel),
+  Vec2 result = Vec2_Mul(Vec2_FromVec2I(screen_size_in_pixel),
                          1.0f / GetScreenContentScale());
   return result;
 }
 
-static Vec2 get_window_size(void) {
+static Vec2 GetWindowSize(void) {
   int w, h;
   SDL_GetWindowSizeInPixels(window, &w, &h);
   Vec2 size = vec2(w, h);
   if (window_coordinate_is_in_pixels) {
-    size = vec2_mul(size, 1.0f / GetScreenContentScale());
+    size = Vec2_Mul(size, 1.0f / GetScreenContentScale());
   }
   return size;
 }
 
-typedef struct ZFileSDL3 {
-  ZFile file;
+typedef struct SDL3LoadingFile {
+  LoadingFile file;
   Arena arena;
   SDL_IOStream *io;
-  Str8 buf;
-} ZFileSDL3;
+  Str buf;
+} SDL3LoadingFile;
 
-static Str8 z_file_sdl3_read(void *self_) {
-  ZFileSDL3 *self = self_;
+static Str SDL3LoadingFile_Read(void *self_) {
+  SDL3LoadingFile *self = self_;
 
   if (self->file.interrupted) {
-    return str8_zero();
+    return Str_Zero();
   }
 
   usize nread = SDL_ReadIO(self->io, self->buf.ptr, self->buf.len);
-  return str8(self->buf.ptr, nread);
+  return (Str){self->buf.ptr, nread};
 }
 
-static void z_file_sdl3_close(void *self_) {
-  ZFileSDL3 *self = self_;
+static void SDL3LoadingFile_Close(void *self_) {
+  SDL3LoadingFile *self = self_;
   SDL_CloseIO(self->io);
   arena_free(&self->arena);
 }
 
-static ZFile *z_file_sdl3_open(const char *path, usize buf_len) {
+static LoadingFile *SDL3LoadingFile_Open(const char *path, usize buf_len) {
   SDL_IOStream *io = SDL_IOFromFile(path, "r");
   ASSERTF(io, "%s", SDL_GetError());
   Arena arena_ = {0};
-  ZFileSDL3 *file = arena_push_struct(&arena_, ZFileSDL3);
-  Str8 name = str8_dup(&arena_, str8_from_cstr(path));
-  Str8 buf = arena_push_str8(&arena_, buf_len);
-  *file = (ZFileSDL3){
+  SDL3LoadingFile *file = arena_push_struct(&arena_, SDL3LoadingFile);
+  Str name = Str_Dup(&arena_, Str_FromCStr(path));
+  Str buf = arena_push_str8(&arena_, buf_len);
+  *file = (SDL3LoadingFile){
       .file =
           {
               .name = name,
-              .read = z_file_sdl3_read,
-              .close = z_file_sdl3_close,
+              .read = SDL3LoadingFile_Read,
+              .close = SDL3LoadingFile_Close,
           },
       .arena = arena_,
       .io = io,
       .buf = buf,
   };
-  return (ZFile *)file;
+  return (LoadingFile *)file;
 }
 
-static void parse_json(const char *path) {
+static void ParseJson(App *app, const char *path) {
   usize buf_len = 1024 * 1024;
-  ZFile *file = z_file_sdl3_open(path, buf_len);
-  z_load_file(file);
+  LoadingFile *file = SDL3LoadingFile_Open(path, buf_len);
+  App_LoadFile(app, file);
 }
+
+static void *Platform_Allocator_Alloc(void *ctx, FL_isize size) {
+  return Platform_AllocMemory(size);
+}
+
+static void Platform_Allocator_Free(void *ctx, void *ptr, FL_isize size) {
+  Platform_FreeMemory(ptr, size);
+}
+
+static FL_AllocatorOps Platform_Allocator_Ops = {
+    .alloc = Platform_Allocator_Alloc,
+    .free = Platform_Allocator_Free,
+};
 
 SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
-  (void)appstate, (void)argc, (void)argv;
+  SDL3Platform_Init();
 
-  platform_sdl3_init();
-
-  if (argc > 1) {
-    parse_json(argv[1]);
-  }
+  FL_Allocator allocator = {.ops = &Platform_Allocator_Ops};
 
   ASSERTF(SDL_Init(SDL_INIT_VIDEO), "Failed to init SDL3: %s", SDL_GetError());
 
@@ -130,8 +140,16 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[]) {
   SDL_SetRenderVSync(renderer, 1);
 
   FL_Init(&(FL_InitOptions){
+      .allocator = allocator,
       .canvas = Canvas_Init(window, renderer),
   });
+
+  App *app = App_Create(allocator);
+  *appstate = app;
+
+  if (argc > 1) {
+    ParseJson(app, argv[1]);
+  }
 
   return SDL_APP_CONTINUE;
 }
@@ -144,21 +162,21 @@ static u32 g_sdl_button_to_ui_button[] = {
     [SDL_BUTTON_X2] = FL_MOUSE_BUTTON_BACK,
 };
 
-static Vec2 mouse_pos_from_sdl(Vec2 pos) {
+static Vec2 ConvertMousePos(Vec2 pos) {
   Vec2 result = pos;
   if (window_coordinate_is_in_pixels) {
-    result = vec2_mul(result, 1.0f / GetScreenContentScale());
+    result = Vec2_Mul(result, 1.0f / GetScreenContentScale());
   }
   return result;
 }
 
-static Vec2 get_global_window_relative_mouse_pos(void) {
+static Vec2 GetGlobalMousePosRelativeToWindow(void) {
   Vec2I window_pos;
   SDL_GetWindowPosition(window, &window_pos.x, &window_pos.y);
   Vec2 abs_mouse_pos;
   SDL_GetGlobalMouseState(&abs_mouse_pos.x, &abs_mouse_pos.y);
-  Vec2 result = vec2_sub(abs_mouse_pos, vec2_from_vec2i(window_pos));
-  return mouse_pos_from_sdl(result);
+  Vec2 result = Vec2_Sub(abs_mouse_pos, Vec2_FromVec2I(window_pos));
+  return ConvertMousePos(result);
 }
 
 SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
@@ -171,28 +189,25 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
     } break;
 
     case SDL_EVENT_WINDOW_FOCUS_LOST: {
-      // ui_on_focus_lost(get_global_window_relative_mouse_pos());
+      // ui_on_focus_lost(GetGlobalMousePosRelativeToWindow());
     } break;
 
     case SDL_EVENT_MOUSE_BUTTON_UP: {
-      Vec2 mouse_pos =
-          mouse_pos_from_sdl(vec2(event->button.x, event->button.y));
+      Vec2 mouse_pos = ConvertMousePos(vec2(event->button.x, event->button.y));
       FL_OnMouseButtonUp(mouse_pos,
                          g_sdl_button_to_ui_button[event->button.button]);
     } break;
 
     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
-      Vec2 mouse_pos =
-          mouse_pos_from_sdl(vec2(event->button.x, event->button.y));
+      Vec2 mouse_pos = ConvertMousePos(vec2(event->button.x, event->button.y));
       FL_OnMouseButtonDown(mouse_pos,
                            g_sdl_button_to_ui_button[event->button.button]);
     } break;
 
     case SDL_EVENT_MOUSE_WHEEL: {
-      Vec2 mouse_pos =
-          mouse_pos_from_sdl(get_global_window_relative_mouse_pos());
+      Vec2 mouse_pos = ConvertMousePos(GetGlobalMousePosRelativeToWindow());
       Vec2 delta = vec2(event->wheel.x, -event->wheel.y);
-      FL_OnMouseScroll(mouse_pos, vec2_mul(delta, 10.0f));
+      FL_OnMouseScroll(mouse_pos, Vec2_Mul(delta, 10.0f));
     } break;
 
     default: {
@@ -201,11 +216,9 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event) {
   return result;
 }
 
-SDL_AppResult SDL_AppIterate(void *appstate) {
-  (void)appstate;
-
-  FL_OnMouseMove(get_global_window_relative_mouse_pos());
-  z_update(GetScreenSize());
+SDL_AppResult SDL_AppIterate(void *app) {
+  FL_OnMouseMove(GetGlobalMousePosRelativeToWindow());
+  App_Update(app, GetScreenSize());
   SDL_RenderPresent(renderer);
 
   if (!window_shown) {
@@ -213,10 +226,7 @@ SDL_AppResult SDL_AppIterate(void *appstate) {
     window_shown = 1;
   }
 
-  return SDL_APP_CONTINUE; /* carry on with the program! */
+  return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void *appstate, SDL_AppResult result) {
-  (void)appstate, (void)result;
-  z_quit();
-}
+void SDL_AppQuit(void *app, SDL_AppResult result) { App_Destroy(app); }

@@ -10,95 +10,93 @@
 
 #define F32_INFINITY ((f32)(INFINITY))
 
-OPTIONAL_TYPE(f32o, f32, f32);
+static inline bool IsNaN(f32 a) { return isnan(a); }
+static inline bool IsFinite(f32 a) { return a != F32_INFINITY; }
+static inline bool IsInfinite(f32 a) { return a == F32_INFINITY; }
 
-static inline bool f32_is_nan(f32 a) { return isnan(a); }
-static inline bool f32_is_finite(f32 a) { return a != F32_INFINITY; }
-static inline bool f32_is_infinity(f32 a) { return a == F32_INFINITY; }
+static inline f32 Cos(f32 a) { return cosf(a); }
+static inline f32 Sin(f32 a) { return sinf(a); }
 
-static inline f32 f32_cos(f32 a) { return cosf(a); }
-static inline f32 f32_sin(f32 a) { return sinf(a); }
+static inline f32 Sqrt(f32 a) { return sqrtf(a); }
 
-static inline f32 f32_sqrt(f32 a) { return sqrtf(a); }
-
-static inline f32 f32_pow(f32 a, f32 b) {
+static inline f32 Pow(f32 a, f32 b) {
   f32 result = powf(a, b);
   return result;
 }
 
-static inline f32 f32_exp(f32 a) {
+static inline f32 Exp(f32 a) {
   f32 result = expf(a);
   return result;
 }
 
-static inline f32 f32_abs(f32 a) {
-  f32 result = fabs(a);
+static inline f32 Abs(f32 a) {
+  f32 result = fabsf(a);
   return result;
 }
 
-static inline f32 f32_max(f32 a, f32 b) {
+static inline f32 Max(f32 a, f32 b) {
   f32 result = MAX(a, b);
   return result;
 }
 
-static inline f32 f32_min(f32 a, f32 b) {
+static inline f32 Min(f32 a, f32 b) {
   f32 result = MIN(a, b);
   return result;
 }
 
-static inline b32 f32_contains(f32 val, f32 begin, f32 end) {
-  b32 result = begin <= val && val < end;
+static inline bool Contains(f32 val, f32 begin, f32 end) {
+  bool result = begin <= val && val < end;
   return result;
 }
 
-static inline f32 f32_round(f32 value) {
+static inline f32 Round(f32 value) {
   f32 result = roundf(value);
   return result;
 }
 
-static inline f32 f32_floor(f32 value) {
+static inline f32 Floor(f32 value) {
   f32 result = floorf(value);
   return result;
 }
 
-static inline f32 f32_ceil(f32 value) {
+static inline f32 Ceil(f32 value) {
   f32 result = ceilf(value);
   return result;
 }
 
-static inline f32 f32_lerp(f32 a, f32 b, f32 t) {
+static inline f32 Lerp(f32 a, f32 b, f32 t) {
   f32 result = a * (1.0f - t) + b * t;
   return result;
 }
 
 // Exponential Smoothing
 // https://lisyarus.github.io/blog/posts/exponential-smoothing.html
-static inline f32 f32_animate(f32 a, f32 b, f32 dt, f32 rate) {
-  f32 result = a + (b - a) * (1.0f - f32_exp(-rate * dt));
+static inline f32 Animate(f32 a, f32 b, f32 dt, f32 rate) {
+  f32 result = a + (b - a) * (1.0f - Exp(-rate * dt));
   return result;
 }
 
-static inline f64 f64_abs(f64 a) { return fabs(a); }
+static inline f64 AbsF64(f64 a) { return fabs(a); }
 
-static inline f64 f64_pow(f64 a, f64 b) { return pow(a, b); }
+static inline f64 PowF64(f64 a, f64 b) { return pow(a, b); }
 
-static inline f64 f64_max(f64 a, f64 b) { return MAX(a, b); }
+static inline f64 MaxF64(f64 a, f64 b) { return MAX(a, b); }
 
-static inline f64 f64_min(f64 a, f64 b) { return MIN(a, b); }
+static inline f64 MinF64(f64 a, f64 b) { return MIN(a, b); }
 
 typedef FL_Vec2 Vec2;
 
-static inline f32 vec2_get(Vec2 v, usize index) {
+static inline f32 Vec2_Get(Vec2 v, usize index) {
   DEBUG_ASSERT(index < 2);
   f32 result = ((f32 *)&v)[index];
   return result;
 }
 
-static inline bool vec2_is_finite(Vec2 v) {
-  return f32_is_finite(v.x) && f32_is_finite(v.y);
+static inline bool Vec2_IsFinite(Vec2 v) {
+  return IsFinite(v.x) && IsFinite(v.y);
 }
 
-static inline void vec2_set(Vec2 *v, usize index, f32 value) {
+static inline void Vec2_Set(Vec2 *v, usize index, f32 value) {
   DEBUG_ASSERT(index < 2);
   ((f32 *)v)[index] = value;
 }
@@ -108,78 +106,78 @@ static inline Vec2 vec2(f32 x, f32 y) {
   return result;
 }
 
-static inline Vec2 vec2_zero(void) {
+static inline Vec2 Vec2_Zero(void) {
   Vec2 result = ZERO_INIT;
   return result;
 }
 
-static inline b32 vec2_is_zero(Vec2 a) {
-  b32 result = a.x == 0 && a.y == 0;
+static inline bool Vec2_IsZero(Vec2 a) {
+  bool result = a.x == 0 && a.y == 0;
   return result;
 }
 
-static inline b32 vec2_eq(Vec2 a, Vec2 b) {
-  b32 result = a.x == b.x && a.y == b.y;
+static inline bool Vec2_IsEqual(Vec2 a, Vec2 b) {
+  bool result = a.x == b.x && a.y == b.y;
   return result;
 }
 
-static inline f32 vec2_len(Vec2 a) { return f32_sqrt(a.x * a.x + a.y * a.y); }
+static inline f32 Vec2_GetLen(Vec2 a) { return Sqrt(a.x * a.x + a.y * a.y); }
 
 // Vec2 is treated as one-dimension range, Vec2.x is begin, Vec2.y is end.
-static inline Vec2 vec2_from_intersection(Vec2 a, Vec2 b) {
+static inline Vec2 Vec2_FromIntersection(Vec2 a, Vec2 b) {
   DEBUG_ASSERT(a.x <= a.y && b.x <= b.y);
 
   Vec2 result = vec2(0, 0);
-  if (f32_contains(b.x, a.x, a.y)) {
+  if (Contains(b.x, a.x, a.y)) {
     result.x = b.x;
-    result.y = f32_min(a.y, b.y);
-  } else if (f32_contains(b.y, a.x, a.y)) {
-    result.x = f32_max(a.x, b.x);
+    result.y = Min(a.y, b.y);
+  } else if (Contains(b.y, a.x, a.y)) {
+    result.x = Max(a.x, b.x);
     result.y = b.y;
-  } else if (f32_contains(a.x, b.x, b.y)) {
+  } else if (Contains(a.x, b.x, b.y)) {
     result.x = a.x;
     result.y = a.y;
   }
   return result;
 }
 
-static inline Vec2 vec2_from_array(f32 v[2]) {
+static inline Vec2 Vec2_FromArray(f32 v[2]) {
   Vec2 result = {v[0], v[1]};
   return result;
 }
 
-static inline Vec2 vec2_add(Vec2 a, Vec2 b) {
+static inline Vec2 Vec2_Add(Vec2 a, Vec2 b) {
   Vec2 result;
   result.x = a.x + b.x;
   result.y = a.y + b.y;
   return result;
 }
 
-static inline Vec2 vec2_sub(Vec2 a, Vec2 b) {
+static inline Vec2 Vec2_Sub(Vec2 a, Vec2 b) {
   Vec2 result;
   result.x = a.x - b.x;
   result.y = a.y - b.y;
   return result;
 }
 
-static inline Vec2 vec2_mul(Vec2 a, f32 b) {
+static inline Vec2 Vec2_Mul(Vec2 a, f32 b) {
   Vec2 result;
   result.x = a.x * b;
   result.y = a.y * b;
   return result;
 }
 
-static inline Vec2 vec2_min(Vec2 a, Vec2 b) {
+static inline Vec2 Vec2_Min(Vec2 a, Vec2 b) {
   Vec2 result;
-  result.x = f32_min(a.x, b.x);
-  result.y = f32_min(a.y, b.y);
+  result.x = Min(a.x, b.x);
+  result.y = Min(a.y, b.y);
   return result;
 }
 
-static inline Vec2 vec2_max(Vec2 a, Vec2 b) {
+static inline Vec2 Vec2_Max(Vec2 a, Vec2 b) {
   Vec2 result;
-  result.x = f32_max(a.x, b.x);
-  result.y = f32_max(a.y, b.y);
+  result.x = Max(a.x, b.x);
+  result.y = Max(a.y, b.y);
   return result;
 }
 
@@ -188,42 +186,42 @@ typedef struct Vec2I {
   i32 y;
 } Vec2I;
 
-static inline Vec2I vec2i_from_vec2(Vec2 value) {
+static inline Vec2I Vec2I_FromVec2(Vec2 value) {
   Vec2I result = {(i32)value.x, (i32)value.y};
   return result;
 }
 
-static inline b32 vec2i_is_equal(Vec2I a, Vec2I b) {
-  b32 result = a.x == b.x && a.y == b.y;
+static inline bool Vec2I_IsEqual(Vec2I a, Vec2I b) {
+  bool result = a.x == b.x && a.y == b.y;
   return result;
 }
 
-static inline Vec2I vec2i_neg(Vec2I a) {
+static inline Vec2I Vec2I_Neg(Vec2I a) {
   Vec2I result = {-a.x, -a.y};
   return result;
 }
 
-static inline Vec2I vec2i_add(Vec2I a, Vec2I b) {
+static inline Vec2I Vec2I_Add(Vec2I a, Vec2I b) {
   Vec2I result = {a.x + b.x, a.y + b.y};
   return result;
 }
 
-static inline Vec2I vec2i_sub(Vec2I a, Vec2I b) {
+static inline Vec2I Vec2I_Sub(Vec2I a, Vec2I b) {
   Vec2I result = {a.x - b.x, a.y - b.y};
   return result;
 }
 
-static inline Vec2I vec2i_max(Vec2I a, Vec2I b) {
+static inline Vec2I Vec2I_Max(Vec2I a, Vec2I b) {
   Vec2I result = {MAX(a.x, b.x), MAX(a.y, b.y)};
   return result;
 }
 
-static inline Vec2I vec2i_min(Vec2I a, Vec2I b) {
+static inline Vec2I Vec2I_Min(Vec2I a, Vec2I b) {
   Vec2I result = {MIN(a.x, b.x), MIN(a.y, b.y)};
   return result;
 }
 
-static inline Vec2 vec2_from_vec2i(Vec2I value) {
+static inline Vec2 Vec2_FromVec2I(Vec2I value) {
   Vec2 result = {(f32)value.x, (f32)value.y};
   return result;
 }
@@ -238,22 +236,22 @@ typedef struct Vec4 {
 #if 0
 static Vec4 linear_color_from_srgb(ColorU32 color) {
   Vec4 result;
-  result.x = f32_pow(color.r / 255.0f, 2.2f);
-  result.y = f32_pow(color.g / 255.0f, 2.2f);
-  result.z = f32_pow(color.b / 255.0f, 2.2f);
+  result.x = Pow(color.r / 255.0f, 2.2f);
+  result.y = Pow(color.g / 255.0f, 2.2f);
+  result.z = Pow(color.b / 255.0f, 2.2f);
   result.w = color.a / 255.0f;
   return result;
 }
 
 static ColorU32 color_u32_from_linear_premultiplied(Vec4 color) {
-  color.x = f32_pow(color.x, 1.0f / 2.2f);
-  color.y = f32_pow(color.y, 1.0f / 2.2f);
-  color.z = f32_pow(color.z, 1.0f / 2.2f);
+  color.x = Pow(color.x, 1.0f / 2.2f);
+  color.y = Pow(color.y, 1.0f / 2.2f);
+  color.z = Pow(color.z, 1.0f / 2.2f);
   ColorU32 result;
-  result.r = (u8)f32_round(color.x * 255.0f);
-  result.g = (u8)f32_round(color.y * 255.0f);
-  result.b = (u8)f32_round(color.z * 255.0f);
-  result.a = (u8)f32_round(color.w * 255.0f);
+  result.r = (u8)Round(color.x * 255.0f);
+  result.g = (u8)Round(color.y * 255.0f);
+  result.b = (u8)Round(color.z * 255.0f);
+  result.a = (u8)Round(color.w * 255.0f);
   return result;
 }
 
@@ -281,89 +279,17 @@ static inline ColorU32 color_u32_from_hex(u32 hex) {
 }
 #endif
 
-typedef enum Axis2 {
-  kAxis2X,
-  kAxis2Y,
-  kAxis2Count,
-} Axis2;
-
-typedef struct Rect2 {
-  Vec2 min;
-  Vec2 max;
-} Rect2;
-
-static inline Rect2 rect2(Vec2 min, Vec2 max) {
-  Rect2 result = {min, max};
-  return result;
-}
-
-static inline Rect2 rect2_zero(void) {
-  Rect2 result = ZERO_INIT;
-  return result;
-}
-
-static inline Rect2 rect2_from_intersection(Rect2 a, Rect2 b) {
-  Vec2 x_axis =
-      vec2_from_intersection(vec2(a.min.x, a.max.x), vec2(b.min.x, b.max.x));
-  Vec2 y_axis =
-      vec2_from_intersection(vec2(a.min.y, a.max.y), vec2(b.min.y, b.max.y));
-  Rect2 result;
-  result.min.x = x_axis.x;
-  result.max.x = x_axis.y;
-  result.min.y = y_axis.x;
-  result.max.y = y_axis.y;
-  return result;
-}
-
-static inline f32 rect2_get_area(Rect2 a) {
-  Vec2 size = vec2_sub(a.max, a.min);
-  f32 result = size.x * size.y;
-  return result;
-}
-
-static inline b32 f32_contains_including_end(f32 val, f32 begin, f32 end) {
-  b32 result = begin <= val && val <= end;
-  return result;
-}
-
-static inline b32 vec2_contains(Vec2 val, Vec2 begin, Vec2 end) {
-  b32 result = f32_contains(val.x, begin.x, end.x) &&
-               f32_contains(val.y, begin.y, end.y);
-  return result;
-}
-
-static inline b32 vec2_contains_including_end(Vec2 val, Vec2 begin, Vec2 end) {
-  b32 result = f32_contains_including_end(val.x, begin.x, end.x) &&
-               f32_contains_including_end(val.y, begin.y, end.y);
-  return result;
-}
-
-// Clamp value in range [min, max]
-static inline f32 f32_clamp(f32 value, f32 min, f32 max) {
-  f32 result = f32_min(f32_max(value, min), max);
-  return result;
-}
-
-static inline i32 i32_clamp(i32 value, i32 min, i32 max) {
+static inline i32 ClampI32(i32 value, i32 min, i32 max) {
   i32 result = MAX(value, min);
   result = MIN(value, max);
   return result;
 }
 
-static inline Vec2 vec2_clamp(Vec2 value, Vec2 min, Vec2 max) {
-  Vec2 result = {f32_clamp(value.x, min.x, max.x),
-                 f32_clamp(value.y, min.y, max.y)};
-  return result;
-}
+FL_OPTIONAL_TYPE(i64o, i64);
+FL_OPTIONAL_TYPE(f32o, f32);
 
-static inline Vec2I vec2i_clamp(Vec2I value, Vec2I min, Vec2I max) {
-  Vec2I result = {i32_clamp(value.x, min.x, max.x),
-                  i32_clamp(value.y, min.y, max.y)};
-  return result;
-}
-
-static inline Vec2 vec2_round(Vec2 value) {
-  Vec2 result = {f32_round(value.x), f32_round(value.y)};
+static inline f64 RoundF64(f64 value) {
+  f64 result = round(value);
   return result;
 }
 

@@ -5,6 +5,6 @@ Diagnostics:
     IgnoreHeader: [Windows\ Kits.*, SDL3.*]
 CompileFlags:
   Add: [
-    -I..,
-    -Wall, -Wextra, -pedantic, -Wno-missing-braces, -Wno-microsoft-enum-forward-reference, -Wno-gnu-binary-literal, -Wno-gnu-anonymous-struct,
+    -I.,
+    -Wall, -Wextra, -Wconversion, -Wdouble-promotion, -Wno-unused-parameter, -Wno-unused-function, -Wno-sign-conversion,
   ]

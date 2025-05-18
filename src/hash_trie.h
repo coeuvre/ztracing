@@ -12,7 +12,7 @@
 typedef struct HashTrieSlot HashTrieSlot;
 struct HashTrieSlot {
   HashTrieSlot *slots[4];
-  Str8 key;
+  Str key;
 };
 
 typedef struct HashTrie {
@@ -20,16 +20,16 @@ typedef struct HashTrie {
   usize value_size;
 } HashTrie;
 
-static inline void *hash_trie_upsert_(HashTrie *self, Str8 key, Arena *arena,
-                                      usize value_size) {
+static inline void *HashTrie_Upsert_(HashTrie *self, Str key, Arena *arena,
+                                     usize value_size) {
   if (!self->root) {
     self->value_size = value_size;
   }
   DEBUG_ASSERT(self->value_size == value_size);
 
   HashTrieSlot **t = &self->root;
-  for (u64 hash = str8_hash(key); *t; hash <<= 2) {
-    if (str8_eq(key, t[0]->key)) {
+  for (u64 hash = Str_Hash(key); *t; hash <<= 2) {
+    if (Str_IsEqual(key, t[0]->key)) {
       return t[0] + 1;
     }
     t = t[0]->slots + (hash >> 62);
@@ -38,7 +38,7 @@ static inline void *hash_trie_upsert_(HashTrie *self, Str8 key, Arena *arena,
   if (arena) {
     HashTrieSlot *slot =
         (HashTrieSlot *)arena_push(arena, sizeof(HashTrieSlot) + value_size, 0);
-    slot->key = str8_dup(arena, key);
+    slot->key = Str_Dup(arena, key);
     *t = slot;
     return slot + 1;
   }
@@ -46,10 +46,10 @@ static inline void *hash_trie_upsert_(HashTrie *self, Str8 key, Arena *arena,
   return 0;
 }
 
-#define hash_trie_upsert(self, key, arena, ValueType) \
-  ((ValueType *)hash_trie_upsert_(self, key, arena, sizeof(ValueType)))
+#define HashTrie_Upsert(self, key, arena, ValueType) \
+  ((ValueType *)HashTrie_Upsert_(self, key, arena, sizeof(ValueType)))
 
-static inline Str8 hash_trie_get_key(void *value) {
+static inline Str HashTrie_GetKey(void *value) {
   HashTrieSlot *slot = ((HashTrieSlot *)value) - 1;
   return slot->key;
 }
@@ -70,8 +70,7 @@ typedef struct HashTrieIter {
   HashTrieIterItem *free_last;
 } HashTrieIter;
 
-static inline void hash_trie_iter_append_item(HashTrieIter *self,
-                                              HashTrieSlot *slot) {
+static inline void HashTrieIter_Append(HashTrieIter *self, HashTrieSlot *slot) {
   HashTrieIterItem *item = self->free_last;
   if (item) {
     DLL_REMOVE(self->free_first, self->free_last, item, prev, next);
@@ -82,18 +81,18 @@ static inline void hash_trie_iter_append_item(HashTrieIter *self,
   DLL_APPEND(self->first, self->last, item, prev, next);
 }
 
-static inline HashTrieIter hash_trie_iter(const HashTrie *t, Arena *arena) {
+static inline HashTrieIter HashTrie_Iter(const HashTrie *t, Arena *arena) {
   HashTrieIter iter = {
       .arena = arena,
       .value_size = t->value_size,
   };
   if (t->root) {
-    hash_trie_iter_append_item(&iter, t->root);
+    HashTrieIter_Append(&iter, t->root);
   }
   return iter;
 }
 
-static inline void *hash_trie_iter_next_(HashTrieIter *self, usize value_size) {
+static inline void *HashTrie_Next_(HashTrieIter *self, usize value_size) {
   HashTrieSlot *result = 0;
 
   HashTrieIterItem *item = self->first;
@@ -104,11 +103,11 @@ static inline void *hash_trie_iter_next_(HashTrieIter *self, usize value_size) {
   }
 
   if (result) {
-    for (usize slot_index = 0; slot_index < ARRAY_COUNT(result->slots);
+    for (usize slot_index = 0; slot_index < COUNT_OF(result->slots);
          ++slot_index) {
       HashTrieSlot *next_slot = result->slots[slot_index];
       if (next_slot) {
-        hash_trie_iter_append_item(self, next_slot);
+        HashTrieIter_Append(self, next_slot);
       }
     }
     DEBUG_ASSERT(self->value_size == value_size);
@@ -118,7 +117,7 @@ static inline void *hash_trie_iter_next_(HashTrieIter *self, usize value_size) {
   return 0;
 }
 
-#define hash_trie_iter_next(self, ValueType) \
-  ((ValueType *)hash_trie_iter_next_(self, sizeof(ValueType)))
+#define HashTrie_Next(self, ValueType) \
+  ((ValueType *)HashTrie_Next_(self, sizeof(ValueType)))
 
 #endif  // ZTRACING_SRC_HASH_TRIE_H_

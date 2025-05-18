@@ -6,8 +6,8 @@ enum JsonTokenType {
   JsonToken_OpenBracket,
   JsonToken_CloseBrace,
   JsonToken_CloseBracket,
-  JsonToken_Comma,
-  JsonToken_Colon,
+  JsonTokenValue_Comma,
+  JsonTokenValue_Colon,
   JsonToken_SemiColon,
   JsonToken_StringLiteral,
   JsonToken_Number,
@@ -159,11 +159,11 @@ static JsonToken GetJsonToken(Arena *arena, JsonParser *parser) {
     } break;
 
     case ',': {
-      token.type = JsonToken_Comma;
+      token.type = JsonTokenValue_Comma;
     } break;
 
     case ':': {
-      token.type = JsonToken_Colon;
+      token.type = JsonTokenValue_Colon;
     } break;
 
     case ';': {
@@ -366,7 +366,7 @@ static void ParseJsonObject(Arena *arena, Arena scratch, JsonParser *parser,
       case JsonToken_StringLiteral: {
         Buffer key = PushBuffer(arena, token.value);
         token = GetJsonToken(&scratch, parser);
-        if (token.type == JsonToken_Colon) {
+        if (token.type == JsonTokenValue_Colon) {
           JsonValue *child = PushStruct(arena, JsonValue);
           ParseJsonValue(arena, scratch, parser, child);
           if (child->type != JsonValue_Error) {
@@ -394,7 +394,7 @@ static void ParseJsonObject(Arena *arena, Arena scratch, JsonParser *parser,
         }
       } break;
 
-      case JsonToken_Comma: {
+      case JsonTokenValue_Comma: {
         if (!has_value) {
           result->type = JsonValue_Error;
           result->value =
@@ -441,7 +441,7 @@ static void ParseJsonArray(Arena *arena, Arena scratch, JsonParser *parser,
 
       JsonToken token = GetJsonToken(&scratch, parser);
       switch (token.type) {
-        case JsonToken_Comma: {
+        case JsonTokenValue_Comma: {
         } break;
         case JsonToken_CloseBracket: {
           result->type = JsonValue_Array;

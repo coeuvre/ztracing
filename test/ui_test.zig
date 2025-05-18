@@ -4,7 +4,7 @@ const utils = @import("utils.zig");
 
 const testing = std.testing;
 const log = std.log;
-const expect_vec2_eq = utils.expect_vec2_eq;
+const expect_Vec2_IsEqual = utils.expect_Vec2_IsEqual;
 
 const AlignmentOption = struct {
     alignment: c.UIAlignment,
@@ -14,7 +14,7 @@ const AlignmentOption = struct {
 // fn expectUIBuildError(expected: []const u8) !void {
 //     var maybe_err = c.ui_get_first_build_error();
 //     while (maybe_err) |err| : (maybe_err = maybe_err.*.next) {
-//         const actual = sliceFromStr8(err.*.message);
+//         const actual = sliceFromStr(err.*.message);
 //         if (std.mem.eql(u8, actual, expected)) {
 //             return;
 //         }
@@ -24,25 +24,25 @@ const AlignmentOption = struct {
 //     log.err("Existing build error:", .{});
 //     maybe_err = c.ui_get_first_build_error();
 //     while (maybe_err) |err| : (maybe_err = maybe_err.*.next) {
-//         log.err("    {s}", .{sliceFromStr8(err.*.message)});
+//         log.err("    {s}", .{sliceFromStr(err.*.message)});
 //     }
 //     return error.TestExpectedEqual;
 // }
 
-// fn sliceFromStr8(str: c.Str8) []u8 {
+// fn sliceFromStr(str: c.Str) []u8 {
 //     return str.ptr[0..str.len];
 // }
 //
 // fn expectBoxKey(box: [*c]c.UIBox, expected_key: []const u8) !void {
-//     try testing.expectEqualStrings(expected_key, sliceFromStr8(box.*.build.key_str));
+//     try testing.expectEqualStrings(expected_key, sliceFromStr(box.*.build.key_str));
 // }
 //
 fn expect_widget_size(widget: [*c]c.UIWidget, expected_size: c.Vec2) !void {
-    try expect_vec2_eq(expected_size, widget.*.size);
+    try expect_Vec2_IsEqual(expected_size, widget.*.size);
 }
 
 fn expect_widget_offset(widget: [*c]c.UIWidget, expected_offset: c.Vec2) !void {
-    try expect_vec2_eq(expected_offset, widget.*.offset);
+    try expect_Vec2_IsEqual(expected_offset, widget.*.offset);
 }
 
 // const State = extern struct {

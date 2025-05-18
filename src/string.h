@@ -10,22 +10,20 @@
 #include "src/memory.h"
 #include "src/types.h"
 
-typedef FL_Str Str8;
+typedef FL_Str Str;
 
-#define STR8_LIT(s) FL_STR_C(s)
+#define STR_C(s) FL_STR_C(s)
 
-static inline Str8 str8(char *ptr, ptrdiff_t len) { return (Str8){ptr, len}; }
-
-static inline Str8 str8_from_cstr(const char *str) {
-  Str8 result = {(char *)str, (ptrdiff_t)strlen(str)};
+static inline Str Str_FromCStr(const char *str) {
+  Str result = {(char *)str, (ptrdiff_t)strlen(str)};
   return result;
 }
 
-static inline Str8 str8_zero(void) { return str8(0, 0); }
+static inline Str Str_Zero(void) { return (Str){0, 0}; }
 
-static inline bool str8_is_empty(Str8 str) { return str.len == 0; }
+static inline bool Str_IsEmpty(Str str) { return str.len == 0; }
 
-static inline bool str8_eq(Str8 a, Str8 b) {
+static inline bool Str_IsEqual(Str a, Str b) {
   if (a.len != b.len) {
     return false;
   }
@@ -41,8 +39,8 @@ static inline bool str8_eq(Str8 a, Str8 b) {
   return memcmp(a.ptr, b.ptr, a.len) == 0;
 }
 
-static inline int str8_cmp(Str8 a, Str8 b) {
-  usize len = usize_min(a.len, b.len);
+static inline int Str_Compare(Str a, Str b) {
+  usize len = MinUsize(a.len, b.len);
   for (usize i = 0; i < len; ++i) {
     int r = a.ptr[i] - b.ptr[i];
     if (r != 0) {
@@ -52,49 +50,57 @@ static inline int str8_cmp(Str8 a, Str8 b) {
   return a.len < b.len ? -1 : 1;
 }
 
-u64 str8_hash_with_seed(Str8 str, u64 seed);
-static inline u64 str8_hash(Str8 str) {
-  return str8_hash_with_seed(str, 0x100);
-}
+u64 Str_HashWithSeed(Str str, u64 seed);
+static inline u64 Str_Hash(Str str) { return Str_HashWithSeed(str, 0x100); }
 
-static inline Str8 arena_push_str8(Arena *arena, usize len) {
+static inline Str arena_push_str8(Arena *arena, usize len) {
   char *ptr = arena_push_array(arena, char, len);
-  return str8(ptr, (ptrdiff_t)len);
+  return (Str){ptr, (ptrdiff_t)len};
 }
 
-static inline Str8 arena_push_str8_no_zero(Arena *arena, usize len) {
+static inline Str arena_push_str8_no_zero(Arena *arena, usize len) {
   char *ptr = arena_push_array_no_zero(arena, char, len);
-  return str8(ptr, len);
+  return (Str){ptr, len};
 }
 
-Str8 arena_push_str8fv(Arena *arena, const char *format, va_list ap);
+Str arena_push_str8fv(Arena *arena, const char *format, va_list ap);
 
-static inline Str8 arena_push_str8f(Arena *arena, const char *format, ...) {
+static inline Str arena_push_str8f(Arena *arena, const char *format, ...) {
   va_list ap;
   va_start(ap, format);
-  Str8 result = arena_push_str8fv(arena, format, ap);
+  Str result = arena_push_str8fv(arena, format, ap);
   va_end(ap);
   return result;
 }
 
-static inline Str8 str8_dup(Arena *arena, Str8 s) {
-  if (str8_is_empty(s)) {
-    return str8_zero();
-  }
-  return str8((char *)arena_dup(arena, s.ptr, s.len), s.len);
+Str Arena_PushStrFV(FL_Arena *arena, const char *format, va_list ap);
+
+static inline Str Arena_PushStrF(FL_Arena *arena, const char *format, ...) {
+  va_list ap;
+  va_start(ap, format);
+  Str result = Arena_PushStrFV(arena, format, ap);
+  va_end(ap);
+  return result;
 }
 
-static inline u8 u8_to_uppercase(u8 c) {
+static inline Str Str_Dup(Arena *arena, Str s) {
+  if (Str_IsEmpty(s)) {
+    return Str_Zero();
+  }
+  return (Str){(char *)arena_dup(arena, s.ptr, s.len), s.len};
+}
+
+static inline u8 u8_ToUppercase(u8 c) {
   if (c >= 'a' && c <= 'z') {
     return 'A' + c - 'a';
   }
   return c;
 }
 
-static inline Str8 str8_to_uppercase(Str8 s, Arena *arena) {
-  Str8 result = arena_push_str8(arena, s.len);
+static inline Str Str_ToUppercase(Str s, Arena *arena) {
+  Str result = arena_push_str8(arena, s.len);
   for (ptrdiff_t i = 0; i < s.len; ++i) {
-    result.ptr[i] = u8_to_uppercase(s.ptr[i]);
+    result.ptr[i] = u8_ToUppercase(s.ptr[i]);
   }
   return result;
 }
@@ -112,6 +118,6 @@ static inline Str32 str32(u32 *ptr, usize len) {
   return s;
 }
 
-Str32 Arena_PushStr32FromStr8(FL_Arena *arena, Str8 str);
+Str32 Arena_PushStr32FromStr(FL_Arena *arena, Str str);
 
 #endif  // ZTRACING_SRC_STRING_H_

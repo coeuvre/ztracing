@@ -2,21 +2,21 @@
 #define ZTRACING_SRC_LOG_H_
 
 typedef enum LogLevel {
-  LOG_LEVEL_DEBUG,
-  LOG_LEVEL_INFO,
-  LOG_LEVEL_WARN,
-  LOG_LEVEL_ERROR,
+  LogLevel_Debug,
+  LogLevel_Info,
+  LogLevel_Warn,
+  LogLevel_Error,
 
-  LOG_LEVEL_COUNT,
+  LogLevel_Count,
 } LogLevel;
 
-void log_message(LogLevel level, const char *fmt, ...);
+void LogMessage(LogLevel level, const char *fmt, ...);
 
-#define LOG(level, fmt, ...) log_message(level, fmt, ##__VA_ARGS__)
+#define LOG(level, fmt, ...) LogMessage(level, fmt, ##__VA_ARGS__)
 
-#define DEBUG(fmt, ...) LOG(LOG_LEVEL_DEBUG, "debug: " fmt, ##__VA_ARGS__)
-#define INFO(fmt, ...) LOG(LOG_LEVEL_INFO, "info: " fmt, ##__VA_ARGS__)
-#define WARN(fmt, ...) LOG(LOG_LEVEL_WARN, "warn: " fmt, ##__VA_ARGS__)
-#define ERROR(fmt, ...) LOG(LOG_LEVEL_ERROR, "error: " fmt, ##__VA_ARGS__)
+#define DEBUG(fmt, ...) LOG(LogLevel_Debug, "debug: " fmt, ##__VA_ARGS__)
+#define INFO(fmt, ...) LOG(LogLevel_Info, "info: " fmt, ##__VA_ARGS__)
+#define WARN(fmt, ...) LOG(LogLevel_Warn, "warn: " fmt, ##__VA_ARGS__)
+#define ERROR(fmt, ...) LOG(LogLevel_Error, "error: " fmt, ##__VA_ARGS__)
 
 #endif  // ZTRACING_SRC_LOG_H_

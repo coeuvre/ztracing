@@ -23,158 +23,159 @@ static FL_Color COLORS[] = {
     RGB(244, 162, 97), RGB(231, 111, 81),
 };
 
-typedef enum ZProfileItemType {
-  Z_PROFILE_ITEM_HEADER,
-  Z_PROFILE_ITEM_COUNTER,
-  Z_PROFILE_ITEM_TRACK,
-} ZProfileItemType;
+typedef enum ProfileItemType {
+  ProfileItemType_Header,
+  ProfileItemType_Counter,
+  ProfileItemType_Track,
+} ProfileItemType;
 
-typedef struct ZProfileItemHeader {
-  ZProfileItemType type;  // Z_PROFILE_ITEM_HEADER
-  Str8 name;
-} ZProfileItemHeader;
+typedef struct ProfileItem_Header {
+  ProfileItemType type;  // ProfileItemType_Header
+  Str name;
+} ProfileItem_Header;
 
-typedef struct ZProfileSample {
+typedef struct ProfileSample {
   i64 time;
   f64 value;
-} ZProfileSample;
+} ProfileSample;
 
-typedef struct ZProfileSeries {
-  Str8 name;
+typedef struct ProfileSeries {
+  Str name;
   u32 color_index;
   usize sample_count;
-  ZProfileSample *samples;
-} ZProfileSeries;
+  ProfileSample *samples;
+} ProfileSeries;
 
-typedef struct ZProfileItemCounter {
-  ZProfileItemType type;  // Z_PROFILE_ITEM_COUNTER
-  Str8 name;
+typedef struct ProfileItem_Counter {
+  ProfileItemType type;  // ProfileItemType_Counter
+  Str name;
   usize series_count;
-  ZProfileSeries *series;
+  ProfileSeries *series;
   f64 min_value;
   f64 max_value;
-} ZProfileItemCounter;
+} ProfileItem_Counter;
 
-typedef struct ZProfileSpan {
-  Str8 name;
+typedef struct ProfileSpan {
+  Str name;
   u32 color_index;
   i64 begin_time_ns;
   i64 end_time_ns;
   i64 self_duration_ns;
-} ZProfileSpan;
+} ProfileSpan;
 
-typedef struct ZProfileItemTrack {
-  ZProfileItemType type;  // Z_PROFILE_ITEM_TRACK
+typedef struct ProfileItem_Track {
+  ProfileItemType type;  // ProfileItemType_Track
   usize span_count;
-  ZProfileSpan *spans;
-} ZProfileItemTrack;
+  ProfileSpan *spans;
+} ProfileItem_Track;
 
-typedef union ZProfileItem {
-  ZProfileItemType type;
-  ZProfileItemHeader header;
-  ZProfileItemCounter counter;
-  ZProfileItemTrack track;
-} ZProfileItem;
+typedef union ProfileItem {
+  ProfileItemType type;
+  ProfileItem_Header header;
+  ProfileItem_Counter counter;
+  ProfileItem_Track track;
+} ProfileItem;
 
-typedef struct ZProfileViewer {
+typedef struct ProfileViewer {
   Arena arena;
-  Str8 name;
-  Str8 error;
+  Str name;
+  Str error;
   i64 min_time_ns;
   i64 max_time_ns;
   i64 begin_time_ns;
   i64 end_time_ns;
-  usize item_count;
-  ZProfileItem *items;
+  i32 item_count;
+  ProfileItem *items;
   f32 scroll;
   FL_Widget *list_view;
-} ZProfileViewer;
+} ProfileViewer;
 
-static ZProfileViewer *z_profile_viewer_alloc(void) {
+static ProfileViewer *ProfileViewer_Create(void) {
   Arena arena_ = {0};
-  ZProfileViewer *viewer = arena_push_struct(&arena_, ZProfileViewer);
+  ProfileViewer *viewer = arena_push_struct(&arena_, ProfileViewer);
   viewer->arena = arena_;
   return viewer;
 }
 
-static void z_profile_viewer_free(ZProfileViewer *self) {
+static void ProfileViewer_Destroy(ProfileViewer *self) {
   arena_free(&self->arena);
 }
 
-typedef struct ZFileLoader {
+typedef struct FileLoader {
   Arena arena;
-  ZFile *file;
-  PlatformThread *thread;
+  LoadingFile *file;
+  Platform_Thread *thread;
 
-  volatile ZProfileViewer *viewer;
-} ZFileLoader;
+  volatile ProfileViewer *viewer;
+} FileLoader;
 
-static ZFileLoader *z_file_loader_alloc(ZFile *file) {
+static FileLoader *FileLoader_Create(LoadingFile *file) {
   Arena arena_ = {0};
-  ZFileLoader *state = arena_push_struct(&arena_, ZFileLoader);
+  FileLoader *state = arena_push_struct(&arena_, FileLoader);
   state->arena = arena_;
   state->file = file;
   return state;
 }
 
-static Str8 z_file_get_input(void *c) {
-  ZFile *self = c;
-  Str8 buf = self->read(self);
+static Str GetInput(void *c) {
+  LoadingFile *self = c;
+  Str buf = self->read(self);
   self->nread += buf.len;
   return buf;
 }
 
-static int z_file_loader_compare_json_trace_span(const void *a, const void *b) {
+static int FileLoader_CompareJsonTraceSpan(const void *a, const void *b) {
   JsonTraceSpan *sa = *(JsonTraceSpan *const *)a;
   JsonTraceSpan *sb = *(JsonTraceSpan *const *)b;
-  int result = i64_cmp(sa->begin_time_ns, sb->begin_time_ns);
+  int result = CompareI64(sa->begin_time_ns, sb->begin_time_ns);
   if (result == 0) {
-    result = i64_cmp(sa->end_time_ns, sb->end_time_ns);
+    result = CompareI64(sa->end_time_ns, sb->end_time_ns);
   }
   return result;
 }
 
-typedef struct ZProfileSpanNode ZProfileSpanNode;
-struct ZProfileSpanNode {
-  ZProfileSpanNode *prev;
-  ZProfileSpanNode *next;
+typedef struct ProfileSpanNode ProfileSpanNode;
+struct ProfileSpanNode {
+  ProfileSpanNode *prev;
+  ProfileSpanNode *next;
   JsonTraceSpan *span;
   usize self_duration_ns;
 };
 
-typedef struct ZProfileTrackNode ZProfileTrackNode;
-struct ZProfileTrackNode {
-  ZProfileTrackNode *prev;
-  ZProfileTrackNode *next;
+typedef struct ProfileTrackNode ProfileTrackNode;
+struct ProfileTrackNode {
+  ProfileTrackNode *prev;
+  ProfileTrackNode *next;
   usize level;
   usize span_count;
-  ZProfileSpanNode *first_span;
-  ZProfileSpanNode *last_span;
+  ProfileSpanNode *first_span;
+  ProfileSpanNode *last_span;
 };
 
-static ZProfileSpanNode *z_profile_track_node_add_span(ZProfileTrackNode *self,
-                                                       Arena *arena,
-                                                       JsonTraceSpan *span) {
-  ZProfileSpanNode *node = arena_push_struct(arena, ZProfileSpanNode);
+static ProfileSpanNode *ProfileTrackNode_AddSpan(ProfileTrackNode *self,
+                                                 Arena *arena,
+                                                 JsonTraceSpan *span) {
+  ProfileSpanNode *node = arena_push_struct(arena, ProfileSpanNode);
   node->span = span;
   DLL_APPEND(self->first_span, self->last_span, node, prev, next);
   self->span_count += 1;
   return node;
 }
 
-typedef struct ZProfileThreadNode ZProfileThreadNode;
-struct ZProfileThreadNode {
-  ZProfileThreadNode *prev;
-  ZProfileThreadNode *next;
+typedef struct ProfileThreadNode ProfileThreadNode;
+struct ProfileThreadNode {
+  ProfileThreadNode *prev;
+  ProfileThreadNode *next;
   JsonTraceThread *thread;
   usize track_count;
-  ZProfileTrackNode *first_track;
-  ZProfileTrackNode *last_track;
+  ProfileTrackNode *first_track;
+  ProfileTrackNode *last_track;
 };
 
-static ZProfileTrackNode *z_profile_thread_node_upsert_track(
-    ZProfileThreadNode *self, Arena *arena, usize level) {
-  ZProfileTrackNode *track = self->first_track;
+static ProfileTrackNode *ProfileThreadNode_UpsertTrack(ProfileThreadNode *self,
+                                                       Arena *arena,
+                                                       usize level) {
+  ProfileTrackNode *track = self->first_track;
   isize i = level;
   while (track && i > 0) {
     i--;
@@ -182,7 +183,7 @@ static ZProfileTrackNode *z_profile_thread_node_upsert_track(
   }
 
   while (i > 0 || !track) {
-    track = arena_push_struct(arena, ZProfileTrackNode);
+    track = arena_push_struct(arena, ProfileTrackNode);
     track->level = level;
     DLL_APPEND(self->first_track, self->last_track, track, prev, next);
     self->track_count += 1;
@@ -194,44 +195,41 @@ static ZProfileTrackNode *z_profile_thread_node_upsert_track(
   return track;
 }
 
-typedef struct ZProfileTrackBuilder {
+typedef struct ProfileTrackBuilder {
   usize thread_count;
-  ZProfileThreadNode *first_thread;
-  ZProfileThreadNode *last_thread;
-} ZProfileTrackBuilder;
+  ProfileThreadNode *first_thread;
+  ProfileThreadNode *last_thread;
+} ProfileTrackBuilder;
 
-static ZProfileThreadNode *z_profile_track_builder_add_thread(
-    ZProfileTrackBuilder *self, JsonTraceThread *thread, Arena *arena) {
-  ZProfileThreadNode *thread_node =
-      arena_push_struct(arena, ZProfileThreadNode);
+static ProfileThreadNode *ProfileTrackBuilder_AddThread(
+    ProfileTrackBuilder *self, JsonTraceThread *thread, Arena *arena) {
+  ProfileThreadNode *thread_node = arena_push_struct(arena, ProfileThreadNode);
   thread_node->thread = thread;
   DLL_APPEND(self->first_thread, self->last_thread, thread_node, prev, next);
   self->thread_count += 1;
   return thread_node;
 }
 
-static usize z_file_loader_merge_spans(Arena *arena, ZProfileThreadNode *thread,
-                                       usize level, i64 parent_begin_time_ns,
-                                       i64 parent_end_time_ns,
-                                       JsonTraceSpan **spans, usize span_count,
-                                       usize span_index,
-                                       i64 *total_duration_ns) {
+static usize FileLoader_MergeSpans(Arena *arena, ProfileThreadNode *thread,
+                                   usize level, i64 parent_begin_time_ns,
+                                   i64 parent_end_time_ns,
+                                   JsonTraceSpan **spans, usize span_count,
+                                   usize span_index, i64 *total_duration_ns) {
   i64 total = 0;
   for (; span_index < span_count;) {
     JsonTraceSpan *span = spans[span_index];
     i64 span_duration_ns = span->end_time_ns - span->begin_time_ns;
     if (span->begin_time_ns >= parent_begin_time_ns &&
         span->end_time_ns <= parent_end_time_ns) {
-      ZProfileTrackNode *track =
-          z_profile_thread_node_upsert_track(thread, arena, level);
-      ZProfileSpanNode *span_node =
-          z_profile_track_node_add_span(track, arena, span);
+      ProfileTrackNode *track =
+          ProfileThreadNode_UpsertTrack(thread, arena, level);
+      ProfileSpanNode *span_node = ProfileTrackNode_AddSpan(track, arena, span);
       i64 children_duration_ns;
-      span_index = z_file_loader_merge_spans(
+      span_index = FileLoader_MergeSpans(
           arena, thread, level + 1, span->begin_time_ns, span->end_time_ns,
           spans, span_count, span_index + 1, &children_duration_ns);
       span_node->self_duration_ns =
-          i64_max(span_duration_ns - children_duration_ns, 0);
+          MaxI64(span_duration_ns - children_duration_ns, 0);
 
       total += span_duration_ns;
     } else {
@@ -242,10 +240,11 @@ static usize z_file_loader_merge_spans(Arena *arena, ZProfileThreadNode *thread,
   return span_index;
 }
 
-static void z_file_loader_build_track_with_thread(
-    JsonTraceThread *thread, Arena *arena, ZProfileTrackBuilder *builder) {
-  ZProfileThreadNode *thread_node =
-      z_profile_track_builder_add_thread(builder, thread, arena);
+static void FileLoader_BuildTrackWithThread(JsonTraceThread *thread,
+                                            Arena *arena,
+                                            ProfileTrackBuilder *builder) {
+  ProfileThreadNode *thread_node =
+      ProfileTrackBuilder_AddThread(builder, thread, arena);
 
   Scratch scratch = scratch_begin(&arena, 1);
   if (thread->span_count > 0) {
@@ -256,28 +255,28 @@ static void z_file_loader_build_track_with_thread(
       spans[span_index++] = span;
     }
     qsort(spans, thread->span_count, sizeof(JsonTraceSpan *),
-          z_file_loader_compare_json_trace_span);
+          FileLoader_CompareJsonTraceSpan);
 
     JsonTraceSpan *first_span = spans[0];
     i64 begin_time_ns = first_span->begin_time_ns;
     i64 end_time_ns = first_span->end_time_ns;
     for (span_index = 1; span_index < thread->span_count; ++span_index) {
-      end_time_ns = i64_max(end_time_ns, spans[span_index]->end_time_ns);
+      end_time_ns = MaxI64(end_time_ns, spans[span_index]->end_time_ns);
     }
 
     i64 total_duration_ns;
-    z_file_loader_merge_spans(arena, thread_node, 0, begin_time_ns, end_time_ns,
-                              spans, thread->span_count, 0, &total_duration_ns);
+    FileLoader_MergeSpans(arena, thread_node, 0, begin_time_ns, end_time_ns,
+                          spans, thread->span_count, 0, &total_duration_ns);
   }
   scratch_end(scratch);
 }
 
-static int z_file_loader_compare_thread(const void *a, const void *b) {
+static int FileLoader_CompareThread(const void *a, const void *b) {
   JsonTraceThread *ta = *(JsonTraceThread *const *)a;
   JsonTraceThread *tb = *(JsonTraceThread *const *)b;
   if (ta->sort_index.present) {
     if (tb->sort_index.present) {
-      return i64_cmp(ta->sort_index.value, tb->sort_index.value);
+      return CompareI64(ta->sort_index.value, tb->sort_index.value);
     } else {
       return -1;
     }
@@ -286,95 +285,94 @@ static int z_file_loader_compare_thread(const void *a, const void *b) {
   }
 
   Scratch scratch = scratch_begin(0, 0);
-  int result = str8_cmp(str8_to_uppercase(ta->name, scratch.arena),
-                        str8_to_uppercase(tb->name, scratch.arena));
+  int result = Str_Compare(Str_ToUppercase(ta->name, scratch.arena),
+                           Str_ToUppercase(tb->name, scratch.arena));
   scratch_end(scratch);
   return result;
 }
 
-static void z_file_loader_build_track_with_process(
-    JsonTraceProcess *process, Arena *arena, ZProfileTrackBuilder *builder) {
+static void FileLoader_BuildTrackWithProcess(JsonTraceProcess *process,
+                                             Arena *arena,
+                                             ProfileTrackBuilder *builder) {
   Scratch scratch = scratch_begin(&arena, 1);
 
   JsonTraceThread **threads = arena_push_array_no_zero(
       scratch.arena, JsonTraceThread *, process->thread_count);
   usize thread_index = 0;
-  HashTrieIter thread_iter = hash_trie_iter(&process->threads, scratch.arena);
+  HashTrieIter thread_iter = HashTrie_Iter(&process->threads, scratch.arena);
   JsonTraceThread *thread;
-  while ((thread = hash_trie_iter_next(&thread_iter, JsonTraceThread))) {
+  while ((thread = HashTrie_Next(&thread_iter, JsonTraceThread))) {
     threads[thread_index++] = thread;
   }
   qsort(threads, process->thread_count, sizeof(*threads),
-        z_file_loader_compare_thread);
+        FileLoader_CompareThread);
 
   for (thread_index = 0; thread_index < process->thread_count; ++thread_index) {
-    z_file_loader_build_track_with_thread(threads[thread_index], arena,
-                                          builder);
+    FileLoader_BuildTrackWithThread(threads[thread_index], arena, builder);
   }
 
   scratch_end(scratch);
 }
 
-static void z_file_loader_build_track(JsonTraceProfile *profile, Arena *arena,
-                                      ZProfileTrackBuilder *builder) {
+static void FileLoader_BuildTrack(JsonTraceProfile *profile, Arena *arena,
+                                  ProfileTrackBuilder *builder) {
   Scratch scratch = scratch_begin(&arena, 1);
-  HashTrieIter process_iter =
-      hash_trie_iter(&profile->processes, scratch.arena);
+  HashTrieIter process_iter = HashTrie_Iter(&profile->processes, scratch.arena);
   JsonTraceProcess *process;
-  while ((process = hash_trie_iter_next(&process_iter, JsonTraceProcess))) {
-    z_file_loader_build_track_with_process(process, arena, builder);
+  while ((process = HashTrie_Next(&process_iter, JsonTraceProcess))) {
+    FileLoader_BuildTrackWithProcess(process, arena, builder);
   }
   scratch_end(scratch);
 }
 
-static int z_file_loader_compare_sample(const void *a, const void *b) {
-  const ZProfileSample *sa = a;
-  const ZProfileSample *sb = b;
-  return i64_cmp(sa->time, sb->time);
+static int FileLoader_CompareSample(const void *a, const void *b) {
+  const ProfileSample *sa = a;
+  const ProfileSample *sb = b;
+  return CompareI64(sa->time, sb->time);
 }
 
-static void z_file_loader_collect_series(Arena *arena, ZProfileItemCounter *c,
-                                         JsonTraceCounter *counter) {
+static void FileLoader_CollectSeries(Arena *arena, ProfileItem_Counter *c,
+                                     JsonTraceCounter *counter) {
   Scratch scratch = scratch_begin(&arena, 1);
-  HashTrieIter series_iter = hash_trie_iter(&counter->series, scratch.arena);
+  HashTrieIter series_iter = HashTrie_Iter(&counter->series, scratch.arena);
   usize series_index = 0;
   JsonTraceSeries *series;
-  while ((series = hash_trie_iter_next(&series_iter, JsonTraceSeries))) {
-    ZProfileSeries *s = &c->series[series_index++];
+  while ((series = HashTrie_Next(&series_iter, JsonTraceSeries))) {
+    ProfileSeries *s = &c->series[series_index++];
 
-    s->name = str8_dup(arena, series->name);
-    s->color_index = str8_hash(s->name) % ARRAY_COUNT(COLORS);
+    s->name = Str_Dup(arena, series->name);
+    s->color_index = Str_Hash(s->name) % COUNT_OF(COLORS);
     s->sample_count = series->sample_count;
-    s->samples = arena_push_array(arena, ZProfileSample, s->sample_count);
+    s->samples = arena_push_array(arena, ProfileSample, s->sample_count);
 
     usize sample_index = 0;
     for (JsonTraceSample *sample = series->first; sample;
          sample = sample->next) {
-      s->samples[sample_index++] = (ZProfileSample){
+      s->samples[sample_index++] = (ProfileSample){
           .time = sample->time,
           .value = sample->value,
       };
     }
 
     qsort(s->samples, s->sample_count, sizeof(*s->samples),
-          z_file_loader_compare_sample);
+          FileLoader_CompareSample);
   }
   scratch_end(scratch);
 }
 
-static int z_file_loader_compare_counter(const void *a, const void *b) {
+static int FileLoader_CompareCounter(const void *a, const void *b) {
   Scratch scratch = scratch_begin(0, 0);
   JsonTraceCounter *const *ca = a;
   JsonTraceCounter *const *cb = b;
-  int result = str8_cmp(str8_to_uppercase((*ca)->name, scratch.arena),
-                        str8_to_uppercase((*cb)->name, scratch.arena));
+  int result = Str_Compare(Str_ToUppercase((*ca)->name, scratch.arena),
+                           Str_ToUppercase((*cb)->name, scratch.arena));
   scratch_end(scratch);
   return result;
 }
 
-static void z_file_loader_collect_counters(Arena *arena, ZProfileItem *items,
-                                           usize *item_index,
-                                           JsonTraceProcess *process) {
+static void FileLoader_CollectCounters(Arena *arena, ProfileItem *items,
+                                       usize *item_index,
+                                       JsonTraceProcess *process) {
   Scratch scratch = scratch_begin(&arena, 1);
 
   JsonTraceCounter **sorted_counters = arena_push_array(
@@ -382,96 +380,96 @@ static void z_file_loader_collect_counters(Arena *arena, ZProfileItem *items,
   {
     usize counter_index = 0;
     HashTrieIter counter_iter =
-        hash_trie_iter(&process->counters, scratch.arena);
+        HashTrie_Iter(&process->counters, scratch.arena);
     JsonTraceCounter *counter;
-    while ((counter = hash_trie_iter_next(&counter_iter, JsonTraceCounter))) {
+    while ((counter = HashTrie_Next(&counter_iter, JsonTraceCounter))) {
       sorted_counters[counter_index++] = counter;
     }
   }
   qsort(sorted_counters, process->counter_count, sizeof(*sorted_counters),
-        z_file_loader_compare_counter);
+        FileLoader_CompareCounter);
 
   for (usize counter_index = 0; counter_index < process->counter_count;
        ++counter_index) {
     JsonTraceCounter *counter = sorted_counters[counter_index];
 
-    items[(*item_index)++] = (ZProfileItem){
+    items[(*item_index)++] = (ProfileItem){
         .header =
             {
-                .type = Z_PROFILE_ITEM_HEADER,
-                .name = str8_dup(arena, counter->name),
+                .type = ProfileItemType_Header,
+                .name = Str_Dup(arena, counter->name),
             },
     };
 
-    ZProfileItemCounter c = {
-        .type = Z_PROFILE_ITEM_COUNTER,
+    ProfileItem_Counter c = {
+        .type = ProfileItemType_Counter,
     };
-    c.name = str8_dup(arena, counter->name);
+    c.name = Str_Dup(arena, counter->name);
     c.series_count = counter->series_count;
-    c.series = arena_push_array(arena, ZProfileSeries, c.series_count);
+    c.series = arena_push_array(arena, ProfileSeries, c.series_count);
     c.min_value = counter->min_value;
     c.max_value = counter->max_value;
 
-    z_file_loader_collect_series(arena, &c, counter);
+    FileLoader_CollectSeries(arena, &c, counter);
 
-    items[(*item_index)++] = (ZProfileItem){
+    items[(*item_index)++] = (ProfileItem){
         .counter = c,
     };
   }
   scratch_end(scratch);
 }
 
-static int z_file_loader_compare_profile_span(const void *a, const void *b) {
-  const ZProfileSpan *sa = a;
-  const ZProfileSpan *sb = b;
-  int result = i64_cmp(sa->end_time_ns, sb->end_time_ns);
+static int FileLoader_CompareProfileSpan(const void *a, const void *b) {
+  const ProfileSpan *sa = a;
+  const ProfileSpan *sb = b;
+  int result = CompareI64(sa->end_time_ns, sb->end_time_ns);
   if (result == 0) {
-    result = i64_cmp(sa->begin_time_ns, sb->begin_time_ns);
+    result = CompareI64(sa->begin_time_ns, sb->begin_time_ns);
   }
   return result;
 }
 
-static void z_file_loader_collect_tracks(Arena *arena, ZProfileItem *items,
-                                         usize *item_index,
-                                         ZProfileTrackBuilder *track_builder) {
-  for (ZProfileThreadNode *thread = track_builder->first_thread; thread;
+static void FileLoader_CollectTracks(Arena *arena, ProfileItem *items,
+                                     usize *item_index,
+                                     ProfileTrackBuilder *track_builder) {
+  for (ProfileThreadNode *thread = track_builder->first_thread; thread;
        thread = thread->next) {
-    Str8 name;
-    if (str8_is_empty(thread->thread->name)) {
+    Str name;
+    if (Str_IsEmpty(thread->thread->name)) {
       name = arena_push_str8f(arena, "Thread %lld", thread->thread->tid);
     } else {
-      name = str8_dup(arena, thread->thread->name);
+      name = Str_Dup(arena, thread->thread->name);
     }
-    items[(*item_index)++] = (ZProfileItem){
+    items[(*item_index)++] = (ProfileItem){
         .header =
             {
-                .type = Z_PROFILE_ITEM_HEADER,
+                .type = ProfileItemType_Header,
                 .name = name,
             },
     };
 
-    for (ZProfileTrackNode *track = thread->first_track; track;
+    for (ProfileTrackNode *track = thread->first_track; track;
          track = track->next) {
-      ZProfileSpan *spans =
-          arena_push_array_no_zero(arena, ZProfileSpan, track->span_count);
+      ProfileSpan *spans =
+          arena_push_array_no_zero(arena, ProfileSpan, track->span_count);
 
-      ZProfileSpanNode *span_node = track->first_span;
+      ProfileSpanNode *span_node = track->first_span;
       for (usize span_index = 0; span_index < track->span_count; ++span_index) {
-        ZProfileSpan *span = spans + span_index;
-        span->name = str8_dup(arena, span_node->span->name);
-        span->color_index = str8_hash(span->name) % ARRAY_COUNT(COLORS);
+        ProfileSpan *span = spans + span_index;
+        span->name = Str_Dup(arena, span_node->span->name);
+        span->color_index = Str_Hash(span->name) % COUNT_OF(COLORS);
         span->begin_time_ns = span_node->span->begin_time_ns;
         span->end_time_ns = span_node->span->end_time_ns;
         span->self_duration_ns = span_node->self_duration_ns;
         span_node = span_node->next;
       }
-      qsort(spans, track->span_count, sizeof(ZProfileSpan),
-            z_file_loader_compare_profile_span);
+      qsort(spans, track->span_count, sizeof(ProfileSpan),
+            FileLoader_CompareProfileSpan);
 
-      items[(*item_index)++] = (ZProfileItem){
+      items[(*item_index)++] = (ProfileItem){
           .track =
               {
-                  .type = Z_PROFILE_ITEM_TRACK,
+                  .type = ProfileItemType_Track,
                   .span_count = track->span_count,
                   .spans = spans,
               },
@@ -480,36 +478,34 @@ static void z_file_loader_collect_tracks(Arena *arena, ZProfileItem *items,
   }
 }
 
-static void z_file_loader_collect_items(Arena *arena, ZProfileItem *items,
-                                        JsonTraceProfile *profile,
-                                        ZProfileTrackBuilder *track_builder) {
+static void FileLoader_CollectItems(Arena *arena, ProfileItem *items,
+                                    JsonTraceProfile *profile,
+                                    ProfileTrackBuilder *track_builder) {
   Scratch scratch = scratch_begin(&arena, 1);
   usize item_index = 0;
-  HashTrieIter process_iter =
-      hash_trie_iter(&profile->processes, scratch.arena);
+  HashTrieIter process_iter = HashTrie_Iter(&profile->processes, scratch.arena);
   JsonTraceProcess *process;
-  while ((process = hash_trie_iter_next(&process_iter, JsonTraceProcess))) {
-    z_file_loader_collect_counters(arena, items, &item_index, process);
+  while ((process = HashTrie_Next(&process_iter, JsonTraceProcess))) {
+    FileLoader_CollectCounters(arena, items, &item_index, process);
   }
 
-  z_file_loader_collect_tracks(arena, items, &item_index, track_builder);
+  FileLoader_CollectTracks(arena, items, &item_index, track_builder);
 
   scratch_end(scratch);
 }
 
-static usize z_file_loader_count_items(JsonTraceProfile *profile,
-                                       ZProfileTrackBuilder *track_builder) {
-  usize item_count = 0;
+static i32 FileLoader_CountItems(JsonTraceProfile *profile,
+                                 ProfileTrackBuilder *track_builder) {
+  i32 item_count = 0;
   Scratch scratch = scratch_begin(0, 0);
-  HashTrieIter process_iter =
-      hash_trie_iter(&profile->processes, scratch.arena);
+  HashTrieIter process_iter = HashTrie_Iter(&profile->processes, scratch.arena);
   JsonTraceProcess *process;
-  while ((process = hash_trie_iter_next(&process_iter, JsonTraceProcess))) {
+  while ((process = HashTrie_Next(&process_iter, JsonTraceProcess))) {
     item_count += 2 * process->counter_count;
   }
 
   item_count += track_builder->thread_count;
-  for (ZProfileThreadNode *thread = track_builder->first_thread; thread;
+  for (ProfileThreadNode *thread = track_builder->first_thread; thread;
        thread = thread->next) {
     item_count += thread->track_count;
   }
@@ -518,51 +514,51 @@ static usize z_file_loader_count_items(JsonTraceProfile *profile,
   return item_count;
 }
 
-static void z_file_loader_convert_profile(ZProfileViewer *viewer,
-                                          JsonTraceProfile *profile) {
+static void FileLoader_ConvertProfile(ProfileViewer *viewer,
+                                      JsonTraceProfile *profile) {
   Scratch scratch = scratch_begin(0, 0);
-  ZProfileTrackBuilder track_builder = {0};
-  z_file_loader_build_track(profile, scratch.arena, &track_builder);
+  ProfileTrackBuilder track_builder = {0};
+  FileLoader_BuildTrack(profile, scratch.arena, &track_builder);
 
-  viewer->item_count = z_file_loader_count_items(profile, &track_builder);
+  viewer->item_count = FileLoader_CountItems(profile, &track_builder);
   viewer->items =
-      arena_push_array(&viewer->arena, ZProfileItem, viewer->item_count);
-  z_file_loader_collect_items(&viewer->arena, viewer->items, profile,
-                              &track_builder);
+      arena_push_array(&viewer->arena, ProfileItem, viewer->item_count);
+  FileLoader_CollectItems(&viewer->arena, viewer->items, profile,
+                          &track_builder);
 
   viewer->min_time_ns = profile->min_time_ns;
   viewer->max_time_ns = profile->max_time_ns;
 
   i64 duration = (profile->max_time_ns - profile->min_time_ns);
-  i64 offset = duration * 0.1;
+  i64 offset = (i64)RoundF64((f64)duration * 0.1);
   viewer->begin_time_ns = profile->min_time_ns - offset;
   viewer->end_time_ns = profile->max_time_ns + offset;
   scratch_end(scratch);
 }
 
-static int z_file_loader_thread(void *self_) {
-  ZFileLoader *self = self_;
-  ZFile *file = self->file;
+static int FileLoader_Thread(void *self_) {
+  FileLoader *self = self_;
+  LoadingFile *file = self->file;
 
-  ZProfileViewer *viewer = z_profile_viewer_alloc();
-  viewer->name = str8_dup(&viewer->arena, file->name);
+  ProfileViewer *viewer = ProfileViewer_Create();
+  viewer->name = Str_Dup(&viewer->arena, file->name);
 
   Scratch scratch = scratch_begin(0, 0);
-  JsonParser parser = json_parser(z_file_get_input, file);
-  u64 before = platform_get_perf_counter();
-  JsonTraceProfile *profile = json_trace_profile_parse(scratch.arena, &parser);
-  u64 after = platform_get_perf_counter();
+  JsonParser parser = json_parser(GetInput, file);
+  u64 before = Platform_GetPerformanceCounter();
+  JsonTraceProfile *profile = JsonTraceProfile_Parse(scratch.arena, &parser);
+  u64 after = Platform_GetPerformanceCounter();
 
   if (!file->interrupted) {
     f64 mb = (f64)file->nread / 1024.0 / 1024.0;
-    f64 secs = (f64)(after - before) / (f64)platform_get_perf_freq();
+    f64 secs = (f64)(after - before) / (f64)Platform_GetPerformanceFrequency();
     INFO("Loaded %.1f MiB over %.1f seconds, %.1f MiB / s", mb, secs,
          mb / secs);
 
-    if (str8_is_empty(profile->error)) {
-      z_file_loader_convert_profile(viewer, profile);
+    if (Str_IsEmpty(profile->error)) {
+      FileLoader_ConvertProfile(viewer, profile);
     } else {
-      viewer->error = str8_dup(&viewer->arena, profile->error);
+      viewer->error = Str_Dup(&viewer->arena, profile->error);
     }
 
     self->viewer = viewer;
@@ -574,27 +570,27 @@ static int z_file_loader_thread(void *self_) {
   return 0;
 }
 
-static void z_file_loader_start(ZFileLoader *self) {
-  self->thread =
-      platform_thread_start(z_file_loader_thread, "FileLoader", self);
+static void FileLoader_Start(FileLoader *self) {
+  self->thread = Platform_Thread_Start(FileLoader_Thread, "FileLoader", self);
 }
 
-static bool z_file_loader_is_done(ZFileLoader *self) { return self->viewer; }
+static bool FileLoader_IsDone(FileLoader *self) { return self->viewer; }
 
-static void z_file_loader_free(ZFileLoader *self) {
+static void FileLoader_Destroy(FileLoader *self) {
   self->file->interrupted = true;
-  platform_thread_wait(self->thread);
+  Platform_Thread_Wait(self->thread);
 
   self->file->close(self->file);
   arena_free(&self->arena);
 }
 
-typedef struct ZState {
+typedef struct App {
+  FL_Arena *arena;
   f32 dt;
   f32 frame_time;
-  ZFileLoader *loader;
-  ZProfileViewer *viewer;
-} ZState;
+  FileLoader *loader;
+  ProfileViewer *viewer;
+} App;
 
 static FL_TextStyleO DefaultTextStyle(void) {
 #define FONT_SIZE_DEFAULT 13
@@ -609,7 +605,7 @@ typedef enum ButtonType {
   BUTTON_SECONDARY,
 } ButtonType;
 
-// static bool do_button(Str8 text, ButtonType type) {
+// static bool do_button(Str text, ButtonType type) {
 //   bool pressed;
 //   ui_button(&(UIButtonProps){
 //       .text = text,
@@ -626,12 +622,12 @@ typedef enum ButtonType {
 //   return pressed;
 // }
 
-static FL_Widget *UI_GlobalMenuBar(ZState *state) {
-  Str8 name = {0};
-  if (state->loader) {
-    name = state->loader->file->name;
-  } else if (state->viewer) {
-    name = state->viewer->name;
+static FL_Widget *UI_GlobalMenuBar(App *app) {
+  Str name = {0};
+  if (app->loader) {
+    name = app->loader->file->name;
+  } else if (app->viewer) {
+    name = app->viewer->name;
   }
 
   return FL_Padding(&(FL_PaddingProps){
@@ -646,9 +642,8 @@ static FL_Widget *UI_GlobalMenuBar(ZState *state) {
               FL_Text(&(FL_TextProps){
                   .text = FL_Format(
                       "%.1fMB %.1fms",
-                      (f32)((f64)platform_memory_get_allocated_bytes() /
-                            1024.0 / 1024.0),
-                      state->frame_time * 1000.0f),
+                      ((f64)Platform_GetAllocatedBytes() / 1024.0 / 1024.0),
+                      (f64)app->frame_time * 1000.0),
                   .style = DefaultTextStyle(),
               }),
               0,
@@ -658,7 +653,7 @@ static FL_Widget *UI_GlobalMenuBar(ZState *state) {
 }
 
 static FL_Widget *UI_WelcomeScreen(void) {
-  Str8 logo = FL_STR_C(
+  Str logo = FL_STR_C(
       // clang-format off
       " ________  _________  _______          _        ______  _____  ____  _____   ______\n"
       "|  __   _||  _   _  ||_   __ \\        / \\     .' ___  ||_   _||_   \\|_   _|.' ___  |\n"
@@ -687,8 +682,8 @@ static FL_Widget *UI_WelcomeScreen(void) {
   });
 }
 
-static FL_Widget *UI_LoadingScreen(ZState *state) {
-  ZFileLoader *loader = state->loader;
+static FL_Widget *UI_LoadingScreen(App *app) {
+  FileLoader *loader = app->loader;
 
   FL_Widget *widget = FL_Center(&(FL_CenterProps){
       .child = FL_Text(&(FL_TextProps){
@@ -698,10 +693,10 @@ static FL_Widget *UI_LoadingScreen(ZState *state) {
       }),
   });
 
-  if (z_file_loader_is_done(loader)) {
-    state->viewer = (ZProfileViewer *)loader->viewer;
-    state->loader = 0;
-    z_file_loader_free(loader);
+  if (FileLoader_IsDone(loader)) {
+    app->viewer = (ProfileViewer *)loader->viewer;
+    app->loader = 0;
+    FileLoader_Destroy(loader);
   }
 
   return widget;
@@ -714,8 +709,8 @@ typedef struct UI_TimelineProps {
 
 static i64 timeline_calc_block_duration(i64 duration, f32 width,
                                         f32 target_block_width) {
-  f32 num_blocks = f32_floor(width / target_block_width);
-  i64 block_duration = (f32)duration / (f32)num_blocks;
+  f32 num_blocks = Floor(width / target_block_width);
+  i64 block_duration = (i64)Round((f32)duration / (f32)num_blocks);
   i64 base = 1;
   while (base * 10 < block_duration) {
     base *= 10;
@@ -729,32 +724,32 @@ static i64 timeline_calc_block_duration(i64 duration, f32 width,
   return block_duration;
 }
 
-static Str8 timeline_format_time(Arena *arena, i64 time, i64 duration) {
+static Str UI_Timeline_FormatTime(FL_Arena *arena, i64 time, i64 duration) {
   static const char *TIME_UNITS[] = {"ns", "us", "ms", "s"};
 
   if (time == 0) {
-    return STR8_LIT("0");
+    return STR_C("0");
   }
 
-  f64 t = time;
+  f64 t = (f64)time;
   usize time_unit_index = 0;
 
   if (duration > 0) {
     i64 tmp = duration / 1000;
-    while (tmp > 0 && (time_unit_index + 1) < ARRAY_COUNT(TIME_UNITS)) {
+    while (tmp > 0 && (time_unit_index + 1) < COUNT_OF(TIME_UNITS)) {
       tmp /= 1000;
       t /= 1000.0;
       time_unit_index++;
     }
   } else {
-    while (f64_abs(t) >= 1000.0 &&
-           (time_unit_index + 1) < ARRAY_COUNT(TIME_UNITS)) {
+    while (AbsF64(t) >= 1000.0 &&
+           (time_unit_index + 1) < COUNT_OF(TIME_UNITS)) {
       t /= 1000.0;
       time_unit_index++;
     }
   }
 
-  Str8 buf = arena_push_str8f(arena, "%.1lf%s", t, TIME_UNITS[time_unit_index]);
+  Str buf = Arena_PushStrF(arena, "%.1lf%s", t, TIME_UNITS[time_unit_index]);
   char *period = buf.ptr + buf.len - 1;
   while (*period != '.') {
     period--;
@@ -800,7 +795,7 @@ static void UI_Timeline_Paint(FL_Widget *widget, FL_PaintingContext *context,
       color);
 
   f32 point_per_ns = (f32)size.x / (f32)(duration);
-  f32 large_block_width = large_block_duration * point_per_ns;
+  // f32 large_block_width = large_block_duration * point_per_ns;
 
   i64 t = begin / block_duration * block_duration;
   // Truncate away from 0
@@ -809,7 +804,7 @@ static void UI_Timeline_Paint(FL_Widget *widget, FL_PaintingContext *context,
   }
   f32 bottom = offset.y + size.y;
   while (t <= end) {
-    f32 x = offset.x + (t - begin) * point_per_ns;
+    f32 x = offset.x + (f32)(t - begin) * point_per_ns;
     bool is_large_block = t % large_block_duration == 0;
     f32 height = is_large_block ? size.y * 0.4f : size.y * 0.2f;
     FL_Canvas_FillRect(
@@ -817,11 +812,10 @@ static void UI_Timeline_Paint(FL_Widget *widget, FL_PaintingContext *context,
         (FL_Rect){x, x + line_thickness, bottom - height, bottom}, color);
 
     if (is_large_block) {
-      Scratch scratch = scratch_begin(0, 0);
-      // draw_text_str8(vec2(x + 4, bottom - 2 - font_size),
-      //                timeline_format_time(scratch.arena, t, duration),
-      //                font_size, 0, large_block_width - 4, color);
-      scratch_end(scratch);
+      FL_Arena scratch = *FL_Widget_GetArena(widget);
+      FL_Canvas_FillText(context->canvas,
+                         UI_Timeline_FormatTime(&scratch, t, duration), x + 4,
+                         bottom - 2 - font_size / 2.0f, font_size, color);
     }
 
     t += block_duration;
@@ -846,12 +840,12 @@ static void UI_ProfileItem_Layout(FL_Widget *widget,
 }
 
 typedef struct UI_ProfileCounterProps {
-  ZProfileItemCounter *counter;
+  ProfileItem_Counter *counter;
   i64 begin_time_ns;
   i64 end_time_ns;
 } UI_ProfileCounterProps;
 
-static usize UI_ProfileCounter_FindSamplesLowerBound(ZProfileSample *samples,
+static usize UI_ProfileCounter_FindSamplesLowerBound(ProfileSample *samples,
                                                      usize begin, usize end,
                                                      i64 time) {
   usize low = begin;
@@ -874,13 +868,13 @@ static void UI_ProfileCounter_PaintSample(FL_PaintingContext *context,
                                           Vec2 size, Vec2 offset, i64 bin_begin,
                                           i64 bin_duration, f32 bin_width,
                                           f32o *prev_x, f32o *prev_h, f32 d,
-                                          ZProfileItemCounter *counter,
-                                          ZProfileSeries *series,
-                                          ZProfileSample *sample) {
+                                          ProfileItem_Counter *counter,
+                                          ProfileSeries *series,
+                                          ProfileSample *sample) {
   f32 bottom = offset.y + size.y;
   i64 sample_bin_begin = sample->time / bin_duration;
   f32 x = offset.x + (sample_bin_begin - bin_begin) * bin_width;
-  f32 height = f32_max(1, (sample->value - counter->min_value) / d * size.y);
+  f32 height = Max(1, (sample->value - counter->min_value) / d * size.y);
   if (prev_x->present) {
     f32 px = prev_x->value;
     f32 ph = prev_h->value;
@@ -904,8 +898,8 @@ static void UI_ProfileCounter_PaintSample(FL_PaintingContext *context,
                        (FL_Rect){x - 1, x, bottom - height, bottom},
                        (FL_Color){0, 0, 0, 0.5f});
   }
-  *prev_x = f32_some(x);
-  *prev_h = f32_some(height);
+  *prev_x = f32_Some(x);
+  *prev_h = f32_Some(height);
 }
 
 static void UI_ProfileCounter_Paint(FL_Widget *widget,
@@ -915,27 +909,27 @@ static void UI_ProfileCounter_Paint(FL_Widget *widget,
   UI_ProfileCounterProps *props =
       FL_Widget_GetProps(widget, UI_ProfileCounterProps);
 
-  ZProfileItemCounter *counter = props->counter;
+  ProfileItem_Counter *counter = props->counter;
   f64 d = (counter->max_value - counter->min_value);
   f32 point_per_ns =
       (f32)widget->size.x / (f32)(props->end_time_ns - props->begin_time_ns);
 
   f32 bin_width = 2.0f;
   f32 ns_per_point = 1.0f / point_per_ns;
-  i64 bin_duration = f32_round(ns_per_point * bin_width);
+  i64 bin_duration = Round(ns_per_point * bin_width);
   i64 bin_begin = props->begin_time_ns / bin_duration;
   i64 bin_end = props->end_time_ns / bin_duration + 1;
   Vec2 sample_offset =
       vec2(offset.x -
                (props->begin_time_ns - bin_begin * bin_duration) * point_per_ns,
-           f32_round(offset.y));
+           Round(offset.y));
 
   for (usize series_index = 0; series_index < counter->series_count;
        ++series_index) {
-    ZProfileSeries *series = counter->series + series_index;
+    ProfileSeries *series = counter->series + series_index;
 
-    f32o prev_x = f32_none();
-    f32o prev_h = f32_none();
+    f32o prev_x = f32_None();
+    f32o prev_h = f32_None();
 
     usize prev_sample_index = 0;
     {
@@ -944,7 +938,7 @@ static void UI_ProfileCounter_Paint(FL_Widget *widget,
       if (first_sample_index > 0) {
         usize sample_index = first_sample_index - 1;
         prev_sample_index = sample_index;
-        ZProfileSample *sample = series->samples + sample_index;
+        ProfileSample *sample = series->samples + sample_index;
         UI_ProfileCounter_PaintSample(
             context, widget->size, sample_offset, bin_begin, bin_duration,
             bin_width, &prev_x, &prev_h, d, counter, series, sample);
@@ -959,7 +953,7 @@ static void UI_ProfileCounter_Paint(FL_Widget *widget,
           bin_begin_time_ns);
       if (sample_index < series->sample_count) {
         prev_sample_index = sample_index;
-        ZProfileSample *sample = series->samples + sample_index;
+        ProfileSample *sample = series->samples + sample_index;
         if (sample->time < bin_end_time_ns) {
           UI_ProfileCounter_PaintSample(
               context, widget->size, sample_offset, bin_begin, bin_duration,
@@ -973,7 +967,7 @@ static void UI_ProfileCounter_Paint(FL_Widget *widget,
           series->samples, 0, series->sample_count, bin_end * bin_duration);
       if (last_sample_index < series->sample_count) {
         usize sample_index = last_sample_index;
-        ZProfileSample *sample = series->samples + sample_index;
+        ProfileSample *sample = series->samples + sample_index;
         UI_ProfileCounter_PaintSample(
             context, widget->size, sample_offset, bin_begin, bin_duration,
             bin_width, &prev_x, &prev_h, d, counter, series, sample);
@@ -1003,13 +997,13 @@ static FL_Widget *UI_ProfileCounter(const UI_ProfileCounterProps *props) {
 }
 
 typedef struct UI_ProfileTrackProps {
-  ZProfileItemTrack *track;
+  ProfileItem_Track *track;
   i64 begin_time_ns;
   i64 end_time_ns;
 } UI_ProfileTrackProps;
 
 // Find the first span with in range [begin, end) whose end_time_ns > time.
-static usize UI_ProfileTrack_FindSpansUpperBound(ZProfileSpan *spans,
+static usize UI_ProfileTrack_FindSpansUpperBound(ProfileSpan *spans,
                                                  usize begin, usize end,
                                                  i64 time) {
   usize low = begin;
@@ -1030,8 +1024,6 @@ static usize UI_ProfileTrack_FindSpansUpperBound(ZProfileSpan *spans,
 
 static void UI_ProfileTrack_Paint(FL_Widget *widget,
                                   FL_PaintingContext *context, Vec2 offset) {
-  (void)context;
-
   UI_ProfileTrackProps *props =
       FL_Widget_GetProps(widget, UI_ProfileTrackProps);
 
@@ -1040,13 +1032,14 @@ static void UI_ProfileTrack_Paint(FL_Widget *widget,
 
   f32 bin_width = 4.0f;
   f32 ns_per_point = 1.0f / point_per_ns;
-  i64 bin_duration = f32_round(ns_per_point * bin_width);
+  i64 bin_duration = (i64)Round(ns_per_point * bin_width);
   i64 bin_begin = props->begin_time_ns / bin_duration - 1;
   i64 bin_end = props->end_time_ns / bin_duration + 1;
-  f32 offset_x = offset.x - (props->begin_time_ns - bin_begin * bin_duration) *
-                                point_per_ns;
+  f32 offset_x =
+      offset.x -
+      (f32)(props->begin_time_ns - bin_begin * bin_duration) * point_per_ns;
 
-  ZProfileItemTrack *track = props->track;
+  ProfileItem_Track *track = props->track;
   usize last_span_index = track->span_count;
   for (i64 bin_index = bin_end; bin_index >= bin_begin; --bin_index) {
     i64 bin_begin_time_ns = bin_index * bin_duration;
@@ -1054,20 +1047,20 @@ static void UI_ProfileTrack_Paint(FL_Widget *widget,
         track->spans, 0, last_span_index, bin_begin_time_ns);
     if (span_index < last_span_index) {
       last_span_index = span_index;
-      ZProfileSpan *span = track->spans + span_index;
+      ProfileSpan *span = track->spans + span_index;
       i64 span_bin_begin = span->begin_time_ns / bin_duration;
       i64 span_bin_end = span->end_time_ns / bin_duration +
                          (span->end_time_ns % bin_duration ? 1 : 0);
 
-      f32 left = offset_x + (span_bin_begin - bin_begin) * bin_width;
+      f32 left = offset_x + (f32)(span_bin_begin - bin_begin) * bin_width;
       f32 right =
-          left + f32_max(1, (span_bin_end - span_bin_begin)) * bin_width;
-      left = f32_max(left, offset.x);
-      right = f32_max(f32_min(right, offset.x + widget->size.x), left);
+          left + Max(1, (f32)(span_bin_end - span_bin_begin)) * bin_width;
+      left = Max(left, offset.x);
+      right = Max(Min(right, offset.x + widget->size.x), left);
 
       if (right > left) {
-        Vec2 min = vec2(left, offset.y);
-        Vec2 max = vec2(right, offset.y + widget->size.y);
+        Vec2 min = {left, offset.y};
+        Vec2 max = {right, offset.y + widget->size.y};
         f32 width = max.x - min.x;
         f32 height = max.y - min.y;
         FL_Canvas_FillRect(context->canvas,
@@ -1090,8 +1083,8 @@ static void UI_ProfileTrack_Paint(FL_Widget *widget,
           FL_TextMetrics metrics =
               FL_Canvas_MeasureText(context->canvas, span->name, font_size);
 
-          f32 text_left = f32_max(left + text_padding_x,
-                                  left + (width - metrics.width) / 2.0f);
+          f32 text_left =
+              Max(left + text_padding_x, left + (width - metrics.width) / 2.0f);
           f32 text_top = offset.y +
                          (height - (metrics.font_bounding_box_ascent +
                                     metrics.font_bounding_box_descent)) /
@@ -1115,7 +1108,7 @@ static void UI_ProfileTrack_Paint(FL_Widget *widget,
   }
 }
 
-static FL_Widget *UI_ProfileHeader(ZProfileItemHeader *header) {
+static FL_Widget *UI_ProfileHeader(ProfileItem_Header *header) {
   FL_Color line_color = {0.5, 0.5, 0.5, 1};
   f32 line_height = 2;
   return FL_Row(&(FL_RowProps){
@@ -1156,36 +1149,39 @@ static FL_Widget *UI_ProfileTrack(const UI_ProfileTrackProps *props) {
 }
 
 static void UI_ProfileItem_OnScroll(void *ctx, FL_PointerEvent event) {
-  ZProfileViewer *viewer = ctx;
+  ProfileViewer *viewer = ctx;
   FL_Widget *widget = viewer->list_view;
   if (FL_PointerEventResolver_Register(widget)) {
     f32 pivot = event.local_position.x / widget->size.x;
     i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
-    i64 pivot_time = viewer->begin_time_ns + pivot * duration;
+    i64 pivot_time =
+        viewer->begin_time_ns + (i64)RoundF64((f64)pivot * (f64)duration);
 
     Vec2 delta = event.delta;
     if (delta.y < 0) {
-      duration = i64_max(duration * 0.8f, 1000);
+      duration = MaxI64((i64)RoundF64((f64)duration * 0.8), 1000);
     } else {
-      i64 max_duration = (viewer->max_time_ns - viewer->min_time_ns) * 2.0;
-      duration = i64_min(duration * 1.25f, max_duration);
+      i64 max_duration =
+          (i64)RoundF64((f64)(viewer->max_time_ns - viewer->min_time_ns) * 2.0);
+      duration = MinI64((i64)RoundF64((f64)duration * 1.25), max_duration);
     }
 
-    viewer->begin_time_ns = pivot_time - pivot * duration;
+    viewer->begin_time_ns =
+        pivot_time - (i64)RoundF64((f64)pivot * (f64)duration);
     viewer->end_time_ns = viewer->begin_time_ns + duration;
   }
 }
 
 static FL_Widget *UI_ProfileItem(void *ctx, FL_i32 item_index) {
-  ZProfileViewer *viewer = ctx;
-  ZProfileItem *item = viewer->items + item_index;
+  ProfileViewer *viewer = ctx;
+  ProfileItem *item = viewer->items + item_index;
   FL_Widget *child;
   switch (item->type) {
-    case Z_PROFILE_ITEM_HEADER: {
+    case ProfileItemType_Header: {
       child = UI_ProfileHeader(&item->header);
     } break;
 
-    case Z_PROFILE_ITEM_COUNTER: {
+    case ProfileItemType_Counter: {
       child = UI_ProfileCounter(&(UI_ProfileCounterProps){
           .counter = &item->counter,
           .begin_time_ns = viewer->begin_time_ns,
@@ -1193,7 +1189,7 @@ static FL_Widget *UI_ProfileItem(void *ctx, FL_i32 item_index) {
       });
     } break;
 
-    case Z_PROFILE_ITEM_TRACK: {
+    case ProfileItemType_Track: {
       child = UI_ProfileTrack(&(UI_ProfileTrackProps){
           .track = &item->track,
           .begin_time_ns = viewer->begin_time_ns,
@@ -1215,20 +1211,20 @@ static FL_Widget *UI_ProfileItem(void *ctx, FL_i32 item_index) {
 
 static void UI_ProfileScreen_OnDragUpdate(void *ctx,
                                           FL_GestureDetails details) {
-  ZProfileViewer *viewer = ctx;
+  ProfileViewer *viewer = ctx;
   FL_Widget *widget = viewer->list_view;
   Vec2 delta = details.delta;
   i64 duration = viewer->end_time_ns - viewer->begin_time_ns;
   f64 ns_per_point = (f64)duration / (f64)widget->size.x;
-  i64 offset = (i64)(ns_per_point * (f64)delta.x);
+  i64 offset = (i64)RoundF64(ns_per_point * (f64)delta.x);
   viewer->begin_time_ns -= offset;
   viewer->end_time_ns = viewer->begin_time_ns + duration;
   viewer->scroll -= delta.y;
 }
 
-static FL_Widget *UI_ProfileScreen(ZState *state) {
-  ZProfileViewer *viewer = state->viewer;
-  if (!str8_is_empty(viewer->error)) {
+static FL_Widget *UI_ProfileScreen(App *app) {
+  ProfileViewer *viewer = app->viewer;
+  if (!Str_IsEmpty(viewer->error)) {
     return FL_Center(&(FL_CenterProps){
         .child = FL_Text(&(FL_TextProps){
             .text = FL_Format("error: %.*s", (int)viewer->error.len,
@@ -1267,22 +1263,22 @@ static FL_Widget *UI_ProfileScreen(ZState *state) {
   });
 }
 
-static FL_Widget *UI_MainScreen(ZState *state) {
-  if (state->loader) {
-    return UI_LoadingScreen(state);
-  } else if (state->viewer) {
-    return UI_ProfileScreen(state);
+static FL_Widget *UI_MainScreen(App *app) {
+  if (app->loader) {
+    return UI_LoadingScreen(app);
+  } else if (app->viewer) {
+    return UI_ProfileScreen(app);
   } else {
     return UI_WelcomeScreen();
   }
 }
 
-static FL_Widget *UI_Build(ZState *state) {
+static FL_Widget *UI_Build(App *app) {
   return FL_ColoredBox(&(FL_ColoredBoxProps){
       .color = {0.94, 0.94, 0.94, 1.0},
       .child = FL_Column(&(FL_ColumnProps){
           .children = FL_WidgetList_Make((FL_Widget *[]){
-              UI_GlobalMenuBar(state),
+              UI_GlobalMenuBar(app),
               // Simulate a bottom border.
               // TODO: Impl DecorationBox.
               FL_Container(&(FL_ContainerProps){
@@ -1291,7 +1287,7 @@ static FL_Widget *UI_Build(ZState *state) {
               }),
               FL_Expanded(&(FL_ExpandedProps){
                   .flex = 1,
-                  .child = UI_MainScreen(state),
+                  .child = UI_MainScreen(app),
               }),
               0,
           }),
@@ -1299,44 +1295,49 @@ static FL_Widget *UI_Build(ZState *state) {
   });
 }
 
-static ZState g_z_state;
-
-void z_load_file(ZFile *file) {
-  ZState *state = &g_z_state;
-
-  if (state->loader) {
-    z_file_loader_free(state->loader);
-    state->loader = 0;
-  }
-
-  if (state->viewer) {
-    z_profile_viewer_free(state->viewer);
-    state->viewer = 0;
-  }
-
-  state->loader = z_file_loader_alloc(file);
-  z_file_loader_start(state->loader);
+App *App_Create(FL_Allocator allocator) {
+  FL_Arena *arena = FL_Arena_Create(&(FL_ArenaOptions){
+      .allocator = allocator,
+  });
+  App *app = FL_Arena_PushStruct(arena, App);
+  *app = (App){
+      .arena = arena,
+  };
+  return app;
 }
 
-void z_update(Vec2 viewport_size) {
+void App_LoadFile(App *app, LoadingFile *file) {
+  if (app->loader) {
+    FileLoader_Destroy(app->loader);
+    app->loader = 0;
+  }
+
+  if (app->viewer) {
+    ProfileViewer_Destroy(app->viewer);
+    app->viewer = 0;
+  }
+
+  app->loader = FileLoader_Create(file);
+  FileLoader_Start(app->loader);
+}
+
+void App_Update(App *app, Vec2 viewport_size) {
   static u64 last_counter;
   static f32 last_frame_time;
 
-  ZState *state = &g_z_state;
-
   f32 dt = 0.0f;
-  u64 current_counter = platform_get_perf_counter();
+  u64 current_counter = Platform_GetPerformanceCounter();
   if (last_counter) {
     dt = (f32)((f64)(current_counter - last_counter) /
-               (f64)platform_get_perf_freq());
+               (f64)Platform_GetPerformanceFrequency());
   }
   last_counter = current_counter;
 
-  state->dt = dt;
-  state->frame_time = last_frame_time;
+  app->dt = dt;
+  app->frame_time = last_frame_time;
 
   FL_Run(&(FL_RunOptions){
-      .widget = UI_Build(state),
+      .widget = UI_Build(app),
       .viewport =
           {
               .left = 0,
@@ -1347,15 +1348,16 @@ void z_update(Vec2 viewport_size) {
       .delta_time = dt,
   });
 
-  last_frame_time = (f32)((f64)(platform_get_perf_counter() - last_counter) /
-                          (f64)platform_get_perf_freq());
+  last_frame_time =
+      (f32)((f64)(Platform_GetPerformanceCounter() - last_counter) /
+            (f64)Platform_GetPerformanceFrequency());
 }
 
-void z_quit(void) {
-  ZState *state = &g_z_state;
-
-  if (state->loader) {
-    z_file_loader_free(state->loader);
-    state->loader = 0;
+void App_Destroy(App *app) {
+  if (app->loader) {
+    FileLoader_Destroy(app->loader);
+    app->loader = 0;
   }
+
+  FL_Arena_Destroy(app->arena);
 }

@@ -71,10 +71,10 @@ typedef struct ColorU32 {
 
 static inline ColorU32 ColorU32_FromColor(FL_Color color) {
   ColorU32 result;
-  result.r = f32_round(color.r * color.a * 255.0f);
-  result.g = f32_round(color.g * color.a * 255.0f);
-  result.b = f32_round(color.b * color.a * 255.0f);
-  result.a = f32_round(color.a * 255.0f);
+  result.r = Round(color.r * color.a * 255.0f);
+  result.g = Round(color.g * color.a * 255.0f);
+  result.b = Round(color.b * color.a * 255.0f);
+  result.a = Round(color.a * 255.0f);
   return result;
 }
 
@@ -130,8 +130,8 @@ static void Canvas_FillRect(void *ctx, FL_Rect rect, FL_Color color) {
 
   Vec2 min = {rect.left, rect.top};
   Vec2 max = {rect.right, rect.bottom};
-  min = vec2_mul(min, GetScreenContentScale(canvas));
-  max = vec2_mul(max, GetScreenContentScale(canvas));
+  min = Vec2_Mul(min, GetScreenContentScale(canvas));
+  max = Vec2_Mul(max, GetScreenContentScale(canvas));
 
   ColorU32 c = ColorU32_FromColor(color);
   SDL_SetRenderDrawColor(canvas->renderer, c.r, c.g, c.b, c.a);
@@ -250,7 +250,7 @@ static PackedFont *GetOrPackFont(Canvas *canvas, stbtt_fontinfo *font,
 
 static inline i32 GetCharIndex(PackedFont *packed_font, u32 ch) {
   i32 result =
-      i32_clamp(ch - packed_font->range.first_unicode_codepoint_in_range, 0,
+      ClampI32(ch - packed_font->range.first_unicode_codepoint_in_range, 0,
                 packed_font->range.num_chars - 1);
   return result;
 }
@@ -278,7 +278,7 @@ static i32 GetKernAdvance(PackedFont *packed_font, u32 a, u32 b) {
       *kern_ptr = -1;
     }
   }
-  i32 result = i32_max(*kern_ptr, 0);
+  i32 result = MaxI32(*kern_ptr, 0);
   return result;
 }
 
@@ -288,7 +288,7 @@ static void Canvas_FillText(void *ctx, FL_Str text, FL_f32 x, FL_f32 y,
 
   f32 content_scale = GetScreenContentScale(canvas);
   Vec2 pos = {x, y};
-  pos = vec2_mul(pos, content_scale);
+  pos = Vec2_Mul(pos, content_scale);
 
   font_size = font_size * content_scale;
   stbtt_fontinfo *font = &canvas->font;
@@ -299,7 +299,7 @@ static void Canvas_FillText(void *ctx, FL_Str text, FL_f32 x, FL_f32 y,
   f32 line_height = (ascent - descent) * scale;
 
   FL_Arena scratch = *canvas->arena;
-  Str32 text32 = Arena_PushStr32FromStr8(&scratch, text);
+  Str32 text32 = Arena_PushStr32FromStr(&scratch, text);
   f32 baseline = pos.y;  // + (f32)ascent * scale;
   f32 pos_x = pos.x;
   for (u32 i = 0; i < text32.len; ++i) {
@@ -358,7 +358,7 @@ FL_TextMetrics Canvas_MeasureText(void *ctx, FL_Str text, FL_f32 font_size) {
   f32 line_height = (ascent - descent) * scale;
 
   FL_Arena scratch = *canvas->arena;
-  Str32 text32 = Arena_PushStr32FromStr8(&scratch, text);
+  Str32 text32 = Arena_PushStr32FromStr(&scratch, text);
   f32 baseline = (f32)ascent * scale;
   f32 pos_x = 0.0f;
   f32 max_pos_x = 0.0f;
@@ -366,7 +366,7 @@ FL_TextMetrics Canvas_MeasureText(void *ctx, FL_Str text, FL_f32 font_size) {
   for (u32 i = 0; i < text32.len; ++i) {
     u32 ch = text32.ptr[i];
     if (ch == '\n') {
-      max_pos_x = f32_max(max_pos_x, pos_x);
+      max_pos_x = Max(max_pos_x, pos_x);
       pos_x = 0;
       pos_y += line_height;
     } else {
@@ -375,7 +375,7 @@ FL_TextMetrics Canvas_MeasureText(void *ctx, FL_Str text, FL_f32 font_size) {
         i32 kern = GetKernAdvance(packed_font, ch, text32.ptr[i + 1]);
         pos_x += scale * kern;
       }
-      max_pos_x = f32_max(max_pos_x, pos_x);
+      max_pos_x = Max(max_pos_x, pos_x);
     }
   }
   result.width = max_pos_x / content_scale;

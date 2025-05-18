@@ -3,6 +3,7 @@
 
 #include "src/memory.h"
 #include "src/platform.h"
+#include "src/types.h"
 
 typedef struct ChannelItem ChannelItem;
 struct ChannelItem {
@@ -13,7 +14,7 @@ struct ChannelItem {
 typedef struct Channel {
   Arena arena;
   PlatformMutex *mutex;
-  PlatformCondition *condition;
+  Platform_Condition *condition;
   u32 cap;
   u32 len;
   usize item_size;
@@ -25,20 +26,19 @@ typedef struct Channel {
   bool tx_closed;
 } Channel;
 
-Channel *channel_alloc(u32 cap, usize item_size);
+Channel *Channel_Create(u32 cap, usize item_size);
 /// Returns false if the rx is closed.
-bool channel_send_(Channel *self, usize item_size, void *item);
-#define channel_send(self, item) channel_send_(self, sizeof(*item), item)
+bool Channel_Send_(Channel *self, usize item_size, void *item);
+#define Channel_Send(self, item) Channel_Send_(self, sizeof(*item), item)
 
 // Returns false if no item in the buffer and tx is closed. out_item must has at
 // least item_size space.
-bool channel_receive_(Channel *self, usize item_size, void *item);
-#define channel_receive(self, item) \
-  channel_receive_(self, sizeof(*item), item)
+bool Channel_Receive_(Channel *self, usize item_size, void *item);
+#define Channel_Receive(self, item) Channel_Receive_(self, sizeof(*item), item)
 
 /// Returns true if the channel is destroyed after this call.
-bool channel_close_rx(Channel *self);
+bool Channel_CloseRx(Channel *self);
 /// Returns true if the channel is destroyed after this call.
-bool channel_close_tx(Channel *self);
+bool Channel_CloseTx(Channel *self);
 
 #endif  // ZTRACING_SRC_CHANNEL_H_

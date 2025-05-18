@@ -96,7 +96,7 @@ static bool SkipObjectValue(Arena *arena, Arena scratch, JsonParser *parser,
   while (!done) {
     JsonToken token = GetJsonToken(&scratch, parser);
     switch (token.type) {
-      case JsonToken_Comma: {
+      case JsonTokenValue_Comma: {
         if (open == 0) {
           done = true;
         }
@@ -213,7 +213,7 @@ static bool ParseJsonTraceEventArray(Arena *arena, Arena value_scratch,
 
           token = GetJsonToken(&token_scratch, parser);
           switch (token.type) {
-            case JsonToken_Comma: {
+            case JsonTokenValue_Comma: {
             } break;
 
             case JsonToken_CloseBracket: {
@@ -271,7 +271,7 @@ static ProfileResult *ParseJsonTrace(Arena *arena, Arena value_scratch,
           case JsonToken_StringLiteral: {
             if (Equal(token.value, STRING_LITERAL("traceEvents"))) {
               token = GetJsonToken(&token_scratch, parser);
-              if (token.type == JsonToken_Colon) {
+              if (token.type == JsonTokenValue_Colon) {
                 done = ParseJsonTraceEventArray(arena, value_scratch,
                                                 token_scratch, parser, result);
               } else if (token.type == JsonToken_Error) {

@@ -3,7 +3,7 @@ const c = @import("c.zig");
 const utils = @import("utils.zig");
 
 const testing = std.testing;
-const expect_vec2_eq = utils.expect_vec2_eq;
+const expect_Vec2_IsEqual = utils.expect_Vec2_IsEqual;
 
 test "multiple buttons down" {
     c.ui_set_viewport(c.vec2(0, 0), c.vec2(100, 100));
@@ -31,7 +31,7 @@ test "multiple buttons down" {
     try testing.expect(!up.present);
     try testing.expect(hover.present);
     try testing.expect(hover.value.pointer == 0);
-    try expect_vec2_eq(c.vec2(50, 50), hover.value.local_position);
+    try expect_Vec2_IsEqual(c.vec2(50, 50), hover.value.local_position);
 
     c.ui_on_mouse_button_down(c.vec2(50, 50), c.UI_MOUSE_BUTTON_PRIMARY);
     c.ui_begin_frame();
@@ -39,7 +39,7 @@ test "multiple buttons down" {
     c.ui_pointer_listener_end();
     c.ui_end_frame();
     try testing.expect(down.present);
-    try expect_vec2_eq(c.vec2(50, 50), down.value.local_position);
+    try expect_Vec2_IsEqual(c.vec2(50, 50), down.value.local_position);
     const pointer = down.value.pointer;
     try testing.expect(down.value.button == c.UI_BUTTON_PRIMARY);
     try testing.expect(!move.present);
@@ -52,7 +52,7 @@ test "multiple buttons down" {
     c.ui_end_frame();
     try testing.expect(!down.present);
     try testing.expect(move.present);
-    try expect_vec2_eq(c.vec2(75, 50), move.value.local_position);
+    try expect_Vec2_IsEqual(c.vec2(75, 50), move.value.local_position);
     try testing.expect(move.value.pointer == pointer);
     try testing.expect(move.value.button == c.UI_BUTTON_PRIMARY);
     try testing.expect(!up.present);
@@ -73,7 +73,7 @@ test "multiple buttons down" {
     c.ui_end_frame();
     try testing.expect(!down.present);
     try testing.expect(move.present);
-    try expect_vec2_eq(c.vec2(80, 50), move.value.local_position);
+    try expect_Vec2_IsEqual(c.vec2(80, 50), move.value.local_position);
     try testing.expect(move.value.pointer == pointer);
     try testing.expect(move.value.button == (c.UI_BUTTON_PRIMARY | c.UI_BUTTON_SECONDARY));
     try testing.expect(!up.present);
@@ -88,7 +88,7 @@ test "multiple buttons down" {
     try testing.expect(move.present);
     try testing.expect(move.value.pointer == pointer);
     try testing.expect(move.value.button == c.UI_BUTTON_SECONDARY);
-    try expect_vec2_eq(c.vec2(30, 50), move.value.local_position);
+    try expect_Vec2_IsEqual(c.vec2(30, 50), move.value.local_position);
     try testing.expect(!up.present);
 
     // No button is down, UI_POINTER_EVENT_UP should be emitted.
@@ -101,7 +101,7 @@ test "multiple buttons down" {
     try testing.expect(!move.present);
     try testing.expect(up.present);
     try testing.expect(up.value.pointer == pointer);
-    try expect_vec2_eq(c.vec2(20, 50), up.value.local_position);
+    try expect_Vec2_IsEqual(c.vec2(20, 50), up.value.local_position);
 }
 
 test "pointer is different for each pointer down event" {
@@ -168,7 +168,7 @@ test "hover" {
     c.ui_stack_end();
     c.ui_end_frame();
     try testing.expect(hover.present);
-    try expect_vec2_eq(c.vec2(20, 10), hover.value.local_position);
+    try expect_Vec2_IsEqual(c.vec2(20, 10), hover.value.local_position);
 }
 
 test "enter and exit" {
@@ -200,7 +200,7 @@ test "enter and exit" {
     c.ui_stack_end();
     c.ui_end_frame();
     try testing.expect(enter.present);
-    try expect_vec2_eq(c.vec2(20, 10), enter.value.local_position);
+    try expect_Vec2_IsEqual(c.vec2(20, 10), enter.value.local_position);
     try testing.expect(!exit.present);
 
     c.ui_on_mouse_move(c.vec2(0, 0));

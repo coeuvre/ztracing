@@ -14,17 +14,17 @@
 static inline void memory_zero(void *ptr, usize size) { memset(ptr, 0, size); }
 
 static inline void *memory_alloc(usize size) {
-  void *result = platform_memory_alloc(size);
+  void *result = Platform_AllocMemory(size);
   memory_zero(result, size);
   return result;
 }
 
 static inline void *memory_alloc_no_zero(usize size) {
-  return platform_memory_alloc(size);
+  return Platform_AllocMemory(size);
 }
 
 static inline void memory_free(void *ptr, usize size) {
-  return platform_memory_free(ptr, size);
+  return Platform_FreeMemory(ptr, size);
 }
 
 static inline void *memory_copy(void *dst, const void *src, usize size) {
@@ -34,6 +34,9 @@ static inline void *memory_copy(void *dst, const void *src, usize size) {
 static inline void *memory_move(void *dst, const void *src, usize size) {
   return memmove(dst, src, size);
 }
+
+#define Arena_PushArray(arena, S, n) FL_Arena_PushArray(arena, S, n)
+#define Arena_Pop(arena, size) FL_Arena_Pop(arena, size)
 
 typedef struct Arena Arena;
 struct Arena {

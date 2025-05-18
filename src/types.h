@@ -33,25 +33,25 @@ typedef ptrdiff_t isize;
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 
-static inline i64 i64_min(i64 a, i64 b) { return MIN(a, b); }
-static inline i64 i64_max(i64 a, i64 b) { return MAX(a, b); }
-static inline int i64_cmp(i64 a, i64 b) {
+static inline i64 MinI64(i64 a, i64 b) { return MIN(a, b); }
+static inline i64 MaxI64(i64 a, i64 b) { return MAX(a, b); }
+static inline int CompareI64(i64 a, i64 b) {
   return (a == b) ? 0 : (a < b ? -1 : 1);
 }
 
-#define ARRAY_COUNT(a) (sizeof(a) / sizeof((a)[0]))
+#define COUNT_OF(a) (sizeof(a) / sizeof((a)[0]))
 
-static inline usize i32_max(i32 a, i32 b) {
+static inline usize MaxI32(i32 a, i32 b) {
   usize result = MAX(a, b);
   return result;
 }
 
-static inline usize usize_min(usize a, usize b) {
+static inline usize MinUsize(usize a, usize b) {
   usize result = MIN(a, b);
   return result;
 }
 
-static inline usize usize_max(usize a, usize b) {
+static inline usize MaxUsize(usize a, usize b) {
   usize result = MAX(a, b);
   return result;
 }
@@ -69,26 +69,5 @@ static inline usize usize_max(usize a, usize b) {
 #define ZERO_INIT {0}
 #endif
 // clang-format on
-
-#define OPTIONAL_TYPE(Name, Type, prefix)        \
-  typedef struct Name {                          \
-    Type value;                                  \
-    bool present;                                \
-  } Name;                                        \
-                                                 \
-  static inline Name prefix##_some(Type value) { \
-    Name result;                                 \
-    result.present = true;                       \
-    result.value = value;                        \
-    return result;                               \
-  }                                              \
-                                                 \
-  static inline Name prefix##_none(void) {       \
-    Name result = ZERO_INIT;                     \
-    return result;                               \
-  }
-
-OPTIONAL_TYPE(i32o, i32, i32);
-OPTIONAL_TYPE(i64o, i64, i64);
 
 #endif  // ZTRACING_SRC_TYPES_H_
