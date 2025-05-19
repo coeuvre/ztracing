@@ -6,14 +6,16 @@
 #include "src/platform.h"
 #include "src/types.h"
 
-Channel *Channel_Create(u32 cap, usize item_size) {
+Channel *Channel_Create(u32 cap, usize item_size, Allocator allocator) {
   ASSERT(cap > 0);
-  Arena arena_ = {0};
+  Arena *arena = Arena_Create(&(ArenaOptions){
+      .allocator = allocator,
+  });
   Platform_Mutex *mutex = Platform_Mutex_Create();
   Platform_Condition *condition = Platform_Condition_Create();
-  Channel *channel = arena_push_struct_no_zero(&arena_, Channel);
+  Channel *channel = Arena_PushStruct(arena, Channel);
   *channel = (Channel){
-      .arena = arena_,
+      .arena = arena,
       .mutex = mutex,
       .condition = condition,
       .cap = cap,
@@ -22,11 +24,27 @@ Channel *Channel_Create(u32 cap, usize item_size) {
   return channel;
 }
 
-static void channel__free(Channel *self) {
+static void Channel_Destroy(Channel *self) {
   ASSERT(self->rx_closed && self->tx_closed);
   Platform_Condition_Destroy(self->condition);
   Platform_Mutex_Destroy(self->mutex);
-  arena_free(&self->arena);
+  Arena_Destroy(self->arena);
+}
+
+static void DoSend(Channel *self, usize item_size, void *item) {
+  ASSERT(self->len < self->cap);
+  ChannelItem *ci = self->free_first;
+  if (ci) {
+    DLL_REMOVE(self->free_first, self->free_last, ci, prev, next);
+  } else {
+    ci = Arena_Push(self->arena, sizeof(ChannelItem) + item_size, 1);
+  }
+  DLL_APPEND(self->first, self->last, ci, prev, next);
+
+  CopyMemory(ci + 1, item, item_size);
+  self->len += 1;
+
+  Platform_Condition_Broadcast(self->condition);
 }
 
 bool Channel_Send_(Channel *self, usize item_size, void *item) {
@@ -41,24 +59,25 @@ bool Channel_Send_(Channel *self, usize item_size, void *item) {
   }
 
   if (!self->rx_closed) {
-    ASSERT(self->len < self->cap);
+    DoSend(self, item_size, item);
     sent = true;
-
-    ChannelItem *ci = self->free_first;
-    if (ci) {
-      DLL_REMOVE(self->free_first, self->free_last, ci, prev, next);
-    } else {
-      ci = arena_push(&self->arena, sizeof(ChannelItem) + item_size,
-                      ARENA_PUSH_NO_ZERO);
-      DLL_APPEND(self->first, self->last, ci, prev, next);
-    }
-
-    CopyMemory(ci + 1, item, item_size);
-    self->len += 1;
-
-    Platform_Condition_Broadcast(self->condition);
   }
 
+  Platform_Mutex_Unlock(self->mutex);
+
+  return sent;
+}
+
+bool Channel_TrySend_(Channel *self, usize item_size, void *item) {
+  ASSERT(self->item_size == item_size);
+
+  bool sent = false;
+
+  Platform_Mutex_Lock(self->mutex);
+  if (self->len < self->cap) {
+    DoSend(self, item_size, item);
+    sent = true;
+  }
   Platform_Mutex_Unlock(self->mutex);
 
   return sent;
@@ -106,7 +125,7 @@ bool Channel_CloseRx(Channel *self) {
   Platform_Mutex_Unlock(self->mutex);
 
   if (all_closed) {
-    channel__free(self);
+    Channel_Destroy(self);
   }
 
   return all_closed;
@@ -124,7 +143,7 @@ bool Channel_CloseTx(Channel *self) {
   Platform_Mutex_Unlock(self->mutex);
 
   if (all_closed) {
-    channel__free(self);
+    Channel_Destroy(self);
   }
 
   return all_closed;

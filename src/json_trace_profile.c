@@ -90,8 +90,10 @@ static JsonTraceCounter *UpsertCounter(JsonTraceProcess *self, Arena *arena,
 static JsonTraceThread *UpsertThread(JsonTraceProcess *self, Arena *arena,
                                      i64 tid) {
   Str key = (Str){(char *)&tid, sizeof(tid)};
+  // INFO("UpsertThread(%" PRId64 ") - BEGIN HashTrie_Upsert", tid);
   JsonTraceThread *thread =
       HashTrie_Upsert(&self->threads, key, arena, JsonTraceThread);
+  // INFO("UpsertThread(%" PRId64 ") - END HashTrie_Upsert", tid);
   if (!thread->init) {
     thread->init = true;
     thread->tid = tid;

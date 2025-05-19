@@ -12,7 +12,7 @@ struct ChannelItem {
 };
 
 typedef struct Channel {
-  Arena arena;
+  Arena *arena;
   Platform_Mutex *mutex;
   Platform_Condition *condition;
   u32 cap;
@@ -26,10 +26,14 @@ typedef struct Channel {
   bool tx_closed;
 } Channel;
 
-Channel *Channel_Create(u32 cap, usize item_size);
+Channel *Channel_Create(u32 cap, usize item_size, Allocator allocator);
 /// Returns false if the rx is closed.
 bool Channel_Send_(Channel *self, usize item_size, void *item);
 #define Channel_Send(self, item) Channel_Send_(self, sizeof(*item), item)
+
+/// Returns false if the queue is full.
+bool Channel_TrySend_(Channel *self, usize item_size, void *item);
+#define Channel_TrySend(self, item) Channel_TrySend_(self, sizeof(*item), item)
 
 // Returns false if no item in the buffer and tx is closed. out_item must has at
 // least item_size space.

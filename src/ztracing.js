@@ -1,0 +1,61 @@
+var LibraryZtracing = {
+  $Ztracing__deps: ["$stringToNewUTF8", "$writeArrayToMemory", "$ccall"],
+  $Ztracing: {
+    LoadFile: async (/**@type {File}*/ file) => {
+      const name_ptr = stringToNewUTF8(file.name);
+      const loading_file = ccall(
+        "JS_LoadingFile_Begin",
+        "number",
+        ["number", "number"],
+        [name_ptr, file.name.length],
+      );
+      _free(name_ptr);
+
+      const stream = file.stream();
+      for await (const chunk of stream) {
+        const ptr = _malloc(chunk.length);
+        writeArrayToMemory(chunk, ptr);
+        while (true) {
+          const sent = ccall(
+            "JS_LoadingFile_OnChunk",
+            "boolean",
+            ["number", "number", "number"],
+            [loading_file, ptr, chunk.length],
+          );
+          if (sent) {
+            break;
+          }
+          // If the queue is full, give the main thread a chance to update the UI and try again.
+          await new Promise((resolve) => {
+            setTimeout(() => resolve(), 0);
+          });
+        }
+      }
+      ccall("JS_LoadingFile_End", "void", ["number"], [loading_file]);
+    },
+  },
+
+  JS_Init: () => {
+    const canvas = Module.canvas;
+
+    canvas.addEventListener("drop", (event) => {
+      event.preventDefault();
+
+      if (
+        event.dataTransfer &&
+        event.dataTransfer.files &&
+        event.dataTransfer.files.length > 0
+      ) {
+        const file = event.dataTransfer.files[0];
+        Ztracing.LoadFile(file);
+      }
+    });
+
+    canvas.addEventListener("dragover", (event) => {
+      event.preventDefault();
+    });
+  },
+};
+
+autoAddDeps(LibraryZtracing, "$Ztracing");
+addToLibrary(LibraryZtracing);

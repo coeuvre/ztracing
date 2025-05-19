@@ -12,20 +12,21 @@ cd $BUILD_DIR
 COMMON_CFLAGS="
   -std=c17 -g3 -Wall -Wextra
   -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion
-  -fsanitize=undefined -fsanitize-trap
   -I$ROOT
 "
 
 # TODO: -Wconversion -Wdouble-promotion
+# TODO: -fsanitize=undefined -fsanitize-trap
 
 case "$OSTYPE" in
 linux*) COMMON_CFLAGS="$COMMON_CFLAGS -lm" ;;
 esac
 
 COMMON_SOURCES="
+  $ROOT/src/channel.c
   $ROOT/src/flick.c
-  $ROOT/src/json.c
   $ROOT/src/json_trace_profile.c
+  $ROOT/src/json.c
   $ROOT/src/string.c
   $ROOT/src/ztracing.c
 "
@@ -62,9 +63,11 @@ WEB_SOURCES="
   $ROOT/src/platform_web.c
 "
 
-emcc -sEXPORT_ES6 -sALLOW_MEMORY_GROWTH -sUSE_PTHREADS=1 \
+emcc -sEXPORT_ES6 -sALLOW_MEMORY_GROWTH -sUSE_PTHREADS=1 -sPTHREAD_POOL_SIZE=4 \
+  -sEXPORTED_FUNCTIONS=_malloc,_free,_main \
   --js-library $ROOT/src/flick.js \
+  --js-library $ROOT/src/ztracing.js \
   $COMMON_CFLAGS $COMMON_SOURCES $WEB_SOURCES \
   -o $BUILD_DIR/web/ztracing.js
 
-cp $ROOT/index.js $ROOT/index.html $BUILD_DIR/web/
+cp $ROOT/index.js $ROOT/index.html $ROOT/public/enable-threads.js $BUILD_DIR/web/
