@@ -148,8 +148,8 @@ typedef struct ProfileTrackNode ProfileTrackNode;
 struct ProfileTrackNode {
   ProfileTrackNode *prev;
   ProfileTrackNode *next;
-  usize level;
-  usize span_count;
+  isize level;
+  isize span_count;
   ProfileSpanNode *first_span;
   ProfileSpanNode *last_span;
 };
@@ -171,14 +171,14 @@ struct ProfileThreadNode {
   ProfileThreadNode *prev;
   ProfileThreadNode *next;
   JsonTraceThread *thread;
-  usize track_count;
+  isize track_count;
   ProfileTrackNode *first_track;
   ProfileTrackNode *last_track;
 };
 
 static ProfileTrackNode *ProfileThreadNode_UpsertTrack(ProfileThreadNode *self,
                                                        Arena *arena,
-                                                       usize level) {
+                                                       isize level) {
   ProfileTrackNode *track = self->first_track;
   isize i = level;
   while (track && i > 0) {
@@ -221,8 +221,8 @@ static ProfileThreadNode *ProfileTrackBuilder_AddThread(
 static usize FileLoader_MergeSpans(Arena *arena, ProfileThreadNode *thread,
                                    usize level, i64 parent_begin_time_ns,
                                    i64 parent_end_time_ns,
-                                   JsonTraceSpan **spans, usize span_count,
-                                   usize span_index, i64 *total_duration_ns) {
+                                   JsonTraceSpan **spans, isize span_count,
+                                   isize span_index, i64 *total_duration_ns) {
   i64 total = 0;
   for (; span_index < span_count;) {
     JsonTraceSpan *span = spans[span_index];
@@ -443,7 +443,7 @@ static void FileLoader_CollectTracks(Arena *arena, ProfileItem *items,
           Arena_PushArray(arena, ProfileSpan, track->span_count);
 
       ProfileSpanNode *span_node = track->first_span;
-      for (usize span_index = 0; span_index < track->span_count; ++span_index) {
+      for (isize span_index = 0; span_index < track->span_count; ++span_index) {
         ProfileSpan *span = spans + span_index;
         span->name = Str_Dup(arena, span_node->span->name);
         span->color_index = Str_Hash(span->name) % COUNT_OF(COLORS);

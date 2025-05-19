@@ -42,6 +42,9 @@ NATIVE_SOURCES="
 NATIVE_CFLAGS=""
 
 case "$OSTYPE" in
+darwin*)
+  NATIVE_CFLAGS="$NATIVE_CFLAGS -F$ROOT/third_party/SDL3/macos -framework SDL3 -rpath $ROOT/third_party/SDL3/macos"
+  ;;
 *)
   cp $ROOT/third_party/SDL3/windows/lib/SDL3.dll $BUILD_DIR/
   NATIVE_CFLAGS="$NATIVE_CFLAGS -I$ROOT/third_party/SDL3/windows/include -L$ROOT/third_party/SDL3/windows/lib -lSDL3"

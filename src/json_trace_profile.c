@@ -407,6 +407,9 @@ static void ParseObjectFormat(JsonTraceProfile *self, Arena *arena,
           }
         } else {
           running = !SkipObjectValue(self, arena, parser, scratch);
+          if (running) {
+            has_value = true;
+          }
         }
       } break;
 

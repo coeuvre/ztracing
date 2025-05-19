@@ -416,7 +416,7 @@ FL_Allocator FL_Arena_GetAllocator(FL_Arena *arena) {
 void *FL_Arena_Push(FL_Arena *arena, FL_isize size, FL_isize alignment) {
   FL_ASSERT(size >= 0);
   char *addr = (char *)AlignForward((FL_isize)arena->begin, alignment);
-  while ((addr + size) >= arena->end) {
+  while ((addr + size) > arena->end) {
     FL_MemoryBlock *block = FL_Arena_GetMemoryBlock(arena);
     FL_MemoryBlock *next = block->next;
     if (!next) {
