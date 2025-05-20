@@ -25,11 +25,11 @@ typedef struct JsonTraceEvent {
 
 static JsonTraceSeries *UpsertSeries(JsonTraceCounter *self, Arena *arena,
                                      Str name) {
-  JsonTraceSeries *series =
-      HashTrie_Upsert(&self->series, name, arena, JsonTraceSeries);
-  Str key = HashTrie_GetKey(series);
-  if (series->name.ptr != key.ptr) {
-    series->name = key;
+  JsonTraceSeries *series;
+  if (HashTrie_Upsert(&self->series, name, &series, arena)) {
+    *series = (JsonTraceSeries){
+        .name = HashTrie_GetKey(series),
+    };
     self->series_count += 1;
   }
   return series;
@@ -77,11 +77,11 @@ static void AddSpan(JsonTraceThread *self, Arena *arena, Str name, Str cat,
 
 static JsonTraceCounter *UpsertCounter(JsonTraceProcess *self, Arena *arena,
                                        Str name) {
-  JsonTraceCounter *counter =
-      HashTrie_Upsert(&self->counters, name, arena, JsonTraceCounter);
-  Str key = HashTrie_GetKey(counter);
-  if (counter->name.ptr != key.ptr) {
-    counter->name = key;
+  JsonTraceCounter *counter;
+  if (HashTrie_Upsert(&self->counters, name, &counter, arena)) {
+    *counter = (JsonTraceCounter){
+        .name = HashTrie_GetKey(counter),
+    };
     self->counter_count += 1;
   }
   return counter;
@@ -90,13 +90,11 @@ static JsonTraceCounter *UpsertCounter(JsonTraceProcess *self, Arena *arena,
 static JsonTraceThread *UpsertThread(JsonTraceProcess *self, Arena *arena,
                                      i64 tid) {
   Str key = (Str){(char *)&tid, sizeof(tid)};
-  // INFO("UpsertThread(%" PRId64 ") - BEGIN HashTrie_Upsert", tid);
-  JsonTraceThread *thread =
-      HashTrie_Upsert(&self->threads, key, arena, JsonTraceThread);
-  // INFO("UpsertThread(%" PRId64 ") - END HashTrie_Upsert", tid);
-  if (!thread->init) {
-    thread->init = true;
-    thread->tid = tid;
+  JsonTraceThread *thread;
+  if (HashTrie_Upsert(&self->threads, key, &thread, arena)) {
+    *thread = (JsonTraceThread){
+        .tid = tid,
+    };
     self->thread_count += 1;
   }
   return thread;
@@ -105,11 +103,11 @@ static JsonTraceThread *UpsertThread(JsonTraceProcess *self, Arena *arena,
 static JsonTraceProcess *UpsertProcess(JsonTraceProfile *self, Arena *arena,
                                        i64 pid) {
   Str key = (Str){(char *)&pid, sizeof(pid)};
-  JsonTraceProcess *process =
-      HashTrie_Upsert(&self->processes, key, arena, JsonTraceProcess);
-  if (!process->init) {
-    process->init = true;
-    process->pid = pid;
+  JsonTraceProcess *process;
+  if (HashTrie_Upsert(&self->processes, key, &process, arena)) {
+    *process = (JsonTraceProcess){
+        .pid = pid,
+    };
     self->process_count += 1;
   }
   return process;

@@ -42,7 +42,6 @@ struct JsonTraceSpan {
 };
 
 typedef struct JsonTraceThread {
-  bool init;
   i64 tid;
   Str name;
   i64o sort_index;
@@ -55,7 +54,6 @@ typedef struct JsonTraceThread {
 } JsonTraceThread;
 
 typedef struct JsonTraceProcess {
-  bool init;
   i64 pid;
 
   usize counter_count;

@@ -12,11 +12,11 @@ cd $BUILD_DIR
 COMMON_CFLAGS="
   -std=c17 -g3 -Wall -Wextra
   -Wno-unused-parameter -Wno-unused-function -Wno-sign-conversion
+  -fsanitize=undefined
   -I$ROOT
 "
 
 # TODO: -Wconversion -Wdouble-promotion
-# TODO: -fsanitize=undefined -fsanitize-trap
 
 case "$OSTYPE" in
 linux*) COMMON_CFLAGS="$COMMON_CFLAGS -lm" ;;
@@ -40,7 +40,7 @@ NATIVE_SOURCES="
   $ROOT/src/ztracing_sdl3.c
 "
 
-NATIVE_CFLAGS=""
+NATIVE_CFLAGS="-fsanitize-trap"
 
 case "$OSTYPE" in
 darwin*)

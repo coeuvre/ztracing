@@ -6,5 +6,6 @@ Diagnostics:
 CompileFlags:
   Add: [
     -I.,
+    -std=c17,
     -Wall, -Wextra, -Wconversion, -Wdouble-promotion, -Wno-unused-parameter, -Wno-unused-function, -Wno-sign-conversion,
   ]
