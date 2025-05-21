@@ -2,16 +2,21 @@ var LibraryZtracing = {
   $Ztracing__deps: ["$stringToNewUTF8", "$writeArrayToMemory", "$ccall"],
   $Ztracing: {
     LoadFile: async (/**@type {File}*/ file) => {
-      const name_ptr = stringToNewUTF8(file.name);
+      await Ztracing.LoadStream(file.name, file.stream());
+    },
+
+    LoadStream: async (
+      /**@type {string}*/ name,
+      /**@type {ReadableStream<Uint8Array>}*/ stream,
+    ) => {
+      const name_ptr = stringToNewUTF8(name);
       const loading_file = ccall(
         "JS_LoadingFile_Begin",
         "number",
         ["number", "number"],
-        [name_ptr, file.name.length],
+        [name_ptr, name.length],
       );
       _free(name_ptr);
-
-      const stream = file.stream();
       for await (const chunk of stream) {
         const ptr = _malloc(chunk.length);
         writeArrayToMemory(chunk, ptr);
@@ -54,6 +59,8 @@ var LibraryZtracing = {
     canvas.addEventListener("dragover", (event) => {
       event.preventDefault();
     });
+
+    Module.JS_LoadStream = Ztracing.LoadStream;
   },
 };
 
