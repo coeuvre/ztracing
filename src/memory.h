@@ -14,6 +14,14 @@
 typedef FL_Allocator Allocator;
 typedef FL_AllocatorOps AllocatorOps;
 
+static inline void *Allocator_Alloc(Allocator a, FL_isize size) {
+  return FL_Allocator_Alloc(a, size);
+}
+
+static inline void Allocator_Free(FL_Allocator a, void *ptr, FL_isize size) {
+  FL_Allocator_Free(a, ptr, size);
+}
+
 static inline void *CopyMemory(void *dst, const void *src, isize size) {
   return memcpy(dst, src, size);
 }

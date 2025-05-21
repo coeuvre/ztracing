@@ -159,8 +159,61 @@ void LogMessage(LogLevel level, const char *fmt, ...) {
   printf("\n");
 }
 
-static FL_Allocator global_allocator;
+typedef struct GlobalAllocator {
+  Platform_Mutex *allocated_bytes_mutex;
+  isize allocated_bytes;
+} GlobalAllocator;
+
+static void *GlobalAllocator_Alloc(void *ctx, FL_isize size) {
+  GlobalAllocator *allocator = ctx;
+  isize *p = malloc(size);
+  ASSERTF(p, "oom");
+  Platform_Mutex_Lock(allocator->allocated_bytes_mutex);
+  allocator->allocated_bytes += size;
+  Platform_Mutex_Unlock(allocator->allocated_bytes_mutex);
+  return p;
+}
+
+static void GlobalAllocator_Free(void *ctx, void *ptr, FL_isize size) {
+  GlobalAllocator *allocator = ctx;
+  free(ptr);
+  Platform_Mutex_Lock(allocator->allocated_bytes_mutex);
+  allocator->allocated_bytes -= size;
+  Platform_Mutex_Unlock(allocator->allocated_bytes_mutex);
+}
+
+static FL_AllocatorOps GlobalAllocator_Ops = {
+    .alloc = GlobalAllocator_Alloc,
+    .free = GlobalAllocator_Free,
+};
+
+static void GlobalAllocator_Init(GlobalAllocator *a) {
+  *a = (GlobalAllocator){
+      .allocated_bytes_mutex = Platform_Mutex_Create(),
+  };
+}
+
+static inline Allocator GlobalAllocator_AsAllocator(GlobalAllocator *a) {
+  return (Allocator){
+      .ptr = a,
+      .ops = &GlobalAllocator_Ops,
+  };
+}
+
+static GlobalAllocator global_allocator;
 static App *global_app;
+
+EMSCRIPTEN_KEEPALIVE
+void *JS_Alloc(isize size) {
+  Allocator allocator = GlobalAllocator_AsAllocator(&global_allocator);
+  return Allocator_Alloc(allocator, size);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void JS_Free(void *ptr, isize size) {
+  Allocator allocator = GlobalAllocator_AsAllocator(&global_allocator);
+  Allocator_Free(allocator, ptr, size);
+}
 
 static void Update(void) {
   App *app = global_app;
@@ -168,7 +221,7 @@ static void Update(void) {
   static FL_Vec2 canvas_size;
   FLJS_ResizeCanvas(canvas_size.x, canvas_size.y, &canvas_size);
 
-  App_Update(app, canvas_size, 0);
+  App_Update(app, canvas_size, global_allocator.allocated_bytes);
 }
 
 extern void JS_Init(void);
@@ -180,7 +233,7 @@ typedef struct JS_LoadingFileChunk {
 
 static void JS_LoadingFileChunk_Deinit(JS_LoadingFileChunk *chunk) {
   // Free the memory allocated by the JS side.
-  free(chunk->ptr);
+  JS_Free(chunk->ptr, chunk->len);
   *chunk = (JS_LoadingFileChunk){0};
 }
 
@@ -221,7 +274,8 @@ static void JS_LoadingFile_Close(void *file_) {
 EMSCRIPTEN_KEEPALIVE
 JS_LoadingFile *JS_LoadingFile_Begin(char *name_ptr, isize name_len) {
   Str name = {name_ptr, name_len};
-  Arena *arena = Arena_Create(&(ArenaOptions){.allocator = global_allocator});
+  Allocator allocator = GlobalAllocator_AsAllocator(&global_allocator);
+  Arena *arena = Arena_Create(&(ArenaOptions){.allocator = allocator});
   JS_LoadingFile *file = Arena_PushStruct(arena, JS_LoadingFile);
   *file = (JS_LoadingFile){
       .file =
@@ -231,8 +285,7 @@ JS_LoadingFile *JS_LoadingFile_Begin(char *name_ptr, isize name_len) {
               .close = JS_LoadingFile_Close,
           },
       .arena = arena,
-      .channel =
-          Channel_Create(2, sizeof(JS_LoadingFileChunk), global_allocator),
+      .channel = Channel_Create(2, sizeof(JS_LoadingFileChunk), allocator),
   };
 
   App_LoadFile(global_app, &file->file);
@@ -255,14 +308,15 @@ int main(int argc, const char *argv[]) {
   FLJS_Init();
   JS_Init();
 
-  global_allocator = FL_Allocator_GetDefault();
+  GlobalAllocator_Init(&global_allocator);
+  Allocator allocator = GlobalAllocator_AsAllocator(&global_allocator);
 
   FL_Init(&(FL_InitOptions){
-      .allocator = global_allocator,
+      .allocator = allocator,
       .canvas = FLJS_Canvas_Get(),
   });
 
-  global_app = App_Create(global_allocator);
+  global_app = App_Create(allocator);
 
   emscripten_set_main_loop(Update, 0, false);
 

@@ -64,7 +64,6 @@ WEB_SOURCES="
 "
 
 emcc -sEXPORT_ES6 -sALLOW_MEMORY_GROWTH -sUSE_PTHREADS=1 -sPTHREAD_POOL_SIZE=4 \
-  -sEXPORTED_FUNCTIONS=_malloc,_free,_main \
   --js-library $ROOT/src/flick.js \
   --js-library $ROOT/src/ztracing.js \
   $COMMON_CFLAGS $COMMON_SOURCES $WEB_SOURCES \

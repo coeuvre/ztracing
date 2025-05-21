@@ -1,24 +1,33 @@
 var LibraryZtracing = {
-  $Ztracing__deps: ["$stringToNewUTF8", "$writeArrayToMemory", "$ccall"],
+  $Ztracing__deps: ["$stringToUTF8", "$writeArrayToMemory", "$ccall"],
   $Ztracing: {
     LoadFile: async (/**@type {File}*/ file) => {
       await Ztracing.LoadStream(file.name, file.stream());
+    },
+
+    Alloc: (size) => {
+      return ccall("JS_Alloc", "number", ["number"], [size]);
+    },
+
+    Free: (ptr, size) => {
+      return ccall("JS_Free", "void", ["number", "number"], [ptr, size]);
     },
 
     LoadStream: async (
       /**@type {string}*/ name,
       /**@type {ReadableStream<Uint8Array>}*/ stream,
     ) => {
-      const name_ptr = stringToNewUTF8(name);
+      const name_ptr = Ztracing.Alloc(name.length + 1);
+      stringToUTF8(name, name_ptr, name.length + 1);
       const loading_file = ccall(
         "JS_LoadingFile_Begin",
         "number",
         ["number", "number"],
         [name_ptr, name.length],
       );
-      _free(name_ptr);
+      Ztracing.Free(name_ptr, name.length + 1);
       for await (const chunk of stream) {
-        const ptr = _malloc(chunk.length);
+        const ptr = Ztracing.Alloc(chunk.length);
         writeArrayToMemory(chunk, ptr);
         while (true) {
           const sent = ccall(
