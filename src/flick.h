@@ -230,6 +230,11 @@ static FL_f32 FL_Rect_GetArea(FL_Rect rect) {
   return (rect.right - rect.left) * (rect.bottom - rect.top);
 }
 
+static inline bool FL_Rect_IsEqual(FL_Rect a, FL_Rect b) {
+  return a.left == b.left && a.right == b.right && a.top == b.top &&
+         a.bottom == b.bottom;
+}
+
 #include <stdalign.h>
 #include <stddef.h>
 #include <string.h>
@@ -446,14 +451,15 @@ FL_Font_TextMetrics FL_Font_MeasureText(FL_Font *font, FL_Str text,
                                         FL_f32 font_size, FL_f32 max_width);
 
 
-typedef struct FL_Color {
-  FL_f32 r;
-  FL_f32 g;
-  FL_f32 b;
-  FL_f32 a;
-} FL_Color;
+typedef FL_u32 FL_Color;
 
 FL_OPTIONAL_TYPE(FL_ColorO, FL_Color)
+
+#define FL_COLOR_RGBA(r, g, b, a)                                   \
+  (((FL_u32)(a) << 24) | ((FL_u32)(b) << 16) | ((FL_u32)(g) << 8) | \
+   ((FL_u32)(r) << 0))
+
+#define FL_COLOR_RGB(r, g, b) FL_COLOR_RGBA(r, g, b, 0xFF)
 
 typedef struct FL_Texture {
   void *id;
@@ -485,7 +491,6 @@ FL_ARRAY(FL_DrawIndexArray, FL_DrawIndex);
 typedef struct FL_DrawCommand {
   FL_Rect clip_rect;
   FL_Texture *texture;
-  FL_u32 vertex_offset;
   FL_u32 index_offset;
   FL_u32 index_count;
 } FL_DrawCommand;
@@ -521,6 +526,9 @@ void FL_Draw_UpdateTexture(FL_PaintingContext *context, FL_Texture *texture,
 void FL_Draw_PushClipRect(FL_PaintingContext *context, FL_Rect rect);
 
 void FL_Draw_PopClipRect(FL_PaintingContext *context);
+
+void FL_Draw_AddTexture(FL_PaintingContext *context, FL_Rect dst_rect,
+                        FL_Rect src_rect, FL_Texture *texture, FL_u32 color);
 
 void FL_Draw_AddRectLines(FL_PaintingContext *context, FL_Rect rect,
                           FL_u32 color, FL_f32 line_width);

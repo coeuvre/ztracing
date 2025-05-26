@@ -1618,7 +1618,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 typedef struct FL_FontAtlas {
-  FL_Arena *arena;
+  FL_Allocator allocator;
   stbtt_pack_context pack_context;
   FL_Texture texture;
   bool texture_created;
@@ -1628,6 +1628,9 @@ FL_FontAtlas *FL_FontAtlas_Create(FL_i16 width, FL_i16 height,
                                   FL_Allocator allocator);
 
 void FL_FontAtlas_Destroy(FL_FontAtlas *atlas);
+
+void FL_FontAtlas_EnsureTextureCreated(FL_FontAtlas *atlas, FL_PaintingContext *context);
+
 typedef struct FL_PackedCharKey {
   stbtt_fontinfo *info;
   FL_i32 codepoint;
@@ -1746,7 +1749,6 @@ struct State {
   FL_f32 points_per_pixel;
   FL_Font *default_font;
   FL_FontAtlas *font_atlas;
-  FL_Texture *white_texture;
 
   // -- Input ------------------------------------------------------------------
   FL_Vec2 mouse_pos;
@@ -2034,23 +2036,51 @@ FL_u64 FL_Str_HashWithSeed(FL_Str s, FL_u64 seed) {
 
 FL_FontAtlas *FL_FontAtlas_Create(FL_i16 width, FL_i16 height,
                                   FL_Allocator allocator) {
-  FL_Arena *arena = FL_Arena_Create(&(FL_ArenaOptions){.allocator = allocator});
-  FL_FontAtlas *atlas = FL_Arena_PushStruct(arena, FL_FontAtlas);
+  FL_FontAtlas *atlas = FL_Allocator_Alloc(allocator, sizeof(FL_FontAtlas));
   *atlas = (FL_FontAtlas){
-      .arena = arena,
+      .allocator = allocator,
   };
 
-  FL_u8 *pixels = FL_Arena_PushArray(arena, FL_u8, width * height);
+  FL_u8 *pixels = FL_Allocator_Alloc(allocator, width * height);
   int ok =
       stbtt_PackBegin(&atlas->pack_context, pixels, width, height, 0, 1, 0);
   FL_ASSERT(ok);
+
+  // Top left corner of each font atlas is used as "white texture".
+  stbrp_rect rect = {
+      .w = 1,
+      .h = 1,
+  };
+  stbtt_PackFontRangesPackRects(&atlas->pack_context, &rect, 1);
+  FL_ASSERT(rect.x == 0);
+  FL_ASSERT(rect.y == 0);
+
   stbtt_PackSetOversampling(&atlas->pack_context, 2, 2);
   return atlas;
 }
 
 void FL_FontAtlas_Destroy(FL_FontAtlas *atlas) {
   stbtt_PackEnd(&atlas->pack_context);
-  FL_Arena_Destroy(atlas->arena);
+  FL_Allocator_Free(atlas->allocator, atlas->pack_context.pixels,
+                    atlas->pack_context.width * atlas->pack_context.height);
+  FL_Allocator_Free(atlas->allocator, atlas, sizeof(FL_FontAtlas));
+}
+
+void FL_FontAtlas_EnsureTextureCreated(FL_FontAtlas *atlas,
+                                       FL_PaintingContext *context) {
+  if (!atlas->texture_created) {
+    FL_ASSERT(atlas->pack_context.width > 0 && atlas->pack_context.height > 0);
+    FL_u32 *pixels = FL_Arena_PushArray(
+        context->arena, FL_u32,
+        atlas->pack_context.width * atlas->pack_context.height);
+    memset(pixels, 0,
+           sizeof(FL_u32) * atlas->pack_context.width *
+               atlas->pack_context.height);
+    pixels[0] = 0xFFFFFFFF;
+    FL_Draw_CreateTexture(context, &atlas->texture, atlas->pack_context.width,
+                          atlas->pack_context.height, pixels);
+    atlas->texture_created = true;
+  }
 }
 
 FL_Font *FL_Font_Load(const FL_FontOptions *opts) {
@@ -2219,9 +2249,8 @@ static FL_Rect GetClipRect(FL_PaintingContext *context) {
   }
 }
 
-static void FL_Draw_AddTexture(FL_PaintingContext *context, FL_Rect dst_rect,
-                               FL_Rect src_rect, FL_Texture *texture,
-                               FL_u32 color) {
+void FL_Draw_AddTexture(FL_PaintingContext *context, FL_Rect dst_rect,
+                        FL_Rect src_rect, FL_Texture *texture, FL_u32 color) {
   FL_CommandBuffer *command_buffer = context->command_buffer;
   FL_DrawIndex vertex_offset = (FL_DrawIndex)command_buffer->vertex_buffer.len;
   FL_ASSERT((FL_isize)vertex_offset == command_buffer->vertex_buffer.len);
@@ -2265,14 +2294,31 @@ static void FL_Draw_AddTexture(FL_PaintingContext *context, FL_Rect dst_rect,
   *FL_DrawIndexArray_Add(&command_buffer->index_buffer,
                          command_buffer->allocator) = vertex_offset + 3;
 
-  *FL_DrawCommandArray_Add(&command_buffer->draw_commands,
-                           command_buffer->allocator) = (FL_DrawCommand){
-      .clip_rect = GetClipRect(context),
-      .texture = texture,
-      .vertex_offset = vertex_offset,
-      .index_offset = index_offset,
-      .index_count = 6,
-  };
+  FL_Rect clip_rect = GetClipRect(context);
+  FL_DrawCommandArray *draw_commands = &command_buffer->draw_commands;
+  FL_DrawCommand *current_draw_command = 0;
+  if (draw_commands->len > 0) {
+    current_draw_command = draw_commands->ptr + (draw_commands->len - 1);
+  }
+  if (current_draw_command &&
+      current_draw_command->index_offset + current_draw_command->index_count ==
+          index_offset &&
+      (!texture || !current_draw_command->texture ||
+       current_draw_command->texture == texture) &&
+      FL_Rect_IsEqual(current_draw_command->clip_rect, clip_rect)) {
+    if (!current_draw_command->texture && texture) {
+      current_draw_command->texture = texture;
+    }
+    current_draw_command->index_count += 6;
+  } else {
+    *FL_DrawCommandArray_Add(&command_buffer->draw_commands,
+                             command_buffer->allocator) = (FL_DrawCommand){
+        .clip_rect = GetClipRect(context),
+        .texture = texture,
+        .index_offset = index_offset,
+        .index_count = 6,
+    };
+  }
 }
 
 void FL_Draw_AddRectLines(FL_PaintingContext *context, FL_Rect rect,
@@ -2302,14 +2348,7 @@ void FL_Draw_AddRectLines(FL_PaintingContext *context, FL_Rect rect,
 }
 
 void FL_Draw_AddRect(FL_PaintingContext *context, FL_Rect rect, FL_u32 color) {
-  State *state = GetGlobalState();
-  if (!state->white_texture) {
-    state->white_texture = FL_Arena_PushStruct(state->arena, FL_Texture);
-    FL_u32 *white = FL_Arena_PushArray(context->arena, FL_u32, 1);
-    *white = 0xFFFFFFFF;
-    FL_Draw_CreateTexture(context, state->white_texture, 1, 1, white);
-  }
-  FL_Draw_AddTexture(context, rect, (FL_Rect){0}, state->white_texture, color);
+  FL_Draw_AddTexture(context, rect, (FL_Rect){0}, 0, color);
 }
 
 void FL_Draw_AddText(FL_PaintingContext *context, FL_Font *font, FL_Str text,
@@ -2343,18 +2382,7 @@ void FL_Draw_AddText(FL_PaintingContext *context, FL_Font *font, FL_Str text,
     FL_f32 quad_h = quad.y1 - quad.y0;
     if (quad_w > 0 && quad_h > 0) {
       FL_FontAtlas *atlas = packed_char->atlas;
-      if (!atlas->texture_created) {
-        FL_u32 *pixels_u32 = FL_Arena_PushArray(
-            context->arena, FL_u32,
-            atlas->pack_context.width * atlas->pack_context.height);
-        memset(pixels_u32, 0,
-               sizeof(FL_u32) * atlas->pack_context.width *
-                   atlas->pack_context.height);
-        FL_Draw_CreateTexture(context, &atlas->texture,
-                              atlas->pack_context.width,
-                              atlas->pack_context.height, pixels_u32);
-        atlas->texture_created = true;
-      }
+      FL_FontAtlas_EnsureTextureCreated(atlas, context);
 
       if (!packed_char->uploaded) {
         int x = packed_char->chardata.x0;
@@ -2372,7 +2400,7 @@ void FL_Draw_AddText(FL_PaintingContext *context, FL_Font *font, FL_Str text,
           FL_u8 *src = src_row;
           for (FL_i16 i = 0; i < width; ++i) {
             FL_u32 alpha = *src++;
-            (*dst++) = (alpha << 24) | (alpha << 16) | (alpha << 8) | (alpha);
+            (*dst++) = FL_COLOR_RGBA(255, 255, 255, alpha);
           }
           dst_row += width;
           src_row += atlas->pack_context.width;
@@ -3331,17 +3359,27 @@ FL_DrawList FL_Run(const FL_RunOptions *opts) {
     FL_Widget_Unmount(state->last_build->root);
   }
 
+  FL_CommandBuffer *command_buffer = &build->command_buffer;
   if (build->root) {
     FL_PaintingContext context = {
         .arena = build->arena,
-        .command_buffer = &build->command_buffer,
+        .command_buffer = command_buffer,
         .viewport = opts->viewport,
     };
     FL_Widget_Paint(build->root, &context,
                     (FL_Vec2){opts->viewport.left, opts->viewport.top});
+
+    if (command_buffer->draw_commands.len > 0) {
+      FL_DrawCommand *last_draw_command = command_buffer->draw_commands.ptr +
+                                          command_buffer->draw_commands.len - 1;
+      if (!last_draw_command->texture) {
+        FL_FontAtlas *atlas = state->font_atlas;
+        FL_FontAtlas_EnsureTextureCreated(atlas, &context);
+        last_draw_command->texture = &atlas->texture;
+      }
+    }
   }
 
-  FL_CommandBuffer *command_buffer = &build->command_buffer;
   FL_DrawList result = {
       .texture_commands = command_buffer->texture_commands.ptr,
       .texture_command_count = command_buffer->texture_commands.len,
@@ -3393,13 +3431,7 @@ static void FL_ColoredBox_Paint(FL_Widget *widget, FL_PaintingContext *context,
   FL_ColoredBoxProps *props = FL_Widget_GetProps(widget, FL_ColoredBoxProps);
   FL_Vec2 size = widget->size;
   if (size.x > 0 && size.y > 0) {
-    FL_u32 r = (FL_u32)FL_Round(props->color.r * 255.0f);
-    FL_u32 g = (FL_u32)FL_Round(props->color.g * 255.0f);
-    FL_u32 b = (FL_u32)FL_Round(props->color.b * 255.0f);
-    FL_u32 a = (FL_u32)FL_Round(props->color.a * 255.0f);
-    FL_u32 color = (a << 24) | (b << 16) | (g << 8) | (r << 0);
-
-    FL_Draw_AddRect(context, FL_Rect_FromMinSize(offset, size), color);
+    FL_Draw_AddRect(context, FL_Rect_FromMinSize(offset, size), props->color);
   }
 
   FL_Widget_Paint_Default(widget, context, offset);
@@ -4964,7 +4996,7 @@ static void FL_Text_Layout(FL_Widget *widget, FL_BoxConstraints constraints) {
   state->font_size = font_size;
 
   // TODO: Get default text style from widget tree.
-  FL_Color color = {1, 1, 1, 1};
+  FL_Color color = FL_COLOR_RGBA(255, 255, 255, 255);
   if (props->style.present) {
     if (props->style.value.color.present) {
       color = props->style.value.color.value;
@@ -4988,12 +5020,7 @@ static void FL_Text_Paint(FL_Widget *widget, FL_PaintingContext *context,
                           FL_Vec2 offset) {
   FL_TextProps *props = FL_Widget_GetProps(widget, FL_TextProps);
   FL_TextState *state = FL_Widget_GetState(widget, FL_TextState);
-  FL_u32 r = (FL_u32)FL_Round(state->color.r * 255.0f);
-  FL_u32 g = (FL_u32)FL_Round(state->color.g * 255.0f);
-  FL_u32 b = (FL_u32)FL_Round(state->color.b * 255.0f);
-  FL_u32 a = (FL_u32)FL_Round(state->color.a * 255.0f);
-  FL_u32 color = (a << 24) | (r << 16) | (g << 8) | (b << 0);
-  FL_Draw_AddText(context, 0, props->text, offset.x, offset.y, color,
+  FL_Draw_AddText(context, 0, props->text, offset.x, offset.y, state->color,
                   state->font_size);
 }
 
@@ -5405,7 +5432,7 @@ static void FL_Scrollbar_Layout(FL_Widget *widget,
       .drag_start = FL_Scrollbar_ScrollTo,
       .drag_update = FL_Scrollbar_ScrollTo,
       .child = FL_Container(&(FL_ContainerProps){
-          .color = FL_Color_Some((FL_Color){0.96f, 0.96f, 0.96f, 1.0f}),
+          .color = FL_Color_Some(FL_COLOR_RGB(245, 245, 245)),
           .padding = FL_EdgeInsets_Some((FL_EdgeInsets){
               0, 0, state->handle_padding_top, handle_padding_bottom}),
           .child = FL_PointerListener(&(FL_PointerListenerProps){
@@ -5414,9 +5441,9 @@ static void FL_Scrollbar_Layout(FL_Widget *widget,
               .on_exit = FL_Scrollbar_OnExitHandle,
               .child = FL_Container(&(FL_ContainerProps){
                   .width = FL_f32_Some(size.x),
-                  .color = FL_Color_Some(
-                      state->hovering ? (FL_Color){0.58f, 0.58f, 0.58f, 1.0f}
-                                      : (FL_Color){0.75f, 0.75f, 0.75f, 1.0f}),
+                  .color = FL_Color_Some(state->hovering
+                                             ? FL_COLOR_RGB(148, 148, 148)
+                                             : FL_COLOR_RGB(191, 191, 191)),
               }),
           }),
       }),

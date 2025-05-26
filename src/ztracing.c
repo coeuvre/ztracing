@@ -17,9 +17,7 @@
 #include "src/string.h"
 #include "src/types.h"
 
-#define RGBA(r, g, b, a)                                            \
-  ((UINT32_C(a) << 24) | (UINT32_C(b) << 16) | (UINT32_C(g) << 8) | \
-   (UINT32_C(r) << 0))
+#define RGBA(r, g, b, a) FL_COLOR_RGBA(r, g, b, a)
 #define RGB(r, g, b) RGBA(r, g, b, 0xFF)
 
 static FL_u32 COLORS[] = {
@@ -587,7 +585,7 @@ typedef struct App {
 
 static FL_TextStyleO DefaultTextStyle(void) {
   return FL_TextStyle_Some((FL_TextStyle){
-      .color = FL_Color_Some((FL_Color){0, 0, 0, 1}),
+      .color = FL_Color_Some(RGB(0, 0, 0)),
       .font_size = FL_f32_Some(15.0f),
   });
 }
@@ -1100,7 +1098,7 @@ static void UI_ProfileTrack_Paint(FL_Widget *widget,
 }
 
 static FL_Widget *UI_ProfileHeader(ProfileItem_Header *header) {
-  FL_Color line_color = {0.5, 0.5, 0.5, 1};
+  FL_Color line_color = RGB(128, 128, 128);
   f32 line_height = 2;
   return FL_Row(&(FL_RowProps){
       .children = FL_WidgetList_Make((FL_Widget *[]){
@@ -1266,7 +1264,7 @@ static FL_Widget *UI_MainScreen(App *app) {
 
 static FL_Widget *UI_Build(App *app) {
   return FL_ColoredBox(&(FL_ColoredBoxProps){
-      .color = {0.94f, 0.94f, 0.94f, 1.0},
+      .color = RGB(240, 240, 240),
       .child = FL_Column(&(FL_ColumnProps){
           .children = FL_WidgetList_Make((FL_Widget *[]){
               UI_GlobalMenuBar(app),
@@ -1274,7 +1272,7 @@ static FL_Widget *UI_Build(App *app) {
               // TODO: Impl DecorationBox.
               FL_Container(&(FL_ContainerProps){
                   .height = FL_f32_Some(1),
-                  .color = FL_Color_Some((FL_Color){0.6f, 0.6f, 0.6f, 1.0}),
+                  .color = FL_Color_Some(RGB(153, 153, 153)),
               }),
               FL_Expanded(&(FL_ExpandedProps){
                   .flex = 1,

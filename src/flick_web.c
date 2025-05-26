@@ -70,6 +70,26 @@ static void RunDrawCommand(FL_DrawCommand *command) {
                      command->index_offset);
 }
 
+#if 0
+typedef struct FLJS_Renderer_Vertex {
+  FL_Vec2 pos;
+  FL_Vec2 uv;
+  FL_u32 color;
+} FLJS_Renderer_Vertex;
+
+static void DebugDrawTexture(FL_isize texture_id) {
+  FLJS_Renderer_Vertex vtx[] = {
+      {.pos = {0, 0}, .uv = {0, 0}, .color = 0xFFFFFFFF},
+      {.pos = {819.2f, 0}, .uv = {1, 0}, .color = 0xFFFFFFFF},
+      {.pos = {819.2f, 819.2f}, .uv = {1, 1}, .color = 0xFFFFFFFF},
+      {.pos = {0, 819.2f}, .uv = {0, 1}, .color = 0xFFFFFFFF},
+  };
+  FL_u32 idx[] = {0, 1, 2, 0, 2, 3};
+  FLJS_Renderer_SetBufferData(vtx, sizeof(vtx), idx, sizeof(idx));
+  FLJS_Renderer_Draw(0, 0, 10000, 10000, texture_id, 6, 0);
+}
+#endif
+
 void FLJS_EndFrame(FL_DrawList *draw_list) {
   for (FL_isize i = 0; i < draw_list->texture_command_count; ++i) {
     RunTextureCommand(draw_list->texture_commands + i);
