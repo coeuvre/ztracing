@@ -1,6 +1,7 @@
 #include "src/ztracing.h"
 
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "src/assert.h"
@@ -16,9 +17,12 @@
 #include "src/string.h"
 #include "src/types.h"
 
-#define RGB(r, g, b) {r / 255.0f, g / 255.0f, b / 255.0f, 1.0f}
+#define RGBA(r, g, b, a)                                            \
+  ((UINT32_C(a) << 24) | (UINT32_C(b) << 16) | (UINT32_C(g) << 8) | \
+   (UINT32_C(r) << 0))
+#define RGB(r, g, b) RGBA(r, g, b, 0xFF)
 
-static FL_Color COLORS[] = {
+static FL_u32 COLORS[] = {
     RGB(38, 70, 83),   RGB(42, 157, 143), RGB(233, 196, 106),
     RGB(244, 162, 97), RGB(231, 111, 81),
 };
@@ -582,10 +586,9 @@ typedef struct App {
 } App;
 
 static FL_TextStyleO DefaultTextStyle(void) {
-#define FONT_SIZE_DEFAULT 13
   return FL_TextStyle_Some((FL_TextStyle){
       .color = FL_Color_Some((FL_Color){0, 0, 0, 1}),
-      .font_size = FL_f32_Some(FONT_SIZE_DEFAULT),
+      .font_size = FL_f32_Some(15.0f),
   });
 }
 
@@ -777,7 +780,7 @@ static void UI_Timeline_Paint(FL_Widget *widget, FL_PaintingContext *context,
   i64 begin = props->begin_time_ns;
   i64 end = props->end_time_ns;
 
-  FL_Color color = {0, 0, 0, 1};
+  FL_u32 color = 0xFF000000;
 
   Vec2 size = widget->size;
   f32 font_size = DefaultTextStyle().value.font_size.value;
@@ -788,8 +791,8 @@ static void UI_Timeline_Paint(FL_Widget *widget, FL_PaintingContext *context,
   i64 large_block_duration = block_duration * 5;
 
   f32 line_thickness = 1.0f;
-  FL_Canvas_FillRect(
-      context->canvas,
+  FL_Draw_AddRect(
+      context,
       (FL_Rect){offset.x, offset.x + size.x, offset.y + size.y - line_thickness,
                 offset.y + size.y},
       color);
@@ -807,15 +810,14 @@ static void UI_Timeline_Paint(FL_Widget *widget, FL_PaintingContext *context,
     f32 x = offset.x + (f32)(t - begin) * point_per_ns;
     bool is_large_block = t % large_block_duration == 0;
     f32 height = is_large_block ? size.y * 0.4f : size.y * 0.2f;
-    FL_Canvas_FillRect(
-        context->canvas,
-        (FL_Rect){x, x + line_thickness, bottom - height, bottom}, color);
+    FL_Draw_AddRect(context,
+                    (FL_Rect){x, x + line_thickness, bottom - height, bottom},
+                    color);
 
     if (is_large_block) {
       FL_Arena scratch = *FL_Widget_GetArena(widget);
-      FL_Canvas_FillText(context->canvas,
-                         UI_Timeline_FormatTime(&scratch, t, duration), x + 4,
-                         bottom - 2 - font_size / 2.0f, font_size, color);
+      FL_Draw_AddText(context, 0, UI_Timeline_FormatTime(&scratch, t, duration),
+                      x + 4, offset.y, color, font_size);
     }
 
     t += block_duration;
@@ -873,8 +875,8 @@ static void UI_ProfileCounter_PaintSample(FL_PaintingContext *context,
                                           ProfileSample *sample) {
   f32 bottom = offset.y + size.y;
   i64 sample_bin_begin = sample->time / bin_duration;
-  f32 x = offset.x + (sample_bin_begin - bin_begin) * bin_width;
-  f32 height = Max(1, (sample->value - counter->min_value) / d * size.y);
+  f32 x = offset.x + (f32)(sample_bin_begin - bin_begin) * bin_width;
+  f32 height = Max(1, (f32)(sample->value - counter->min_value) / d * size.y);
   if (prev_x->present) {
     f32 px = prev_x->value;
     f32 ph = prev_h->value;
@@ -884,19 +886,18 @@ static void UI_ProfileCounter_PaintSample(FL_PaintingContext *context,
     f32 right = px + width;
     // Vec2 min = vec2(px, top);
     // Vec2 max = vec2(px + width, bottom);
-    FL_Canvas_FillRect(context->canvas, (FL_Rect){left, right, top, bottom},
-                       COLORS[series->color_index]);
+    FL_Draw_AddRect(context, (FL_Rect){left, right, top, bottom},
+                    COLORS[series->color_index]);
     if (height != ph) {
-      FL_Canvas_FillRect(context->canvas,
-                         (FL_Rect){right - 1, right, top, bottom - height},
-                         (FL_Color){0, 0, 0, 0.5f});
+      FL_Draw_AddRect(context,
+                      (FL_Rect){right - 1, right, top, bottom - height},
+                      RGBA(0, 0, 0, 128));
     }
-    FL_Canvas_FillRect(context->canvas, (FL_Rect){left, right, top, top + 1},
-                       (FL_Color){0, 0, 0, 0.5f});
+    FL_Draw_AddRect(context, (FL_Rect){left, right, top, top + 1},
+                    RGBA(0, 0, 0, 128));
   } else {
-    FL_Canvas_FillRect(context->canvas,
-                       (FL_Rect){x - 1, x, bottom - height, bottom},
-                       (FL_Color){0, 0, 0, 0.5f});
+    FL_Draw_AddRect(context, (FL_Rect){x - 1, x, bottom - height, bottom},
+                    RGBA(0, 0, 0, 128));
   }
   *prev_x = f32_Some(x);
   *prev_h = f32_Some(height);
@@ -910,18 +911,18 @@ static void UI_ProfileCounter_Paint(FL_Widget *widget,
       FL_Widget_GetProps(widget, UI_ProfileCounterProps);
 
   ProfileItem_Counter *counter = props->counter;
-  f64 d = (counter->max_value - counter->min_value);
+  f32 d = (f32)(counter->max_value - counter->min_value);
   f32 point_per_ns =
       (f32)widget->size.x / (f32)(props->end_time_ns - props->begin_time_ns);
 
   f32 bin_width = 2.0f;
   f32 ns_per_point = 1.0f / point_per_ns;
-  i64 bin_duration = Round(ns_per_point * bin_width);
+  i64 bin_duration = (i64)Round(ns_per_point * bin_width);
   i64 bin_begin = props->begin_time_ns / bin_duration;
   i64 bin_end = props->end_time_ns / bin_duration + 1;
   Vec2 sample_offset =
-      vec2(offset.x -
-               (props->begin_time_ns - bin_begin * bin_duration) * point_per_ns,
+      vec2(offset.x - (f32)(props->begin_time_ns - bin_begin * bin_duration) *
+                          point_per_ns,
            Round(offset.y));
 
   for (usize series_index = 0; series_index < counter->series_count;
@@ -978,9 +979,8 @@ static void UI_ProfileCounter_Paint(FL_Widget *widget,
       f32 bottom = offset.y + widget->size.y;
       f32 x = prev_x.value;
       f32 height = prev_h.value;
-      FL_Canvas_FillRect(context->canvas,
-                         (FL_Rect){x, x + 1, bottom - height, bottom},
-                         (FL_Color){0, 0, 0, 0.5f});
+      FL_Draw_AddRect(context, (FL_Rect){x, x + 1, bottom - height, bottom},
+                      RGBA(0, 0, 0, 128));
     }
   }
 }
@@ -1063,44 +1063,35 @@ static void UI_ProfileTrack_Paint(FL_Widget *widget,
         Vec2 max = {right, offset.y + widget->size.y};
         f32 width = max.x - min.x;
         f32 height = max.y - min.y;
-        FL_Canvas_FillRect(context->canvas,
-                           (FL_Rect){min.x, max.x, min.y, max.y},
-                           COLORS[span->color_index]);
-        FL_Canvas_StrokeRect(context->canvas,
-                             (FL_Rect){min.x, max.x, min.y, max.y},
-                             (FL_Color){0, 0, 0, 0.5}, 1);
+        FL_Draw_AddRect(context, (FL_Rect){min.x, max.x, min.y, max.y},
+                        COLORS[span->color_index]);
+        FL_Draw_AddRectLines(context, (FL_Rect){min.x, max.x, min.y, max.y},
+                             RGBA(0, 0, 0, 128), 1);
 
         FL_TextStyle text_style = DefaultTextStyle().value;
         f32 font_size = text_style.font_size.value;
-        FL_Color text_color = text_style.color.value;
+        FL_u32 text_color = RGB(0, 0, 0);
         // index-0 color is dark color, use white text color.
         if (span->color_index == 0) {
-          text_color = (FL_Color){1, 1, 1, 1};
+          text_color = RGB(255, 255, 255);
         }
 
         f32 text_padding_x = 8;
         if (width - 2 * text_padding_x > 0) {
-          FL_TextMetrics metrics =
-              FL_Canvas_MeasureText(context->canvas, span->name, font_size);
+          FL_Font_TextMetrics metrics = FL_Font_MeasureText(
+              0, span->name, font_size, width - 2 * text_padding_x);
 
-          f32 text_left =
-              Max(left + text_padding_x, left + (width - metrics.width) / 2.0f);
-          f32 text_top = offset.y +
-                         (height - (metrics.font_bounding_box_ascent +
-                                    metrics.font_bounding_box_descent)) /
-                             2.0f +
-                         metrics.font_bounding_box_ascent;
-          bool should_clip = metrics.width + 2 * text_padding_x > width;
-          if (should_clip) {
-            FL_Canvas_Save(context->canvas);
-            FL_Canvas_ClipRect(context->canvas,
-                               (FL_Rect){min.x + text_padding_x,
-                                         max.x - text_padding_x, min.y, max.y});
-          }
-          FL_Canvas_FillText(context->canvas, span->name, text_left, text_top,
-                             font_size, text_color);
-          if (should_clip) {
-            FL_Canvas_Restore(context->canvas);
+          if (metrics.char_count > 0) {
+            f32 text_left = Max(left + text_padding_x,
+                                left + (width - metrics.width) / 2.0f);
+            f32 text_top =
+                offset.y + (height - (metrics.font_bounding_box_ascent +
+                                      metrics.font_bounding_box_descent)) /
+                               2.0f;
+            FL_Draw_AddText(
+                context, 0,
+                (FL_Str){.ptr = span->name.ptr, .len = metrics.char_count},
+                text_left, text_top, text_color, font_size);
           }
         }
       }
@@ -1275,7 +1266,7 @@ static FL_Widget *UI_MainScreen(App *app) {
 
 static FL_Widget *UI_Build(App *app) {
   return FL_ColoredBox(&(FL_ColoredBoxProps){
-      .color = {0.94, 0.94, 0.94, 1.0},
+      .color = {0.94f, 0.94f, 0.94f, 1.0},
       .child = FL_Column(&(FL_ColumnProps){
           .children = FL_WidgetList_Make((FL_Widget *[]){
               UI_GlobalMenuBar(app),
@@ -1283,7 +1274,7 @@ static FL_Widget *UI_Build(App *app) {
               // TODO: Impl DecorationBox.
               FL_Container(&(FL_ContainerProps){
                   .height = FL_f32_Some(1),
-                  .color = FL_Color_Some((FL_Color){0.6, 0.6, 0.6, 1.0}),
+                  .color = FL_Color_Some((FL_Color){0.6f, 0.6f, 0.6f, 1.0}),
               }),
               FL_Expanded(&(FL_ExpandedProps){
                   .flex = 1,
@@ -1321,7 +1312,7 @@ void App_LoadFile(App *app, LoadingFile *file) {
   FileLoader_Start(app->loader);
 }
 
-void App_Update(App *app, Vec2 viewport_size, isize allocated_bytes) {
+FL_DrawList App_Update(App *app, Vec2 viewport_size, isize allocated_bytes) {
   f32 dt = 0.0f;
   u64 current_counter = Platform_GetPerformanceCounter();
   if (app->last_counter) {
@@ -1333,7 +1324,7 @@ void App_Update(App *app, Vec2 viewport_size, isize allocated_bytes) {
   app->allocated_bytes = allocated_bytes;
   app->dt = dt;
 
-  FL_Run(&(FL_RunOptions){
+  FL_DrawList draw_list = FL_Run(&(FL_RunOptions){
       .widget = UI_Build(app),
       .viewport =
           {
@@ -1348,6 +1339,8 @@ void App_Update(App *app, Vec2 viewport_size, isize allocated_bytes) {
   app->frame_time =
       (f32)((f64)(Platform_GetPerformanceCounter() - app->last_counter) /
             (f64)Platform_GetPerformanceFrequency());
+
+  return draw_list;
 }
 
 void App_Destroy(App *app) {

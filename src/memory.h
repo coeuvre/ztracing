@@ -12,7 +12,6 @@
 #define TB(n) (((u64)(n)) << 40)
 
 typedef FL_Allocator Allocator;
-typedef FL_AllocatorOps AllocatorOps;
 
 static inline void *Allocator_Alloc(Allocator a, FL_isize size) {
   return FL_Allocator_Alloc(a, size);

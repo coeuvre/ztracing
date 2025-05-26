@@ -31,8 +31,14 @@
 
 #define FL_TYPE_OF(x) __typeof__(x)
 
+typedef int8_t FL_i8;
+typedef uint8_t FL_u8;
+typedef int16_t FL_i16;
+typedef uint16_t FL_u16;
 typedef int32_t FL_i32;
 typedef uint32_t FL_u32;
+typedef int64_t FL_i64;
+typedef uint64_t FL_u64;
 typedef ptrdiff_t FL_isize;
 typedef size_t FL_usize;
 
@@ -231,27 +237,40 @@ static FL_f32 FL_Rect_GetArea(FL_Rect rect) {
 
 #define FL_COUNT_OF(a) (FL_isize)(sizeof(a) / sizeof((a)[0]))
 
-typedef struct FL_AllocatorOps {
-  void *(*alloc)(void *ctx, FL_isize size);
-  void (*free)(void *ctx, void *ptr, FL_isize size);
-} FL_AllocatorOps;
-
 typedef struct FL_Allocator {
-  void *ptr;
-  const FL_AllocatorOps *ops;
+  void *ctx;
+  void *(*alloc)(void *ctx, void *ptr, FL_isize old_size, FL_isize new_size);
 } FL_Allocator;
 
 FL_Allocator FL_Allocator_GetDefault(void);
 
 FL_ALWAYS_INLINE static inline void *FL_Allocator_Alloc(FL_Allocator a,
                                                         FL_isize size) {
-  return a.ops->alloc(a.ptr, size);
+  void *result = a.alloc(a.ctx, 0, 0, size);
+  FL_ASSERTF(result, "OOM");
+  return result;
+}
+
+FL_ALWAYS_INLINE static inline void *FL_Allocator_Realloc(FL_Allocator a,
+                                                          void *ptr,
+                                                          FL_isize old_size,
+                                                          FL_isize new_size) {
+  void *result = a.alloc(a.ctx, ptr, old_size, new_size);
+  FL_ASSERTF(result, "OOM");
+  return result;
 }
 
 FL_ALWAYS_INLINE static inline void FL_Allocator_Free(FL_Allocator a, void *ptr,
                                                       FL_isize size) {
-  a.ops->free(a.ptr, ptr, size);
+  a.alloc(a.ctx, ptr, size, 0);
 }
+
+typedef struct FL_CountingAllocator {
+  FL_Allocator parent;
+  ptrdiff_t count;
+} FL_CountingAllocator;
+
+FL_Allocator FL_CountingAllocator_AsAllocator(FL_CountingAllocator *ca);
 
 typedef struct FL_MemoryBlock FL_MemoryBlock;
 struct FL_MemoryBlock {
@@ -277,6 +296,8 @@ FL_Arena *FL_Arena_Create(const FL_ArenaOptions *opts);
 void FL_Arena_Destroy(FL_Arena *arena);
 
 void FL_Arena_Reset(FL_Arena *arena);
+
+FL_Allocator FL_Arena_AsAllocator(FL_Arena *arena);
 
 FL_MemoryBlock *FL_Arena_GetMemoryBlock(FL_Arena *arena);
 
@@ -331,6 +352,183 @@ static inline FL_Str FL_Str_Dup(FL_Str s, FL_Arena *arena) {
 FL_Str FL_Str_FormatV(FL_Arena *arena, const char *format, va_list ap);
 
 FL_Str FL_Str_Format(FL_Arena *arena, const char *format, ...);
+
+FL_u64 FL_Str_HashWithSeed(FL_Str str, FL_u64 seed);
+
+static inline FL_u64 FL_Str_Hash(FL_Str str) {
+  return FL_Str_HashWithSeed(str, 0x100);
+}
+
+
+typedef struct FL_Array {
+  void *ptr;
+  FL_isize cap;
+  FL_isize len;
+} FL_Array;
+
+static inline void FL_Array_Deinit(FL_Array *a, FL_isize item_size,
+                                   FL_Allocator allocator) {
+  FL_Allocator_Free(allocator, a->ptr, a->cap * item_size);
+  *a = (FL_Array){0};
+}
+
+static inline void FL_Array_Reserve(FL_Array *a, FL_isize new_cap,
+                                    FL_isize item_size,
+                                    FL_Allocator allocator) {
+  if (new_cap <= a->cap) {
+    return;
+  }
+
+  a->ptr = FL_Allocator_Realloc(allocator, a->ptr, a->cap * item_size,
+                                new_cap * item_size);
+  a->cap = new_cap;
+}
+
+static inline void FL_Array_Clear(FL_Array *a) { a->len = 0; }
+
+static inline void *FL_Array_Add(FL_Array *a, FL_isize item_size,
+                                 FL_Allocator allocator) {
+  if (a->len == a->cap) {
+    FL_isize new_cap = a->cap < 8 ? 8 : a->cap << 1;
+    FL_Array_Reserve(a, new_cap, item_size, allocator);
+  }
+  void *item = a->ptr + a->len * item_size;
+  a->len += 1;
+  return item;
+}
+
+#define FL_ARRAY(Name, T)                                                     \
+  typedef struct Name {                                                       \
+    T *ptr;                                                                   \
+    FL_isize cap;                                                             \
+    FL_isize len;                                                             \
+  } Name;                                                                     \
+                                                                              \
+  FL_ALWAYS_INLINE static inline void Name##_Deinit(Name *a,                  \
+                                                    FL_Allocator allocator) { \
+    FL_Array_Deinit((FL_Array *)a, sizeof(T), allocator);                     \
+  }                                                                           \
+                                                                              \
+  FL_ALWAYS_INLINE static inline T *Name##_Add(Name *a,                       \
+                                               FL_Allocator allocator) {      \
+    return FL_Array_Add((FL_Array *)a, sizeof(T), allocator);                 \
+  }                                                                           \
+                                                                              \
+  FL_ALWAYS_INLINE static inline void Name##_Clear(Name *a) {                 \
+    FL_Array_Clear((FL_Array *)a);                                            \
+  }
+
+
+typedef struct FL_FontID {
+  FL_i32 id;
+} FL_FontID;
+
+typedef struct FL_FontOptions {
+  const char *name;
+  const void *data;
+  int index;
+} FL_FontOptions;
+
+typedef struct FL_Font FL_Font;
+
+FL_Font *FL_Font_Load(const FL_FontOptions *opts);
+
+void FL_Font_Destroy(FL_Font *font);
+
+typedef struct FL_Font_TextMetrics {
+  FL_f32 width;
+  FL_f32 font_bounding_box_ascent;
+  FL_f32 font_bounding_box_descent;
+  FL_isize char_count;
+} FL_Font_TextMetrics;
+
+FL_Font_TextMetrics FL_Font_MeasureText(FL_Font *font, FL_Str text,
+                                        FL_f32 font_size, FL_f32 max_width);
+
+
+typedef struct FL_Color {
+  FL_f32 r;
+  FL_f32 g;
+  FL_f32 b;
+  FL_f32 a;
+} FL_Color;
+
+FL_OPTIONAL_TYPE(FL_ColorO, FL_Color)
+
+typedef struct FL_Texture {
+  void *id;
+} FL_Texture;
+
+typedef struct FL_TextureCommand {
+  FL_Texture *texture;
+  FL_i32 x;
+  FL_i32 y;
+  FL_i32 width;
+  FL_i32 height;
+  FL_u32 *pixels;
+} FL_TextureCommand;
+
+FL_ARRAY(FL_TextureCommandArray, FL_TextureCommand)
+
+typedef struct FL_DrawVertex {
+  FL_Vec2 pos;
+  FL_Vec2 uv;
+  FL_u32 color;
+} FL_DrawVertex;
+
+FL_ARRAY(FL_DrawVertexArray, FL_DrawVertex);
+
+typedef FL_u32 FL_DrawIndex;
+
+FL_ARRAY(FL_DrawIndexArray, FL_DrawIndex);
+
+typedef struct FL_DrawCommand {
+  FL_Rect clip_rect;
+  FL_Texture *texture;
+  FL_u32 vertex_offset;
+  FL_u32 index_offset;
+  FL_u32 index_count;
+} FL_DrawCommand;
+
+FL_ARRAY(FL_DrawCommandArray, FL_DrawCommand);
+
+typedef struct FL_CommandBuffer {
+  FL_Allocator allocator;
+
+  FL_TextureCommandArray texture_commands;
+
+  FL_DrawVertexArray vertex_buffer;
+  FL_DrawIndexArray index_buffer;
+  FL_DrawCommandArray draw_commands;
+} FL_CommandBuffer;
+
+FL_ARRAY(FL_RectArray, FL_Rect)
+
+typedef struct FL_PaintingContext {
+  FL_Arena *arena;
+  FL_CommandBuffer *command_buffer;
+  FL_Rect viewport;
+  FL_RectArray clip_rect_array;
+} FL_PaintingContext;
+
+void FL_Draw_CreateTexture(FL_PaintingContext *context, FL_Texture *texture,
+                           FL_i32 width, FL_i32 height, FL_u32 *pixels);
+
+void FL_Draw_UpdateTexture(FL_PaintingContext *context, FL_Texture *texture,
+                           FL_i32 x, FL_i32 y, FL_i32 width, FL_i32 height,
+                           FL_u32 *pixels);
+
+void FL_Draw_PushClipRect(FL_PaintingContext *context, FL_Rect rect);
+
+void FL_Draw_PopClipRect(FL_PaintingContext *context);
+
+void FL_Draw_AddRectLines(FL_PaintingContext *context, FL_Rect rect,
+                          FL_u32 color, FL_f32 line_width);
+
+void FL_Draw_AddRect(FL_PaintingContext *context, FL_Rect rect, FL_u32 color);
+
+void FL_Draw_AddText(FL_PaintingContext *context, FL_Font *font, FL_Str text,
+                     FL_f32 x, FL_f32 y, FL_u32 color, FL_f32 font_size);
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -790,89 +988,6 @@ static inline FL_BoxConstraints FL_BoxConstraints_FromSliverConstraints(
   }
 }
 
-
-typedef struct FL_Color {
-  FL_f32 r;
-  FL_f32 g;
-  FL_f32 b;
-  FL_f32 a;
-} FL_Color;
-
-FL_OPTIONAL_TYPE(FL_ColorO, FL_Color)
-
-typedef struct FL_TextMetrics {
-  FL_f32 width;
-  FL_f32 font_bounding_box_ascent;
-  FL_f32 font_bounding_box_descent;
-} FL_TextMetrics;
-
-typedef struct FL_Canvas {
-  void *ctx;
-
-  /** Saves a copy of the current transform and clip on the save stack. */
-  void (*save)(void *ctx);
-
-  /**
-   * Pops the current save stack, if there is anything to pop. Otherwise, does
-   * nothing.
-   */
-  void (*restore)(void *ctx);
-
-  /**
-   * Reduces the clip region to the intersection of the current clip and the
-   * given rectangle.
-   */
-  void (*clip_rect)(void *ctx, FL_Rect rect);
-
-  void (*fill_rect)(void *ctx, FL_Rect rect, FL_Color color);
-
-  void (*stroke_rect)(void *ctx, FL_Rect rect, FL_Color color,
-                      FL_f32 line_width);
-
-  FL_TextMetrics (*measure_text)(void *ctx, FL_Str text, FL_f32 font_size);
-
-  void (*fill_text)(void *ctx, FL_Str text, FL_f32 x, FL_f32 y,
-                    FL_f32 font_size, FL_Color color);
-} FL_Canvas;
-
-static inline void FL_Canvas_Save(FL_Canvas *canvas) {
-  canvas->save(canvas->ctx);
-}
-
-static inline void FL_Canvas_Restore(FL_Canvas *canvas) {
-  canvas->restore(canvas->ctx);
-}
-
-static inline void FL_Canvas_ClipRect(FL_Canvas *canvas, FL_Rect rect) {
-  canvas->clip_rect(canvas->ctx, rect);
-}
-
-static inline void FL_Canvas_FillRect(FL_Canvas *canvas, FL_Rect rect,
-                                      FL_Color color) {
-  canvas->fill_rect(canvas->ctx, rect, color);
-}
-
-static inline void FL_Canvas_StrokeRect(FL_Canvas *canvas, FL_Rect rect,
-                                        FL_Color color, FL_f32 line_width) {
-  canvas->stroke_rect(canvas->ctx, rect, color, line_width);
-}
-
-static inline FL_TextMetrics FL_Canvas_MeasureText(FL_Canvas *canvas,
-                                                   FL_Str text,
-                                                   FL_f32 font_size) {
-  return canvas->measure_text(canvas->ctx, text, font_size);
-}
-
-static inline void FL_Canvas_FillText(FL_Canvas *canvas, FL_Str text, FL_f32 x,
-                                      FL_f32 y, FL_f32 font_size,
-                                      FL_Color color) {
-  canvas->fill_text(canvas->ctx, text, x, y, font_size, color);
-}
-
-typedef struct FL_PaintingContext {
-  FL_Canvas *canvas;
-} FL_PaintingContext;
-
 #include <stdalign.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -1173,12 +1288,13 @@ FL_Arena *FL_Widget_GetArena(FL_Widget *widget);
 
 typedef struct FL_InitOptions {
   FL_Allocator allocator;
-  FL_Canvas canvas;
 } FL_InitOptions;
 
 void FL_Init(const FL_InitOptions *opts);
 
 void FL_Deinit(void);
+
+void FL_SetPixelsPerPoint(FL_f32 pixels_per_point);
 
 FL_ContextID FL_Context_Register(void);
 
@@ -1196,9 +1312,21 @@ typedef struct FL_RunOptions {
   FL_f32 delta_time;
 } FL_RunOptions;
 
-void FL_Run(const FL_RunOptions *opts);
+typedef struct FL_DrawList {
+  FL_TextureCommand *texture_commands;
+  FL_isize texture_command_count;
 
-FL_TextMetrics FL_MeasureText(FL_Str text, FL_f32 font_size);
+  FL_DrawVertex *vertex_buffer;
+  FL_isize vertex_count;
+
+  FL_DrawIndex *index_buffer;
+  FL_isize index_count;
+
+  FL_DrawCommand *draw_commands;
+  FL_isize draw_command_count;
+} FL_DrawList;
+
+FL_DrawList FL_Run(const FL_RunOptions *opts);
 
 FL_Str FL_Format(const char *format, ...);
 

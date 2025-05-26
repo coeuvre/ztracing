@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "assets/JetBrainsMono-Regular.h"
 #include "src/assert.h"
 #include "src/channel.h"
 #include "src/flick.h"
@@ -160,43 +161,33 @@ void LogMessage(LogLevel level, const char *fmt, ...) {
 }
 
 typedef struct GlobalAllocator {
+  Allocator parent;
   Platform_Mutex *allocated_bytes_mutex;
   isize allocated_bytes;
 } GlobalAllocator;
 
-static void *GlobalAllocator_Alloc(void *ctx, FL_isize size) {
+static void *GlobalAllocator_Impl(void *ctx, void *ptr, FL_isize old_size,
+                                  FL_isize new_size) {
   GlobalAllocator *allocator = ctx;
-  isize *p = malloc(size);
-  ASSERTF(p, "oom");
+  void *result =
+      allocator->parent.alloc(allocator->parent.ctx, ptr, old_size, new_size);
   Platform_Mutex_Lock(allocator->allocated_bytes_mutex);
-  allocator->allocated_bytes += size;
+  allocator->allocated_bytes += new_size - old_size;
   Platform_Mutex_Unlock(allocator->allocated_bytes_mutex);
-  return p;
+  return result;
 }
 
-static void GlobalAllocator_Free(void *ctx, void *ptr, FL_isize size) {
-  GlobalAllocator *allocator = ctx;
-  free(ptr);
-  Platform_Mutex_Lock(allocator->allocated_bytes_mutex);
-  allocator->allocated_bytes -= size;
-  Platform_Mutex_Unlock(allocator->allocated_bytes_mutex);
-}
-
-static FL_AllocatorOps GlobalAllocator_Ops = {
-    .alloc = GlobalAllocator_Alloc,
-    .free = GlobalAllocator_Free,
-};
-
-static void GlobalAllocator_Init(GlobalAllocator *a) {
+static void GlobalAllocator_Init(GlobalAllocator *a, Allocator parent) {
   *a = (GlobalAllocator){
+      .parent = parent,
       .allocated_bytes_mutex = Platform_Mutex_Create(),
   };
 }
 
 static inline Allocator GlobalAllocator_AsAllocator(GlobalAllocator *a) {
   return (Allocator){
-      .ptr = a,
-      .ops = &GlobalAllocator_Ops,
+      .ctx = a,
+      .alloc = &GlobalAllocator_Impl,
   };
 }
 
@@ -215,13 +206,49 @@ void JS_Free(void *ptr, isize size) {
   Allocator_Free(allocator, ptr, size);
 }
 
+typedef struct FLJS_Renderer_Vertex {
+  FL_Vec2 pos;
+  FL_Vec2 uv;
+  FL_u32 color;
+} FLJS_Renderer_Vertex;
+
+extern FL_isize FLJS_Renderer_CreateTexture(int width, int height,
+                                            void *pixels);
+extern FL_isize FLJS_Renderer_UpdateTexture(FL_isize texture, int x, int y,
+                                            int width, int height,
+                                            void *pixels);
+extern void FLJS_Renderer_SetBufferData(void *vtx_buffer_ptr,
+                                        FL_isize vtx_buffer_len,
+                                        void *idx_buffer_ptr,
+                                        FL_isize idx_buffer_len);
+extern void FLJS_Renderer_Draw(FL_isize texture, FL_i32 idx_count,
+                               FL_i32 idx_offset);
+
+static void RunTextureCommand(FL_TextureCommand *command) {
+  if (command->texture->id) {
+    FLJS_Renderer_UpdateTexture((FL_isize)command->texture->id, command->x,
+                                command->y, command->width, command->height,
+                                command->pixels);
+  } else {
+    command->texture->id = (void *)FLJS_Renderer_CreateTexture(
+        command->width, command->height, command->pixels);
+  }
+}
+
+static void RunDrawCommand(FL_DrawCommand *command) {
+  FLJS_Renderer_Draw((FL_isize)command->texture->id, command->index_count,
+                     command->index_offset);
+}
+
 static void Update(void) {
   App *app = global_app;
 
-  static FL_Vec2 canvas_size;
-  FLJS_ResizeCanvas(canvas_size.x, canvas_size.y, &canvas_size);
+  FL_Vec2 canvas_size = FLJS_BeginFrame();
 
-  App_Update(app, canvas_size, global_allocator.allocated_bytes);
+  FL_DrawList draw_list =
+      App_Update(app, canvas_size, global_allocator.allocated_bytes);
+
+  FLJS_EndFrame(&draw_list);
 }
 
 extern void JS_Init(void);
@@ -308,12 +335,15 @@ int main(int argc, const char *argv[]) {
   FLJS_Init();
   JS_Init();
 
-  GlobalAllocator_Init(&global_allocator);
+  GlobalAllocator_Init(&global_allocator, FL_Allocator_GetDefault());
   Allocator allocator = GlobalAllocator_AsAllocator(&global_allocator);
 
   FL_Init(&(FL_InitOptions){
       .allocator = allocator,
-      .canvas = FLJS_Canvas_Get(),
+  });
+
+  FL_Font_Load(&(FL_FontOptions){
+      .data = JetBrainsMono_Regular_ttf,
   });
 
   global_app = App_Create(allocator);
