@@ -2070,15 +2070,11 @@ void FL_FontAtlas_EnsureTextureCreated(FL_FontAtlas *atlas,
                                        FL_PaintingContext *context) {
   if (!atlas->texture_created) {
     FL_ASSERT(atlas->pack_context.width > 0 && atlas->pack_context.height > 0);
-    FL_u32 *pixels = FL_Arena_PushArray(
-        context->arena, FL_u32,
-        atlas->pack_context.width * atlas->pack_context.height);
-    memset(pixels, 0,
-           sizeof(FL_u32) * atlas->pack_context.width *
-               atlas->pack_context.height);
-    pixels[0] = 0xFFFFFFFF;
     FL_Draw_CreateTexture(context, &atlas->texture, atlas->pack_context.width,
-                          atlas->pack_context.height, pixels);
+                          atlas->pack_context.height);
+    FL_Color *pixels = FL_Arena_PushArray(context->arena, FL_Color, 1);
+    pixels[0] = FL_COLOR_RGB(255, 255, 255);
+    FL_Draw_UpdateTexture(context, &atlas->texture, 0, 0, 1, 1, pixels);
     atlas->texture_created = true;
   }
 }
@@ -2203,7 +2199,7 @@ FL_Font_TextMetrics FL_Font_MeasureText(FL_Font *font, FL_Str text,
 
 
 void FL_Draw_CreateTexture(FL_PaintingContext *context, FL_Texture *texture,
-                           FL_i32 width, FL_i32 height, FL_u32 *pixels) {
+                           FL_i32 width, FL_i32 height) {
   FL_ASSERT(!texture->id);
   FL_CommandBuffer *command_buffer = context->command_buffer;
   *FL_TextureCommandArray_Add(&command_buffer->texture_commands,
@@ -2211,13 +2207,12 @@ void FL_Draw_CreateTexture(FL_PaintingContext *context, FL_Texture *texture,
       .texture = texture,
       .width = width,
       .height = height,
-      .pixels = pixels,
   };
 }
 
 void FL_Draw_UpdateTexture(FL_PaintingContext *context, FL_Texture *texture,
                            FL_i32 x, FL_i32 y, FL_i32 width, FL_i32 height,
-                           FL_u32 *pixels) {
+                           FL_Color *pixels) {
   FL_CommandBuffer *command_buffer = context->command_buffer;
   *FL_TextureCommandArray_Add(&command_buffer->texture_commands,
                               command_buffer->allocator) = (FL_TextureCommand){
@@ -2250,49 +2245,57 @@ static FL_Rect GetClipRect(FL_PaintingContext *context) {
 }
 
 void FL_Draw_AddTexture(FL_PaintingContext *context, FL_Rect dst_rect,
-                        FL_Rect src_rect, FL_Texture *texture, FL_u32 color) {
+                        FL_Rect src_rect, FL_Texture *texture, FL_Color color) {
   FL_CommandBuffer *command_buffer = context->command_buffer;
   FL_DrawIndex vertex_offset = (FL_DrawIndex)command_buffer->vertex_buffer.len;
   FL_ASSERT((FL_isize)vertex_offset == command_buffer->vertex_buffer.len);
-  *FL_DrawVertexArray_Add(&command_buffer->vertex_buffer,
-                          command_buffer->allocator) = (FL_DrawVertex){
-      .pos = {dst_rect.left, dst_rect.top},
-      .uv = {src_rect.left, src_rect.top},
-      .color = color,
-  };
-  *FL_DrawVertexArray_Add(&command_buffer->vertex_buffer,
-                          command_buffer->allocator) = (FL_DrawVertex){
-      .pos = {dst_rect.right, dst_rect.top},
-      .uv = {src_rect.right, src_rect.top},
-      .color = color,
-  };
-  *FL_DrawVertexArray_Add(&command_buffer->vertex_buffer,
-                          command_buffer->allocator) = (FL_DrawVertex){
-      .pos = {dst_rect.right, dst_rect.bottom},
-      .uv = {src_rect.right, src_rect.bottom},
-      .color = color,
-  };
-  *FL_DrawVertexArray_Add(&command_buffer->vertex_buffer,
-                          command_buffer->allocator) = (FL_DrawVertex){
-      .pos = {dst_rect.left, dst_rect.bottom},
-      .uv = {src_rect.left, src_rect.bottom},
-      .color = color,
-  };
+
+  FL_DrawVertexArray_Reserve(&command_buffer->vertex_buffer,
+                             command_buffer->vertex_buffer.len + 4,
+                             command_buffer->allocator);
+  command_buffer->vertex_buffer.ptr[command_buffer->vertex_buffer.len++] =
+      (FL_DrawVertex){
+          .pos = {dst_rect.left, dst_rect.top},
+          .uv = {src_rect.left, src_rect.top},
+          .color = color,
+      };
+  command_buffer->vertex_buffer.ptr[command_buffer->vertex_buffer.len++] =
+      (FL_DrawVertex){
+          .pos = {dst_rect.right, dst_rect.top},
+          .uv = {src_rect.right, src_rect.top},
+          .color = color,
+      };
+  command_buffer->vertex_buffer.ptr[command_buffer->vertex_buffer.len++] =
+      (FL_DrawVertex){
+          .pos = {dst_rect.right, dst_rect.bottom},
+          .uv = {src_rect.right, src_rect.bottom},
+          .color = color,
+      };
+  command_buffer->vertex_buffer.ptr[command_buffer->vertex_buffer.len++] =
+      (FL_DrawVertex){
+          .pos = {dst_rect.left, dst_rect.bottom},
+          .uv = {src_rect.left, src_rect.bottom},
+          .color = color,
+      };
 
   FL_DrawIndex index_offset = (FL_DrawIndex)command_buffer->index_buffer.len;
   FL_ASSERT((FL_isize)index_offset == command_buffer->index_buffer.len);
-  *FL_DrawIndexArray_Add(&command_buffer->index_buffer,
-                         command_buffer->allocator) = vertex_offset + 0;
-  *FL_DrawIndexArray_Add(&command_buffer->index_buffer,
-                         command_buffer->allocator) = vertex_offset + 1;
-  *FL_DrawIndexArray_Add(&command_buffer->index_buffer,
-                         command_buffer->allocator) = vertex_offset + 2;
-  *FL_DrawIndexArray_Add(&command_buffer->index_buffer,
-                         command_buffer->allocator) = vertex_offset + 0;
-  *FL_DrawIndexArray_Add(&command_buffer->index_buffer,
-                         command_buffer->allocator) = vertex_offset + 2;
-  *FL_DrawIndexArray_Add(&command_buffer->index_buffer,
-                         command_buffer->allocator) = vertex_offset + 3;
+
+  FL_DrawIndexArray_Reserve(&command_buffer->index_buffer,
+                            command_buffer->index_buffer.len + 6,
+                            command_buffer->allocator);
+  command_buffer->index_buffer.ptr[command_buffer->index_buffer.len++] =
+      vertex_offset + 0;
+  command_buffer->index_buffer.ptr[command_buffer->index_buffer.len++] =
+      vertex_offset + 1;
+  command_buffer->index_buffer.ptr[command_buffer->index_buffer.len++] =
+      vertex_offset + 2;
+  command_buffer->index_buffer.ptr[command_buffer->index_buffer.len++] =
+      vertex_offset + 0;
+  command_buffer->index_buffer.ptr[command_buffer->index_buffer.len++] =
+      vertex_offset + 2;
+  command_buffer->index_buffer.ptr[command_buffer->index_buffer.len++] =
+      vertex_offset + 3;
 
   FL_Rect clip_rect = GetClipRect(context);
   FL_DrawCommandArray *draw_commands = &command_buffer->draw_commands;
@@ -2301,11 +2304,12 @@ void FL_Draw_AddTexture(FL_PaintingContext *context, FL_Rect dst_rect,
     current_draw_command = draw_commands->ptr + (draw_commands->len - 1);
   }
   if (current_draw_command &&
-      current_draw_command->index_offset + current_draw_command->index_count ==
-          index_offset &&
-      (!texture || !current_draw_command->texture ||
-       current_draw_command->texture == texture) &&
+      (current_draw_command->texture == texture || !texture ||
+       !current_draw_command->texture) &&
       FL_Rect_IsEqual(current_draw_command->clip_rect, clip_rect)) {
+    FL_DEBUG_ASSERT(current_draw_command->index_offset +
+                        current_draw_command->index_count ==
+                    index_offset);
     if (!current_draw_command->texture && texture) {
       current_draw_command->texture = texture;
     }
@@ -2315,6 +2319,7 @@ void FL_Draw_AddTexture(FL_PaintingContext *context, FL_Rect dst_rect,
                              command_buffer->allocator) = (FL_DrawCommand){
         .clip_rect = GetClipRect(context),
         .texture = texture,
+        .vertex_offset = vertex_offset,
         .index_offset = index_offset,
         .index_count = 6,
     };
@@ -2322,7 +2327,7 @@ void FL_Draw_AddTexture(FL_PaintingContext *context, FL_Rect dst_rect,
 }
 
 void FL_Draw_AddRectLines(FL_PaintingContext *context, FL_Rect rect,
-                          FL_u32 color, FL_f32 line_width) {
+                          FL_Color color, FL_f32 line_width) {
   FL_f32 left = rect.left;
   FL_f32 right = rect.right;
   FL_f32 top = rect.top;
@@ -2347,12 +2352,13 @@ void FL_Draw_AddRectLines(FL_PaintingContext *context, FL_Rect rect,
                   color);
 }
 
-void FL_Draw_AddRect(FL_PaintingContext *context, FL_Rect rect, FL_u32 color) {
+void FL_Draw_AddRect(FL_PaintingContext *context, FL_Rect rect,
+                     FL_Color color) {
   FL_Draw_AddTexture(context, rect, (FL_Rect){0}, 0, color);
 }
 
 void FL_Draw_AddText(FL_PaintingContext *context, FL_Font *font, FL_Str text,
-                     FL_f32 x, FL_f32 y, FL_u32 color, FL_f32 font_size) {
+                     FL_f32 x, FL_f32 y, FL_Color color, FL_f32 font_size) {
   State *state = GetGlobalState();
   if (!font) {
     font = state->default_font;
@@ -2389,17 +2395,17 @@ void FL_Draw_AddText(FL_PaintingContext *context, FL_Font *font, FL_Str text,
         int y = packed_char->chardata.y0;
         int width = packed_char->chardata.x1 - packed_char->chardata.x0;
         int height = packed_char->chardata.y1 - packed_char->chardata.y0;
-        FL_u32 *pixels =
-            FL_Arena_PushArray(context->arena, FL_u32, width * height);
+        FL_Color *pixels =
+            FL_Arena_PushArray(context->arena, FL_Color, width * height);
 
-        FL_u32 *dst_row = pixels;
+        FL_Color *dst_row = pixels;
         FL_u8 *src_row =
             atlas->pack_context.pixels + y * atlas->pack_context.width + x;
         for (FL_i16 j = 0; j < height; ++j) {
-          FL_u32 *dst = dst_row;
+          FL_Color *dst = dst_row;
           FL_u8 *src = src_row;
           for (FL_i16 i = 0; i < width; ++i) {
-            FL_u32 alpha = *src++;
+            FL_u8 alpha = *src++;
             (*dst++) = FL_COLOR_RGBA(255, 255, 255, alpha);
           }
           dst_row += width;

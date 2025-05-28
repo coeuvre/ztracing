@@ -20,7 +20,7 @@
 #define RGBA(r, g, b, a) FL_COLOR_RGBA(r, g, b, a)
 #define RGB(r, g, b) RGBA(r, g, b, 0xFF)
 
-static FL_u32 COLORS[] = {
+static FL_Color COLORS[] = {
     RGB(38, 70, 83),   RGB(42, 157, 143), RGB(233, 196, 106),
     RGB(244, 162, 97), RGB(231, 111, 81),
 };
@@ -630,10 +630,10 @@ static FL_Widget *UI_GlobalMenuBar(App *app) {
               }),
               FL_Expanded(&(FL_ExpandedProps){.flex = 1}),
               FL_Text(&(FL_TextProps){
-                  .text =
-                      FL_Format("%.1fMB %.1fms",
-                                ((f64)app->allocated_bytes / 1024.0 / 1024.0),
-                                (f64)app->frame_time * 1000.0),
+                  .text = FL_Format(
+                      "%.1fMB %.1fms %.0f",
+                      ((f64)app->allocated_bytes / 1024.0 / 1024.0),
+                      (f64)app->frame_time * 1000.0, 1.0 / (f64)app->dt),
                   .style = DefaultTextStyle(),
               }),
               0,
@@ -778,7 +778,7 @@ static void UI_Timeline_Paint(FL_Widget *widget, FL_PaintingContext *context,
   i64 begin = props->begin_time_ns;
   i64 end = props->end_time_ns;
 
-  FL_u32 color = 0xFF000000;
+  FL_Color color = RGB(0, 0, 0);
 
   Vec2 size = widget->size;
   f32 font_size = DefaultTextStyle().value.font_size.value;
@@ -1068,7 +1068,7 @@ static void UI_ProfileTrack_Paint(FL_Widget *widget,
 
         FL_TextStyle text_style = DefaultTextStyle().value;
         f32 font_size = text_style.font_size.value;
-        FL_u32 text_color = RGB(0, 0, 0);
+        FL_Color text_color = RGB(0, 0, 0);
         // index-0 color is dark color, use white text color.
         if (span->color_index == 0) {
           text_color = RGB(255, 255, 255);

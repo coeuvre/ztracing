@@ -414,6 +414,11 @@ static inline void *FL_Array_Add(FL_Array *a, FL_isize item_size,
     FL_Array_Deinit((FL_Array *)a, sizeof(T), allocator);                     \
   }                                                                           \
                                                                               \
+  FL_ALWAYS_INLINE static inline void Name##_Reserve(                         \
+      Name *a, FL_isize new_cap, FL_Allocator allocator) {                    \
+    FL_Array_Reserve((FL_Array *)a, new_cap, sizeof(T), allocator);           \
+  }                                                                           \
+                                                                              \
   FL_ALWAYS_INLINE static inline T *Name##_Add(Name *a,                       \
                                                FL_Allocator allocator) {      \
     return FL_Array_Add((FL_Array *)a, sizeof(T), allocator);                 \
@@ -451,13 +456,17 @@ FL_Font_TextMetrics FL_Font_MeasureText(FL_Font *font, FL_Str text,
                                         FL_f32 font_size, FL_f32 max_width);
 
 
-typedef FL_u32 FL_Color;
+typedef struct FL_Color {
+  FL_u8 r;
+  FL_u8 g;
+  FL_u8 b;
+  FL_u8 a;
+} FL_Color;
 
 FL_OPTIONAL_TYPE(FL_ColorO, FL_Color)
 
-#define FL_COLOR_RGBA(r, g, b, a)                                   \
-  (((FL_u32)(a) << 24) | ((FL_u32)(b) << 16) | ((FL_u32)(g) << 8) | \
-   ((FL_u32)(r) << 0))
+#define FL_COLOR_RGBA(r, g, b, a) \
+  (FL_Color) { r, g, b, a }
 
 #define FL_COLOR_RGB(r, g, b) FL_COLOR_RGBA(r, g, b, 0xFF)
 
@@ -471,7 +480,7 @@ typedef struct FL_TextureCommand {
   FL_i32 y;
   FL_i32 width;
   FL_i32 height;
-  FL_u32 *pixels;
+  FL_Color *pixels;
 } FL_TextureCommand;
 
 FL_ARRAY(FL_TextureCommandArray, FL_TextureCommand)
@@ -479,7 +488,7 @@ FL_ARRAY(FL_TextureCommandArray, FL_TextureCommand)
 typedef struct FL_DrawVertex {
   FL_Vec2 pos;
   FL_Vec2 uv;
-  FL_u32 color;
+  FL_Color color;
 } FL_DrawVertex;
 
 FL_ARRAY(FL_DrawVertexArray, FL_DrawVertex);
@@ -491,6 +500,7 @@ FL_ARRAY(FL_DrawIndexArray, FL_DrawIndex);
 typedef struct FL_DrawCommand {
   FL_Rect clip_rect;
   FL_Texture *texture;
+  FL_u32 vertex_offset;
   FL_u32 index_offset;
   FL_u32 index_count;
 } FL_DrawCommand;
@@ -517,26 +527,26 @@ typedef struct FL_PaintingContext {
 } FL_PaintingContext;
 
 void FL_Draw_CreateTexture(FL_PaintingContext *context, FL_Texture *texture,
-                           FL_i32 width, FL_i32 height, FL_u32 *pixels);
+                           FL_i32 width, FL_i32 height);
 
 void FL_Draw_UpdateTexture(FL_PaintingContext *context, FL_Texture *texture,
                            FL_i32 x, FL_i32 y, FL_i32 width, FL_i32 height,
-                           FL_u32 *pixels);
+                           FL_Color *pixels);
 
 void FL_Draw_PushClipRect(FL_PaintingContext *context, FL_Rect rect);
 
 void FL_Draw_PopClipRect(FL_PaintingContext *context);
 
 void FL_Draw_AddTexture(FL_PaintingContext *context, FL_Rect dst_rect,
-                        FL_Rect src_rect, FL_Texture *texture, FL_u32 color);
+                        FL_Rect src_rect, FL_Texture *texture, FL_Color color);
 
 void FL_Draw_AddRectLines(FL_PaintingContext *context, FL_Rect rect,
-                          FL_u32 color, FL_f32 line_width);
+                          FL_Color color, FL_f32 line_width);
 
-void FL_Draw_AddRect(FL_PaintingContext *context, FL_Rect rect, FL_u32 color);
+void FL_Draw_AddRect(FL_PaintingContext *context, FL_Rect rect, FL_Color color);
 
 void FL_Draw_AddText(FL_PaintingContext *context, FL_Font *font, FL_Str text,
-                     FL_f32 x, FL_f32 y, FL_u32 color, FL_f32 font_size);
+                     FL_f32 x, FL_f32 y, FL_Color color, FL_f32 font_size);
 
 #include <stdbool.h>
 #include <stdint.h>

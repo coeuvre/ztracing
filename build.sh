@@ -34,10 +34,7 @@ COMMON_SOURCES="
 # Build Native
 # ------------------------------------------------------------------------------
 NATIVE_SOURCES="
-  $ROOT/src/canvas_sdl3.c
-  $ROOT/src/log_sdl3.c
   $ROOT/src/platform_sdl3.c
-  $ROOT/src/ztracing_sdl3.c
 "
 
 NATIVE_CFLAGS="-fsanitize-trap"

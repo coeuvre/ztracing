@@ -28,11 +28,10 @@ void FLJS_OnMouseScroll(FL_f32 pos_x, FL_f32 pos_y, FL_f32 delta_x,
   FL_OnMouseScroll((FL_Vec2){pos_x, pos_y}, (FL_Vec2){delta_x, delta_y});
 }
 
-extern FL_isize FLJS_Renderer_CreateTexture(int width, int height,
-                                            void *pixels);
-extern FL_isize FLJS_Renderer_UpdateTexture(FL_isize texture, int x, int y,
-                                            int width, int height,
-                                            void *pixels);
+extern FL_isize FLJS_Renderer_CreateTexture(FL_i32 width, FL_i32 height);
+extern FL_isize FLJS_Renderer_UpdateTexture(FL_isize texture, FL_i32 x,
+                                            FL_i32 y, FL_i32 width,
+                                            FL_i32 height, void *pixels);
 extern void FLJS_Renderer_SetBufferData(void *vtx_buffer_ptr,
                                         FL_isize vtx_buffer_len,
                                         void *idx_buffer_ptr,
@@ -58,8 +57,8 @@ static void RunTextureCommand(FL_TextureCommand *command) {
                                 command->y, command->width, command->height,
                                 command->pixels);
   } else {
-    command->texture->id = (void *)FLJS_Renderer_CreateTexture(
-        command->width, command->height, command->pixels);
+    command->texture->id =
+        (void *)FLJS_Renderer_CreateTexture(command->width, command->height);
   }
 }
 
@@ -71,18 +70,12 @@ static void RunDrawCommand(FL_DrawCommand *command) {
 }
 
 #if 0
-typedef struct FLJS_Renderer_Vertex {
-  FL_Vec2 pos;
-  FL_Vec2 uv;
-  FL_u32 color;
-} FLJS_Renderer_Vertex;
-
 static void DebugDrawTexture(FL_isize texture_id) {
-  FLJS_Renderer_Vertex vtx[] = {
-      {.pos = {0, 0}, .uv = {0, 0}, .color = 0xFFFFFFFF},
-      {.pos = {819.2f, 0}, .uv = {1, 0}, .color = 0xFFFFFFFF},
-      {.pos = {819.2f, 819.2f}, .uv = {1, 1}, .color = 0xFFFFFFFF},
-      {.pos = {0, 819.2f}, .uv = {0, 1}, .color = 0xFFFFFFFF},
+  FL_DrawVertex vtx[] = {
+      {.pos = {0, 0}, .uv = {0, 0}, .color = FL_COLOR_RGB(255, 255, 255)},
+      {.pos = {819.2f, 0}, .uv = {1, 0}, .color = FL_COLOR_RGB(255, 255, 255)},
+      {.pos = {819.2f, 819.2f}, .uv = {1, 1}, .color = FL_COLOR_RGB(255, 255, 255)},
+      {.pos = {0, 819.2f}, .uv = {0, 1}, .color = FL_COLOR_RGB(255, 255, 255)},
   };
   FL_u32 idx[] = {0, 1, 2, 0, 2, 3};
   FLJS_Renderer_SetBufferData(vtx, sizeof(vtx), idx, sizeof(idx));
