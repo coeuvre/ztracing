@@ -206,13 +206,13 @@ pub const JsonProfileParser = struct {
                     if (found_end_array) {
                         // Skip array_end
                         _ = try scanner.next();
+                        _ = self.diagnostic.stack.pop();
                         if (s.has_object_format) {
                             self.state = .object_format;
-                        } else {
-                            self.state = .done;
+                            continue :loop;
                         }
-                        _ = self.diagnostic.stack.pop();
-                        continue :loop;
+                        self.state = .done;
+                        return .none;
                     }
 
                     if (!found_object_begin) {
