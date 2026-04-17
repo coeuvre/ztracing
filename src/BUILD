@@ -100,13 +100,17 @@ cc_binary(
     srcs = [
         "main_wasm.cc",
     ],
+    additional_linker_inputs = [
+        "wasm_bridge.js",
+    ],
     linkopts = [
         "-sUSE_WEBGL2=1",
         "-sFULL_ES3=1",
         "-sWASM=1",
         "-sINVOKE_RUN=0",
-        "-sEXPORTED_RUNTIME_METHODS=['ccall','callMain']",
-        "-sEXPORTED_FUNCTIONS=['_main','_ztracing_set_font_data']",
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','callMain','HEAPU8']",
+        "-sEXPORTED_FUNCTIONS=['_main','_ztracing_set_font_data','_ztracing_malloc','_ztracing_free','_ztracing_handle_file_chunk']",
+        "--pre-js src/wasm_bridge.js",
     ],
     deps = [
         ":allocator",
@@ -114,6 +118,7 @@ cc_binary(
         ":imgui_impl_wasm",
         ":imgui_impl_webgl",
         ":logging",
+        ":trace_parser",
         "@imgui",
     ],
 )

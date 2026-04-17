@@ -29,8 +29,16 @@
 - `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format.
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
+- `src/wasm_bridge.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
 - `src/main_wasm.cc`: Orchestrates the initialization and frame loop.
 - `src/logging`: Simple logging utility with WASM console integration.
+
+## Trace Parser Integration
+
+- **Streaming**: Trace files are read in chunks using the browser's `ReadableStream` API.
+- **WASM Bridge**: `wasm_bridge.js` handles the drag-and-drop events and feeds chunks to WASM.
+- **Responsiveness**: Parsing is performant and yields to the browser between chunks, keeping the UI responsive.
+- **WASM Exports**: `ztracing_malloc`, `ztracing_free`, and `ztracing_handle_file_chunk` are used for memory and data transfer.
 
 ## Memory Management
 

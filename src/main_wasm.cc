@@ -7,11 +7,18 @@
 #include "src/imgui_impl_wasm.h"
 #include "src/imgui_impl_webgl.h"
 #include "src/logging.h"
+#include "src/trace_parser.h"
 #include "third_party/imgui/imgui.h"
 
 static const char* CANVAS_SELECTOR = "#canvas";
 static ArrayList<unsigned char> g_font_data;
 static bool g_power_save_mode = true;
+
+static TraceParser g_trace_parser;
+static size_t g_trace_event_count = 0;
+static size_t g_trace_total_bytes = 0;
+static double g_trace_start_time = 0.0;
+static bool g_trace_parser_active = false;
 
 extern "C" {
 EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
@@ -19,6 +26,53 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
   array_list_clear(&g_font_data);
   array_list_append(&g_font_data, allocator_get_default(), font_data,
                     (size_t)font_size);
+  imgui_impl_wasm_request_update();
+}
+
+EMSCRIPTEN_KEEPALIVE void* ztracing_malloc(int size) {
+  return allocator_alloc(allocator_get_default(), (size_t)size);
+}
+
+EMSCRIPTEN_KEEPALIVE void ztracing_free(void* ptr, int size) {
+  allocator_free(allocator_get_default(), ptr, (size_t)size);
+}
+
+EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(const char* data, int size,
+                                                     bool is_eof) {
+  if (!g_trace_parser_active) {
+    trace_parser_init(&g_trace_parser, allocator_get_default());
+    g_trace_event_count = 0;
+    g_trace_total_bytes = 0;
+    g_trace_start_time = emscripten_get_now();
+    g_trace_parser_active = true;
+  }
+
+  if (size > 0) {
+    g_trace_total_bytes += (size_t)size;
+    trace_parser_feed(&g_trace_parser, data, (size_t)size, is_eof);
+  } else if (is_eof) {
+    // If we just got is_eof with no data, we still need to tell the parser.
+    trace_parser_feed(&g_trace_parser, nullptr, 0, true);
+  }
+
+  TraceEvent event;
+  while (trace_parser_next(&g_trace_parser, &event)) {
+    g_trace_event_count++;
+  }
+
+  if (is_eof) {
+    double duration_ms = emscripten_get_now() - g_trace_start_time;
+    double duration_s = duration_ms / 1000.0;
+    double speed_mb_s =
+        duration_s > 0.0
+            ? ((double)g_trace_total_bytes / (1024.0 * 1024.0)) / duration_s
+            : 0.0;
+    LOG_INFO("parsed %zu events in %.3f ms (%.2f mb/s)", g_trace_event_count,
+             duration_ms, speed_mb_s);
+    trace_parser_deinit(&g_trace_parser);
+    g_trace_parser_active = false;
+  }
+
   imgui_impl_wasm_request_update();
 }
 }
