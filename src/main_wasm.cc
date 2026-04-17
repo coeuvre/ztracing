@@ -2,22 +2,23 @@
 #include <emscripten.h>
 #include <emscripten/html5.h>
 
-#include <vector>
-
 #include "src/allocator.h"
+#include "src/array_list.h"
 #include "src/imgui_impl_wasm.h"
 #include "src/imgui_impl_webgl.h"
 #include "src/logging.h"
 #include "third_party/imgui/imgui.h"
 
 static const char* CANVAS_SELECTOR = "#canvas";
-static std::vector<unsigned char> g_font_data;
+static ArrayList<unsigned char> g_font_data;
 static bool g_power_save_mode = true;
 
 extern "C" {
 EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
                                                  int font_size) {
-  g_font_data.assign(font_data, font_data + font_size);
+  array_list_clear(&g_font_data);
+  array_list_append(&g_font_data, allocator_get_default(), font_data,
+                    (size_t)font_size);
   imgui_impl_wasm_request_update();
 }
 }
@@ -98,12 +99,12 @@ int main(int argc, char** argv) {
 
   LOG_DEBUG("ztracing initialized successfully.");
 
-  if (!g_font_data.empty()) {
+  if (g_font_data.size > 0) {
     float dpi_scale = (float)emscripten_get_device_pixel_ratio();
     io.Fonts->Clear();
     ImFontConfig font_cfg;
     font_cfg.FontDataOwnedByAtlas = false;
-    io.Fonts->AddFontFromMemoryTTF(g_font_data.data(), (int)g_font_data.size(),
+    io.Fonts->AddFontFromMemoryTTF(g_font_data.data, (int)g_font_data.size,
                                    16.0f * dpi_scale, &font_cfg);
     io.Fonts->Build();
     io.FontGlobalScale = 1.0f / dpi_scale;

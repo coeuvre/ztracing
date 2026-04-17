@@ -20,6 +20,12 @@ cc_library(
     hdrs = ["str.h"],
 )
 
+cc_library(
+    name = "array_list",
+    hdrs = ["array_list.h"],
+    deps = [":allocator"],
+)
+
 cc_test(
     name = "allocator_test",
     srcs = ["allocator_test.cc"],
@@ -34,6 +40,15 @@ cc_test(
     srcs = ["str_test.cc"],
     deps = [
         ":str",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "array_list_test",
+    srcs = ["array_list_test.cc"],
+    deps = [
+        ":array_list",
         "@googletest//:gtest_main",
     ],
 )
@@ -75,6 +90,7 @@ cc_binary(
     ],
     deps = [
         ":allocator",
+        ":array_list",
         ":imgui_impl_wasm",
         ":imgui_impl_webgl",
         ":logging",
