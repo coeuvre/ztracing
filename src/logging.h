@@ -2,43 +2,47 @@
 #define ZTRACING_SRC_LOGGING_H_
 
 enum LogLevel {
-  DEBUG,
-  INFO,
-  WARN,
-  ERROR,
+  LOG_LEVEL_DEBUG,
+  LOG_LEVEL_INFO,
+  LOG_LEVEL_WARN,
+  LOG_LEVEL_ERROR,
 };
 
-void Log(LogLevel level, const char* format, ...)
+void log_message(LogLevel level, const char* format, ...)
     __attribute__((format(printf, 2, 3)));
 
 #ifndef LOG_LEVEL
 #ifdef NDEBUG
-#define LOG_LEVEL INFO
+#define LOG_LEVEL LOG_LEVEL_INFO
 #else
-#define LOG_LEVEL DEBUG
+#define LOG_LEVEL LOG_LEVEL_DEBUG
 #endif
 #endif
 
-#if LOG_LEVEL <= DEBUG
-#define LOG_DEBUG(format, ...) Log(DEBUG, format __VA_OPT__(, ) __VA_ARGS__)
+#if LOG_LEVEL <= LOG_LEVEL_DEBUG
+#define LOG_DEBUG(format, ...) \
+  log_message(LOG_LEVEL_DEBUG, format __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define LOG_DEBUG(format, ...) ((void)0)
 #endif
 
-#if LOG_LEVEL <= INFO
-#define LOG_INFO(format, ...) Log(INFO, format __VA_OPT__(, ) __VA_ARGS__)
+#if LOG_LEVEL <= LOG_LEVEL_INFO
+#define LOG_INFO(format, ...) \
+  log_message(LOG_LEVEL_INFO, format __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define LOG_INFO(format, ...) ((void)0)
 #endif
 
-#if LOG_LEVEL <= WARN
-#define LOG_WARN(format, ...) Log(WARN, format __VA_OPT__(, ) __VA_ARGS__)
+#if LOG_LEVEL <= LOG_LEVEL_WARN
+#define LOG_WARN(format, ...) \
+  log_message(LOG_LEVEL_WARN, format __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define LOG_WARN(format, ...) ((void)0)
 #endif
 
-#if LOG_LEVEL <= ERROR
-#define LOG_ERROR(format, ...) Log(ERROR, format __VA_OPT__(, ) __VA_ARGS__)
+#if LOG_LEVEL <= LOG_LEVEL_ERROR
+#define LOG_ERROR(format, ...) \
+  log_message(LOG_LEVEL_ERROR, format __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define LOG_ERROR(format, ...) ((void)0)
 #endif

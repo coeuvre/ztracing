@@ -4,11 +4,11 @@
 #include "src/allocator.h"
 #include "third_party/imgui/imgui.h"
 
-bool ImGui_ImplWasm_Init(const char* canvas_selector, Allocator allocator);
-void ImGui_ImplWasm_Shutdown();
-void ImGui_ImplWasm_NewFrame();
+bool imgui_impl_wasm_init(const char* canvas_selector, Allocator allocator);
+void imgui_impl_wasm_shutdown();
+void imgui_impl_wasm_new_frame();
 
-void ImGui_ImplWasm_RequestUpdate();
-bool ImGui_ImplWasm_NeedUpdate();
+void imgui_impl_wasm_request_update();
+bool imgui_impl_wasm_need_update();
 
 #endif  // ZTRACING_SRC_IMGUI_IMPL_WASM_H_

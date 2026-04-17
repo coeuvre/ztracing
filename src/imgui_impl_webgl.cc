@@ -17,15 +17,15 @@ struct BackendData {
   GLint attrib_location_proj_mtx;
 };
 
-static BackendData* GetBackendData() {
+static BackendData* get_backend_data() {
   return ImGui::GetCurrentContext()
              ? (BackendData*)ImGui::GetIO().BackendRendererUserData
              : nullptr;
 }
 
-static void SetupRenderState(ImDrawData* draw_data, int fb_width, int fb_height,
-                             GLuint vertex_array_object) {
-  BackendData* bd = GetBackendData();
+static void setup_render_state(ImDrawData* draw_data, int fb_width,
+                               int fb_height, GLuint vertex_array_object) {
+  BackendData* bd = get_backend_data();
 
   glEnable(GL_BLEND);
   glBlendEquation(GL_FUNC_ADD);
@@ -64,7 +64,7 @@ static void SetupRenderState(ImDrawData* draw_data, int fb_width, int fb_height,
                         (GLvoid*)offsetof(ImDrawVert, col));
 }
 
-void ImGui_ImplWebGL_RenderDrawData(ImDrawData* draw_data) {
+void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
   int fb_width =
       (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
   int fb_height =
@@ -73,7 +73,7 @@ void ImGui_ImplWebGL_RenderDrawData(ImDrawData* draw_data) {
 
   GLuint vao = 0;
   glGenVertexArrays(1, &vao);
-  SetupRenderState(draw_data, fb_width, fb_height, vao);
+  setup_render_state(draw_data, fb_width, fb_height, vao);
 
   ImVec2 clip_off = draw_data->DisplayPos;
   ImVec2 clip_scale = draw_data->FramebufferScale;
@@ -112,9 +112,10 @@ void ImGui_ImplWebGL_RenderDrawData(ImDrawData* draw_data) {
   glDeleteVertexArrays(1, &vao);
 }
 
-bool ImGui_ImplWebGL_Init(Allocator allocator) {
+bool imgui_impl_webgl_init(Allocator allocator) {
   ImGuiIO& io = ImGui::GetIO();
-  BackendData* bd = (BackendData*)Alloc(allocator, sizeof(BackendData));
+  BackendData* bd =
+      (BackendData*)allocator_alloc(allocator, sizeof(BackendData));
   bd->allocator = allocator;
   io.BackendRendererUserData = (void*)bd;
   io.BackendRendererName = "imgui_impl_webgl";
@@ -191,14 +192,14 @@ bool ImGui_ImplWebGL_Init(Allocator allocator) {
   glGenBuffers(1, &bd->vbo);
   glGenBuffers(1, &bd->ebo);
 
-  if (!ImGui_ImplWebGL_CreateFontsTexture()) return false;
+  if (!imgui_impl_webgl_create_fonts_texture()) return false;
 
   return true;
 }
 
-bool ImGui_ImplWebGL_CreateFontsTexture() {
+bool imgui_impl_webgl_create_fonts_texture() {
   ImGuiIO& io = ImGui::GetIO();
-  BackendData* bd = GetBackendData();
+  BackendData* bd = get_backend_data();
 
   unsigned char* pixels;
   int width, height;
@@ -215,8 +216,8 @@ bool ImGui_ImplWebGL_CreateFontsTexture() {
   return true;
 }
 
-void ImGui_ImplWebGL_DestroyFontsTexture() {
-  BackendData* bd = GetBackendData();
+void imgui_impl_webgl_destroy_fonts_texture() {
+  BackendData* bd = get_backend_data();
   if (bd->font_texture) {
     glDeleteTextures(1, &bd->font_texture);
     ImGui::GetIO().Fonts->SetTexID(0);
@@ -224,15 +225,15 @@ void ImGui_ImplWebGL_DestroyFontsTexture() {
   }
 }
 
-void ImGui_ImplWebGL_Shutdown() {
-  BackendData* bd = GetBackendData();
+void imgui_impl_webgl_shutdown() {
+  BackendData* bd = get_backend_data();
   glDeleteBuffers(1, &bd->vbo);
   glDeleteBuffers(1, &bd->ebo);
   glDeleteProgram(bd->shader_program);
-  ImGui_ImplWebGL_DestroyFontsTexture();
+  imgui_impl_webgl_destroy_fonts_texture();
   Allocator allocator = bd->allocator;
-  Free(allocator, bd, sizeof(BackendData));
+  allocator_free(allocator, bd, sizeof(BackendData));
   ImGui::GetIO().BackendRendererUserData = nullptr;
 }
 
-void ImGui_ImplWebGL_NewFrame() {}
+void imgui_impl_webgl_new_frame() {}

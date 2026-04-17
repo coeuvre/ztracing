@@ -48,7 +48,7 @@ cc_binary(
         "-sWASM=1",
         "-sINVOKE_RUN=0",
         "-sEXPORTED_RUNTIME_METHODS=['ccall','callMain']",
-        "-sEXPORTED_FUNCTIONS=['_main','_SetFontData']",
+        "-sEXPORTED_FUNCTIONS=['_main','_ztracing_set_font_data']",
     ],
     deps = [
         ":allocator",

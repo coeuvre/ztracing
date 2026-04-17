@@ -1,7 +1,6 @@
 #include <GLES3/gl3.h>
 #include <emscripten.h>
 #include <emscripten/html5.h>
-#include <stdio.h>
 
 #include <vector>
 
@@ -11,29 +10,30 @@
 #include "src/logging.h"
 #include "third_party/imgui/imgui.h"
 
-static const char* kCanvasSelector = "#canvas";
+static const char* CANVAS_SELECTOR = "#canvas";
 static std::vector<unsigned char> g_font_data;
 static bool g_power_save_mode = true;
 
 extern "C" {
-EMSCRIPTEN_KEEPALIVE void SetFontData(unsigned char* font_data, int font_size) {
+EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
+                                                 int font_size) {
   g_font_data.assign(font_data, font_data + font_size);
-  ImGui_ImplWasm_RequestUpdate();
+  imgui_impl_wasm_request_update();
 }
 }
 
-void MainLoop() {
-  if (g_power_save_mode && !ImGui_ImplWasm_NeedUpdate()) {
+void main_loop() {
+  if (g_power_save_mode && !imgui_impl_wasm_need_update()) {
     return;
   }
 
-  ImGui_ImplWebGL_NewFrame();
-  ImGui_ImplWasm_NewFrame();
+  imgui_impl_webgl_new_frame();
+  imgui_impl_wasm_new_frame();
   ImGui::NewFrame();
 
   ImGuiIO& io = ImGui::GetIO();
   emscripten_set_canvas_element_size(
-      kCanvasSelector, (int)(io.DisplaySize.x * io.DisplayFramebufferScale.x),
+      CANVAS_SELECTOR, (int)(io.DisplaySize.x * io.DisplayFramebufferScale.x),
       (int)(io.DisplaySize.y * io.DisplayFramebufferScale.y));
 
   // UI code
@@ -64,7 +64,7 @@ void MainLoop() {
   glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
   glClear(GL_COLOR_BUFFER_BIT);
 
-  ImGui_ImplWebGL_RenderDrawData(ImGui::GetDrawData());
+  imgui_impl_webgl_render_draw_data(ImGui::GetDrawData());
 }
 
 int main(int argc, char** argv) {
@@ -80,21 +80,21 @@ int main(int argc, char** argv) {
   attrs.majorVersion = 2;
   attrs.minorVersion = 0;
   EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx =
-      emscripten_webgl_create_context(kCanvasSelector, &attrs);
+      emscripten_webgl_create_context(CANVAS_SELECTOR, &attrs);
   if (ctx <= 0) {
     LOG_ERROR("failed to create webgl context for selector '%s' (error: %d)",
-              kCanvasSelector, (int)ctx);
+              CANVAS_SELECTOR, (int)ctx);
     return 1;
   }
   emscripten_webgl_make_context_current(ctx);
 
   double width, height;
-  emscripten_get_element_css_size(kCanvasSelector, &width, &height);
+  emscripten_get_element_css_size(CANVAS_SELECTOR, &width, &height);
 
   ImGui::StyleColorsDark();
-  Allocator allocator = DefaultAllocator();
-  ImGui_ImplWasm_Init(kCanvasSelector, allocator);
-  ImGui_ImplWebGL_Init(allocator);
+  Allocator allocator = allocator_get_default();
+  imgui_impl_wasm_init(CANVAS_SELECTOR, allocator);
+  imgui_impl_webgl_init(allocator);
 
   LOG_DEBUG("ztracing initialized successfully.");
 
@@ -107,11 +107,11 @@ int main(int argc, char** argv) {
                                    16.0f * dpi_scale, &font_cfg);
     io.Fonts->Build();
     io.FontGlobalScale = 1.0f / dpi_scale;
-    ImGui_ImplWebGL_DestroyFontsTexture();
-    ImGui_ImplWebGL_CreateFontsTexture();
+    imgui_impl_webgl_destroy_fonts_texture();
+    imgui_impl_webgl_create_fonts_texture();
   }
 
-  emscripten_set_main_loop(MainLoop, 0, 1);
+  emscripten_set_main_loop(main_loop, 0, 1);
 
   return 0;
 }

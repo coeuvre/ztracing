@@ -4,11 +4,11 @@
 #include "src/allocator.h"
 #include "third_party/imgui/imgui.h"
 
-bool ImGui_ImplWebGL_Init(Allocator allocator);
-void ImGui_ImplWebGL_Shutdown();
-void ImGui_ImplWebGL_NewFrame();
-void ImGui_ImplWebGL_RenderDrawData(ImDrawData* draw_data);
-bool ImGui_ImplWebGL_CreateFontsTexture();
-void ImGui_ImplWebGL_DestroyFontsTexture();
+bool imgui_impl_webgl_init(Allocator allocator);
+void imgui_impl_webgl_shutdown();
+void imgui_impl_webgl_new_frame();
+void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data);
+bool imgui_impl_webgl_create_fonts_texture();
+void imgui_impl_webgl_destroy_fonts_texture();
 
 #endif  // ZTRACING_SRC_IMGUI_IMPL_WEBGL_H_

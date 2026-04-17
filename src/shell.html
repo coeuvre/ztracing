@@ -20,7 +20,7 @@
           if (response.ok) {
             const buffer = await response.arrayBuffer();
             const fontData = new Uint8Array(buffer);
-            Module.ccall('SetFontData', null, ['array', 'number'], [fontData, fontData.length]);
+            Module.ccall('ztracing_set_font_data', null, ['array', 'number'], [fontData, fontData.length]);
           } else {
             console.warn(`Font fetch failed: ${response.status} ${response.statusText}`);
           }

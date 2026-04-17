@@ -1,10 +1,10 @@
-#include "src/logging.h"
-
 #include <emscripten/console.h>
 #include <stdarg.h>
 #include <stdio.h>
 
-void Log(LogLevel level, const char* format, ...) {
+#include "src/logging.h"
+
+void log_message(LogLevel level, const char* format, ...) {
   char buffer[1024];
   va_list args;
   va_start(args, format);
@@ -12,16 +12,16 @@ void Log(LogLevel level, const char* format, ...) {
   va_end(args);
 
   switch (level) {
-    case DEBUG:
+    case LOG_LEVEL_DEBUG:
       emscripten_console_log(buffer);
       break;
-    case INFO:
+    case LOG_LEVEL_INFO:
       emscripten_console_log(buffer);
       break;
-    case WARN:
+    case LOG_LEVEL_WARN:
       emscripten_console_warn(buffer);
       break;
-    case ERROR:
+    case LOG_LEVEL_ERROR:
       emscripten_console_error(buffer);
       break;
   }

@@ -13,59 +13,59 @@ struct BackendData {
   int frames_to_render;
 };
 
-static BackendData* GetBackendData() {
+static BackendData* get_backend_data() {
   return ImGui::GetCurrentContext()
              ? (BackendData*)ImGui::GetIO().BackendPlatformUserData
              : nullptr;
 }
 
-void ImGui_ImplWasm_RequestUpdate() {
-  if (BackendData* bd = GetBackendData()) {
+void imgui_impl_wasm_request_update() {
+  if (BackendData* bd = get_backend_data()) {
     bd->frames_to_render = 5;
   }
 }
 
-bool ImGui_ImplWasm_NeedUpdate() {
-  if (BackendData* bd = GetBackendData()) {
+bool imgui_impl_wasm_need_update() {
+  if (BackendData* bd = get_backend_data()) {
     return bd->frames_to_render > 0;
   }
   return true;
 }
 
-static EM_BOOL OnMouseMove(int event_type,
-                           const EmscriptenMouseEvent* mouse_event,
-                           void* user_data) {
+static EM_BOOL on_mouse_move(int event_type,
+                             const EmscriptenMouseEvent* mouse_event,
+                             void* user_data) {
   (void)event_type;
   (void)user_data;
   ImGuiIO& io = ImGui::GetIO();
   io.AddMousePosEvent((float)mouse_event->targetX, (float)mouse_event->targetY);
-  ImGui_ImplWasm_RequestUpdate();
+  imgui_impl_wasm_request_update();
   return EM_TRUE;
 }
 
-static EM_BOOL OnMouseButton(int event_type,
-                             const EmscriptenMouseEvent* mouse_event,
-                             void* user_data) {
+static EM_BOOL on_mouse_button(int event_type,
+                               const EmscriptenMouseEvent* mouse_event,
+                               void* user_data) {
   (void)user_data;
   ImGuiIO& io = ImGui::GetIO();
   io.AddMouseButtonEvent(mouse_event->button,
                          event_type == EMSCRIPTEN_EVENT_MOUSEDOWN);
-  ImGui_ImplWasm_RequestUpdate();
+  imgui_impl_wasm_request_update();
   return EM_TRUE;
 }
 
-static EM_BOOL OnWheel(int event_type, const EmscriptenWheelEvent* wheel_event,
-                       void* user_data) {
+static EM_BOOL on_wheel(int event_type, const EmscriptenWheelEvent* wheel_event,
+                        void* user_data) {
   (void)event_type;
   (void)user_data;
   ImGuiIO& io = ImGui::GetIO();
   io.AddMouseWheelEvent((float)wheel_event->deltaX * -0.01f,
                         (float)wheel_event->deltaY * -0.01f);
-  ImGui_ImplWasm_RequestUpdate();
+  imgui_impl_wasm_request_update();
   return EM_TRUE;
 }
 
-static ImGuiKey StringToImGuiKey(const char* code) {
+static ImGuiKey string_to_imgui_key(const char* code) {
   if (strcmp(code, "ArrowLeft") == 0) return ImGuiKey_LeftArrow;
   if (strcmp(code, "ArrowRight") == 0) return ImGuiKey_RightArrow;
   if (strcmp(code, "ArrowUp") == 0) return ImGuiKey_UpArrow;
@@ -98,11 +98,11 @@ static ImGuiKey StringToImGuiKey(const char* code) {
   return ImGuiKey_None;
 }
 
-static EM_BOOL OnKey(int event_type, const EmscriptenKeyboardEvent* key_event,
-                     void* user_data) {
+static EM_BOOL on_key(int event_type, const EmscriptenKeyboardEvent* key_event,
+                      void* user_data) {
   (void)user_data;
   ImGuiIO& io = ImGui::GetIO();
-  ImGuiKey key = StringToImGuiKey(key_event->code);
+  ImGuiKey key = string_to_imgui_key(key_event->code);
   if (key != ImGuiKey_None) {
     io.AddKeyEvent(key, event_type == EMSCRIPTEN_EVENT_KEYDOWN);
     io.AddKeyEvent(ImGuiMod_Ctrl, key_event->ctrlKey);
@@ -115,29 +115,30 @@ static EM_BOOL OnKey(int event_type, const EmscriptenKeyboardEvent* key_event,
     io.AddInputCharacter(key_event->key[0]);
   }
 
-  ImGui_ImplWasm_RequestUpdate();
+  imgui_impl_wasm_request_update();
 
   // Prevent browser from handling keys like Tab or Backspace when ImGui wants
   // them
   return io.WantCaptureKeyboard ? EM_TRUE : EM_FALSE;
 }
 
-static EM_BOOL OnResize(int event_type, const EmscriptenUiEvent* ui_event,
-                        void* user_data) {
+static EM_BOOL on_resize(int event_type, const EmscriptenUiEvent* ui_event,
+                         void* user_data) {
   (void)event_type;
   (void)ui_event;
   (void)user_data;
-  ImGui_ImplWasm_RequestUpdate();
+  imgui_impl_wasm_request_update();
   return EM_TRUE;
 }
 
-bool ImGui_ImplWasm_Init(const char* canvas_selector, Allocator allocator) {
+bool imgui_impl_wasm_init(const char* canvas_selector, Allocator allocator) {
   ImGuiIO& io = ImGui::GetIO();
 
-  BackendData* bd = (BackendData*)Alloc(allocator, sizeof(BackendData));
+  BackendData* bd =
+      (BackendData*)allocator_alloc(allocator, sizeof(BackendData));
   bd->allocator = allocator;
   bd->canvas_selector =
-      (char*)Alloc(bd->allocator, strlen(canvas_selector) + 1);
+      (char*)allocator_alloc(bd->allocator, strlen(canvas_selector) + 1);
   strcpy(bd->canvas_selector, canvas_selector);
   bd->last_time = 0.0;
   bd->frames_to_render = 20;
@@ -147,34 +148,35 @@ bool ImGui_ImplWasm_Init(const char* canvas_selector, Allocator allocator) {
   io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;
 
   emscripten_set_mousemove_callback(canvas_selector, nullptr, EM_FALSE,
-                                    OnMouseMove);
+                                    on_mouse_move);
   emscripten_set_mousedown_callback(canvas_selector, nullptr, EM_FALSE,
-                                    OnMouseButton);
+                                    on_mouse_button);
   emscripten_set_mouseup_callback(canvas_selector, nullptr, EM_FALSE,
-                                  OnMouseButton);
-  emscripten_set_wheel_callback(canvas_selector, nullptr, EM_FALSE, OnWheel);
+                                  on_mouse_button);
+  emscripten_set_wheel_callback(canvas_selector, nullptr, EM_FALSE, on_wheel);
 
   emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
-                                  EM_FALSE, OnKey);
+                                  EM_FALSE, on_key);
   emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
-                                EM_FALSE, OnKey);
+                                EM_FALSE, on_key);
 
   emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
-                                 EM_FALSE, OnResize);
+                                 EM_FALSE, on_resize);
 
   return true;
 }
 
-void ImGui_ImplWasm_Shutdown() {
-  BackendData* bd = GetBackendData();
+void imgui_impl_wasm_shutdown() {
+  BackendData* bd = get_backend_data();
   Allocator allocator = bd->allocator;
-  Free(allocator, bd->canvas_selector, strlen(bd->canvas_selector) + 1);
-  Free(allocator, bd, sizeof(BackendData));
+  allocator_free(allocator, bd->canvas_selector,
+                 strlen(bd->canvas_selector) + 1);
+  allocator_free(allocator, bd, sizeof(BackendData));
   ImGui::GetIO().BackendPlatformUserData = nullptr;
 }
 
-void ImGui_ImplWasm_NewFrame() {
-  BackendData* bd = GetBackendData();
+void imgui_impl_wasm_new_frame() {
+  BackendData* bd = get_backend_data();
   ImGuiIO& io = ImGui::GetIO();
 
   if (bd->frames_to_render > 0) {
