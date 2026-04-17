@@ -24,6 +24,7 @@
 ## Architecture
 
 - `src/allocator`: Custom C-style allocator with `allocator_alloc`, `allocator_realloc`, and `allocator_free` helpers.
+- `src/str`: Basic `Str` struct (buffer and length) for string views.
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
 - `src/main_wasm.cc`: Orchestrates the initialization and frame loop.
@@ -43,6 +44,11 @@
     - `imgui_impl_wasm_need_update()`: Returns true if frames are pending.
 - **Startup**: Renders first 20 frames to ensure layout stability.
 - **Toggle**: Controlled via `g_power_save_mode` in `main_wasm.cc` (enabled by default).
+
+## Version Control
+
+- **System**: Jujutsu (`jj`).
+- **Flags**: Use `--no-pager` for all `jj` commands to avoid blocking on stdin.
 
 ## Logging
 

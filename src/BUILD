@@ -15,11 +15,25 @@ cc_library(
     hdrs = ["allocator.h"],
 )
 
+cc_library(
+    name = "str",
+    hdrs = ["str.h"],
+)
+
 cc_test(
     name = "allocator_test",
     srcs = ["allocator_test.cc"],
     deps = [
         ":allocator",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "str_test",
+    srcs = ["str_test.cc"],
+    deps = [
+        ":str",
         "@googletest//:gtest_main",
     ],
 )
