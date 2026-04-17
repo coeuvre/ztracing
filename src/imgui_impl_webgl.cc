@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "src/logging.h"
+
 struct BackendData {
   GLuint shader_program;
   GLuint vbo, ebo;
@@ -145,7 +147,7 @@ bool ImGui_ImplWebGL_Init() {
   if (status == GL_FALSE) {
     char buffer[512];
     glGetShaderInfoLog(vert_handle, 512, nullptr, buffer);
-    printf("Vertex shader compilation failed: %s\n", buffer);
+    LOG_ERROR("vertex shader compilation failed: %s", buffer);
     return false;
   }
 
@@ -156,7 +158,7 @@ bool ImGui_ImplWebGL_Init() {
   if (status == GL_FALSE) {
     char buffer[512];
     glGetShaderInfoLog(frag_handle, 512, nullptr, buffer);
-    printf("Fragment shader compilation failed: %s\n", buffer);
+    LOG_ERROR("fragment shader compilation failed: %s", buffer);
     return false;
   }
 
@@ -168,7 +170,7 @@ bool ImGui_ImplWebGL_Init() {
   if (status == GL_FALSE) {
     char buffer[512];
     glGetProgramInfoLog(bd->shader_program, 512, nullptr, buffer);
-    printf("Shader program linking failed: %s\n", buffer);
+    LOG_ERROR("shader program linking failed: %s", buffer);
     return false;
   }
 

@@ -5,9 +5,10 @@
 
 #include <vector>
 
-#include "third_party/imgui/imgui.h"
 #include "src/imgui_impl_wasm.h"
 #include "src/imgui_impl_webgl.h"
+#include "src/logging.h"
+#include "third_party/imgui/imgui.h"
 
 static const char* kCanvasSelector = "#canvas";
 static std::vector<unsigned char> g_font_data;
@@ -71,19 +72,20 @@ int main(int argc, char** argv) {
   EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx =
       emscripten_webgl_create_context(kCanvasSelector, &attrs);
   if (ctx <= 0) {
-    printf("Failed to create WebGL context for selector '%s' (error: %d)\n",
-           kCanvasSelector, (int)ctx);
+    LOG_ERROR("failed to create webgl context for selector '%s' (error: %d)",
+              kCanvasSelector, (int)ctx);
     return 1;
   }
   emscripten_webgl_make_context_current(ctx);
 
   double width, height;
   emscripten_get_element_css_size(kCanvasSelector, &width, &height);
-  printf("Canvas size: %.1f x %.1f\n", width, height);
 
   ImGui::StyleColorsDark();
   ImGui_ImplWasm_Init(kCanvasSelector);
   ImGui_ImplWebGL_Init();
+
+  LOG_DEBUG("ztracing initialized successfully.");
 
   if (!g_font_data.empty()) {
     float dpi_scale = (float)emscripten_get_device_pixel_ratio();
