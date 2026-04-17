@@ -26,6 +26,7 @@
 - `src/allocator`: Custom C-style allocator with `allocator_alloc`, `allocator_realloc`, and `allocator_free` helpers.
 - `src/str`: Basic `Str` struct (buffer and length) for string views.
 - `src/array_list`: Generic `ArrayList<T>` (vector) with explicit allocation and ZII.
+- `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format.
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
 - `src/main_wasm.cc`: Orchestrates the initialization and frame loop.

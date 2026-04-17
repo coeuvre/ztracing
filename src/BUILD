@@ -54,6 +54,26 @@ cc_test(
 )
 
 cc_library(
+    name = "trace_parser",
+    srcs = ["trace_parser.cc"],
+    hdrs = ["trace_parser.h"],
+    deps = [
+        ":allocator",
+        ":array_list",
+        ":str",
+    ],
+)
+
+cc_test(
+    name = "trace_parser_test",
+    srcs = ["trace_parser_test.cc"],
+    deps = [
+        ":trace_parser",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "imgui_impl_wasm",
     srcs = ["imgui_impl_wasm.cc"],
     hdrs = ["imgui_impl_wasm.h"],
