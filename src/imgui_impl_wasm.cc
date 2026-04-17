@@ -7,6 +7,7 @@
 struct BackendData {
   char* canvas_selector;
   double last_time;
+  int frames_to_render;
 };
 
 static BackendData* GetBackendData() {
@@ -15,11 +16,25 @@ static BackendData* GetBackendData() {
              : nullptr;
 }
 
+void ImGui_ImplWasm_RequestUpdate() {
+  if (BackendData* bd = GetBackendData()) {
+    bd->frames_to_render = 5;
+  }
+}
+
+bool ImGui_ImplWasm_NeedUpdate() {
+  if (BackendData* bd = GetBackendData()) {
+    return bd->frames_to_render > 0;
+  }
+  return true;
+}
+
 static EM_BOOL OnMouseMove(int event_type,
                            const EmscriptenMouseEvent* mouse_event,
                            void* user_data) {
   ImGuiIO& io = ImGui::GetIO();
   io.AddMousePosEvent((float)mouse_event->targetX, (float)mouse_event->targetY);
+  ImGui_ImplWasm_RequestUpdate();
   return EM_TRUE;
 }
 
@@ -29,6 +44,7 @@ static EM_BOOL OnMouseButton(int event_type,
   ImGuiIO& io = ImGui::GetIO();
   io.AddMouseButtonEvent(mouse_event->button,
                          event_type == EMSCRIPTEN_EVENT_MOUSEDOWN);
+  ImGui_ImplWasm_RequestUpdate();
   return EM_TRUE;
 }
 
@@ -37,6 +53,7 @@ static EM_BOOL OnWheel(int event_type, const EmscriptenWheelEvent* wheel_event,
   ImGuiIO& io = ImGui::GetIO();
   io.AddMouseWheelEvent((float)wheel_event->deltaX * -0.01f,
                         (float)wheel_event->deltaY * -0.01f);
+  ImGui_ImplWasm_RequestUpdate();
   return EM_TRUE;
 }
 
@@ -89,9 +106,17 @@ static EM_BOOL OnKey(int event_type, const EmscriptenKeyboardEvent* key_event,
     io.AddInputCharacter(key_event->key[0]);
   }
 
+  ImGui_ImplWasm_RequestUpdate();
+
   // Prevent browser from handling keys like Tab or Backspace when ImGui wants
   // them
   return io.WantCaptureKeyboard ? EM_TRUE : EM_FALSE;
+}
+
+static EM_BOOL OnResize(int event_type, const EmscriptenUiEvent* ui_event,
+                        void* user_data) {
+  ImGui_ImplWasm_RequestUpdate();
+  return EM_TRUE;
 }
 
 bool ImGui_ImplWasm_Init(const char* canvas_selector) {
@@ -100,6 +125,7 @@ bool ImGui_ImplWasm_Init(const char* canvas_selector) {
   BackendData* bd = (BackendData*)malloc(sizeof(BackendData));
   bd->canvas_selector = strdup(canvas_selector);
   bd->last_time = 0.0;
+  bd->frames_to_render = 20;
 
   io.BackendPlatformUserData = (void*)bd;
   io.BackendPlatformName = "imgui_impl_wasm";
@@ -118,6 +144,9 @@ bool ImGui_ImplWasm_Init(const char* canvas_selector) {
   emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
                                 EM_FALSE, OnKey);
 
+  emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+                                 EM_FALSE, OnResize);
+
   return true;
 }
 
@@ -131,6 +160,10 @@ void ImGui_ImplWasm_Shutdown() {
 void ImGui_ImplWasm_NewFrame() {
   BackendData* bd = GetBackendData();
   ImGuiIO& io = ImGui::GetIO();
+
+  if (bd->frames_to_render > 0) {
+    bd->frames_to_render--;
+  }
 
   double current_time = emscripten_get_now() / 1000.0;
   io.DeltaTime = bd->last_time > 0.0 ? (float)(current_time - bd->last_time)

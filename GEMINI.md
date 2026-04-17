@@ -25,6 +25,15 @@
 - `src/main_wasm.cc`: Orchestrates the initialization and frame loop.
 - `src/logging`: Simple logging utility with WASM console integration.
 
+## Power-Save Mode
+
+- **Description**: Redraws the UI only when events (input, resize, font updates) occur.
+- **Implementation**:
+    - `ImGui_ImplWasm_RequestUpdate()`: Triggers 5 frames of rendering.
+    - `ImGui_ImplWasm_NeedUpdate()`: Returns true if frames are pending.
+- **Startup**: Renders first 20 frames to ensure layout stability.
+- **Toggle**: Controlled via `g_power_save_mode` in `main_wasm.cc` (enabled by default).
+
 ## Logging
 
 - **Macros**: `LOG_DEBUG`, `LOG_INFO`, `LOG_WARN`, `LOG_ERROR`.

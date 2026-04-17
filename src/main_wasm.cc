@@ -12,14 +12,20 @@
 
 static const char* kCanvasSelector = "#canvas";
 static std::vector<unsigned char> g_font_data;
+static bool g_power_save_mode = true;
 
 extern "C" {
 EMSCRIPTEN_KEEPALIVE void SetFontData(unsigned char* font_data, int font_size) {
   g_font_data.assign(font_data, font_data + font_size);
+  ImGui_ImplWasm_RequestUpdate();
 }
 }
 
 void MainLoop() {
+  if (g_power_save_mode && !ImGui_ImplWasm_NeedUpdate()) {
+    return;
+  }
+
   ImGui_ImplWebGL_NewFrame();
   ImGui_ImplWasm_NewFrame();
   ImGui::NewFrame();
@@ -33,11 +39,12 @@ void MainLoop() {
   {
     static float f = 0.0f;
     static int counter = 0;
-    static bool show_demo_window = true;
+    static bool show_demo_window = false;
 
     if (show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
 
     ImGui::Begin("ztracing");
+    ImGui::Checkbox("Power-save Mode", &g_power_save_mode);
     ImGui::Checkbox("Show Demo Window", &show_demo_window);
     ImGui::Separator();
     ImGui::Text("Welcome to the Chrome Tracing Replacement.");
