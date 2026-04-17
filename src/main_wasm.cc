@@ -110,6 +110,15 @@ void main_loop() {
     ImGui::Text("counter = %d", counter);
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
                 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+
+    if (g_trace_parser_active) {
+      ImGui::Separator();
+      ImGui::Text("Loading trace...");
+      ImGui::Text("Parsed %zu events", g_trace_event_count);
+      ImGui::Text("%.2f MB loaded",
+                  (double)g_trace_total_bytes / (1024.0 * 1024.0));
+    }
+
     ImGui::End();
   }
 

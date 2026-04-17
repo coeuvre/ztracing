@@ -17,6 +17,7 @@
     const stream = file.stream();
     const reader = stream.getReader();
 
+    let lastYieldTime = performance.now();
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -27,6 +28,15 @@
         Module.HEAPU8.set(value, ptr);
         Module._ztracing_handle_file_chunk(ptr, size, false);
         Module._ztracing_free(ptr, size);
+
+        const now = performance.now();
+        if (now - lastYieldTime > 100) {
+          // Yield to the browser's event loop every 100ms. This prevents the
+          // async loop from starving the main thread, ensuring that
+          // requestAnimationFrame and UI rendering can still fire.
+          await new Promise(resolve => setTimeout(resolve, 0));
+          lastYieldTime = performance.now();
+        }
       }
 
       // Signal EOF

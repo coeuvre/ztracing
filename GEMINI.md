@@ -37,7 +37,8 @@
 
 - **Streaming**: Trace files are read in chunks using the browser's `ReadableStream` API.
 - **WASM Bridge**: `wasm_bridge.js` handles the drag-and-drop events and feeds chunks to WASM.
-- **Responsiveness**: Parsing is performant and yields to the browser between chunks, keeping the UI responsive.
+- **Responsiveness**: Parsing yields to the browser's event loop every 100ms during loading (via `setTimeout(0)` in JS). This prevents the microtask-based `ReadableStream` loop from starving the main thread, ensuring `requestAnimationFrame` can fire and keep the UI responsive.
+- **Progress Feedback**: `main_wasm.cc` displays live parsing statistics (event count and MB loaded) while `g_trace_parser_active` is true.
 - **WASM Exports**: `ztracing_malloc`, `ztracing_free`, and `ztracing_handle_file_chunk` are used for memory and data transfer.
 
 ## Memory Management
