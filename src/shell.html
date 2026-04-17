@@ -11,6 +11,33 @@
 </head>
 <body>
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    <script>
+      async function loadFont() {
+        try {
+          // Noto Sans TTF URL extracted from Google Fonts CSS API.
+          const fontUrl = 'https://fonts.gstatic.com/s/notosans/v42/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyD9A-9a6Vc.ttf';
+          const response = await fetch(fontUrl);
+          if (response.ok) {
+            const buffer = await response.arrayBuffer();
+            const fontData = new Uint8Array(buffer);
+            Module.ccall('SetFontData', null, ['array', 'number'], [fontData, fontData.length]);
+          } else {
+            console.warn(`Font fetch failed: ${response.status} ${response.statusText}`);
+          }
+        } catch (e) {
+          console.error('Font loading error:', e);
+        }
+      }
+
+      async function start() {
+        await loadFont();
+        Module.callMain();
+      }
+
+      var Module = {
+        onRuntimeInitialized: start
+      };
+    </script>
     {{{ SCRIPT }}}
 </body>
 </html>

@@ -30,6 +30,9 @@ cc_binary(
         "-sUSE_WEBGL2=1",
         "-sFULL_ES3=1",
         "-sWASM=1",
+        "-sINVOKE_RUN=0",
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','callMain']",
+        "-sEXPORTED_FUNCTIONS=['_main','_SetFontData']",
     ],
     deps = [
         ":imgui_impl_wasm",

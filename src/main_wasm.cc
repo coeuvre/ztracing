@@ -3,11 +3,20 @@
 #include <emscripten/html5.h>
 #include <stdio.h>
 
+#include <vector>
+
 #include "third_party/imgui/imgui.h"
 #include "src/imgui_impl_wasm.h"
 #include "src/imgui_impl_webgl.h"
 
 static const char* kCanvasSelector = "#canvas";
+static std::vector<unsigned char> g_font_data;
+
+extern "C" {
+EMSCRIPTEN_KEEPALIVE void SetFontData(unsigned char* font_data, int font_size) {
+  g_font_data.assign(font_data, font_data + font_size);
+}
+}
 
 void MainLoop() {
   ImGui_ImplWebGL_NewFrame();
@@ -55,8 +64,6 @@ int main(int argc, char** argv) {
   ImGuiIO& io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-  ImGui::StyleColorsDark();
-
   EmscriptenWebGLContextAttributes attrs;
   emscripten_webgl_init_context_attributes(&attrs);
   attrs.majorVersion = 2;
@@ -74,8 +81,22 @@ int main(int argc, char** argv) {
   emscripten_get_element_css_size(kCanvasSelector, &width, &height);
   printf("Canvas size: %.1f x %.1f\n", width, height);
 
+  ImGui::StyleColorsDark();
   ImGui_ImplWasm_Init(kCanvasSelector);
   ImGui_ImplWebGL_Init();
+
+  if (!g_font_data.empty()) {
+    float dpi_scale = (float)emscripten_get_device_pixel_ratio();
+    io.Fonts->Clear();
+    ImFontConfig font_cfg;
+    font_cfg.FontDataOwnedByAtlas = false;
+    io.Fonts->AddFontFromMemoryTTF(g_font_data.data(), (int)g_font_data.size(),
+                                   16.0f * dpi_scale, &font_cfg);
+    io.Fonts->Build();
+    io.FontGlobalScale = 1.0f / dpi_scale;
+    ImGui_ImplWebGL_DestroyFontsTexture();
+    ImGui_ImplWebGL_CreateFontsTexture();
+  }
 
   emscripten_set_main_loop(MainLoop, 0, 1);
 

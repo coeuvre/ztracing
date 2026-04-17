@@ -181,9 +181,19 @@ bool ImGui_ImplWebGL_Init() {
   glGenBuffers(1, &bd->vbo);
   glGenBuffers(1, &bd->ebo);
 
+  if (!ImGui_ImplWebGL_CreateFontsTexture()) return false;
+
+  return true;
+}
+
+bool ImGui_ImplWebGL_CreateFontsTexture() {
+  ImGuiIO& io = ImGui::GetIO();
+  BackendData* bd = GetBackendData();
+
   unsigned char* pixels;
   int width, height;
   io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+
   glGenTextures(1, &bd->font_texture);
   glBindTexture(GL_TEXTURE_2D, bd->font_texture);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -195,12 +205,21 @@ bool ImGui_ImplWebGL_Init() {
   return true;
 }
 
+void ImGui_ImplWebGL_DestroyFontsTexture() {
+  BackendData* bd = GetBackendData();
+  if (bd->font_texture) {
+    glDeleteTextures(1, &bd->font_texture);
+    ImGui::GetIO().Fonts->SetTexID(0);
+    bd->font_texture = 0;
+  }
+}
+
 void ImGui_ImplWebGL_Shutdown() {
   BackendData* bd = GetBackendData();
   glDeleteBuffers(1, &bd->vbo);
   glDeleteBuffers(1, &bd->ebo);
   glDeleteProgram(bd->shader_program);
-  glDeleteTextures(1, &bd->font_texture);
+  ImGui_ImplWebGL_DestroyFontsTexture();
   free(bd);
   ImGui::GetIO().BackendRendererUserData = nullptr;
 }
