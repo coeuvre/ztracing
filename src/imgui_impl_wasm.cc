@@ -4,7 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "src/allocator.h"
+
 struct BackendData {
+  Allocator allocator;
   char* canvas_selector;
   double last_time;
   int frames_to_render;
@@ -32,6 +35,8 @@ bool ImGui_ImplWasm_NeedUpdate() {
 static EM_BOOL OnMouseMove(int event_type,
                            const EmscriptenMouseEvent* mouse_event,
                            void* user_data) {
+  (void)event_type;
+  (void)user_data;
   ImGuiIO& io = ImGui::GetIO();
   io.AddMousePosEvent((float)mouse_event->targetX, (float)mouse_event->targetY);
   ImGui_ImplWasm_RequestUpdate();
@@ -41,6 +46,7 @@ static EM_BOOL OnMouseMove(int event_type,
 static EM_BOOL OnMouseButton(int event_type,
                              const EmscriptenMouseEvent* mouse_event,
                              void* user_data) {
+  (void)user_data;
   ImGuiIO& io = ImGui::GetIO();
   io.AddMouseButtonEvent(mouse_event->button,
                          event_type == EMSCRIPTEN_EVENT_MOUSEDOWN);
@@ -50,6 +56,8 @@ static EM_BOOL OnMouseButton(int event_type,
 
 static EM_BOOL OnWheel(int event_type, const EmscriptenWheelEvent* wheel_event,
                        void* user_data) {
+  (void)event_type;
+  (void)user_data;
   ImGuiIO& io = ImGui::GetIO();
   io.AddMouseWheelEvent((float)wheel_event->deltaX * -0.01f,
                         (float)wheel_event->deltaY * -0.01f);
@@ -92,6 +100,7 @@ static ImGuiKey StringToImGuiKey(const char* code) {
 
 static EM_BOOL OnKey(int event_type, const EmscriptenKeyboardEvent* key_event,
                      void* user_data) {
+  (void)user_data;
   ImGuiIO& io = ImGui::GetIO();
   ImGuiKey key = StringToImGuiKey(key_event->code);
   if (key != ImGuiKey_None) {
@@ -115,15 +124,21 @@ static EM_BOOL OnKey(int event_type, const EmscriptenKeyboardEvent* key_event,
 
 static EM_BOOL OnResize(int event_type, const EmscriptenUiEvent* ui_event,
                         void* user_data) {
+  (void)event_type;
+  (void)ui_event;
+  (void)user_data;
   ImGui_ImplWasm_RequestUpdate();
   return EM_TRUE;
 }
 
-bool ImGui_ImplWasm_Init(const char* canvas_selector) {
+bool ImGui_ImplWasm_Init(const char* canvas_selector, Allocator allocator) {
   ImGuiIO& io = ImGui::GetIO();
 
-  BackendData* bd = (BackendData*)malloc(sizeof(BackendData));
-  bd->canvas_selector = strdup(canvas_selector);
+  BackendData* bd = (BackendData*)Alloc(allocator, sizeof(BackendData));
+  bd->allocator = allocator;
+  bd->canvas_selector =
+      (char*)Alloc(bd->allocator, strlen(canvas_selector) + 1);
+  strcpy(bd->canvas_selector, canvas_selector);
   bd->last_time = 0.0;
   bd->frames_to_render = 20;
 
@@ -152,8 +167,9 @@ bool ImGui_ImplWasm_Init(const char* canvas_selector) {
 
 void ImGui_ImplWasm_Shutdown() {
   BackendData* bd = GetBackendData();
-  free(bd->canvas_selector);
-  free(bd);
+  Allocator allocator = bd->allocator;
+  Free(allocator, bd->canvas_selector, strlen(bd->canvas_selector) + 1);
+  Free(allocator, bd, sizeof(BackendData));
   ImGui::GetIO().BackendPlatformUserData = nullptr;
 }
 
@@ -167,7 +183,7 @@ void ImGui_ImplWasm_NewFrame() {
 
   double current_time = emscripten_get_now() / 1000.0;
   io.DeltaTime = bd->last_time > 0.0 ? (float)(current_time - bd->last_time)
-                                    : (float)(1.0f / 60.0f);
+                                     : (float)(1.0f / 60.0f);
   bd->last_time = current_time;
 
   double width, height;

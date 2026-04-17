@@ -5,6 +5,7 @@
 
 #include <vector>
 
+#include "src/allocator.h"
 #include "src/imgui_impl_wasm.h"
 #include "src/imgui_impl_webgl.h"
 #include "src/logging.h"
@@ -67,6 +68,8 @@ void MainLoop() {
 }
 
 int main(int argc, char** argv) {
+  (void)argc;
+  (void)argv;
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGuiIO& io = ImGui::GetIO();
@@ -89,8 +92,9 @@ int main(int argc, char** argv) {
   emscripten_get_element_css_size(kCanvasSelector, &width, &height);
 
   ImGui::StyleColorsDark();
-  ImGui_ImplWasm_Init(kCanvasSelector);
-  ImGui_ImplWebGL_Init();
+  Allocator allocator = DefaultAllocator();
+  ImGui_ImplWasm_Init(kCanvasSelector, allocator);
+  ImGui_ImplWebGL_Init(allocator);
 
   LOG_DEBUG("ztracing initialized successfully.");
 

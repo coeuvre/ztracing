@@ -1,18 +1,14 @@
-#pragma once
+#ifndef ZTRACING_SRC_IMGUI_IMPL_WASM_H_
+#define ZTRACING_SRC_IMGUI_IMPL_WASM_H_
 
+#include "src/allocator.h"
 #include "third_party/imgui/imgui.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-bool ImGui_ImplWasm_Init(const char* canvas_selector);
+bool ImGui_ImplWasm_Init(const char* canvas_selector, Allocator allocator);
 void ImGui_ImplWasm_Shutdown();
 void ImGui_ImplWasm_NewFrame();
 
 void ImGui_ImplWasm_RequestUpdate();
 bool ImGui_ImplWasm_NeedUpdate();
 
-#ifdef __cplusplus
-}
-#endif
+#endif  // ZTRACING_SRC_IMGUI_IMPL_WASM_H_

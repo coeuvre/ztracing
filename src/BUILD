@@ -1,4 +1,4 @@
-load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+load(":defs.bzl", "cc_binary", "cc_library")
 load("@emsdk//emscripten_toolchain:wasm_rules.bzl", "wasm_cc_binary")
 
 package(default_visibility = ["//visibility:public"])
@@ -10,10 +10,17 @@ cc_library(
 )
 
 cc_library(
+    name = "allocator",
+    srcs = ["allocator.cc"],
+    hdrs = ["allocator.h"],
+)
+
+cc_library(
     name = "imgui_impl_wasm",
     srcs = ["imgui_impl_wasm.cc"],
     hdrs = ["imgui_impl_wasm.h"],
     deps = [
+        ":allocator",
         ":logging",
         "@imgui",
     ],
@@ -24,6 +31,7 @@ cc_library(
     srcs = ["imgui_impl_webgl.cc"],
     hdrs = ["imgui_impl_webgl.h"],
     deps = [
+        ":allocator",
         ":logging",
         "@imgui",
     ],
@@ -43,6 +51,7 @@ cc_binary(
         "-sEXPORTED_FUNCTIONS=['_main','_SetFontData']",
     ],
     deps = [
+        ":allocator",
         ":imgui_impl_wasm",
         ":imgui_impl_webgl",
         ":logging",

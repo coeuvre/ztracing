@@ -5,9 +5,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "src/allocator.h"
 #include "src/logging.h"
 
 struct BackendData {
+  Allocator allocator;
   GLuint shader_program;
   GLuint vbo, ebo;
   GLuint font_texture;
@@ -50,19 +52,21 @@ static void SetupRenderState(ImDrawData* draw_data, int fb_width, int fb_height,
 
   glBindBuffer(GL_ARRAY_BUFFER, bd->vbo);
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bd->ebo);
-  glEnableVertexAttribArray(bd->attrib_location_pos);
-  glEnableVertexAttribArray(bd->attrib_location_uv);
-  glEnableVertexAttribArray(bd->attrib_location_color);
-  glVertexAttribPointer(bd->attrib_location_pos, 2, GL_FLOAT, GL_FALSE,
+  glEnableVertexAttribArray((GLuint)bd->attrib_location_pos);
+  glEnableVertexAttribArray((GLuint)bd->attrib_location_uv);
+  glEnableVertexAttribArray((GLuint)bd->attrib_location_color);
+  glVertexAttribPointer((GLuint)bd->attrib_location_pos, 2, GL_FLOAT, GL_FALSE,
                         sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, pos));
-  glVertexAttribPointer(bd->attrib_location_uv, 2, GL_FLOAT, GL_FALSE,
+  glVertexAttribPointer((GLuint)bd->attrib_location_uv, 2, GL_FLOAT, GL_FALSE,
                         sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, uv));
-  glVertexAttribPointer(bd->attrib_location_color, 4, GL_UNSIGNED_BYTE, GL_TRUE,
-                        sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, col));
+  glVertexAttribPointer((GLuint)bd->attrib_location_color, 4, GL_UNSIGNED_BYTE,
+                        GL_TRUE, sizeof(ImDrawVert),
+                        (GLvoid*)offsetof(ImDrawVert, col));
 }
 
 void ImGui_ImplWebGL_RenderDrawData(ImDrawData* draw_data) {
-  int fb_width = (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
+  int fb_width =
+      (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
   int fb_height =
       (int)(draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
   if (fb_width <= 0 || fb_height <= 0) return;
@@ -77,12 +81,14 @@ void ImGui_ImplWebGL_RenderDrawData(ImDrawData* draw_data) {
   for (int n = 0; n < draw_data->CmdListsCount; n++) {
     const ImDrawList* cmd_list = draw_data->CmdLists[n];
 
-    glBufferData(GL_ARRAY_BUFFER,
-                 (GLsizeiptr)cmd_list->VtxBuffer.Size * sizeof(ImDrawVert),
-                 (const GLvoid*)cmd_list->VtxBuffer.Data, GL_STREAM_DRAW);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                 (GLsizeiptr)cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx),
-                 (const GLvoid*)cmd_list->IdxBuffer.Data, GL_STREAM_DRAW);
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        (GLsizeiptr)((size_t)cmd_list->VtxBuffer.Size * sizeof(ImDrawVert)),
+        (const GLvoid*)cmd_list->VtxBuffer.Data, GL_STREAM_DRAW);
+    glBufferData(
+        GL_ELEMENT_ARRAY_BUFFER,
+        (GLsizeiptr)((size_t)cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx)),
+        (const GLvoid*)cmd_list->IdxBuffer.Data, GL_STREAM_DRAW);
 
     for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++) {
       const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
@@ -90,10 +96,11 @@ void ImGui_ImplWebGL_RenderDrawData(ImDrawData* draw_data) {
                       (pcmd->ClipRect.y - clip_off.y) * clip_scale.y);
       ImVec2 clip_max((pcmd->ClipRect.z - clip_off.x) * clip_scale.x,
                       (pcmd->ClipRect.w - clip_off.y) * clip_scale.y);
-      if (clip_min.x < fb_width && clip_min.y < fb_height && clip_max.x >= 0.0f &&
-          clip_max.y >= 0.0f) {
-        glScissor((int)clip_min.x, (int)(fb_height - clip_max.y),
-                  (int)(clip_max.x - clip_min.x), (int)(clip_max.y - clip_min.y));
+      if (clip_min.x < (float)fb_width && clip_min.y < (float)fb_height &&
+          clip_max.x >= 0.0f && clip_max.y >= 0.0f) {
+        glScissor((int)clip_min.x, (int)((float)fb_height - clip_max.y),
+                  (int)(clip_max.x - clip_min.x),
+                  (int)(clip_max.y - clip_min.y));
         glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)pcmd->GetTexID());
         glDrawElements(
             GL_TRIANGLES, (GLsizei)pcmd->ElemCount,
@@ -105,9 +112,10 @@ void ImGui_ImplWebGL_RenderDrawData(ImDrawData* draw_data) {
   glDeleteVertexArrays(1, &vao);
 }
 
-bool ImGui_ImplWebGL_Init() {
+bool ImGui_ImplWebGL_Init(Allocator allocator) {
   ImGuiIO& io = ImGui::GetIO();
-  BackendData* bd = (BackendData*)malloc(sizeof(BackendData));
+  BackendData* bd = (BackendData*)Alloc(allocator, sizeof(BackendData));
+  bd->allocator = allocator;
   io.BackendRendererUserData = (void*)bd;
   io.BackendRendererName = "imgui_impl_webgl";
 
@@ -222,7 +230,8 @@ void ImGui_ImplWebGL_Shutdown() {
   glDeleteBuffers(1, &bd->ebo);
   glDeleteProgram(bd->shader_program);
   ImGui_ImplWebGL_DestroyFontsTexture();
-  free(bd);
+  Allocator allocator = bd->allocator;
+  Free(allocator, bd, sizeof(BackendData));
   ImGui::GetIO().BackendRendererUserData = nullptr;
 }
 

@@ -1,5 +1,5 @@
-#ifndef ZTRACING_LOGGING_H_
-#define ZTRACING_LOGGING_H_
+#ifndef ZTRACING_SRC_LOGGING_H_
+#define ZTRACING_SRC_LOGGING_H_
 
 enum LogLevel {
   DEBUG,
@@ -20,27 +20,27 @@ void Log(LogLevel level, const char* format, ...)
 #endif
 
 #if LOG_LEVEL <= DEBUG
-#define LOG_DEBUG(format, ...) Log(DEBUG, format, ##__VA_ARGS__)
+#define LOG_DEBUG(format, ...) Log(DEBUG, format __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define LOG_DEBUG(format, ...) ((void)0)
 #endif
 
 #if LOG_LEVEL <= INFO
-#define LOG_INFO(format, ...) Log(INFO, format, ##__VA_ARGS__)
+#define LOG_INFO(format, ...) Log(INFO, format __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define LOG_INFO(format, ...) ((void)0)
 #endif
 
 #if LOG_LEVEL <= WARN
-#define LOG_WARN(format, ...) Log(WARN, format, ##__VA_ARGS__)
+#define LOG_WARN(format, ...) Log(WARN, format __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define LOG_WARN(format, ...) ((void)0)
 #endif
 
 #if LOG_LEVEL <= ERROR
-#define LOG_ERROR(format, ...) Log(ERROR, format, ##__VA_ARGS__)
+#define LOG_ERROR(format, ...) Log(ERROR, format __VA_OPT__(, ) __VA_ARGS__)
 #else
 #define LOG_ERROR(format, ...) ((void)0)
 #endif
 
-#endif  // ZTRACING_LOGGING_H_
+#endif  // ZTRACING_SRC_LOGGING_H_
