@@ -1,0 +1,5 @@
+# Enable Bzlmod
+common --enable_bzlmod
+
+# WASM Configuration
+build --incompatible_enable_cc_toolchain_resolution

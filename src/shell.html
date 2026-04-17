@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>ztracing</title>
+    <style>
+        body { margin: 0; background-color: black; }
+        canvas.emscripten { border: 0 none; background-color: black; width: 100vw; height: 100vh; display: block; }
+    </style>
+</head>
+<body>
+    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+    {{{ SCRIPT }}}
+</body>
+</html>

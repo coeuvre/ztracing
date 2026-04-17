@@ -1,0 +1,12 @@
+bazel_dep(name = "rules_cc", version = "0.2.17")
+bazel_dep(name = "emsdk", version = "5.0.5")
+
+# Use http_archive for ImGui as it's not in BCR
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+http_archive(
+    name = "imgui",
+    build_file = "//third_party/imgui:BUILD",
+    strip_prefix = "imgui-1.92.7-docking",
+    urls = ["https://github.com/ocornut/imgui/archive/refs/tags/v1.92.7-docking.tar.gz"],
+)
