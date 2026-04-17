@@ -1,4 +1,4 @@
-load(":defs.bzl", "cc_binary", "cc_library")
+load(":defs.bzl", "cc_binary", "cc_library", "cc_test")
 load("@emsdk//emscripten_toolchain:wasm_rules.bzl", "wasm_cc_binary")
 
 package(default_visibility = ["//visibility:public"])
@@ -13,6 +13,15 @@ cc_library(
     name = "allocator",
     srcs = ["allocator.cc"],
     hdrs = ["allocator.h"],
+)
+
+cc_test(
+    name = "allocator_test",
+    srcs = ["allocator_test.cc"],
+    deps = [
+        ":allocator",
+        "@googletest//:gtest_main",
+    ],
 )
 
 cc_library(

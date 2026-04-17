@@ -13,4 +13,43 @@ static void* allocator_default_alloc(void* ctx, void* ptr, size_t old_size,
   return realloc(ptr, new_size);
 }
 
-Allocator allocator_get_default() { return {allocator_default_alloc, nullptr}; }
+Allocator allocator_get_default() {
+  return {allocator_default_alloc, nullptr};
+}
+
+static void* counting_alloc(void* ctx, void* ptr, size_t old_size,
+                            size_t new_size) {
+  CountingAllocator* ca = (CountingAllocator*)ctx;
+  void* new_ptr = ca->parent.alloc(ca->parent.ctx, ptr, old_size, new_size);
+
+  if (ptr == nullptr) {
+    // Allocation
+    if (new_ptr != nullptr) {
+      ca->allocated_bytes += new_size;
+    }
+  } else if (new_size == 0) {
+    // Free
+    ca->allocated_bytes -= old_size;
+  } else {
+    // Reallocation
+    if (new_ptr != nullptr) {
+      ca->allocated_bytes -= old_size;
+      ca->allocated_bytes += new_size;
+    }
+  }
+
+  return new_ptr;
+}
+
+void counting_allocator_init(CountingAllocator* ca, Allocator parent) {
+  ca->parent = parent;
+  ca->allocated_bytes = 0;
+}
+
+Allocator counting_allocator_get_allocator(CountingAllocator* ca) {
+  return {counting_alloc, ca};
+}
+
+size_t counting_allocator_get_allocated_bytes(CountingAllocator* ca) {
+  return ca->allocated_bytes;
+}

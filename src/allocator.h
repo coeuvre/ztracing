@@ -32,4 +32,18 @@ inline void allocator_free(Allocator a, void* ptr, size_t size) {
 // Default allocator using malloc, realloc, and free.
 Allocator allocator_get_default();
 
+struct CountingAllocator {
+  Allocator parent;
+  size_t allocated_bytes;
+};
+
+// Initializes a counting allocator that wraps a parent allocator.
+void counting_allocator_init(CountingAllocator* ca, Allocator parent);
+
+// Returns the Allocator interface for the given counting allocator.
+Allocator counting_allocator_get_allocator(CountingAllocator* ca);
+
+// Returns the total number of allocated bytes.
+size_t counting_allocator_get_allocated_bytes(CountingAllocator* ca);
+
 #endif  // ZTRACING_SRC_ALLOCATOR_H_
