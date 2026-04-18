@@ -80,6 +80,14 @@ inline void array_list_clear(ArrayList<T>* al) {
 }
 
 template <typename T>
+inline void array_list_resize(ArrayList<T>* al, Allocator a, size_t new_size) {
+  if (new_size > al->capacity) {
+    array_list_reserve(al, a, new_size);
+  }
+  al->size = new_size;
+}
+
+template <typename T>
 inline void array_list_deinit(ArrayList<T>* al, Allocator a) {
   if (al->data != nullptr) {
     allocator_free(a, al->data, al->capacity * sizeof(T));

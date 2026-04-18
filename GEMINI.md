@@ -32,7 +32,7 @@
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
 - `src/app`: Pure application logic and UI logic (ImGui). Manages viewport state and event selection.
-- `src/track`: Logic for organizing events into tracks, sorting, and efficient visibility calculation.
+- `src/track`: Logic for organizing events into tracks, sorting (timestamp asc, duration desc), and strict containment-based depth calculation (flame graph layout).
 - `src/format`: Human-readable time formatting (s, ms, us) and tick interval calculation.
 - `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
 - `src/ztracing.h`: Clean C API for the WASM-to-JS bridge.
@@ -43,14 +43,15 @@
 
 - **Layout**: The "Trace Viewport" is docked in the central area. Other panels ("Status", "Details") are docked at the bottom by default. The viewport window has no title bar or tabs for a cleaner look.
 - **Time Ruler**: A persistent horizontal ruler at the top displays the current time range with adaptive units (s, ms, us) and nice tick intervals.
-- **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically.
+- **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically. Individual tracks have variable heights based on their maximum nesting depth.
+- **Downwards Flame Graph**: Overlapping events within a track are organized into hierarchical lanes. An event is placed in a lower lane only if it is strictly contained within a parent event (Strict Containment Hierarchy). Non-strictly nested events move up to share the highest available lane.
 - **Navigation**: 
     - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor. Requires modern ImGui modifier checks (`ImGui::IsKeyDown`).
     - **Pan**: Left-mouse drag or `Shift + MouseWheel` or horizontal scroll wheel to pan horizontally.
 - **Rendering Optimization**:
     - **Visibility Culling (Horizontal)**: Events are grouped into tracks. Each track maintains a `max_dur` (maximum event duration) and sorted `event_indices`. Binary search is used to find the first potentially visible event at `viewport_start - max_dur`, ensuring partially visible events are correctly rendered.
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
-    - **Level of Detail (LOD)**: To handle massive traces (10M+ events), the renderer skips events that occupy less than 0.1 pixels of screen space or overlap with already drawn events when zoomed out.
+    - **Level of Detail (LOD)**: (TODO) To handle massive traces (10M+ events), the renderer should skip events that occupy less than 0.1 pixels of screen space or are hidden by already drawn events when zoomed out.
     - **Event Names**: Names are rendered inside event blocks if the visible width is >10 pixels. "Sticky" positioning is used to keep names visible at the left edge of the viewport when an event's start is off-screen.
 - **32-bit Indices**: ImGui is patched via `MODULE.bazel` to use `unsigned int` for `ImDrawIdx`, allowing for more than 65,535 vertices (required for large traces).
 

@@ -81,6 +81,7 @@ static void app_organize_tracks(App* app) {
   for (size_t i = 0; i < app->tracks.size; i++) {
     track_sort_events(&app->tracks[i], &app->trace_data);
     track_update_max_dur(&app->tracks[i], &app->trace_data);
+    track_calculate_depths(&app->tracks[i], &app->trace_data, app->allocator);
   }
 
   app->viewport.start_time = (double)app->viewport.min_ts;
@@ -174,8 +175,8 @@ void app_update(App* app) {
         float ruler_height = 25.0f;
         app_draw_time_ruler(app, draw_list, canvas_pos, ImVec2(canvas_size.x, ruler_height));
 
-        float track_height = 25.0f;
-        float track_spacing = 2.0f;
+        float lane_height = 20.0f;
+        float track_spacing = 4.0f;
 
         ImGuiWindowFlags child_flags = ImGuiWindowFlags_NoMove;
         if (ImGui::IsKeyDown(ImGuiMod_Ctrl)) child_flags |= ImGuiWindowFlags_NoScrollWithMouse;
@@ -183,20 +184,26 @@ void app_update(App* app) {
         ImGui::SetCursorScreenPos(ImVec2(canvas_pos.x, canvas_pos.y + ruler_height));
         if (ImGui::BeginChild("TrackList", ImVec2(0, canvas_size.y - ruler_height), ImGuiChildFlags_None, child_flags)) {
           ImDrawList* track_draw_list = ImGui::GetWindowDrawList();
-          // Set content size so scrollbars work and ImGui is happy.
-          // Use 0.0f width to avoid forcing horizontal scrollbar.
-          ImGui::Dummy(ImVec2(0.0f, (float)app->tracks.size * (track_height + track_spacing)));
+          
+          float total_height = 0.0f;
+          for (size_t i = 0; i < app->tracks.size; i++) {
+            total_height += (float)(app->tracks[i].max_depth + 1) * lane_height + track_spacing;
+          }
+          ImGui::Dummy(ImVec2(0.0f, total_height));
           ImGui::SetCursorPos(ImVec2(0, 0));
 
           ImVec2 tracks_canvas_pos = ImGui::GetCursorScreenPos();
           float inner_width = ImGui::GetContentRegionAvail().x;
 
+          float cumulative_y = 0.0f;
           for (size_t i = 0; i < app->tracks.size; i++) {
             const Track& t = app->tracks[i];
-            ImVec2 track_pos = ImVec2(tracks_canvas_pos.x, tracks_canvas_pos.y + (float)i * (track_height + track_spacing));
+            float track_height = (float)(t.max_depth + 1) * lane_height;
+            ImVec2 track_pos = ImVec2(tracks_canvas_pos.x, tracks_canvas_pos.y + cumulative_y);
             
             // Frustum culling: skip tracks that are not visible
             if (track_pos.y + track_height < canvas_pos.y + ruler_height || track_pos.y > canvas_pos.y + canvas_size.y) {
+              cumulative_y += track_height + track_spacing;
               continue;
             }
 
@@ -204,10 +211,13 @@ void app_update(App* app) {
 
             size_t start_idx = track_find_visible_start_index(&t, &app->trace_data, (int64_t)app->viewport.start_time);
 
-            float last_draw_x2 = -1e10f;
+            // TODO: Re-implement Level of Detail (LOD) optimization for the flame graph.
+            // Since events are now at different depths, we need to track horizontal
+            // progress per depth level to skip events that are too small or hidden.
             for (size_t k = start_idx; k < t.event_indices.size; k++) {
               size_t event_idx = t.event_indices[k];
               const TraceEventPersisted& e = app->trace_data.events[event_idx];
+              uint32_t depth = t.depths[k];
               
               if (e.ts > (int64_t)app->viewport.end_time) break;
 
@@ -217,15 +227,13 @@ void app_update(App* app) {
               float x1 = (float)(tracks_canvas_pos.x + start_x_rel * inner_width);
               float x2 = (float)(tracks_canvas_pos.x + end_x_rel * inner_width);
               
-              // LOD: skip if the entire event is significantly to the left of what we already drew
-              // and it's very small. This helps when zoomed out.
-              if (x2 < last_draw_x2 + 0.1f) continue;
-
               if (x2 - x1 < 0.1f) x2 = x1 + 0.1f;
-              last_draw_x2 = x2;
               
+              float y1 = track_pos.y + (float)depth * lane_height;
+              float y2 = y1 + lane_height - 1.0f;
+
               ImU32 col = (app->selected_event_index == (int64_t)event_idx) ? IM_COL32(255, 255, 0, 255) : IM_COL32(100, 180, 100, 255);
-              track_draw_list->AddRectFilled(ImVec2(x1, track_pos.y + 1), ImVec2(x2, track_pos.y + track_height - 1), col);
+              track_draw_list->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), col);
 
               // Draw event name if there is enough space
               float visible_x1 = std::max(x1, tracks_canvas_pos.x);
@@ -234,15 +242,15 @@ void app_update(App* app) {
                 Str name = trace_data_get_string(&app->trace_data, e.name_offset);
                 if (name.len > 0) {
                   ImU32 text_col = (app->selected_event_index == (int64_t)event_idx) ? IM_COL32(0, 0, 0, 255) : IM_COL32(255, 255, 255, 255);
-                  track_draw_list->PushClipRect(ImVec2(visible_x1, track_pos.y), ImVec2(visible_x2, track_pos.y + track_height), true);
-                  track_draw_list->AddText(ImVec2(visible_x1 + 2.0f, track_pos.y + 2.0f), text_col, name.buf, name.buf + name.len);
+                  track_draw_list->PushClipRect(ImVec2(visible_x1, y1), ImVec2(visible_x2, y2), true);
+                  track_draw_list->AddText(ImVec2(visible_x1 + 2.0f, y1 + 2.0f), text_col, name.buf, name.buf + name.len);
                   track_draw_list->PopClipRect();
                 }
               }
 
               if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered()) {
                 ImVec2 mouse_pos = ImGui::GetMousePos();
-                if (mouse_pos.x >= x1 && mouse_pos.x <= x2 && mouse_pos.y >= track_pos.y && mouse_pos.y <= track_pos.y + track_height) {
+                if (mouse_pos.x >= x1 && mouse_pos.x <= x2 && mouse_pos.y >= y1 && mouse_pos.y <= y2) {
                   app->selected_event_index = (int64_t)event_idx;
                 }
               }
@@ -251,6 +259,8 @@ void app_update(App* app) {
             char label[64];
             snprintf(label, sizeof(label), "TID:%d", t.tid);
             track_draw_list->AddText(ImVec2(track_pos.x + 5, track_pos.y + 2), IM_COL32(255, 255, 255, 255), label);
+
+            cumulative_y += track_height + track_spacing;
           }
         }
         ImGui::EndChild();

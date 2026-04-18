@@ -105,3 +105,26 @@ TEST(ArrayListTest, Reserve) {
 
   array_list_deinit(&al, a);
 }
+
+TEST(ArrayListTest, Resize) {
+  ArrayList<int> al = {};
+  Allocator a = allocator_get_default();
+
+  array_list_resize(&al, a, 100);
+  EXPECT_EQ(al.size, 100u);
+  EXPECT_GE(al.capacity, 100u);
+
+  for (int i = 0; i < 100; i++) {
+    al[i] = i;
+  }
+
+  array_list_resize(&al, a, 50);
+  EXPECT_EQ(al.size, 50u);
+  EXPECT_GE(al.capacity, 100u);
+
+  for (int i = 0; i < 50; i++) {
+    EXPECT_EQ(al[i], i);
+  }
+
+  array_list_deinit(&al, a);
+}
