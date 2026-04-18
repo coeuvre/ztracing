@@ -211,6 +211,10 @@ static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_NUMBER) return false;
       event->ts = str_to_int64(tok.str);
+    } else if (str_eq(key, STR("dur"))) {
+      tok = json_reader_next(r);
+      if (tok.type != JSON_TOKEN_NUMBER) return false;
+      event->dur = str_to_int64(tok.str);
     } else if (str_eq(key, STR("pid"))) {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_NUMBER) return false;

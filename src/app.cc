@@ -1,54 +1,242 @@
 #include "src/app.h"
 
+#include <stdio.h>
+#include <algorithm>
+
 #include "src/platform.h"
 
 #include "src/logging.h"
 #include "third_party/imgui/imgui.h"
+#include "third_party/imgui/imgui_internal.h"
 
 void app_init(App* app, Allocator allocator) {
   *app = {};
   app->allocator = allocator;
   app->power_save_mode = true;
+  app->first_frame = true;
+  app->show_demo_window = false;
+  app->selected_event_index = -1;
+  trace_data_init(&app->trace_data, app->allocator);
 }
 
 void app_deinit(App* app) {
   if (app->trace_parser_active) {
     trace_parser_deinit(&app->trace_parser);
   }
+  trace_data_deinit(&app->trace_data, app->allocator);
   array_list_deinit(&app->trace_filename, app->allocator);
+  for (size_t i = 0; i < app->tracks.size; i++) {
+      array_list_deinit(&app->tracks[i].event_indices, app->allocator);
+  }
+  array_list_deinit(&app->tracks, app->allocator);
+}
+
+static void app_organize_tracks(App* app) {
+  for (size_t i = 0; i < app->tracks.size; i++) {
+      array_list_deinit(&app->tracks[i].event_indices, app->allocator);
+  }
+  array_list_clear(&app->tracks);
+  if (app->trace_data.events.size == 0) return;
+
+  app->viewport.min_ts = app->trace_data.events[0].ts;
+  app->viewport.max_ts = app->trace_data.events[0].ts + app->trace_data.events[0].dur;
+
+  for (size_t i = 0; i < app->trace_data.events.size; i++) {
+    const TraceEventPersisted& e = app->trace_data.events[i];
+    if (e.ts < app->viewport.min_ts) app->viewport.min_ts = e.ts;
+    if (e.ts + e.dur > app->viewport.max_ts) app->viewport.max_ts = e.ts + e.dur;
+
+    int64_t track_idx = -1;
+    for (size_t j = 0; j < app->tracks.size; j++) {
+      if (app->tracks[j].pid == e.pid && app->tracks[j].tid == e.tid) {
+        track_idx = (int64_t)j;
+        break;
+      }
+    }
+
+    if (track_idx == -1) {
+      App::Track t = {e.pid, e.tid, 0, {}};
+      array_list_push_back(&app->tracks, app->allocator, t);
+      track_idx = (int64_t)app->tracks.size - 1;
+    }
+
+    array_list_push_back(&app->tracks[(size_t)track_idx].event_indices, app->allocator, i);
+  }
+
+  app->viewport.start_time = (double)app->viewport.min_ts;
+  app->viewport.end_time = (double)app->viewport.max_ts;
+  LOG_INFO("organized %zu tracks, time range: [%lld, %lld]", app->tracks.size, (long long)app->viewport.min_ts, (long long)app->viewport.max_ts);
 }
 
 void app_update(App* app) {
-  // UI code
+  // 1. Setup DockSpace
+  ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode;
+  ImGuiID dockspace_id = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), dockspace_flags);
+
+  if (app->first_frame) {
+    app->first_frame = false;
+    ImGui::DockBuilderRemoveNode(dockspace_id);
+    ImGui::DockBuilderAddNode(dockspace_id, dockspace_flags | ImGuiDockNodeFlags_DockSpace);
+    ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->Size);
+
+    ImGuiID dock_id_main = dockspace_id;
+    ImGuiID dock_id_bottom = ImGui::DockBuilderSplitNode(dock_id_main, ImGuiDir_Down, 0.25f, nullptr, &dock_id_main);
+
+    ImGui::DockBuilderDockWindow("Status", dock_id_bottom);
+    ImGui::DockBuilderDockWindow("Details", dock_id_bottom);
+    ImGui::DockBuilderFinish(dockspace_id);
+  }
+
+  if (app->show_demo_window) ImGui::ShowDemoWindow(&app->show_demo_window);
+
+  // 2. Fullscreen Trace Viewport (as background)
   {
-    static float f = 0.0f;
-    static int counter = 0;
-    static bool show_demo_window = false;
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(viewport->WorkSize);
+    
+    ImGuiWindowFlags viewport_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDocking;
+    
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
-    if (show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
+    if (ImGui::Begin("Trace Viewport", nullptr, viewport_flags)) {
+      if (app->trace_data.events.size > 0) {
+        ImVec2 canvas_pos = ImGui::GetCursorScreenPos();
+        ImVec2 canvas_size = ImGui::GetContentRegionAvail();
 
-    ImGui::Begin("ztracing");
-    ImGui::Checkbox("Power-save Mode", &app->power_save_mode);
-    ImGui::Checkbox("Show Demo Window", &show_demo_window);
-    ImGui::Separator();
-    ImGui::Text("Welcome to the Chrome Tracing Replacement.");
-    ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
-    if (ImGui::Button("Button")) counter++;
-    ImGui::SameLine();
-    ImGui::Text("counter = %d", counter);
-    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)",
-                1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        ImDrawList* draw_list = ImGui::GetWindowDrawList();
+        draw_list->AddRectFilled(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), IM_COL32(30, 30, 30, 255));
 
-    if (app->trace_parser_active) {
-      ImGui::Separator();
-      ImGui::Text("Loading trace: %s", app->trace_filename.size > 0
-                                          ? app->trace_filename.data
-                                          : "unknown");
-      ImGui::Text("Parsed %zu events", app->trace_event_count);
-      ImGui::Text("%.2f MB loaded",
-                  (double)app->trace_total_bytes / (1024.0 * 1024.0));
+        double duration = app->viewport.end_time - app->viewport.start_time;
+        if (duration <= 0) duration = 1.0;
+
+        float track_height = 25.0f;
+        float track_spacing = 2.0f;
+
+        for (size_t i = 0; i < app->tracks.size; i++) {
+          const App::Track& t = app->tracks[i];
+          ImVec2 track_pos = ImVec2(canvas_pos.x, canvas_pos.y + (float)i * (track_height + track_spacing));
+          draw_list->AddRectFilled(track_pos, ImVec2(track_pos.x + canvas_size.x, track_pos.y + track_height), IM_COL32(50, 50, 50, 255));
+
+          char label[64];
+          snprintf(label, sizeof(label), "TID:%d", t.tid);
+          draw_list->AddText(ImVec2(track_pos.x + 5, track_pos.y + 2), IM_COL32(180, 180, 180, 255), label);
+
+          auto it = std::lower_bound(t.event_indices.data, t.event_indices.data + t.event_indices.size, (int64_t)app->viewport.start_time, 
+              [&](size_t idx, int64_t val) {
+                  return app->trace_data.events[idx].ts < val;
+              });
+          
+          size_t start_idx = (it == t.event_indices.data + t.event_indices.size) ? t.event_indices.size : (size_t)(it - t.event_indices.data);
+          if (start_idx > 0) start_idx--;
+
+          for (size_t k = start_idx; k < t.event_indices.size; k++) {
+            size_t event_idx = t.event_indices[k];
+            const TraceEventPersisted& e = app->trace_data.events[event_idx];
+            
+            if (e.ts > (int64_t)app->viewport.end_time) break;
+
+            double start_x_rel = ((double)e.ts - app->viewport.start_time) / duration;
+            double end_x_rel = ((double)e.ts + (double)e.dur - app->viewport.start_time) / duration;
+            
+            float x1 = (float)(canvas_pos.x + start_x_rel * canvas_size.x);
+            float x2 = (float)(canvas_pos.x + end_x_rel * canvas_size.x);
+            if (x2 - x1 < 1.0f) x2 = x1 + 1.0f;
+            
+            ImU32 col = (app->selected_event_index == (int64_t)event_idx) ? IM_COL32(255, 255, 0, 255) : IM_COL32(100, 180, 100, 255);
+            draw_list->AddRectFilled(ImVec2(x1, track_pos.y + 1), ImVec2(x2, track_pos.y + track_height - 1), col);
+
+            if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered()) {
+              ImVec2 mouse_pos = ImGui::GetMousePos();
+              if (mouse_pos.x >= x1 && mouse_pos.x <= x2 && mouse_pos.y >= track_pos.y && mouse_pos.y <= track_pos.y + track_height) {
+                app->selected_event_index = (int64_t)event_idx;
+              }
+            }
+          }
+        }
+
+        if (ImGui::IsWindowHovered()) {
+          if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            double dx = (double)ImGui::GetIO().MouseDelta.x;
+            double dt = (dx / (double)canvas_size.x) * (app->viewport.end_time - app->viewport.start_time);
+            app->viewport.start_time -= dt;
+            app->viewport.end_time -= dt;
+          }
+
+          float wheel = ImGui::GetIO().MouseWheel;
+          if (wheel != 0.0f) {
+            double mouse_x_rel = (double)(ImGui::GetIO().MousePos.x - canvas_pos.x) / (double)canvas_size.x;
+            double current_duration = app->viewport.end_time - app->viewport.start_time;
+            double mouse_ts = app->viewport.start_time + mouse_x_rel * current_duration;
+            double zoom_factor = (wheel > 0.0f) ? 0.8 : 1.2;
+            double new_duration = current_duration * zoom_factor;
+            app->viewport.start_time = mouse_ts - mouse_x_rel * new_duration;
+            app->viewport.end_time = app->viewport.start_time + new_duration;
+          }
+        }
+      } else {
+        ImVec2 size = ImGui::GetContentRegionAvail();
+        const char* msg = "Drop a Chrome Trace file here to begin";
+        ImVec2 text_size = ImGui::CalcTextSize(msg);
+        ImGui::SetCursorPos(ImVec2((size.x - text_size.x) * 0.5f, (size.y - text_size.y) * 0.5f));
+        ImGui::Text("%s", msg);
+      }
     }
+    ImGui::End();
+    ImGui::PopStyleVar(3);
+  }
 
+  // 3. Status/Control Overlay
+  {
+    if (ImGui::Begin("Status")) {
+      ImGui::Checkbox("Power-save Mode", &app->power_save_mode);
+      if (ImGui::Button("Reset Viewport")) {
+          app->viewport.start_time = (double)app->viewport.min_ts;
+          app->viewport.end_time = (double)app->viewport.max_ts;
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Demo")) app->show_demo_window = !app->show_demo_window;
+
+      if (app->trace_parser_active || app->trace_data.events.size > 0) {
+        ImGui::Separator();
+        ImGui::Text("Trace: %s", app->trace_filename.size > 0 ? app->trace_filename.data : "unknown");
+        ImGui::Text("Events: %zu", app->trace_data.events.size);
+        if (app->trace_parser_active) {
+            ImGui::TextColored(ImVec4(1, 1, 0, 1), "LOADING...");
+        }
+      }
+    }
+    ImGui::End();
+  }
+
+  // 4. Details Overlay
+  if (app->selected_event_index != -1) {
+    if (ImGui::Begin("Details")) {
+      const TraceEventPersisted& e = app->trace_data.events[(size_t)app->selected_event_index];
+      Str name = trace_data_get_string(&app->trace_data, e.name_offset);
+      Str cat = trace_data_get_string(&app->trace_data, e.cat_offset);
+      Str ph = trace_data_get_string(&app->trace_data, e.ph_offset);
+
+      ImGui::Text("Name: %.*s", (int)name.len, name.buf);
+      ImGui::Text("Category: %.*s", (int)cat.len, cat.buf);
+      ImGui::Text("PH: %.*s", (int)ph.len, ph.buf);
+      ImGui::Text("Timestamp: %lld", (long long)e.ts);
+      ImGui::Text("Duration: %lld", (long long)e.dur);
+      ImGui::Text("PID: %d, TID: %d", e.pid, e.tid);
+
+      if (e.args_count > 0) {
+        ImGui::Separator();
+        ImGui::Text("Arguments:");
+        for (uint32_t k = 0; k < e.args_count; k++) {
+          const TraceArgPersisted& arg = app->trace_data.args[e.args_offset + k];
+          Str key = trace_data_get_string(&app->trace_data, arg.key_offset);
+          Str val = trace_data_get_string(&app->trace_data, arg.val_offset);
+          ImGui::BulletText("%.*s: %.*s", (int)key.len, key.buf, (int)val.len, val.buf);
+        }
+      }
+    }
     ImGui::End();
   }
 }
@@ -58,11 +246,13 @@ void app_begin_session(App* app, int session_id, const char* filename) {
     trace_parser_deinit(&app->trace_parser);
   }
   trace_parser_init(&app->trace_parser, app->allocator);
+  trace_data_clear(&app->trace_data, app->allocator);
   app->trace_event_count = 0;
   app->trace_total_bytes = 0;
   app->trace_start_time = platform_get_now();
   app->trace_parser_active = true;
   app->current_session_id = session_id;
+  app->selected_event_index = -1;
 
   array_list_clear(&app->trace_filename);
   if (filename) {
@@ -87,6 +277,7 @@ void app_handle_file_chunk(App* app, int session_id, const char* data,
   TraceEvent event;
   while (trace_parser_next(&app->trace_parser, &event)) {
     app->trace_event_count++;
+    trace_data_add_event(&app->trace_data, app->allocator, &event);
   }
 
   if (is_eof) {
@@ -96,9 +287,10 @@ void app_handle_file_chunk(App* app, int session_id, const char* data,
         duration_s > 0.0
             ? ((double)app->trace_total_bytes / (1024.0 * 1024.0)) / duration_s
             : 0.0;
-    LOG_INFO("parsed %zu events in %.3f ms (%.2f mb/s)", app->trace_event_count,
+    LOG_INFO("parsed %zu events (total) in %.3f ms (%.2f mb/s)", app->trace_event_count,
              duration_ms, speed_mb_s);
     trace_parser_deinit(&app->trace_parser);
+    app_organize_tracks(app);
     app->trace_parser_active = false;
   }
 }

@@ -21,6 +21,7 @@ struct TraceEvent {
   Str cat;
   Str ph;
   int64_t ts;
+  int64_t dur;
   int32_t pid;
   int32_t tid;
   TraceArg* args;

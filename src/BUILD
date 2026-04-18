@@ -102,6 +102,27 @@ cc_library(
 )
 
 cc_library(
+    name = "trace_data",
+    srcs = ["trace_data.cc"],
+    hdrs = ["trace_data.h"],
+    deps = [
+        ":allocator",
+        ":array_list",
+        ":str",
+        ":trace_parser",
+    ],
+)
+
+cc_test(
+    name = "trace_data_test",
+    srcs = ["trace_data_test.cc"],
+    deps = [
+        ":trace_data",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "app",
     srcs = ["app.cc"],
     hdrs = ["app.h"],
@@ -110,6 +131,7 @@ cc_library(
         ":array_list",
         ":logging",
         ":platform",
+        ":trace_data",
         ":trace_parser",
         "@imgui",
     ],

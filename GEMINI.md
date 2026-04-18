@@ -26,15 +26,23 @@
 - `src/allocator`: Custom C-style allocator with `allocator_alloc`, `allocator_realloc`, and `allocator_free` helpers.
 - `src/str`: Basic `Str` struct (buffer and length) for string views.
 - `src/array_list`: Generic `ArrayList<T>` (vector) with explicit allocation and ZII.
-- `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format.
-- `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic.
+- `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments.
+- `src/trace_data`: Persistent storage for parsed events. Uses a string pool with offset-based addressing to prevent pointer invalidation during reallocations.
+- `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic. Supports 32-bit indices for large traces.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
-- `src/app`: Pure application logic and UI logic (ImGui).
+- `src/app`: Pure application logic and UI logic (ImGui). Manages viewport state, track organization, and event selection.
 - `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
 - `src/ztracing.h`: Clean C API for the WASM-to-JS bridge.
 - `src/platform`: Platform abstraction layer (e.g., high-resolution timestamps).
 - `src/logging`: Simple logging utility with WASM console integration.
+
+## Trace Viewport
+
+- **Layout**: The "Trace Viewport" is the primary, full-screen background window. Other panels ("Status", "Details") are docked at the bottom by default using a custom dockspace.
+- **Navigation**: Supports mouse-drag for panning and mouse-wheel for zooming.
+- **Rendering Optimization**: Events are grouped into tracks by TID. Each frame, binary search is used to identify and render only the visible events in the current viewport.
+- **32-bit Indices**: ImGui is patched via `MODULE.bazel` to use `unsigned int` for `ImDrawIdx`, allowing for more than 65,535 vertices (required for large traces).
 
 ## Trace Parser Integration
 
