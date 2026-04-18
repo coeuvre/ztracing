@@ -110,9 +110,16 @@ EMSCRIPTEN_KEEPALIVE void ztracing_free(void* ptr, int size) {
   allocator_free(a, ptr, (size_t)size);
 }
 
-EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(const char* data, int size,
+EMSCRIPTEN_KEEPALIVE void ztracing_begin_session(int session_id,
+                                                 const char* filename) {
+  app_begin_session(&g_app, session_id, filename);
+  imgui_impl_wasm_request_update();
+}
+
+EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(int session_id,
+                                                     const char* data, int size,
                                                      bool is_eof) {
-  app_handle_file_chunk(&g_app, data, (size_t)size, is_eof);
+  app_handle_file_chunk(&g_app, session_id, data, (size_t)size, is_eof);
   imgui_impl_wasm_request_update();
 }
 }

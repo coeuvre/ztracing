@@ -15,6 +15,7 @@ void app_deinit(App* app) {
   if (app->trace_parser_active) {
     trace_parser_deinit(&app->trace_parser);
   }
+  array_list_deinit(&app->trace_filename, app->allocator);
 }
 
 void app_update(App* app) {
@@ -40,7 +41,9 @@ void app_update(App* app) {
 
     if (app->trace_parser_active) {
       ImGui::Separator();
-      ImGui::Text("Loading trace...");
+      ImGui::Text("Loading trace: %s", app->trace_filename.size > 0
+                                          ? app->trace_filename.data
+                                          : "unknown");
       ImGui::Text("Parsed %zu events", app->trace_event_count);
       ImGui::Text("%.2f MB loaded",
                   (double)app->trace_total_bytes / (1024.0 * 1024.0));
@@ -50,14 +53,28 @@ void app_update(App* app) {
   }
 }
 
-void app_handle_file_chunk(App* app, const char* data, size_t size,
-                           bool is_eof) {
-  if (!app->trace_parser_active) {
-    trace_parser_init(&app->trace_parser, app->allocator);
-    app->trace_event_count = 0;
-    app->trace_total_bytes = 0;
-    app->trace_start_time = platform_get_now();
-    app->trace_parser_active = true;
+void app_begin_session(App* app, int session_id, const char* filename) {
+  if (app->trace_parser_active) {
+    trace_parser_deinit(&app->trace_parser);
+  }
+  trace_parser_init(&app->trace_parser, app->allocator);
+  app->trace_event_count = 0;
+  app->trace_total_bytes = 0;
+  app->trace_start_time = platform_get_now();
+  app->trace_parser_active = true;
+  app->current_session_id = session_id;
+
+  array_list_clear(&app->trace_filename);
+  if (filename) {
+    array_list_append(&app->trace_filename, app->allocator, filename,
+                      strlen(filename) + 1);
+  }
+}
+
+void app_handle_file_chunk(App* app, int session_id, const char* data,
+                           size_t size, bool is_eof) {
+  if (session_id != app->current_session_id) {
+    return;
   }
 
   if (size > 0) {

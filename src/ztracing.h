@@ -22,9 +22,14 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
 
 // Starts the main application loop.
 EMSCRIPTEN_KEEPALIVE void ztracing_start();
+ 
+// Begins a new loading session.
+EMSCRIPTEN_KEEPALIVE void ztracing_begin_session(int session_id,
+                                                 const char* filename);
 
 // Handles a chunk of file data from the JavaScript side.
-EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(const char* data, int size,
+EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(int session_id,
+                                                     const char* data, int size,
                                                      bool is_eof);
 
 }  // extern "C"
