@@ -1,6 +1,9 @@
 #include "src/allocator.h"
 
+#include <stdio.h>
 #include <stdlib.h>
+
+#include "src/logging.h"
 
 static void* allocator_default_alloc(void* ctx, void* ptr, size_t old_size,
                                      size_t new_size) {
@@ -10,12 +13,15 @@ static void* allocator_default_alloc(void* ctx, void* ptr, size_t old_size,
     free(ptr);
     return nullptr;
   }
-  return realloc(ptr, new_size);
+  void* new_ptr = realloc(ptr, new_size);
+  if (new_ptr == nullptr) {
+    LOG_ERROR("out of memory (requesting %zu bytes)", new_size);
+    abort();
+  }
+  return new_ptr;
 }
 
-Allocator allocator_get_default() {
-  return {allocator_default_alloc, nullptr};
-}
+Allocator allocator_get_default() { return {allocator_default_alloc, nullptr}; }
 
 static void* counting_alloc(void* ctx, void* ptr, size_t old_size,
                             size_t new_size) {

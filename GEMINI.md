@@ -41,7 +41,9 @@
 
 - **Layout**: The "Trace Viewport" is the primary, full-screen background window. Other panels ("Status", "Details") are docked at the bottom by default using a custom dockspace.
 - **Navigation**: Supports mouse-drag for panning and mouse-wheel for zooming.
-- **Rendering Optimization**: Events are grouped into tracks by TID. Each frame, binary search is used to identify and render only the visible events in the current viewport.
+- **Rendering Optimization**:
+    - **Visibility Culling**: Events are grouped into tracks by TID. Each frame, binary search is used to identify and render only the visible events in the current viewport.
+    - **Level of Detail (LOD)**: To handle massive traces (10M+ events), the renderer skips events that occupy less than 0.1 pixels of screen space or overlap with already drawn events when zoomed out.
 - **32-bit Indices**: ImGui is patched via `MODULE.bazel` to use `unsigned int` for `ImDrawIdx`, allowing for more than 65,535 vertices (required for large traces).
 
 ## Trace Parser Integration
@@ -58,6 +60,9 @@
 
 - **Allocator**: All backends must accept an `Allocator` struct during initialization.
 - **Default**: Use `allocator_get_default()` for standard `malloc`/`free` behavior.
+- **OOM Handling**: The default allocator is configured to log a `LOG_ERROR` and `abort()` immediately if an allocation fails. This simplifies the codebase as other components do not need to check for NULL pointers after allocation.
+- **WASM Limits**: The application is configured with `INITIAL_MEMORY=128MB` and `MAXIMUM_MEMORY=4GB` (the 32-bit WASM limit) with `ALLOW_MEMORY_GROWTH=1`.
+- **ArrayList Growth**: For large arrays (>1M elements), `ArrayList` uses a conservative growth strategy (25% or 1M elements, whichever is larger) to minimize peak memory pressure during reallocations.
 - **Signature**: `void* (*AllocFn)(void* ctx, void* ptr, size_t old_size, size_t new_size)`.
 
 ## Power-Save Mode

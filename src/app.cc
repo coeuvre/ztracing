@@ -41,26 +41,37 @@ static void app_organize_tracks(App* app) {
   app->viewport.min_ts = app->trace_data.events[0].ts;
   app->viewport.max_ts = app->trace_data.events[0].ts + app->trace_data.events[0].dur;
 
+  // Simple track cache to speed up O(N*M) search
+  size_t last_track_idx = (size_t)-1;
+
   for (size_t i = 0; i < app->trace_data.events.size; i++) {
     const TraceEventPersisted& e = app->trace_data.events[i];
     if (e.ts < app->viewport.min_ts) app->viewport.min_ts = e.ts;
     if (e.ts + e.dur > app->viewport.max_ts) app->viewport.max_ts = e.ts + e.dur;
 
-    int64_t track_idx = -1;
-    for (size_t j = 0; j < app->tracks.size; j++) {
-      if (app->tracks[j].pid == e.pid && app->tracks[j].tid == e.tid) {
-        track_idx = (int64_t)j;
-        break;
+    size_t track_idx = (size_t)-1;
+    if (last_track_idx != (size_t)-1 && 
+        app->tracks[last_track_idx].pid == e.pid && 
+        app->tracks[last_track_idx].tid == e.tid) {
+      track_idx = last_track_idx;
+    } else {
+      for (size_t j = 0; j < app->tracks.size; j++) {
+        if (app->tracks[j].pid == e.pid && app->tracks[j].tid == e.tid) {
+          track_idx = j;
+          last_track_idx = j;
+          break;
+        }
       }
     }
 
-    if (track_idx == -1) {
+    if (track_idx == (size_t)-1) {
       App::Track t = {e.pid, e.tid, 0, {}};
       array_list_push_back(&app->tracks, app->allocator, t);
-      track_idx = (int64_t)app->tracks.size - 1;
+      track_idx = app->tracks.size - 1;
+      last_track_idx = track_idx;
     }
 
-    array_list_push_back(&app->tracks[(size_t)track_idx].event_indices, app->allocator, i);
+    array_list_push_back(&app->tracks[track_idx].event_indices, app->allocator, i);
   }
 
   app->viewport.start_time = (double)app->viewport.min_ts;
@@ -132,6 +143,7 @@ void app_update(App* app) {
           size_t start_idx = (it == t.event_indices.data + t.event_indices.size) ? t.event_indices.size : (size_t)(it - t.event_indices.data);
           if (start_idx > 0) start_idx--;
 
+          float last_draw_x2 = -1e10f;
           for (size_t k = start_idx; k < t.event_indices.size; k++) {
             size_t event_idx = t.event_indices[k];
             const TraceEventPersisted& e = app->trace_data.events[event_idx];
@@ -143,7 +155,13 @@ void app_update(App* app) {
             
             float x1 = (float)(canvas_pos.x + start_x_rel * canvas_size.x);
             float x2 = (float)(canvas_pos.x + end_x_rel * canvas_size.x);
-            if (x2 - x1 < 1.0f) x2 = x1 + 1.0f;
+            
+            // LOD: skip if the entire event is significantly to the left of what we already drew
+            // and it's very small. This helps when zoomed out.
+            if (x2 < last_draw_x2 + 0.1f) continue;
+
+            if (x2 - x1 < 0.1f) x2 = x1 + 0.1f;
+            last_draw_x2 = x2;
             
             ImU32 col = (app->selected_event_index == (int64_t)event_idx) ? IM_COL32(255, 255, 0, 255) : IM_COL32(100, 180, 100, 255);
             draw_list->AddRectFilled(ImVec2(x1, track_pos.y + 1), ImVec2(x2, track_pos.y + track_height - 1), col);

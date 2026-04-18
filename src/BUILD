@@ -19,6 +19,7 @@ cc_library(
     name = "allocator",
     srcs = ["allocator.cc"],
     hdrs = ["allocator.h"],
+    deps = [":logging"],
 )
 
 cc_library(
@@ -153,6 +154,12 @@ cc_binary(
         "-sINVOKE_RUN=0",
         "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8']",
         "-sEXPORTED_FUNCTIONS=['_ztracing_init','_ztracing_start','_ztracing_set_font_data','_ztracing_malloc','_ztracing_free','_ztracing_begin_session','_ztracing_handle_file_chunk']",
+        "-sINITIAL_MEMORY=128MB",
+        "-sMAXIMUM_MEMORY=4GB",
+        "-sALLOW_MEMORY_GROWTH=1",
+        "-sASSERTIONS=1",
+        "-sSTACK_OVERFLOW_CHECK=1",
+        "-g",
         "--pre-js src/ztracing.js",
     ],
     deps = [
