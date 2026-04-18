@@ -121,7 +121,7 @@ static void app_draw_time_ruler(App* app, ImDrawList* draw_list, ImVec2 pos,
 
 void app_update(App* app) {
   // 1. Setup DockSpace
-  ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode;
+  ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None;
   ImGuiID dockspace_id = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), dockspace_flags);
 
   if (app->first_frame) {
@@ -133,6 +133,11 @@ void app_update(App* app) {
     ImGuiID dock_id_main = dockspace_id;
     ImGuiID dock_id_bottom = ImGui::DockBuilderSplitNode(dock_id_main, ImGuiDir_Down, 0.25f, nullptr, &dock_id_main);
 
+    // Hide tab bar for the main viewport area
+    ImGuiDockNode* main_node = ImGui::DockBuilderGetNode(dock_id_main);
+    if (main_node) main_node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+
+    ImGui::DockBuilderDockWindow("Trace Viewport", dock_id_main);
     ImGui::DockBuilderDockWindow("Status", dock_id_bottom);
     ImGui::DockBuilderDockWindow("Details", dock_id_bottom);
     ImGui::DockBuilderFinish(dockspace_id);
@@ -140,13 +145,9 @@ void app_update(App* app) {
 
   if (app->show_demo_window) ImGui::ShowDemoWindow(&app->show_demo_window);
 
-  // 2. Fullscreen Trace Viewport (as background)
+  // 2. Fullscreen Trace Viewport
   {
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(viewport->WorkPos);
-    ImGui::SetNextWindowSize(viewport->WorkSize);
-    
-    ImGuiWindowFlags viewport_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoDocking;
+    ImGuiWindowFlags viewport_flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar;
     
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -169,17 +170,30 @@ void app_update(App* app) {
         float track_height = 25.0f;
         float track_spacing = 2.0f;
 
+        ImGuiWindowFlags child_flags = ImGuiWindowFlags_NoMove;
+        if (ImGui::GetIO().KeyCtrl) child_flags |= ImGuiWindowFlags_NoScrollWithMouse;
+
         ImGui::SetCursorScreenPos(ImVec2(canvas_pos.x, canvas_pos.y + ruler_height));
-        if (ImGui::BeginChild("TrackList", ImVec2(canvas_size.x, canvas_size.y - ruler_height))) {
+        if (ImGui::BeginChild("TrackList", ImVec2(0, canvas_size.y - ruler_height), ImGuiChildFlags_None, child_flags)) {
+          ImDrawList* track_draw_list = ImGui::GetWindowDrawList();
+          // Set content size so scrollbars work and ImGui is happy.
+          // Use 0.0f width to avoid forcing horizontal scrollbar.
+          ImGui::Dummy(ImVec2(0.0f, (float)app->tracks.size * (track_height + track_spacing)));
+          ImGui::SetCursorPos(ImVec2(0, 0));
+
           ImVec2 tracks_canvas_pos = ImGui::GetCursorScreenPos();
+          float inner_width = ImGui::GetContentRegionAvail().x;
+
           for (size_t i = 0; i < app->tracks.size; i++) {
             const App::Track& t = app->tracks[i];
             ImVec2 track_pos = ImVec2(tracks_canvas_pos.x, tracks_canvas_pos.y + (float)i * (track_height + track_spacing));
-            draw_list->AddRectFilled(track_pos, ImVec2(track_pos.x + canvas_size.x, track_pos.y + track_height), IM_COL32(50, 50, 50, 255));
+            
+            // Frustum culling: skip tracks that are not visible
+            if (track_pos.y + track_height < canvas_pos.y + ruler_height || track_pos.y > canvas_pos.y + canvas_size.y) {
+              continue;
+            }
 
-            char label[64];
-            snprintf(label, sizeof(label), "TID:%d", t.tid);
-            draw_list->AddText(ImVec2(track_pos.x + 5, track_pos.y + 2), IM_COL32(180, 180, 180, 255), label);
+            track_draw_list->AddRectFilled(track_pos, ImVec2(track_pos.x + inner_width, track_pos.y + track_height), IM_COL32(50, 50, 50, 255));
 
             auto it = std::lower_bound(t.event_indices.data, t.event_indices.data + t.event_indices.size, (int64_t)app->viewport.start_time, 
                 [&](size_t idx, int64_t val) {
@@ -199,8 +213,8 @@ void app_update(App* app) {
               double start_x_rel = ((double)e.ts - app->viewport.start_time) / duration;
               double end_x_rel = ((double)e.ts + (double)e.dur - app->viewport.start_time) / duration;
               
-              float x1 = (float)(tracks_canvas_pos.x + start_x_rel * canvas_size.x);
-              float x2 = (float)(tracks_canvas_pos.x + end_x_rel * canvas_size.x);
+              float x1 = (float)(tracks_canvas_pos.x + start_x_rel * inner_width);
+              float x2 = (float)(tracks_canvas_pos.x + end_x_rel * inner_width);
               
               // LOD: skip if the entire event is significantly to the left of what we already drew
               // and it's very small. This helps when zoomed out.
@@ -210,7 +224,7 @@ void app_update(App* app) {
               last_draw_x2 = x2;
               
               ImU32 col = (app->selected_event_index == (int64_t)event_idx) ? IM_COL32(255, 255, 0, 255) : IM_COL32(100, 180, 100, 255);
-              draw_list->AddRectFilled(ImVec2(x1, track_pos.y + 1), ImVec2(x2, track_pos.y + track_height - 1), col);
+              track_draw_list->AddRectFilled(ImVec2(x1, track_pos.y + 1), ImVec2(x2, track_pos.y + track_height - 1), col);
 
               if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered()) {
                 ImVec2 mouse_pos = ImGui::GetMousePos();
@@ -219,6 +233,10 @@ void app_update(App* app) {
                 }
               }
             }
+
+            char label[64];
+            snprintf(label, sizeof(label), "TID:%d", t.tid);
+            track_draw_list->AddText(ImVec2(track_pos.x + 5, track_pos.y + 2), IM_COL32(255, 255, 255, 255), label);
           }
         }
         ImGui::EndChild();
@@ -231,15 +249,23 @@ void app_update(App* app) {
             app->viewport.end_time -= dt;
           }
 
-          float wheel = ImGui::GetIO().MouseWheel;
-          if (wheel != 0.0f) {
+          float wheel_v = ImGui::GetIO().MouseWheel;
+          float wheel_h = ImGui::GetIO().MouseWheelH;
+
+          if (wheel_v != 0.0f && ImGui::GetIO().KeyCtrl) {
             double mouse_x_rel = (double)(ImGui::GetIO().MousePos.x - canvas_pos.x) / (double)canvas_size.x;
             double current_duration = app->viewport.end_time - app->viewport.start_time;
             double mouse_ts = app->viewport.start_time + mouse_x_rel * current_duration;
-            double zoom_factor = (wheel > 0.0f) ? 0.8 : 1.2;
+            double zoom_factor = (wheel_v > 0.0f) ? 0.8 : 1.2;
             double new_duration = current_duration * zoom_factor;
             app->viewport.start_time = mouse_ts - mouse_x_rel * new_duration;
             app->viewport.end_time = app->viewport.start_time + new_duration;
+          } else if (wheel_h != 0.0f || (wheel_v != 0.0f && ImGui::GetIO().KeyShift)) {
+            float delta = (wheel_h != 0.0f) ? wheel_h : wheel_v;
+            double dx = (double)delta * 100.0; // 100 pixels per tick sensitivity
+            double dt = (dx / (double)canvas_size.x) * (app->viewport.end_time - app->viewport.start_time);
+            app->viewport.start_time -= dt;
+            app->viewport.end_time -= dt;
           }
         }
       } else {

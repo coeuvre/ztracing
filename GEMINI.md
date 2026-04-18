@@ -40,12 +40,15 @@
 
 ## Trace Viewport
 
-- **Layout**: The "Trace Viewport" is the primary, full-screen background window. Other panels ("Status", "Details") are docked at the bottom by default using a custom dockspace.
+- **Layout**: The "Trace Viewport" is docked in the central area. Other panels ("Status", "Details") are docked at the bottom by default. The viewport window has no title bar or tabs for a cleaner look.
 - **Time Ruler**: A persistent horizontal ruler at the top displays the current time range with adaptive units (s, ms, us) and nice tick intervals.
-- **Vertical Scrolling**: Tracks are rendered within a scrollable child window, allowing navigation when many tracks are present.
-- **Navigation**: Supports mouse-drag for panning and mouse-wheel for zooming across the entire viewport (including ruler and tracks).
+- **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically.
+- **Navigation**: 
+    - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor.
+    - **Pan**: Left-mouse drag or `Shift + MouseWheel` or horizontal scroll wheel to pan horizontally.
 - **Rendering Optimization**:
-    - **Visibility Culling**: Events are grouped into tracks by TID. Each frame, binary search is used to identify and render only the visible events in the current viewport.
+    - **Visibility Culling (Horizontal)**: Events are grouped into tracks by TID. Each frame, binary search is used to identify and render only the visible events in the current horizontal time range.
+    - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
     - **Level of Detail (LOD)**: To handle massive traces (10M+ events), the renderer skips events that occupy less than 0.1 pixels of screen space or overlap with already drawn events when zoomed out.
 - **32-bit Indices**: ImGui is patched via `MODULE.bazel` to use `unsigned int` for `ImDrawIdx`, allowing for more than 65,535 vertices (required for large traces).
 
