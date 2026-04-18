@@ -30,8 +30,9 @@
       }
 
       async function start() {
+        Module.ccall('ztracing_init', 'number', ['string'], ['#canvas']);
         await loadFont();
-        Module.callMain();
+        Module.ccall('ztracing_start', null, [], []);
       }
 
       var Module = {
