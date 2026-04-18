@@ -1,6 +1,6 @@
 #include "src/app.h"
 
-#include <emscripten.h>
+#include "src/platform.h"
 
 #include "src/logging.h"
 #include "third_party/imgui/imgui.h"
@@ -56,7 +56,7 @@ void app_handle_file_chunk(App* app, const char* data, size_t size,
     trace_parser_init(&app->trace_parser, app->allocator);
     app->trace_event_count = 0;
     app->trace_total_bytes = 0;
-    app->trace_start_time = emscripten_get_now();
+    app->trace_start_time = platform_get_now();
     app->trace_parser_active = true;
   }
 
@@ -73,7 +73,7 @@ void app_handle_file_chunk(App* app, const char* data, size_t size,
   }
 
   if (is_eof) {
-    double duration_ms = emscripten_get_now() - app->trace_start_time;
+    double duration_ms = platform_get_now() - app->trace_start_time;
     double duration_s = duration_ms / 1000.0;
     double speed_mb_s =
         duration_s > 0.0

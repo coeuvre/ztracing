@@ -4,6 +4,12 @@ load("@emsdk//emscripten_toolchain:wasm_rules.bzl", "wasm_cc_binary")
 package(default_visibility = ["//visibility:public"])
 
 cc_library(
+    name = "platform",
+    srcs = ["platform_wasm.cc"],
+    hdrs = ["platform.h"],
+)
+
+cc_library(
     name = "logging",
     srcs = ["logging_wasm.cc"],
     hdrs = ["logging.h"],
@@ -103,6 +109,7 @@ cc_library(
         ":allocator",
         ":array_list",
         ":logging",
+        ":platform",
         ":trace_parser",
         "@imgui",
     ],
@@ -131,6 +138,7 @@ cc_binary(
         ":imgui_impl_wasm",
         ":imgui_impl_webgl",
         ":logging",
+        ":platform",
         "@imgui",
     ],
 )

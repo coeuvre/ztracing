@@ -33,6 +33,7 @@
 - `src/app`: Pure application logic and UI logic (ImGui).
 - `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
 - `src/ztracing.h`: Clean C API for the WASM-to-JS bridge.
+- `src/platform`: Platform abstraction layer (e.g., high-resolution timestamps).
 - `src/logging`: Simple logging utility with WASM console integration.
 
 ## Trace Parser Integration
