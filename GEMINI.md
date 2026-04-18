@@ -39,10 +39,11 @@
 ## Trace Parser Integration
 
 - **Streaming**: Trace files are read in chunks using the browser's `ReadableStream` API.
+- **Decompression**: `ztracing.js` handles Gzip decompression on-the-fly using the `DecompressionStream` API if the file extension is `.gz` or `.gzip`.
 - **WASM Bridge**: `ztracing.js` handles the drag-and-drop events and feeds chunks to WASM.
 - **Responsiveness**: Parsing yields to the browser's event loop every 100ms during loading (via `setTimeout(0)` in JS). This prevents the microtask-based `ReadableStream` loop from starving the main thread, ensuring `requestAnimationFrame` can fire and keep the UI responsive.
 - **Progress Feedback**: `app.cc` displays live parsing statistics (event count and MB loaded) while `trace_parser_active` is true.
-- **WASM Exports**: `ztracing_malloc`, `ztracing_free`, and `ztracing_handle_file_chunk` are used for memory and data transfer.
+- **WASM Exports**: `ztracing_malloc`, `ztracing_free`, `ztracing_begin_session`, and `ztracing_handle_file_chunk` are used for memory and data transfer.
 
 ## Memory Management
 

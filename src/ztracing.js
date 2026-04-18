@@ -34,11 +34,21 @@
       if (!file) return;
 
       const sessionId = ++currentSessionId;
-      console.log(`loading file: ${file.name} (${file.size} bytes), session: ${sessionId}`);
+      let stream = file.stream();
+      let statusMsg = `loading file: ${file.name} (${file.size} bytes)`;
+
+      if (file.name.toLowerCase().endsWith('.gz') || file.name.toLowerCase().endsWith('.gzip')) {
+        if (typeof DecompressionStream !== 'undefined') {
+          stream = stream.pipeThrough(new DecompressionStream('gzip'));
+          statusMsg += ' [decompressing gzip]';
+        } else {
+          console.warn('ztracing: DecompressionStream not supported in this browser, skipping decompression.');
+        }
+      }
+      console.log(`${statusMsg}, session: ${sessionId}`);
 
       Module.ccall('ztracing_begin_session', null, ['number', 'string'], [sessionId, file.name]);
 
-      const stream = file.stream();
       const reader = stream.getReader();
 
       let lastYieldTime = performance.now();

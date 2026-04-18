@@ -130,7 +130,7 @@ cc_binary(
         "-sWASM=1",
         "-sINVOKE_RUN=0",
         "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8']",
-        "-sEXPORTED_FUNCTIONS=['_ztracing_init','_ztracing_start','_ztracing_set_font_data','_ztracing_malloc','_ztracing_free','_ztracing_handle_file_chunk']",
+        "-sEXPORTED_FUNCTIONS=['_ztracing_init','_ztracing_start','_ztracing_set_font_data','_ztracing_malloc','_ztracing_free','_ztracing_begin_session','_ztracing_handle_file_chunk']",
         "--pre-js src/ztracing.js",
     ],
     deps = [
