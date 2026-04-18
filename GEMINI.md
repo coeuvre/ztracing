@@ -45,12 +45,13 @@
 - **Time Ruler**: A persistent horizontal ruler at the top displays the current time range with adaptive units (s, ms, us) and nice tick intervals.
 - **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically.
 - **Navigation**: 
-    - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor.
+    - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor. Requires modern ImGui modifier checks (`ImGui::IsKeyDown`).
     - **Pan**: Left-mouse drag or `Shift + MouseWheel` or horizontal scroll wheel to pan horizontally.
 - **Rendering Optimization**:
     - **Visibility Culling (Horizontal)**: Events are grouped into tracks. Each track maintains a `max_dur` (maximum event duration) and sorted `event_indices`. Binary search is used to find the first potentially visible event at `viewport_start - max_dur`, ensuring partially visible events are correctly rendered.
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
     - **Level of Detail (LOD)**: To handle massive traces (10M+ events), the renderer skips events that occupy less than 0.1 pixels of screen space or overlap with already drawn events when zoomed out.
+    - **Event Names**: Names are rendered inside event blocks if the visible width is >10 pixels. "Sticky" positioning is used to keep names visible at the left edge of the viewport when an event's start is off-screen.
 - **32-bit Indices**: ImGui is patched via `MODULE.bazel` to use `unsigned int` for `ImDrawIdx`, allowing for more than 65,535 vertices (required for large traces).
 
 ## Trace Parser Integration

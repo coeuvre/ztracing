@@ -178,7 +178,7 @@ void app_update(App* app) {
         float track_spacing = 2.0f;
 
         ImGuiWindowFlags child_flags = ImGuiWindowFlags_NoMove;
-        if (ImGui::GetIO().KeyCtrl) child_flags |= ImGuiWindowFlags_NoScrollWithMouse;
+        if (ImGui::IsKeyDown(ImGuiMod_Ctrl)) child_flags |= ImGuiWindowFlags_NoScrollWithMouse;
 
         ImGui::SetCursorScreenPos(ImVec2(canvas_pos.x, canvas_pos.y + ruler_height));
         if (ImGui::BeginChild("TrackList", ImVec2(0, canvas_size.y - ruler_height), ImGuiChildFlags_None, child_flags)) {
@@ -227,6 +227,19 @@ void app_update(App* app) {
               ImU32 col = (app->selected_event_index == (int64_t)event_idx) ? IM_COL32(255, 255, 0, 255) : IM_COL32(100, 180, 100, 255);
               track_draw_list->AddRectFilled(ImVec2(x1, track_pos.y + 1), ImVec2(x2, track_pos.y + track_height - 1), col);
 
+              // Draw event name if there is enough space
+              float visible_x1 = std::max(x1, tracks_canvas_pos.x);
+              float visible_x2 = std::min(x2, tracks_canvas_pos.x + inner_width);
+              if (visible_x2 - visible_x1 > 10.0f) {
+                Str name = trace_data_get_string(&app->trace_data, e.name_offset);
+                if (name.len > 0) {
+                  ImU32 text_col = (app->selected_event_index == (int64_t)event_idx) ? IM_COL32(0, 0, 0, 255) : IM_COL32(255, 255, 255, 255);
+                  track_draw_list->PushClipRect(ImVec2(visible_x1, track_pos.y), ImVec2(visible_x2, track_pos.y + track_height), true);
+                  track_draw_list->AddText(ImVec2(visible_x1 + 2.0f, track_pos.y + 2.0f), text_col, name.buf, name.buf + name.len);
+                  track_draw_list->PopClipRect();
+                }
+              }
+
               if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered()) {
                 ImVec2 mouse_pos = ImGui::GetMousePos();
                 if (mouse_pos.x >= x1 && mouse_pos.x <= x2 && mouse_pos.y >= track_pos.y && mouse_pos.y <= track_pos.y + track_height) {
@@ -253,7 +266,7 @@ void app_update(App* app) {
           float wheel_v = ImGui::GetIO().MouseWheel;
           float wheel_h = ImGui::GetIO().MouseWheelH;
 
-          if (wheel_v != 0.0f && ImGui::GetIO().KeyCtrl) {
+          if (wheel_v != 0.0f && ImGui::IsKeyDown(ImGuiMod_Ctrl)) {
             double mouse_x_rel = (double)(ImGui::GetIO().MousePos.x - canvas_pos.x) / (double)canvas_size.x;
             double current_duration = app->viewport.end_time - app->viewport.start_time;
             double mouse_ts = app->viewport.start_time + mouse_x_rel * current_duration;
@@ -261,7 +274,7 @@ void app_update(App* app) {
             double new_duration = current_duration * zoom_factor;
             app->viewport.start_time = mouse_ts - mouse_x_rel * new_duration;
             app->viewport.end_time = app->viewport.start_time + new_duration;
-          } else if (wheel_h != 0.0f || (wheel_v != 0.0f && ImGui::GetIO().KeyShift)) {
+          } else if (wheel_h != 0.0f || (wheel_v != 0.0f && ImGui::IsKeyDown(ImGuiMod_Shift))) {
             float delta = (wheel_h != 0.0f) ? wheel_h : wheel_v;
             double dx = (double)delta * 100.0; // 100 pixels per tick sensitivity
             double dt = (dx / (double)canvas_size.x) * (app->viewport.end_time - app->viewport.start_time);

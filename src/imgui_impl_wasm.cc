@@ -75,6 +75,10 @@ static EM_BOOL on_wheel(int event_type, const EmscriptenWheelEvent* wheel_event,
   (void)event_type;
   (void)user_data;
   ImGuiIO& io = ImGui::GetIO();
+  io.AddKeyEvent(ImGuiMod_Ctrl, wheel_event->mouse.ctrlKey);
+  io.AddKeyEvent(ImGuiMod_Shift, wheel_event->mouse.shiftKey);
+  io.AddKeyEvent(ImGuiMod_Alt, wheel_event->mouse.altKey);
+  io.AddKeyEvent(ImGuiMod_Super, wheel_event->mouse.metaKey);
   io.AddMouseWheelEvent((float)wheel_event->deltaX * -0.01f,
                         (float)wheel_event->deltaY * -0.01f);
   imgui_impl_wasm_request_update();
@@ -118,13 +122,15 @@ static EM_BOOL on_key(int event_type, const EmscriptenKeyboardEvent* key_event,
                       void* user_data) {
   (void)user_data;
   ImGuiIO& io = ImGui::GetIO();
+
+  io.AddKeyEvent(ImGuiMod_Ctrl, key_event->ctrlKey);
+  io.AddKeyEvent(ImGuiMod_Shift, key_event->shiftKey);
+  io.AddKeyEvent(ImGuiMod_Alt, key_event->altKey);
+  io.AddKeyEvent(ImGuiMod_Super, key_event->metaKey);
+
   ImGuiKey key = string_to_imgui_key(key_event->code);
   if (key != ImGuiKey_None) {
     io.AddKeyEvent(key, event_type == EMSCRIPTEN_EVENT_KEYDOWN);
-    io.AddKeyEvent(ImGuiMod_Ctrl, key_event->ctrlKey);
-    io.AddKeyEvent(ImGuiMod_Shift, key_event->shiftKey);
-    io.AddKeyEvent(ImGuiMod_Alt, key_event->altKey);
-    io.AddKeyEvent(ImGuiMod_Super, key_event->metaKey);
   }
 
   if (event_type == EMSCRIPTEN_EVENT_KEYDOWN && strlen(key_event->key) == 1) {
