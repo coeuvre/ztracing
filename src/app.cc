@@ -2,7 +2,9 @@
 
 #include <stdio.h>
 #include <algorithm>
+#include <math.h>
 
+#include "src/format.h"
 #include "src/platform.h"
 
 #include "src/logging.h"
@@ -79,6 +81,44 @@ static void app_organize_tracks(App* app) {
   LOG_INFO("organized %zu tracks, time range: [%lld, %lld]", app->tracks.size, (long long)app->viewport.min_ts, (long long)app->viewport.max_ts);
 }
 
+static void app_draw_time_ruler(App* app, ImDrawList* draw_list, ImVec2 pos,
+                                ImVec2 size) {
+  double start_time = app->viewport.start_time;
+  double end_time = app->viewport.end_time;
+  double duration = end_time - start_time;
+  if (duration <= 0) return;
+
+  // Ruler background
+  draw_list->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
+                           IM_COL32(40, 40, 40, 255));
+  draw_list->AddLine(ImVec2(pos.x, pos.y + size.y - 1),
+                     ImVec2(pos.x + size.x, pos.y + size.y - 1),
+                     IM_COL32(100, 100, 100, 255));
+
+  // Determine tick interval
+  double tick_interval = calculate_tick_interval(duration, size.x, 100.0);
+
+  double display_start = start_time - (double)app->viewport.min_ts;
+  double display_end = end_time - (double)app->viewport.min_ts;
+
+  double first_tick_rel = ceil(display_start / tick_interval) * tick_interval;
+  for (double t_rel = first_tick_rel; t_rel <= display_end; t_rel += tick_interval) {
+    double t = t_rel + (double)app->viewport.min_ts;
+    float x = (float)(pos.x + (t - start_time) / duration * size.x);
+    if (x < pos.x || x > pos.x + size.x) continue;
+
+    draw_list->AddLine(ImVec2(x, pos.y + size.y * 0.6f),
+                       ImVec2(x, pos.y + size.y - 1),
+                       IM_COL32(150, 150, 150, 255));
+
+    char label[32];
+    format_duration(label, sizeof(label), t_rel, tick_interval);
+
+    draw_list->AddText(ImVec2(x + 3, pos.y + 2), IM_COL32(200, 200, 200, 255),
+                       label);
+  }
+}
+
 void app_update(App* app) {
   // 1. Setup DockSpace
   ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_PassthruCentralNode | ImGuiDockNodeFlags_NoDockingOverCentralNode;
@@ -123,59 +163,67 @@ void app_update(App* app) {
         double duration = app->viewport.end_time - app->viewport.start_time;
         if (duration <= 0) duration = 1.0;
 
+        float ruler_height = 25.0f;
+        app_draw_time_ruler(app, draw_list, canvas_pos, ImVec2(canvas_size.x, ruler_height));
+
         float track_height = 25.0f;
         float track_spacing = 2.0f;
 
-        for (size_t i = 0; i < app->tracks.size; i++) {
-          const App::Track& t = app->tracks[i];
-          ImVec2 track_pos = ImVec2(canvas_pos.x, canvas_pos.y + (float)i * (track_height + track_spacing));
-          draw_list->AddRectFilled(track_pos, ImVec2(track_pos.x + canvas_size.x, track_pos.y + track_height), IM_COL32(50, 50, 50, 255));
+        ImGui::SetCursorScreenPos(ImVec2(canvas_pos.x, canvas_pos.y + ruler_height));
+        if (ImGui::BeginChild("TrackList", ImVec2(canvas_size.x, canvas_size.y - ruler_height))) {
+          ImVec2 tracks_canvas_pos = ImGui::GetCursorScreenPos();
+          for (size_t i = 0; i < app->tracks.size; i++) {
+            const App::Track& t = app->tracks[i];
+            ImVec2 track_pos = ImVec2(tracks_canvas_pos.x, tracks_canvas_pos.y + (float)i * (track_height + track_spacing));
+            draw_list->AddRectFilled(track_pos, ImVec2(track_pos.x + canvas_size.x, track_pos.y + track_height), IM_COL32(50, 50, 50, 255));
 
-          char label[64];
-          snprintf(label, sizeof(label), "TID:%d", t.tid);
-          draw_list->AddText(ImVec2(track_pos.x + 5, track_pos.y + 2), IM_COL32(180, 180, 180, 255), label);
+            char label[64];
+            snprintf(label, sizeof(label), "TID:%d", t.tid);
+            draw_list->AddText(ImVec2(track_pos.x + 5, track_pos.y + 2), IM_COL32(180, 180, 180, 255), label);
 
-          auto it = std::lower_bound(t.event_indices.data, t.event_indices.data + t.event_indices.size, (int64_t)app->viewport.start_time, 
-              [&](size_t idx, int64_t val) {
-                  return app->trace_data.events[idx].ts < val;
-              });
-          
-          size_t start_idx = (it == t.event_indices.data + t.event_indices.size) ? t.event_indices.size : (size_t)(it - t.event_indices.data);
-          if (start_idx > 0) start_idx--;
-
-          float last_draw_x2 = -1e10f;
-          for (size_t k = start_idx; k < t.event_indices.size; k++) {
-            size_t event_idx = t.event_indices[k];
-            const TraceEventPersisted& e = app->trace_data.events[event_idx];
+            auto it = std::lower_bound(t.event_indices.data, t.event_indices.data + t.event_indices.size, (int64_t)app->viewport.start_time, 
+                [&](size_t idx, int64_t val) {
+                    return app->trace_data.events[idx].ts < val;
+                });
             
-            if (e.ts > (int64_t)app->viewport.end_time) break;
+            size_t start_idx = (it == t.event_indices.data + t.event_indices.size) ? t.event_indices.size : (size_t)(it - t.event_indices.data);
+            if (start_idx > 0) start_idx--;
 
-            double start_x_rel = ((double)e.ts - app->viewport.start_time) / duration;
-            double end_x_rel = ((double)e.ts + (double)e.dur - app->viewport.start_time) / duration;
-            
-            float x1 = (float)(canvas_pos.x + start_x_rel * canvas_size.x);
-            float x2 = (float)(canvas_pos.x + end_x_rel * canvas_size.x);
-            
-            // LOD: skip if the entire event is significantly to the left of what we already drew
-            // and it's very small. This helps when zoomed out.
-            if (x2 < last_draw_x2 + 0.1f) continue;
+            float last_draw_x2 = -1e10f;
+            for (size_t k = start_idx; k < t.event_indices.size; k++) {
+              size_t event_idx = t.event_indices[k];
+              const TraceEventPersisted& e = app->trace_data.events[event_idx];
+              
+              if (e.ts > (int64_t)app->viewport.end_time) break;
 
-            if (x2 - x1 < 0.1f) x2 = x1 + 0.1f;
-            last_draw_x2 = x2;
-            
-            ImU32 col = (app->selected_event_index == (int64_t)event_idx) ? IM_COL32(255, 255, 0, 255) : IM_COL32(100, 180, 100, 255);
-            draw_list->AddRectFilled(ImVec2(x1, track_pos.y + 1), ImVec2(x2, track_pos.y + track_height - 1), col);
+              double start_x_rel = ((double)e.ts - app->viewport.start_time) / duration;
+              double end_x_rel = ((double)e.ts + (double)e.dur - app->viewport.start_time) / duration;
+              
+              float x1 = (float)(tracks_canvas_pos.x + start_x_rel * canvas_size.x);
+              float x2 = (float)(tracks_canvas_pos.x + end_x_rel * canvas_size.x);
+              
+              // LOD: skip if the entire event is significantly to the left of what we already drew
+              // and it's very small. This helps when zoomed out.
+              if (x2 < last_draw_x2 + 0.1f) continue;
 
-            if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered()) {
-              ImVec2 mouse_pos = ImGui::GetMousePos();
-              if (mouse_pos.x >= x1 && mouse_pos.x <= x2 && mouse_pos.y >= track_pos.y && mouse_pos.y <= track_pos.y + track_height) {
-                app->selected_event_index = (int64_t)event_idx;
+              if (x2 - x1 < 0.1f) x2 = x1 + 0.1f;
+              last_draw_x2 = x2;
+              
+              ImU32 col = (app->selected_event_index == (int64_t)event_idx) ? IM_COL32(255, 255, 0, 255) : IM_COL32(100, 180, 100, 255);
+              draw_list->AddRectFilled(ImVec2(x1, track_pos.y + 1), ImVec2(x2, track_pos.y + track_height - 1), col);
+
+              if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered()) {
+                ImVec2 mouse_pos = ImGui::GetMousePos();
+                if (mouse_pos.x >= x1 && mouse_pos.x <= x2 && mouse_pos.y >= track_pos.y && mouse_pos.y <= track_pos.y + track_height) {
+                  app->selected_event_index = (int64_t)event_idx;
+                }
               }
             }
           }
         }
+        ImGui::EndChild();
 
-        if (ImGui::IsWindowHovered()) {
+        if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
           if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
             double dx = (double)ImGui::GetIO().MouseDelta.x;
             double dt = (dx / (double)canvas_size.x) * (app->viewport.end_time - app->viewport.start_time);

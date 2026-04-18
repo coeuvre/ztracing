@@ -32,6 +32,7 @@
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
 - `src/app`: Pure application logic and UI logic (ImGui). Manages viewport state, track organization, and event selection.
+- `src/format`: Human-readable time formatting (s, ms, us) and tick interval calculation.
 - `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
 - `src/ztracing.h`: Clean C API for the WASM-to-JS bridge.
 - `src/platform`: Platform abstraction layer (e.g., high-resolution timestamps).
@@ -40,7 +41,9 @@
 ## Trace Viewport
 
 - **Layout**: The "Trace Viewport" is the primary, full-screen background window. Other panels ("Status", "Details") are docked at the bottom by default using a custom dockspace.
-- **Navigation**: Supports mouse-drag for panning and mouse-wheel for zooming.
+- **Time Ruler**: A persistent horizontal ruler at the top displays the current time range with adaptive units (s, ms, us) and nice tick intervals.
+- **Vertical Scrolling**: Tracks are rendered within a scrollable child window, allowing navigation when many tracks are present.
+- **Navigation**: Supports mouse-drag for panning and mouse-wheel for zooming across the entire viewport (including ruler and tracks).
 - **Rendering Optimization**:
     - **Visibility Culling**: Events are grouped into tracks by TID. Each frame, binary search is used to identify and render only the visible events in the current viewport.
     - **Level of Detail (LOD)**: To handle massive traces (10M+ events), the renderer skips events that occupy less than 0.1 pixels of screen space or overlap with already drawn events when zoomed out.

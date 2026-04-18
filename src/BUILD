@@ -28,6 +28,12 @@ cc_library(
 )
 
 cc_library(
+    name = "format",
+    srcs = ["format.cc"],
+    hdrs = ["format.h"],
+)
+
+cc_library(
     name = "array_list",
     hdrs = ["array_list.h"],
     deps = [":allocator"],
@@ -47,6 +53,15 @@ cc_test(
     srcs = ["str_test.cc"],
     deps = [
         ":str",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "format_test",
+    srcs = ["format_test.cc"],
+    deps = [
+        ":format",
         "@googletest//:gtest_main",
     ],
 )
@@ -130,6 +145,7 @@ cc_library(
     deps = [
         ":allocator",
         ":array_list",
+        ":format",
         ":logging",
         ":platform",
         ":trace_data",
