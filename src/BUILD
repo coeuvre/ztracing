@@ -122,7 +122,7 @@ cc_binary(
         "ztracing_wasm.cc",
     ],
     additional_linker_inputs = [
-        "wasm_bridge.js",
+        "ztracing.js",
     ],
     linkopts = [
         "-sUSE_WEBGL2=1",
@@ -131,7 +131,7 @@ cc_binary(
         "-sINVOKE_RUN=0",
         "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8']",
         "-sEXPORTED_FUNCTIONS=['_ztracing_init','_ztracing_start','_ztracing_set_font_data','_ztracing_malloc','_ztracing_free','_ztracing_handle_file_chunk']",
-        "--pre-js src/wasm_bridge.js",
+        "--pre-js src/ztracing.js",
     ],
     deps = [
         ":app",
