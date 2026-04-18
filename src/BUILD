@@ -3,15 +3,26 @@ load("@emsdk//emscripten_toolchain:wasm_rules.bzl", "wasm_cc_binary")
 
 package(default_visibility = ["//visibility:public"])
 
+config_setting(
+    name = "wasm_build",
+    constraint_values = ["@@platforms//os:emscripten"],
+)
+
 cc_library(
     name = "platform",
-    srcs = ["platform_wasm.cc"],
+    srcs = select({
+        ":wasm_build": ["platform_wasm.cc"],
+        "//conditions:default": ["platform_native.cc"],
+    }),
     hdrs = ["platform.h"],
 )
 
 cc_library(
     name = "logging",
-    srcs = ["logging_wasm.cc"],
+    srcs = select({
+        ":wasm_build": ["logging_wasm.cc"],
+        "//conditions:default": ["logging_native.cc"],
+    }),
     hdrs = ["logging.h"],
 )
 
@@ -139,6 +150,26 @@ cc_test(
 )
 
 cc_library(
+    name = "track",
+    srcs = ["track.cc"],
+    hdrs = ["track.h"],
+    deps = [
+        ":allocator",
+        ":array_list",
+        ":trace_data",
+    ],
+)
+
+cc_test(
+    name = "track_test",
+    srcs = ["track_test.cc"],
+    deps = [
+        ":track",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "app",
     srcs = ["app.cc"],
     hdrs = ["app.h"],
@@ -150,6 +181,7 @@ cc_library(
         ":platform",
         ":trace_data",
         ":trace_parser",
+        ":track",
         "@imgui",
     ],
 )

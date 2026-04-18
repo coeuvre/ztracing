@@ -5,6 +5,7 @@
 #include "src/array_list.h"
 #include "src/trace_data.h"
 #include "src/trace_parser.h"
+#include "src/track.h"
 
 struct App {
   Allocator allocator;
@@ -28,12 +29,6 @@ struct App {
     double end_time;
   } viewport;
 
-  struct Track {
-    int32_t pid;
-    int32_t tid;
-    uint32_t name_offset;
-    ArrayList<size_t> event_indices;
-  };
   ArrayList<Track> tracks;
   int64_t selected_event_index;
 };

@@ -31,12 +31,13 @@
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic. Supports 32-bit indices for large traces.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
-- `src/app`: Pure application logic and UI logic (ImGui). Manages viewport state, track organization, and event selection.
+- `src/app`: Pure application logic and UI logic (ImGui). Manages viewport state and event selection.
+- `src/track`: Logic for organizing events into tracks, sorting, and efficient visibility calculation.
 - `src/format`: Human-readable time formatting (s, ms, us) and tick interval calculation.
 - `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
 - `src/ztracing.h`: Clean C API for the WASM-to-JS bridge.
-- `src/platform`: Platform abstraction layer (e.g., high-resolution timestamps).
-- `src/logging`: Simple logging utility with WASM console integration.
+- `src/platform`: Platform abstraction layer (e.g., high-resolution timestamps). Supports both WASM and native (for tests).
+- `src/logging`: Simple logging utility with WASM console and native stdout integration.
 
 ## Trace Viewport
 
@@ -47,7 +48,7 @@
     - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor.
     - **Pan**: Left-mouse drag or `Shift + MouseWheel` or horizontal scroll wheel to pan horizontally.
 - **Rendering Optimization**:
-    - **Visibility Culling (Horizontal)**: Events are grouped into tracks by TID. Each frame, binary search is used to identify and render only the visible events in the current horizontal time range.
+    - **Visibility Culling (Horizontal)**: Events are grouped into tracks. Each track maintains a `max_dur` (maximum event duration) and sorted `event_indices`. Binary search is used to find the first potentially visible event at `viewport_start - max_dur`, ensuring partially visible events are correctly rendered.
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
     - **Level of Detail (LOD)**: To handle massive traces (10M+ events), the renderer skips events that occupy less than 0.1 pixels of screen space or overlap with already drawn events when zoomed out.
 - **32-bit Indices**: ImGui is patched via `MODULE.bazel` to use `unsigned int` for `ImDrawIdx`, allowing for more than 65,535 vertices (required for large traces).

@@ -28,14 +28,14 @@ void app_deinit(App* app) {
   trace_data_deinit(&app->trace_data, app->allocator);
   array_list_deinit(&app->trace_filename, app->allocator);
   for (size_t i = 0; i < app->tracks.size; i++) {
-      array_list_deinit(&app->tracks[i].event_indices, app->allocator);
+    track_deinit(&app->tracks[i], app->allocator);
   }
   array_list_deinit(&app->tracks, app->allocator);
 }
 
 static void app_organize_tracks(App* app) {
   for (size_t i = 0; i < app->tracks.size; i++) {
-      array_list_deinit(&app->tracks[i].event_indices, app->allocator);
+    track_deinit(&app->tracks[i], app->allocator);
   }
   array_list_clear(&app->tracks);
   if (app->trace_data.events.size == 0) return;
@@ -67,13 +67,20 @@ static void app_organize_tracks(App* app) {
     }
 
     if (track_idx == (size_t)-1) {
-      App::Track t = {e.pid, e.tid, 0, {}};
+      Track t = {};
+      t.pid = e.pid;
+      t.tid = e.tid;
       array_list_push_back(&app->tracks, app->allocator, t);
       track_idx = app->tracks.size - 1;
       last_track_idx = track_idx;
     }
 
     array_list_push_back(&app->tracks[track_idx].event_indices, app->allocator, i);
+  }
+
+  for (size_t i = 0; i < app->tracks.size; i++) {
+    track_sort_events(&app->tracks[i], &app->trace_data);
+    track_update_max_dur(&app->tracks[i], &app->trace_data);
   }
 
   app->viewport.start_time = (double)app->viewport.min_ts;
@@ -185,7 +192,7 @@ void app_update(App* app) {
           float inner_width = ImGui::GetContentRegionAvail().x;
 
           for (size_t i = 0; i < app->tracks.size; i++) {
-            const App::Track& t = app->tracks[i];
+            const Track& t = app->tracks[i];
             ImVec2 track_pos = ImVec2(tracks_canvas_pos.x, tracks_canvas_pos.y + (float)i * (track_height + track_spacing));
             
             // Frustum culling: skip tracks that are not visible
@@ -195,13 +202,7 @@ void app_update(App* app) {
 
             track_draw_list->AddRectFilled(track_pos, ImVec2(track_pos.x + inner_width, track_pos.y + track_height), IM_COL32(50, 50, 50, 255));
 
-            auto it = std::lower_bound(t.event_indices.data, t.event_indices.data + t.event_indices.size, (int64_t)app->viewport.start_time, 
-                [&](size_t idx, int64_t val) {
-                    return app->trace_data.events[idx].ts < val;
-                });
-            
-            size_t start_idx = (it == t.event_indices.data + t.event_indices.size) ? t.event_indices.size : (size_t)(it - t.event_indices.data);
-            if (start_idx > 0) start_idx--;
+            size_t start_idx = track_find_visible_start_index(&t, &app->trace_data, (int64_t)app->viewport.start_time);
 
             float last_draw_x2 = -1e10f;
             for (size_t k = start_idx; k < t.event_indices.size; k++) {
