@@ -26,16 +26,12 @@ static void main_loop() {
   ImGui::NewFrame();
 
   ImGuiIO& io = ImGui::GetIO();
-  emscripten_set_canvas_element_size(
-      g_canvas_selector.data,
-      (int)(io.DisplaySize.x * io.DisplayFramebufferScale.x),
-      (int)(io.DisplaySize.y * io.DisplayFramebufferScale.y));
-
   app_update(&g_app);
 
   ImGui::Render();
 
-  glViewport(0, 0, (int)io.DisplaySize.x, (int)io.DisplaySize.y);
+  glViewport(0, 0, (int)(io.DisplaySize.x * io.DisplayFramebufferScale.x),
+             (int)(io.DisplaySize.y * io.DisplayFramebufferScale.y));
   glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
   glClear(GL_COLOR_BUFFER_BIT);
 

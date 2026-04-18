@@ -25,6 +25,22 @@ void imgui_impl_wasm_request_update() {
   }
 }
 
+static void update_canvas_size(BackendData* bd) {
+  ImGuiIO& io = ImGui::GetIO();
+  double width, height;
+  if (emscripten_get_element_css_size(bd->canvas_selector, &width, &height) !=
+      EMSCRIPTEN_RESULT_SUCCESS) {
+    width = 1280;
+    height = 720;
+  }
+  float dpi_scale = (float)emscripten_get_device_pixel_ratio();
+  io.DisplaySize = ImVec2((float)width, (float)height);
+  io.DisplayFramebufferScale = ImVec2(dpi_scale, dpi_scale);
+
+  emscripten_set_canvas_element_size(
+      bd->canvas_selector, (int)(width * dpi_scale), (int)(height * dpi_scale));
+}
+
 bool imgui_impl_wasm_need_update() {
   if (BackendData* bd = get_backend_data()) {
     return bd->frames_to_render > 0;
@@ -126,7 +142,9 @@ static EM_BOOL on_resize(int event_type, const EmscriptenUiEvent* ui_event,
                          void* user_data) {
   (void)event_type;
   (void)ui_event;
-  (void)user_data;
+  if (BackendData* bd = (BackendData*)user_data) {
+    update_canvas_size(bd);
+  }
   imgui_impl_wasm_request_update();
   return EM_TRUE;
 }
@@ -160,8 +178,10 @@ bool imgui_impl_wasm_init(const char* canvas_selector, Allocator allocator) {
   emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
                                 EM_FALSE, on_key);
 
-  emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+  emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, (void*)bd,
                                  EM_FALSE, on_resize);
+
+  update_canvas_size(bd);
 
   return true;
 }
@@ -187,15 +207,4 @@ void imgui_impl_wasm_new_frame() {
   io.DeltaTime = bd->last_time > 0.0 ? (float)(current_time - bd->last_time)
                                      : (float)(1.0f / 60.0f);
   bd->last_time = current_time;
-
-  double width, height;
-  if (emscripten_get_element_css_size(bd->canvas_selector, &width, &height) !=
-      EMSCRIPTEN_RESULT_SUCCESS) {
-    width = 1280;
-    height = 720;  // Fallback
-  }
-
-  float dpi_scale = (float)emscripten_get_device_pixel_ratio();
-  io.DisplaySize = ImVec2((float)width, (float)height);
-  io.DisplayFramebufferScale = ImVec2(dpi_scale, dpi_scale);
 }
