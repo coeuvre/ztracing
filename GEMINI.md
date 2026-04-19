@@ -69,7 +69,11 @@
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
     - **Level of Detail (LOD)**: To handle massive traces (10M+ events), the renderer skips events that are "tiny" (sub-pixel) and don't advance the visual horizontal range by at least 0.5 pixels. Currently selected events always bypass LOD to remain visible and interactive.
     - **Event Coalescing**: Adjacent "tiny" events (typically < 2.0 pixels) that share the same color are merged into a single rendering block. This drastically reduces the number of ImGui primitives and draw calls in dense regions of the trace.
-    - **Selection & Hover**: Hit-testing for tiny events uses an expanded 3.0-pixel area to ensure reliable selection even at high zoom-out levels.
+    - **Selection & Hover**:
+        - **Precision**: Hit-testing for tiny events uses an expanded 3.0-pixel area to ensure reliable selection even at high zoom-out levels.
+        - **Deselection**: Clicking on an empty area of the track viewport deselects the current event.
+        - **Drag Protection**: Selection and deselection only trigger on a clean click (mouse release without exceeding the `MouseDragThreshold`), preventing accidental changes while panning.
+        - **Visual Priority**: The currently selected event is always drawn last (on top of all other events and track headers) to maintain visibility in dense or overlapping regions.
     - **Text Rendering**: Optimized via CPU-side clipping using the `ImDrawList::AddText` overload with a `cpu_fine_clip_rect`. This avoids draw call splits from `PushClipRect` and is only applied when text actually exceeds the available area.
     - **Event Names**: Names are vertically centered within event blocks. Horizontal padding (`6.0f`) is applied to both sides. "Sticky" positioning is used to keep names visible at the left edge of the viewport when an event's start is off-screen.
 - **Theming**:

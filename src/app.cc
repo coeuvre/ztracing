@@ -302,7 +302,17 @@ void app_update(App* app) {
           ImVec2 mouse_pos = ImGui::GetMousePos();
           bool track_list_hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
 
+          ImVec2 drag_delta = ImGui::GetMouseDragDelta(0);
+          float drag_threshold = ImGui::GetIO().MouseDragThreshold;
+          bool was_drag = (std::abs(drag_delta.x) >= drag_threshold || std::abs(drag_delta.y) >= drag_threshold);
+
           float cumulative_y = 0.0f;
+          bool sel_found = false;
+          bool something_hovered = false;
+          float sel_x1 = 0, sel_x2 = 0, sel_y1 = 0, sel_y2 = 0;
+          ImU32 sel_col = 0;
+          uint32_t sel_name_offset = 0;
+
           for (size_t i = 0; i < app->tracks.size; i++) {
             const Track& t = app->tracks[i];
             float track_height = (float)(t.max_depth + 2) * lane_height;
@@ -378,6 +388,7 @@ void app_update(App* app) {
                 }
                 if (mouse_pos.x >= hover_x1 && mouse_pos.x < hover_x2 && mouse_pos.y >= y1 && mouse_pos.y < y2) {
                   is_hovered = true;
+                  something_hovered = true;
                 }
               }
 
@@ -390,35 +401,48 @@ void app_update(App* app) {
                 col = ImGui::ColorConvertFloat4ToU32(col_v);
               }
 
-              app_draw_event(app, track_draw_list, rb.x1, rb.x2, y1, y2, col, rb.is_selected, rb.name_offset, inner_width, tracks_canvas_pos.x);
+              if (rb.is_selected) {
+                sel_found = true;
+                sel_x1 = rb.x1;
+                sel_x2 = rb.x2;
+                sel_y1 = y1;
+                sel_y2 = y2;
+                sel_col = col;
+                sel_name_offset = rb.name_offset;
+              } else {
+                app_draw_event(app, track_draw_list, rb.x1, rb.x2, y1, y2, col, rb.is_selected, rb.name_offset, inner_width, tracks_canvas_pos.x);
+              }
 
-              if (is_hovered && ImGui::IsMouseClicked(0)) {
-                // If it's a merged block, we can't easily select a specific event.
-                // For now, we only allow selection of individual blocks.
-                // In the future, we could search for the event under the mouse.
-                if (rb.name_offset != 0) {
-                    // Re-calculate which event was clicked
-                    // (This is a bit inefficient but it's only on click)
-                    for (size_t idx_k = start_idx; idx_k < t.event_indices.size; idx_k++) {
-                        size_t event_idx = t.event_indices[idx_k];
-                        const TraceEventPersisted& e = app->trace_data.events[event_idx];
-                        if (e.ts > (int64_t)app->viewport.end_time) break;
-                        if (t.depths[idx_k] != rb.depth) continue;
+              if (is_hovered && ImGui::IsMouseReleased(0) && !was_drag) {
+                // Re-calculate which event was clicked
+                // (This is a bit inefficient but it's only on click)
+                for (size_t idx_k = start_idx; idx_k < t.event_indices.size; idx_k++) {
+                  size_t event_idx = t.event_indices[idx_k];
+                  const TraceEventPersisted& e = app->trace_data.events[event_idx];
+                  if (e.ts > (int64_t)app->viewport.end_time) break;
+                  if (t.depths[idx_k] != rb.depth) continue;
 
-                        float ex1 = (float)(tracks_canvas_pos.x + ((double)e.ts - app->viewport.start_time) * inv_duration);
-                        float ex2 = (float)(ex1 + (double)e.dur * inv_duration);
-                        if (ex2 - ex1 < 3.0f) ex2 = ex1 + 3.0f;
+                  float ex1 = (float)(tracks_canvas_pos.x + ((double)e.ts - app->viewport.start_time) * inv_duration);
+                  float ex2 = (float)(ex1 + (double)e.dur * inv_duration);
+                  if (ex2 - ex1 < 3.0f) ex2 = ex1 + 3.0f;
 
-                        if (mouse_pos.x >= ex1 && mouse_pos.x < ex2) {
-                            app->selected_event_index = (int64_t)event_idx;
-                            break;
-                        }
-                    }
+                  if (mouse_pos.x >= ex1 && mouse_pos.x < ex2) {
+                    app->selected_event_index = (int64_t)event_idx;
+                    break;
+                  }
                 }
               }
             }
 
             cumulative_y += track_height;
+          }
+
+          if (sel_found) {
+            app_draw_event(app, track_draw_list, sel_x1, sel_x2, sel_y1, sel_y2, sel_col, true, sel_name_offset, inner_width, tracks_canvas_pos.x);
+          }
+
+          if (track_list_hovered && !something_hovered && ImGui::IsMouseReleased(0) && !was_drag) {
+            app->selected_event_index = -1;
           }
         }
         ImGui::EndChild();
