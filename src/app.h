@@ -7,6 +7,7 @@
 #include "src/trace_parser.h"
 #include "src/track.h"
 #include "src/colors.h"
+#include "src/track_renderer.h"
 
 enum ThemeMode {
   THEME_MODE_AUTO = 0,
@@ -39,6 +40,8 @@ struct App {
   } viewport;
 
   ArrayList<Track> tracks;
+  TrackRendererState track_renderer_state;
+  ArrayList<TrackRenderBlock> render_blocks;
   int64_t selected_event_index;
 };
 

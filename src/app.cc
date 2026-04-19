@@ -51,6 +51,8 @@ void app_deinit(App* app) {
     track_deinit(&app->tracks[i], app->allocator);
   }
   array_list_deinit(&app->tracks, app->allocator);
+  track_renderer_state_deinit(&app->track_renderer_state, app->allocator);
+  array_list_deinit(&app->render_blocks, app->allocator);
 }
 
 static void app_organize_tracks(App* app) {
@@ -186,6 +188,46 @@ static void app_draw_time_ruler(App* app, ImDrawList* draw_list, ImVec2 pos,
   }
 }
 
+static void app_draw_event(App* app, ImDrawList* draw_list, float x1, float x2, float y1, float y2, ImU32 col, bool is_selected, uint32_t name_offset, float inner_width, float tracks_canvas_pos_x) {
+  const Theme& theme = *app->theme;
+  float lane_height = y2 - y1 + 1.0f;
+  
+  float border_thickness = is_selected ? 3.0f : 1.0f;
+  float min_width = 2.0f * border_thickness + 1.0f;
+  if (x2 - x1 < min_width) x2 = x1 + min_width;
+
+  draw_list->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), col);
+  
+  ImU32 border_col = is_selected ? theme.event_border_selected : theme.event_border;
+  draw_list->AddRect(ImVec2(x1, y1), ImVec2(x2, y2), border_col, 0.0f, 0, border_thickness);
+
+  // Draw event name if there is enough space and it's not a merged block (name_offset != 0)
+  if (name_offset != 0) {
+    float visible_x1 = std::max(x1, tracks_canvas_pos_x);
+    float visible_x2 = std::min(x2, tracks_canvas_pos_x + inner_width);
+    float padding_h = 6.0f;
+    
+    if (visible_x2 - visible_x1 > padding_h * 2.0f + 20.0f) {
+      Str name = trace_data_get_string(&app->trace_data, name_offset);
+      if (name.len > 0) {
+        ImU32 text_col = is_selected ? theme.event_text_selected : theme.event_text;
+        float event_font_size = ImGui::GetFontSize();
+        float text_y = y1 + (lane_height - event_font_size) * 0.5f;
+
+        float text_width = ImGui::GetFont()->CalcTextSizeA(event_font_size, FLT_MAX, 0.0f, name.buf, name.buf + name.len).x;
+        float available_width = (visible_x2 - padding_h) - (visible_x1 + padding_h);
+
+        ImVec4 fine_clip_rect(visible_x1, y1, visible_x2 - padding_h, y2);
+        const ImVec4* clip_ptr = (text_width > available_width) ? &fine_clip_rect : nullptr;
+
+        draw_list->AddText(ImGui::GetFont(), event_font_size, 
+                           ImVec2(visible_x1 + padding_h, text_y), 
+                           text_col, name.buf, name.buf + name.len, 0.0f, clip_ptr);
+      }
+    }
+  }
+}
+
 void app_update(App* app) {
   const Theme& theme = *app->theme;
   // 1. Setup DockSpace
@@ -256,6 +298,9 @@ void app_update(App* app) {
 
           ImVec2 tracks_canvas_pos = ImGui::GetCursorScreenPos();
           float inner_width = ImGui::GetContentRegionAvail().x;
+          double inv_duration = inner_width / duration;
+          ImVec2 mouse_pos = ImGui::GetMousePos();
+          bool track_list_hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
 
           float cumulative_y = 0.0f;
           for (size_t i = 0; i < app->tracks.size; i++) {
@@ -308,84 +353,68 @@ void app_update(App* app) {
 
             size_t start_idx = track_find_visible_start_index(&t, &app->trace_data, (int64_t)app->viewport.start_time);
 
-            // TODO: Re-implement Level of Detail (LOD) optimization for the flame graph.
-            // Since events are now at different depths, we need to track horizontal
-            // progress per depth level to skip events that are too small or hidden.
-            for (size_t k = start_idx; k < t.event_indices.size; k++) {
-              size_t event_idx = t.event_indices[k];
-              const TraceEventPersisted& e = app->trace_data.events[event_idx];
-              uint32_t depth = t.depths[k];
-              
-              if (e.ts > (int64_t)app->viewport.end_time) break;
+            track_compute_render_blocks(&t, &app->trace_data, 
+                                       app->viewport.start_time, app->viewport.end_time, 
+                                       inner_width, tracks_canvas_pos.x, 
+                                       app->selected_event_index, 
+                                       &app->track_renderer_state, 
+                                       &app->render_blocks, app->allocator);
 
-              double start_x_rel = ((double)e.ts - app->viewport.start_time) / duration;
-              double end_x_rel = ((double)e.ts + (double)e.dur - app->viewport.start_time) / duration;
+            bool mouse_in_track_y = (mouse_pos.y >= track_pos.y + lane_height && mouse_pos.y < track_pos.y + track_height);
+
+            for (size_t k = 0; k < app->render_blocks.size; k++) {
+              const TrackRenderBlock& rb = app->render_blocks[k];
               
-              float x1 = (float)(tracks_canvas_pos.x + start_x_rel * inner_width);
-              float x2 = (float)(tracks_canvas_pos.x + end_x_rel * inner_width);
-              
-              if (x2 - x1 < 0.1f) x2 = x1 + 0.1f;
-              
-              float y1 = track_pos.y + (float)(depth + 1) * lane_height;
+              float y1 = track_pos.y + (float)(rb.depth + 1) * lane_height;
               float y2 = y1 + lane_height - 1.0f;
 
-              bool is_hovered = ImGui::IsMouseHoveringRect(ImVec2(x1, y1), ImVec2(x2, y2), true);
-              bool is_selected = (app->selected_event_index == (int64_t)event_idx);
+              bool is_hovered = false;
+              if (track_list_hovered && mouse_in_track_y) {
+                // For hovering, we use a slightly larger area to make it easier to select tiny events
+                float hover_x1 = rb.x1;
+                float hover_x2 = rb.x2;
+                if (hover_x2 - hover_x1 < 3.0f) {
+                  hover_x2 = hover_x1 + 3.0f;
+                }
+                if (mouse_pos.x >= hover_x1 && mouse_pos.x < hover_x2 && mouse_pos.y >= y1 && mouse_pos.y < y2) {
+                  is_hovered = true;
+                }
+              }
 
-              ImU32 col = e.color;
-              if (is_selected) {
-                col = theme.event_selected; // Keep selection yellow for high contrast
-              } else if (is_hovered) {
-                // Brighten the color if hovered
+              ImU32 col = rb.col;
+              if (is_hovered && !rb.is_selected) {
                 ImVec4 col_v = ImGui::ColorConvertU32ToFloat4(col);
                 col_v.x = std::min(col_v.x + 0.15f, 1.0f);
                 col_v.y = std::min(col_v.y + 0.15f, 1.0f);
                 col_v.z = std::min(col_v.z + 0.15f, 1.0f);
                 col = ImGui::ColorConvertFloat4ToU32(col_v);
               }
-              
-              track_draw_list->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), col);
-              
-              ImU32 border_col = theme.event_border;
-              float thickness = 1.0f;
-              if (is_selected) {
-                border_col = theme.event_border_selected;
-                thickness = 3.0f;
-              }
-              track_draw_list->AddRect(ImVec2(x1, y1), ImVec2(x2, y2), border_col, 0.0f, 0, thickness);
 
-              // Draw event name if there is enough space
-              float visible_x1 = std::max(x1, tracks_canvas_pos.x);
-              float visible_x2 = std::min(x2, tracks_canvas_pos.x + inner_width);
-              float padding_h = 6.0f;
-              
-              // Only draw text if the visible width is large enough for some content
-              if (visible_x2 - visible_x1 > padding_h * 2.0f + 20.0f) {
-                Str name = trace_data_get_string(&app->trace_data, e.name_offset);
-                if (name.len > 0) {
-                  ImU32 text_col = is_selected ? theme.event_text_selected : theme.event_text;
-                  
-                  // Vertically center text
-                  float event_font_size = ImGui::GetFontSize();
-                  float text_y = y1 + (lane_height - event_font_size) * 0.5f;
-
-                  float text_width = ImGui::GetFont()->CalcTextSizeA(event_font_size, FLT_MAX, 0.0f, name.buf, name.buf + name.len).x;
-                  float available_width = (visible_x2 - padding_h) - (visible_x1 + padding_h);
-
-                  // Use ImGui's internal clipping by providing a clip rect to AddText
-                  // This is more efficient than PushClipRect/PopClipRect as it doesn't split draw calls
-                  // We only provide the clip rect if the text is actually larger than the available area.
-                  ImVec4 fine_clip_rect(visible_x1, y1, visible_x2 - padding_h, y2);
-                  const ImVec4* clip_ptr = (text_width > available_width) ? &fine_clip_rect : nullptr;
-
-                  track_draw_list->AddText(ImGui::GetFont(), event_font_size, 
-                                           ImVec2(visible_x1 + padding_h, text_y), 
-                                           text_col, name.buf, name.buf + name.len, 0.0f, clip_ptr);
-                }
-              }
+              app_draw_event(app, track_draw_list, rb.x1, rb.x2, y1, y2, col, rb.is_selected, rb.name_offset, inner_width, tracks_canvas_pos.x);
 
               if (is_hovered && ImGui::IsMouseClicked(0)) {
-                app->selected_event_index = (int64_t)event_idx;
+                // If it's a merged block, we can't easily select a specific event.
+                // For now, we only allow selection of individual blocks.
+                // In the future, we could search for the event under the mouse.
+                if (rb.name_offset != 0) {
+                    // Re-calculate which event was clicked
+                    // (This is a bit inefficient but it's only on click)
+                    for (size_t idx_k = start_idx; idx_k < t.event_indices.size; idx_k++) {
+                        size_t event_idx = t.event_indices[idx_k];
+                        const TraceEventPersisted& e = app->trace_data.events[event_idx];
+                        if (e.ts > (int64_t)app->viewport.end_time) break;
+                        if (t.depths[idx_k] != rb.depth) continue;
+
+                        float ex1 = (float)(tracks_canvas_pos.x + ((double)e.ts - app->viewport.start_time) * inv_duration);
+                        float ex2 = (float)(ex1 + (double)e.dur * inv_duration);
+                        if (ex2 - ex1 < 3.0f) ex2 = ex1 + 3.0f;
+
+                        if (mouse_pos.x >= ex1 && mouse_pos.x < ex2) {
+                            app->selected_event_index = (int64_t)event_idx;
+                            break;
+                        }
+                    }
+                }
               }
             }
 

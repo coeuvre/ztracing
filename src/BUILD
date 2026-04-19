@@ -168,6 +168,26 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "track_renderer",
+    srcs = ["track_renderer.cc"],
+    hdrs = ["track_renderer.h"],
+    deps = [
+        ":array_list",
+        ":track",
+        ":trace_data",
+    ],
+)
+
+cc_test(
+    name = "track_renderer_test",
+    srcs = ["track_renderer_test.cc"],
+    deps = [
+        ":track_renderer",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "track_test",
     srcs = ["track_test.cc"],
@@ -191,6 +211,7 @@ cc_library(
         ":trace_data",
         ":trace_parser",
         ":track",
+        ":track_renderer",
         "@imgui",
     ],
 )

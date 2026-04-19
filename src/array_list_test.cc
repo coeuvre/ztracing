@@ -13,15 +13,15 @@ TEST(ArrayListTest, PushBack) {
   ArrayList<int> al = {};
   Allocator a = allocator_get_default();
 
-  for (int i = 0; i < 100; ++i) {
-    array_list_push_back(&al, a, i);
+  for (size_t i = 0; i < 100; ++i) {
+    array_list_push_back(&al, a, (int)i);
   }
 
   EXPECT_EQ(al.size, 100u);
   EXPECT_GE(al.capacity, 100u);
 
-  for (int i = 0; i < 100; ++i) {
-    EXPECT_EQ(al[i], i);
+  for (size_t i = 0; i < 100; ++i) {
+    EXPECT_EQ(al[i], (int)i);
   }
 
   array_list_deinit(&al, a);
@@ -74,8 +74,8 @@ TEST(ArrayListTest, MemoryLeak) {
 
   {
     ArrayList<int> al = {};
-    for (int i = 0; i < 100; ++i) {
-      array_list_push_back(&al, a, i);
+    for (size_t i = 0; i < 100; ++i) {
+      array_list_push_back(&al, a, (int)i);
     }
     EXPECT_GT(counting_allocator_get_allocated_bytes(&ca), 0u);
     array_list_deinit(&al, a);
@@ -93,8 +93,8 @@ TEST(ArrayListTest, Reserve) {
   EXPECT_EQ(al.capacity, 100u);
   EXPECT_NE(al.data, nullptr);
 
-  for (int i = 0; i < 100; ++i) {
-    array_list_push_back(&al, a, i);
+  for (size_t i = 0; i < 100; ++i) {
+    array_list_push_back(&al, a, (int)i);
   }
   EXPECT_EQ(al.size, 100u);
   EXPECT_EQ(al.capacity, 100u);
@@ -114,16 +114,16 @@ TEST(ArrayListTest, Resize) {
   EXPECT_EQ(al.size, 100u);
   EXPECT_GE(al.capacity, 100u);
 
-  for (int i = 0; i < 100; i++) {
-    al[i] = i;
+  for (size_t i = 0; i < 100; i++) {
+    al[i] = (int)i;
   }
 
   array_list_resize(&al, a, 50);
   EXPECT_EQ(al.size, 50u);
   EXPECT_GE(al.capacity, 100u);
 
-  for (int i = 0; i < 50; i++) {
-    EXPECT_EQ(al[i], i);
+  for (size_t i = 0; i < 50; i++) {
+    EXPECT_EQ(al[i], (int)i);
   }
 
   array_list_deinit(&al, a);
