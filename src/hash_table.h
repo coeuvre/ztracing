@@ -35,6 +35,7 @@ struct HashTable {
   struct Entry {
     K key;
     V value;
+    uint32_t hash;
     bool occupied;
   };
 
@@ -73,8 +74,8 @@ void hash_table_deinit(HashTable<K, V, Hash, Eq>* ht, Allocator a) {
 }
 
 template <typename K, typename V, typename Hash, typename Eq>
-void hash_table_put(HashTable<K, V, Hash, Eq>* ht, Allocator a, const K& key,
-                    const V& value);
+void hash_table_put_with_hash(HashTable<K, V, Hash, Eq>* ht, Allocator a,
+                              const K& key, const V& value, uint32_t h);
 
 template <typename K, typename V, typename Hash, typename Eq>
 void hash_table_resize(HashTable<K, V, Hash, Eq>* ht, Allocator a,
@@ -86,7 +87,8 @@ void hash_table_resize(HashTable<K, V, Hash, Eq>* ht, Allocator a,
 
   for (size_t i = 0; i < ht->capacity; i++) {
     if (ht->entries[i].occupied) {
-      hash_table_put(&new_ht, a, ht->entries[i].key, ht->entries[i].value);
+      hash_table_put_with_hash(&new_ht, a, ht->entries[i].key,
+                               ht->entries[i].value, ht->entries[i].hash);
     }
   }
 
@@ -95,17 +97,16 @@ void hash_table_resize(HashTable<K, V, Hash, Eq>* ht, Allocator a,
 }
 
 template <typename K, typename V, typename Hash, typename Eq>
-void hash_table_put(HashTable<K, V, Hash, Eq>* ht, Allocator a, const K& key,
-                    const V& value) {
+void hash_table_put_with_hash(HashTable<K, V, Hash, Eq>* ht, Allocator a,
+                              const K& key, const V& value, uint32_t h) {
   if (ht->size * 2 > ht->capacity) {
     hash_table_resize(ht, a, ht->capacity * 2);
   }
 
-  uint32_t h = ht->hash_fn(key);
   size_t idx = h & ht->capacity_mask;
 
   while (ht->entries[idx].occupied) {
-    if (ht->eq_fn(ht->entries[idx].key, key)) {
+    if (ht->entries[idx].hash == h && ht->eq_fn(ht->entries[idx].key, key)) {
       ht->entries[idx].value = value;
       return;
     }
@@ -114,19 +115,27 @@ void hash_table_put(HashTable<K, V, Hash, Eq>* ht, Allocator a, const K& key,
 
   ht->entries[idx].key = key;
   ht->entries[idx].value = value;
+  ht->entries[idx].hash = h;
   ht->entries[idx].occupied = true;
   ht->size++;
 }
 
 template <typename K, typename V, typename Hash, typename Eq>
-V* hash_table_get(HashTable<K, V, Hash, Eq>* ht, const K& key) {
+void hash_table_put(HashTable<K, V, Hash, Eq>* ht, Allocator a, const K& key,
+                    const V& value) {
+  uint32_t h = ht->hash_fn(key);
+  hash_table_put_with_hash(ht, a, key, value, h);
+}
+
+template <typename K, typename V, typename Hash, typename Eq>
+V* hash_table_get_with_hash(HashTable<K, V, Hash, Eq>* ht, const K& key,
+                            uint32_t h) {
   if (ht->capacity == 0) return nullptr;
 
-  uint32_t h = ht->hash_fn(key);
   size_t idx = h & ht->capacity_mask;
 
   while (ht->entries[idx].occupied) {
-    if (ht->eq_fn(ht->entries[idx].key, key)) {
+    if (ht->entries[idx].hash == h && ht->eq_fn(ht->entries[idx].key, key)) {
       return &ht->entries[idx].value;
     }
     idx = (idx + 1) & ht->capacity_mask;
@@ -134,6 +143,13 @@ V* hash_table_get(HashTable<K, V, Hash, Eq>* ht, const K& key) {
 
   return nullptr;
 }
+
+template <typename K, typename V, typename Hash, typename Eq>
+V* hash_table_get(HashTable<K, V, Hash, Eq>* ht, const K& key) {
+  uint32_t h = ht->hash_fn(key);
+  return hash_table_get_with_hash(ht, key, h);
+}
+
 
 template <typename K, typename V, typename Hash, typename Eq>
 void hash_table_clear(HashTable<K, V, Hash, Eq>* ht) {

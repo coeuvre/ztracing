@@ -15,8 +15,7 @@ static uint32_t compute_hash(Str s) {
 
 uint32_t TraceData::StringLookupHash::operator()(uint32_t index) const {
   if (index == 0) return td->tmp.current_hash;
-  const StringEntry& e = td->string_table[index - 1];
-  return compute_hash({&td->string_buffer[e.offset], (size_t)e.len});
+  return td->string_table[index - 1].hash;
 }
 
 bool TraceData::StringLookupEq::operator()(uint32_t a, uint32_t b) const {
@@ -65,15 +64,17 @@ StringRef trace_data_push_string(TraceData* td, Allocator a, Str s) {
   if (s.buf == nullptr) return 0;
 
   td->tmp.current_str = s;
-  td->tmp.current_hash = compute_hash(s);
+  uint32_t h = compute_hash(s);
+  td->tmp.current_hash = h;
 
-  uint32_t* existing_index = hash_table_get(&td->string_lookup, 0u);
+  uint32_t* existing_index = hash_table_get_with_hash(&td->string_lookup, 0u, h);
   if (existing_index) return *existing_index;
 
   // New string
   StringEntry entry;
   entry.offset = (uint32_t)td->string_buffer.size;
   entry.len = (uint32_t)s.len;
+  entry.hash = h;
 
   array_list_append(&td->string_buffer, a, s.buf, s.len);
   // Add null terminator for C-string compatibility if needed, though not
@@ -84,10 +85,11 @@ StringRef trace_data_push_string(TraceData* td, Allocator a, Str s) {
   array_list_push_back(&td->string_table, a, entry);
   uint32_t new_index = (uint32_t)td->string_table.size;
 
-  hash_table_put(&td->string_lookup, a, new_index, new_index);
+  hash_table_put_with_hash(&td->string_lookup, a, new_index, new_index, h);
 
   return new_index;
 }
+
 
 static uint32_t compute_event_color(const Theme* theme,
                                     const TraceEvent* event) {

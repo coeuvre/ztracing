@@ -27,10 +27,14 @@
 - `src/allocator`: Custom C-style allocator with `allocator_alloc`, `allocator_realloc`, and `allocator_free` helpers.
 - `src/str`: Basic `Str` struct (buffer and length) for string views. Includes high-performance string-to-number utilities (`str_to_int64`, `str_to_double`) with fast-path integer parsing.
 - `src/array_list`: Generic `ArrayList<T>` (vector) with explicit allocation and ZII.
-- `src/hash_table`: Generic `HashTable<K, V>` with open addressing and linear probing. Supports stateful functors for hashing and equality, enabling complex key types (like string pool indices).
+- `src/hash_table`: Generic `HashTable<K, V>` with open addressing and linear probing. 
+    - **Hash Caching**: Stores the precomputed hash in each entry to accelerate lookups by avoiding equality checks when hashes differ.
+    - **Fast Resizing**: Uses cached hashes during table expansion to eliminate redundant recomputations.
+    - **Stateful Functors**: Supports stateful functors for hashing and equality, enabling complex key types.
 - `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments. Includes support for the `id` field and numeric argument pre-parsing.
 - `src/trace_data`: Persistent storage for parsed events. 
     - **String Table**: Uses a de-duplicated String Table with global hashing to minimize memory usage for repetitive trace data (e.g., event names, categories).
+    - **Hash Caching**: Each `StringEntry` stores a persistent hash, computed once during insertion. This makes subsequent lookups for the same string (which occur frequently during trace ingestion) extremely efficient.
     - **StringRef**: Events and arguments store `StringRef` (indices) into the table rather than raw offsets, providing $O(1)$ access to both string data and length without `strlen` overhead.
     - **Pre-parsed Numbers**: Numeric arguments are pre-parsed into `double` values during ingestion to eliminate conversion overhead during rendering.
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic. Supports 32-bit indices for large traces.

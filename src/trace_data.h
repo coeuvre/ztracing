@@ -36,6 +36,7 @@ struct TraceEventPersisted {
 struct StringEntry {
   uint32_t offset;
   uint32_t len;
+  uint32_t hash;
 };
 
 struct TraceData {
