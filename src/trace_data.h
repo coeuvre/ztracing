@@ -15,6 +15,7 @@ typedef uint32_t StringRef;
 struct TraceArgPersisted {
   StringRef key_ref;
   StringRef val_ref;
+  double val_double;
 };
 
 struct TraceEventPersisted {
@@ -22,6 +23,7 @@ struct TraceEventPersisted {
   StringRef cat_ref;
   StringRef ph_ref;
   StringRef cname_ref;
+  StringRef id_ref;
   uint32_t color;
   int64_t ts;
   int64_t dur;

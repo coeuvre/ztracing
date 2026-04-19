@@ -25,13 +25,14 @@
 ## Architecture
 
 - `src/allocator`: Custom C-style allocator with `allocator_alloc`, `allocator_realloc`, and `allocator_free` helpers.
-- `src/str`: Basic `Str` struct (buffer and length) for string views.
+- `src/str`: Basic `Str` struct (buffer and length) for string views. Includes high-performance string-to-number utilities (`str_to_int64`, `str_to_double`) with fast-path integer parsing.
 - `src/array_list`: Generic `ArrayList<T>` (vector) with explicit allocation and ZII.
 - `src/hash_table`: Generic `HashTable<K, V>` with open addressing and linear probing. Supports stateful functors for hashing and equality, enabling complex key types (like string pool indices).
-- `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments.
+- `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments. Includes support for the `id` field and numeric argument pre-parsing.
 - `src/trace_data`: Persistent storage for parsed events. 
     - **String Table**: Uses a de-duplicated String Table with global hashing to minimize memory usage for repetitive trace data (e.g., event names, categories).
     - **StringRef**: Events and arguments store `StringRef` (indices) into the table rather than raw offsets, providing $O(1)$ access to both string data and length without `strlen` overhead.
+    - **Pre-parsed Numbers**: Numeric arguments are pre-parsed into `double` values during ingestion to eliminate conversion overhead during rendering.
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic. Supports 32-bit indices for large traces.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
@@ -61,15 +62,21 @@
 - **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically. Individual tracks have variable heights based on their maximum nesting depth plus a dedicated header lane.
 - **Contiguous Tracks**: Tracks follow each other with no gaps (`track_spacing = 0`). This creates a denser, more professional "Performance" view similar to modern browser profilers.
 - **Track Headers**: 
-    - **Structure**: Each track is divided into a **Header** (top lane) and **Content** (event lanes). A horizontal separator line clearly divides the two.
-    - **Naming**: The header displays the **Thread Name** (or "Thread <TID>" fallback) at the left edge.
-    - **Sticky Labels**: Headers use "sticky" positioning to keep the thread name visible while panning horizontally.
-    - **Details Tooltip**: Hovering over the thread name label displays a detailed tooltip containing the **PID**, **TID**, and full **Name**.
-- **Track Sorting**: Tracks are automatically organized using trace metadata. They are sorted primarily by **thread_sort_index** (ascending), with **PID** and **TID** as stable fallbacks.
-- **Downwards Flame Graph**: Overlapping events within a track are organized into hierarchical lanes. An event is placed in a lower lane only if it is strictly contained within a parent event (Strict Containment Hierarchy). Non-strictly nested events move up to share the highest available lane, even if they temporally overlap. This creates a denser, containment-focused view similar to modern profilers.
+    - **Structure**: Each track is divided into a **Header** (top lane) and **Content** (event lanes or chart). A horizontal separator line clearly divides the two.
+    - **Naming**: The header displays the **Thread Name** (or "Thread <TID>" fallback) or the **Counter Name** (including the `id` if present).
+    - **Sticky Labels**: Headers use "sticky" positioning to keep the name visible while panning horizontally.
+    - **Details Tooltip**: Hovering over the header label displays a detailed tooltip containing the **PID**, **TID** (for threads), **Name**, and **ID** (for counters).
+- **Track Sorting**: Tracks are automatically organized using trace metadata. They are sorted primarily by **thread_sort_index** (ascending), then by **PID**. Within a process, **Counter Tracks** always appear before **Thread Tracks**. Thread tracks are further sorted by **TID**, while counter tracks are sorted alphabetically by **Name** (case-insensitive) and then by **ID**.
+- **Downwards Flame Graph**: Overlapping events within a thread track are organized into hierarchical lanes. An event is placed in a lower lane only if it is strictly contained within a parent event (Strict Containment Hierarchy). Non-strictly nested events move up to share the highest available lane, even if they temporally overlap. This creates a denser, containment-focused view similar to modern profilers.
+- **Counter Tracks**:
+    - **Stacked Area Chart**: Renders multiple data series as a stacked area chart using a step-function approach.
+    - **Stable Time-Based Bucketing**: To prevent flickering during dragging, buckets are aligned to absolute timestamps (multiples of the time equivalent of 3 pixels).
+    - **Performance**: Complexity is $O(W \log N)$ via binary search jumping, where $W$ is the viewport width and $N$ is the event count, making rendering performance independent of total event count.
+    - **Coloring**: Each series is assigned a unique color from the theme's event palette based on the hash of its key.
 - **Proportions**:
     - **Lane Height**: Dynamically matches the menu bar height using `ImGui::GetFrameHeight()`.
     - **Ruler Height**: Dynamically matches the menu bar height using `ImGui::GetFrameHeight()`.
+    - **Counter Height**: Counter tracks have a fixed height equivalent to 2 lanes.
 - **Navigation**: 
     - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor. Requires modern ImGui modifier checks (`ImGui::IsKeyDown`).
     - **Pan (Horizontal)**: `Shift + MouseWheel` or horizontal scroll wheel.

@@ -4,9 +4,13 @@
 
 #include <algorithm>
 
+#include "src/colors.h"
+
 void track_deinit(Track* t, Allocator a) {
   array_list_deinit(&t->event_indices, a);
   array_list_deinit(&t->depths, a);
+  array_list_deinit(&t->counter_series, a);
+  array_list_deinit(&t->counter_colors, a);
 }
 
 void track_sort_events(Track* t, const TraceData* td);
@@ -92,20 +96,24 @@ size_t track_find_visible_start_index(const Track* t, const TraceData* td,
 struct TrackKey {
   int32_t pid;
   int32_t tid;
+  StringRef name_ref;
+  StringRef id_ref;
 };
 
 struct TrackKeyHash {
   uint32_t operator()(const TrackKey& k) const {
-    // A slightly better hash function to reduce collisions
     uint32_t h = (uint32_t)k.pid;
     h ^= (uint32_t)k.tid + 0x9e3779b9 + (h << 6) + (h >> 2);
+    h ^= (uint32_t)k.name_ref + 0x9e3779b9 + (h << 6) + (h >> 2);
+    h ^= (uint32_t)k.id_ref + 0x9e3779b9 + (h << 6) + (h >> 2);
     return h;
   }
 };
 
 struct TrackKeyEq {
   bool operator()(const TrackKey& a, const TrackKey& b) const {
-    return a.pid == b.pid && a.tid == b.tid;
+    return a.pid == b.pid && a.tid == b.tid && a.name_ref == b.name_ref &&
+           a.id_ref == b.id_ref;
   }
 };
 
@@ -155,23 +163,7 @@ void track_sort_events(Track* t, const TraceData* td) {
   }
 }
 
-static int32_t parse_int32(Str s) {
-  int32_t val = 0;
-  bool neg = false;
-  size_t i = 0;
-  if (s.len > 0 && s.buf[0] == '-') {
-    neg = true;
-    i++;
-  }
-  for (; i < s.len; i++) {
-    if (s.buf[i] >= '0' && s.buf[i] <= '9') {
-      val = val * 10 + (s.buf[i] - '0');
-    }
-  }
-  return neg ? -val : val;
-}
-
-void track_organize(const TraceData* td, Allocator a,
+void track_organize(const TraceData* td, Allocator a, const Theme* theme,
                     ArrayList<Track>* out_tracks, int64_t* out_min_ts,
                     int64_t* out_max_ts) {
   for (size_t i = 0; i < out_tracks->size; i++) {
@@ -190,25 +182,36 @@ void track_organize(const TraceData* td, Allocator a,
 
   ArrayList<size_t> event_counts = {};
 
-  // Track cache to avoid hash lookups for consecutive events in the same thread
-  int32_t last_pid = -1;
-  int32_t last_tid = -1;
+  // Track cache to avoid hash lookups for consecutive events in the same thread/counter
+  TrackKey last_key = {-1, -1, 0, 0};
   size_t last_track_idx = (size_t)-1;
 
   // Pass 1: Discovery, Counting, and Metadata
   for (size_t i = 0; i < td->events.size; i++) {
     const TraceEventPersisted& e = td->events[i];
+    Str ph = trace_data_get_string(td, e.ph_ref);
+    bool is_counter = (ph.len == 1 && ph.buf[0] == 'C');
+
+    TrackKey key;
+    if (is_counter) {
+      key = {e.pid, -1, e.name_ref, e.id_ref};
+    } else {
+      key = {e.pid, e.tid, 0, 0};
+    }
 
     size_t track_idx;
-    if (e.pid == last_pid && e.tid == last_tid) {
+    if (key.pid == last_key.pid && key.tid == last_key.tid &&
+        key.name_ref == last_key.name_ref && key.id_ref == last_key.id_ref) {
       track_idx = last_track_idx;
     } else {
-      TrackKey key = {e.pid, e.tid};
       size_t* track_idx_ptr = hash_table_get(&track_map, key);
       if (track_idx_ptr == nullptr) {
         Track t = {};
+        t.type = is_counter ? TRACK_TYPE_COUNTER : TRACK_TYPE_THREAD;
         t.pid = e.pid;
-        t.tid = e.tid;
+        t.tid = is_counter ? -1 : e.tid;
+        t.name_ref = is_counter ? e.name_ref : 0;
+        t.id_ref = is_counter ? e.id_ref : 0;
         array_list_push_back(out_tracks, a, t);
         track_idx = out_tracks->size - 1;
         hash_table_put(&track_map, a, key, track_idx);
@@ -216,15 +219,13 @@ void track_organize(const TraceData* td, Allocator a,
       } else {
         track_idx = *track_idx_ptr;
       }
-      last_pid = e.pid;
-      last_tid = e.tid;
+      last_key = key;
       last_track_idx = track_idx;
     }
 
     Track& t = (*out_tracks)[track_idx];
 
     // Check for metadata events
-    Str ph = trace_data_get_string(td, e.ph_ref);
     if (ph.len == 1 && ph.buf[0] == 'M') {
       Str name_str = trace_data_get_string(td, e.name_ref);
       if (str_eq(name_str, STR("thread_name"))) {
@@ -242,7 +243,7 @@ void track_organize(const TraceData* td, Allocator a,
           Str key_str = trace_data_get_string(td, arg.key_ref);
           if (str_eq(key_str, STR("sort_index"))) {
             Str val = trace_data_get_string(td, arg.val_ref);
-            t.sort_index = parse_int32(val);
+            t.sort_index = str_to_int32(val);
             break;
           }
         }
@@ -267,8 +268,7 @@ void track_organize(const TraceData* td, Allocator a,
   }
 
   // Reset cache for Pass 2
-  last_pid = -1;
-  last_tid = -1;
+  last_key = {-1, -1, 0, 0};
   last_track_idx = (size_t)-1;
 
   // Pass 2: Grouping
@@ -277,14 +277,21 @@ void track_organize(const TraceData* td, Allocator a,
     Str ph = trace_data_get_string(td, e.ph_ref);
     if (ph.len == 1 && ph.buf[0] == 'M') continue;
 
+    bool is_counter = (ph.len == 1 && ph.buf[0] == 'C');
+    TrackKey key;
+    if (is_counter) {
+      key = {e.pid, -1, e.name_ref, e.id_ref};
+    } else {
+      key = {e.pid, e.tid, 0, 0};
+    }
+
     size_t track_idx;
-    if (e.pid == last_pid && e.tid == last_tid) {
+    if (key.pid == last_key.pid && key.tid == last_key.tid &&
+        key.name_ref == last_key.name_ref && key.id_ref == last_key.id_ref) {
       track_idx = last_track_idx;
     } else {
-      TrackKey key = {e.pid, e.tid};
       track_idx = *hash_table_get(&track_map, key);
-      last_pid = e.pid;
-      last_tid = e.tid;
+      last_key = key;
       last_track_idx = track_idx;
     }
     array_list_push_back(&(*out_tracks)[track_idx].event_indices, a, i);
@@ -294,16 +301,84 @@ void track_organize(const TraceData* td, Allocator a,
   for (size_t i = 0; i < out_tracks->size; i++) {
     Track& t = (*out_tracks)[i];
     track_sort_events(&t, td);
-    track_calculate_depths(&t, td, a);
+    if (t.type == TRACK_TYPE_THREAD) {
+      track_calculate_depths(&t, td, a);
+    } else {
+      // Counter tracks don't have nested depths.
+      t.max_depth = 0;
+      array_list_resize(&t.depths, a, t.event_indices.size);
+      for (size_t k = 0; k < t.depths.size; k++) t.depths[k] = 0;
+
+      // Discover unique series (argument keys) and calculate max total
+      t.counter_max_total = 0.0;
+      for (size_t idx_k = 0; idx_k < t.event_indices.size; idx_k++) {
+        size_t idx = t.event_indices[idx_k];
+        const TraceEventPersisted& e = td->events[idx];
+        double event_total = 0.0;
+        for (uint32_t k = 0; k < e.args_count; k++) {
+          const TraceArgPersisted& arg = td->args[e.args_offset + k];
+          StringRef key_ref = arg.key_ref;
+          bool found = false;
+          for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
+            if (t.counter_series[s_idx] == key_ref) {
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            array_list_push_back(&t.counter_series, a, key_ref);
+          }
+          event_total += arg.val_double;
+        }
+        if (event_total > t.counter_max_total) t.counter_max_total = event_total;
+      }
+
+      // Sort series by key for consistent stacking order
+      std::sort(t.counter_series.data,
+                t.counter_series.data + t.counter_series.size,
+                [&](StringRef a_ref, StringRef b_ref) {
+                  Str sa = trace_data_get_string(td, a_ref);
+                  Str sb = trace_data_get_string(td, b_ref);
+                  if (sa.len != sb.len) return sa.len < sb.len;
+                  return memcmp(sa.buf, sb.buf, sa.len) < 0;
+                });
+
+      // Cache colors
+      array_list_resize(&t.counter_colors, a, t.counter_series.size);
+      for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
+        Str key_str = trace_data_get_string(td, t.counter_series[s_idx]);
+        uint32_t hash = 2166136261u;
+        for (size_t char_idx = 0; char_idx < key_str.len; ++char_idx) {
+          hash ^= (uint8_t)key_str.buf[char_idx];
+          hash *= 16777619u;
+        }
+        t.counter_colors[s_idx] = theme->event_palette[hash % (sizeof(theme->event_palette) / sizeof(theme->event_palette[0]))];
+      }
+    }
   }
 
   // Final track sort
   std::sort(out_tracks->data, out_tracks->data + out_tracks->size,
-            [](const Track& a, const Track& b) {
+            [&](const Track& a, const Track& b) {
               if (a.sort_index != b.sort_index)
                 return a.sort_index < b.sort_index;
               if (a.pid != b.pid) return a.pid < b.pid;
-              return a.tid < b.tid;
+              if (a.type != b.type) return (int)a.type < (int)b.type;
+
+              if (a.type == TRACK_TYPE_COUNTER) {
+                Str na = trace_data_get_string(td, a.name_ref);
+                Str nb = trace_data_get_string(td, b.name_ref);
+                int res = str_compare_ignore_case(na, nb);
+                if (res != 0) return res < 0;
+
+                Str ia = trace_data_get_string(td, a.id_ref);
+                Str ib = trace_data_get_string(td, b.id_ref);
+                return str_compare(ia, ib) < 0;
+              } else {
+                if (a.tid != b.tid) return a.tid < b.tid;
+                if (a.name_ref != b.name_ref) return a.name_ref < b.name_ref;
+                return a.id_ref < b.id_ref;
+              }
             });
 
   *out_min_ts = min_ts;

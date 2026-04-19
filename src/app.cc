@@ -18,8 +18,8 @@
 #include "third_party/imgui/imgui_internal.h"
 
 static void app_organize_tracks(App* app) {
-  track_organize(&app->trace_data, app->allocator, &app->trace_viewer.tracks,
-                 &app->trace_viewer.viewport.min_ts,
+  track_organize(&app->trace_data, app->allocator, app->theme,
+                 &app->trace_viewer.tracks, &app->trace_viewer.viewport.min_ts,
                  &app->trace_viewer.viewport.max_ts);
 
   app->trace_viewer.viewport.start_time =

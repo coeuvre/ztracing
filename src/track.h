@@ -7,13 +7,23 @@
 #include "src/array_list.h"
 #include "src/trace_data.h"
 
+enum TrackType {
+  TRACK_TYPE_COUNTER,
+  TRACK_TYPE_THREAD,
+};
+
 struct Track {
+  TrackType type;
   int32_t pid;
   int32_t tid;
   StringRef name_ref;
+  StringRef id_ref;
   int32_t sort_index;
   ArrayList<size_t> event_indices;
   ArrayList<uint32_t> depths;
+  ArrayList<StringRef> counter_series;
+  ArrayList<uint32_t> counter_colors;
+  double counter_max_total;
   int64_t max_dur;
   uint32_t max_depth;
 };
@@ -24,7 +34,7 @@ void track_update_max_dur(Track* t, const TraceData* td);
 void track_calculate_depths(Track* t, const TraceData* td, Allocator a);
 size_t track_find_visible_start_index(const Track* t, const TraceData* td,
                                       int64_t viewport_start_ts);
-void track_organize(const TraceData* td, Allocator a,
+void track_organize(const TraceData* td, Allocator a, const Theme* theme,
                     ArrayList<Track>* out_tracks, int64_t* out_min_ts,
                     int64_t* out_max_ts);
 

@@ -14,6 +14,7 @@
 struct TraceArg {
   Str key;
   Str val;
+  double val_double;
 };
 
 struct TraceEvent {
@@ -21,6 +22,7 @@ struct TraceEvent {
   Str cat;
   Str ph;
   Str cname;
+  Str id;
   int64_t ts;
   int64_t dur;
   int32_t pid;

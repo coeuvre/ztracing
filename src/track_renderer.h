@@ -19,6 +19,12 @@ struct TrackRenderBlock {
   bool is_selected;
 };
 
+struct CounterRenderBlock {
+  float x1;
+  float x2;
+  size_t event_idx;
+};
+
 struct TrackMergeBlock {
   float x1, x2;
   uint32_t col;
@@ -30,6 +36,7 @@ struct TrackMergeBlock {
 struct TrackRendererState {
   ArrayList<float> last_x2_per_depth;
   ArrayList<TrackMergeBlock> merge_levels;
+  ArrayList<double> counter_values;
 };
 
 inline void track_renderer_state_init(TrackRendererState* state, Allocator a) {
@@ -41,11 +48,13 @@ inline void track_renderer_state_deinit(TrackRendererState* state,
                                         Allocator a) {
   array_list_deinit(&state->last_x2_per_depth, a);
   array_list_deinit(&state->merge_levels, a);
+  array_list_deinit(&state->counter_values, a);
 }
 
 inline void track_renderer_state_clear(TrackRendererState* state) {
   array_list_clear(&state->last_x2_per_depth);
   array_list_clear(&state->merge_levels);
+  array_list_clear(&state->counter_values);
 }
 
 void track_compute_render_blocks(
@@ -53,5 +62,10 @@ void track_compute_render_blocks(
     double viewport_end, float inner_width, float tracks_canvas_pos_x,
     int64_t selected_event_index, TrackRendererState* state,
     ArrayList<TrackRenderBlock>* out_blocks, Allocator a);
+
+void track_compute_counter_render_blocks(
+    const Track* track, const TraceData* trace_data, double viewport_start,
+    double viewport_end, float width, float tracks_canvas_pos_x,
+    ArrayList<CounterRenderBlock>* out_blocks, Allocator a);
 
 #endif  // ZTRACING_SRC_TRACK_RENDERER_H_

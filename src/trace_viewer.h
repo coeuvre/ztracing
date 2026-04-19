@@ -26,6 +26,7 @@ struct TraceViewer {
   ArrayList<Track> tracks;
   TrackRendererState track_renderer_state;
   ArrayList<TrackRenderBlock> render_blocks;
+  ArrayList<CounterRenderBlock> counter_render_blocks;
   ArrayList<HoverMatch> hover_matches;
   int64_t selected_event_index;
   bool show_details_panel;

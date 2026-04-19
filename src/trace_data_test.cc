@@ -19,8 +19,8 @@ TEST(TraceDataTest, Basic) {
   ev.tid = 2;
 
   TraceArg args[2];
-  args[0] = {STR("key1"), STR("val1")};
-  args[1] = {STR("key2"), STR("val2")};
+  args[0] = {STR("key1"), STR("val1"), 0.0};
+  args[1] = {STR("key2"), STR("val2"), 0.0};
   ev.args = args;
   ev.args_count = 2;
 

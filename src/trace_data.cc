@@ -135,6 +135,7 @@ void trace_data_add_event(TraceData* td, Allocator a, const Theme* theme,
   p.cat_ref = trace_data_push_string(td, a, event->cat);
   p.ph_ref = trace_data_push_string(td, a, event->ph);
   p.cname_ref = trace_data_push_string(td, a, event->cname);
+  p.id_ref = trace_data_push_string(td, a, event->id);
   p.color = compute_event_color(theme, event);
   p.ts = event->ts;
   p.dur = event->dur;
@@ -147,6 +148,7 @@ void trace_data_add_event(TraceData* td, Allocator a, const Theme* theme,
     TraceArgPersisted arg = {};
     arg.key_ref = trace_data_push_string(td, a, event->args[i].key);
     arg.val_ref = trace_data_push_string(td, a, event->args[i].val);
+    arg.val_double = event->args[i].val_double;
     array_list_push_back(&td->args, a, arg);
   }
 

@@ -28,6 +28,7 @@ void trace_viewer_deinit(TraceViewer* tv, Allocator allocator) {
   array_list_deinit(&tv->tracks, allocator);
   track_renderer_state_deinit(&tv->track_renderer_state, allocator);
   array_list_deinit(&tv->render_blocks, allocator);
+  array_list_deinit(&tv->counter_render_blocks, allocator);
   array_list_deinit(&tv->hover_matches, allocator);
 }
 
@@ -128,6 +129,63 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
   }
 }
 
+static void trace_viewer_draw_counter_track(
+    TraceViewer* tv, TraceData* td, ImDrawList* draw_list, const Track& t,
+    ImVec2 pos, float width, float height, double viewport_start,
+    double viewport_end, const Theme& theme, Allocator allocator) {
+  (void)theme;
+  if (t.event_indices.size == 0) return;
+
+  double duration = viewport_end - viewport_start;
+  if (duration <= 0) return;
+
+  double max_total = t.counter_max_total;
+  if (max_total <= 0) max_total = 1.0;
+
+  TrackRendererState* state = &tv->track_renderer_state;
+  array_list_resize(&state->counter_values, allocator, t.counter_series.size);
+
+  track_compute_counter_render_blocks(&t, td, viewport_start, viewport_end,
+                                      width, pos.x, &tv->counter_render_blocks,
+                                      allocator);
+
+  for (size_t i = 0; i < tv->counter_render_blocks.size; i++) {
+    const CounterRenderBlock& rb = tv->counter_render_blocks[i];
+
+    // Update values for this block
+    for (size_t val_idx = 0; val_idx < state->counter_values.size; val_idx++)
+      state->counter_values[val_idx] = 0.0;
+
+    if (rb.event_idx != (size_t)-1) {
+      const TraceEventPersisted& e = td->events[rb.event_idx];
+      for (uint32_t arg_k = 0; arg_k < e.args_count; arg_k++) {
+        const TraceArgPersisted& arg = td->args[e.args_offset + arg_k];
+        for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
+          if (t.counter_series[s_idx] == arg.key_ref) {
+            state->counter_values[s_idx] = arg.val_double;
+            break;
+          }
+        }
+      }
+    }
+
+    // Draw stack
+    double current_y_offset = 0.0;
+    for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
+      double val = state->counter_values[s_idx];
+      if (val > 0) {
+        float y_top = (float)(pos.y + height -
+                              (current_y_offset + val) / max_total * height);
+        float y_bottom =
+            (float)(pos.y + height - current_y_offset / max_total * height);
+        draw_list->AddRectFilled(ImVec2(rb.x1, y_top), ImVec2(rb.x2, y_bottom),
+                                 t.counter_colors[s_idx]);
+        current_y_offset += val;
+      }
+    }
+  }
+}
+
 void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                        const Theme* theme_ptr) {
   const Theme& theme = *theme_ptr;
@@ -167,7 +225,12 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
       float total_height = 0.0f;
       for (size_t i = 0; i < tv->tracks.size; i++) {
-        total_height += (float)(tv->tracks[i].max_depth + 2) * lane_height;
+        const Track& t = tv->tracks[i];
+        if (t.type == TRACK_TYPE_COUNTER) {
+          total_height += 2.0f * lane_height;
+        } else {
+          total_height += (float)(t.max_depth + 2) * lane_height;
+        }
       }
       ImGui::Dummy(ImVec2(0.0f, total_height));
       ImGui::SetCursorPos(ImVec2(0, 0));
@@ -194,7 +257,9 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
       for (size_t i = 0; i < tv->tracks.size; i++) {
         const Track& t = tv->tracks[i];
-        float track_height = (float)(t.max_depth + 2) * lane_height;
+        float track_height = (t.type == TRACK_TYPE_COUNTER)
+                                 ? 2.0f * lane_height
+                                 : (float)(t.max_depth + 2) * lane_height;
         ImVec2 track_pos =
             ImVec2(tracks_canvas_pos.x, tracks_canvas_pos.y + cumulative_y);
 
@@ -223,13 +288,23 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         // Sticky header text
         float sticky_x = std::max(track_pos.x, tracks_canvas_pos.x);
 
-        char default_name[32];
-        Str thread_name = trace_data_get_string(td, t.name_ref);
-        const char* display_name = thread_name.buf;
-        size_t display_name_len = thread_name.len;
+        char default_name[128];
+        Str name_str = trace_data_get_string(td, t.name_ref);
+        Str id_str = trace_data_get_string(td, t.id_ref);
+        const char* display_name = name_str.buf;
+        size_t display_name_len = name_str.len;
 
         if (display_name_len == 0) {
-          snprintf(default_name, sizeof(default_name), "Thread %d", t.tid);
+          if (t.type == TRACK_TYPE_THREAD) {
+            snprintf(default_name, sizeof(default_name), "Thread %d", t.tid);
+          } else {
+            snprintf(default_name, sizeof(default_name), "Counter");
+          }
+          display_name = default_name;
+          display_name_len = strlen(default_name);
+        } else if (id_str.len > 0) {
+          snprintf(default_name, sizeof(default_name), "%.*s (%.*s)",
+                   (int)name_str.len, name_str.buf, (int)id_str.len, id_str.buf);
           display_name = default_name;
           display_name_len = strlen(default_name);
         }
@@ -251,56 +326,121 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                               ImVec2(10.0f, 10.0f));
           ImGui::BeginTooltip();
           ImGui::Text("PID: %d", t.pid);
-          ImGui::Text("TID: %d", t.tid);
-          if (thread_name.len > 0) {
+          if (t.type == TRACK_TYPE_THREAD) {
+            ImGui::Text("TID: %d", t.tid);
+          }
+          if (name_str.len > 0) {
             ImGui::Separator();
-            ImGui::Text("Name: %.*s", (int)thread_name.len, thread_name.buf);
+            ImGui::Text("Name: %.*s", (int)name_str.len, name_str.buf);
+          }
+          if (id_str.len > 0) {
+            ImGui::Text("ID: %.*s", (int)id_str.len, id_str.buf);
           }
           ImGui::EndTooltip();
           ImGui::PopStyleVar();
         }
 
-        track_compute_render_blocks(
-            &t, td, tv->viewport.start_time, tv->viewport.end_time,
-            inner_width, tracks_canvas_pos.x, tv->selected_event_index,
-            &tv->track_renderer_state, &tv->render_blocks, allocator);
+        if (t.type == TRACK_TYPE_THREAD) {
+          track_compute_render_blocks(
+              &t, td, tv->viewport.start_time, tv->viewport.end_time,
+              inner_width, tracks_canvas_pos.x, tv->selected_event_index,
+              &tv->track_renderer_state, &tv->render_blocks, allocator);
 
-        bool mouse_in_track_y = (mouse_pos.y >= track_pos.y + lane_height &&
-                                 mouse_pos.y < track_pos.y + track_height);
+          bool mouse_in_track_y = (mouse_pos.y >= track_pos.y + lane_height &&
+                                   mouse_pos.y < track_pos.y + track_height);
 
-        for (size_t k = 0; k < tv->render_blocks.size; k++) {
-          const TrackRenderBlock& rb = tv->render_blocks[k];
+          for (size_t k = 0; k < tv->render_blocks.size; k++) {
+            const TrackRenderBlock& rb = tv->render_blocks[k];
 
-          float y1 = track_pos.y + (float)(rb.depth + 1) * lane_height;
-          float y2 = y1 + lane_height - 1.0f;
+            float y1 = track_pos.y + (float)(rb.depth + 1) * lane_height;
+            float y2 = y1 + lane_height - 1.0f;
 
-          float x1 = rb.x1;
-          float x2 = rb.x2;
-          float border_thickness =
-              rb.is_selected ? TRACK_MIN_EVENT_WIDTH : 1.0f;
-          float min_width = 2.0f * border_thickness + 1.0f;
-          if (x2 - x1 < min_width) x2 = x1 + min_width;
+            float x1 = rb.x1;
+            float x2 = rb.x2;
+            float border_thickness =
+                rb.is_selected ? TRACK_MIN_EVENT_WIDTH : 1.0f;
+            float min_width = 2.0f * border_thickness + 1.0f;
+            if (x2 - x1 < min_width) x2 = x1 + min_width;
 
-          if (track_list_hovered && mouse_in_track_y) {
-            if (mouse_pos.x >= x1 && mouse_pos.x < x2 && mouse_pos.y >= y1 &&
-                mouse_pos.y < y2) {
-              HoverMatch hm = {i, k, y1, y2, rb};
-              array_list_push_back(&tv->hover_matches, allocator, hm);
+            if (track_list_hovered && mouse_in_track_y) {
+              if (mouse_pos.x >= x1 && mouse_pos.x < x2 && mouse_pos.y >= y1 &&
+                  mouse_pos.y < y2) {
+                HoverMatch hm = {i, k, y1, y2, rb};
+                array_list_push_back(&tv->hover_matches, allocator, hm);
+              }
+            }
+
+            if (rb.is_selected) {
+              sel_found = true;
+              sel_x1 = rb.x1;
+              sel_x2 = rb.x2;
+              sel_y1 = y1;
+              sel_y2 = y2;
+              sel_col = rb.color;
+              sel_name_ref = rb.name_ref;
+            } else {
+              trace_viewer_draw_event(tv, td, track_draw_list, rb.x1, rb.x2, y1,
+                                      y2, rb.color, false, rb.name_ref,
+                                      inner_width, tracks_canvas_pos.x, theme);
             }
           }
+        } else {
+          trace_viewer_draw_counter_track(
+              tv, td, track_draw_list, t,
+              ImVec2(track_pos.x, track_pos.y + lane_height), inner_width,
+              track_height - lane_height, tv->viewport.start_time,
+              tv->viewport.end_time, theme, allocator);
 
-          if (rb.is_selected) {
-            sel_found = true;
-            sel_x1 = rb.x1;
-            sel_x2 = rb.x2;
-            sel_y1 = y1;
-            sel_y2 = y2;
-            sel_col = rb.color;
-            sel_name_ref = rb.name_ref;
-          } else {
-            trace_viewer_draw_event(tv, td, track_draw_list, rb.x1, rb.x2, y1,
-                                    y2, rb.color, false, rb.name_ref,
-                                    inner_width, tracks_canvas_pos.x, theme);
+          // Counter Tooltip
+          if (track_list_hovered && mouse_pos.y >= track_pos.y + lane_height &&
+              mouse_pos.y < track_pos.y + track_height) {
+            double mouse_ts =
+                tv->viewport.start_time +
+                (double)(mouse_pos.x - tracks_canvas_pos.x) / inv_duration;
+
+            size_t start_idx = track_find_visible_start_index(
+                &t, td, (int64_t)tv->viewport.start_time);
+            size_t match_idx = (size_t)-1;
+            for (size_t k = start_idx; k < t.event_indices.size; k++) {
+              const TraceEventPersisted& e = td->events[t.event_indices[k]];
+              if (e.ts > (int64_t)mouse_ts) break;
+              match_idx = k;
+            }
+
+            if (match_idx != (size_t)-1) {
+              const TraceEventPersisted& e =
+                  td->events[t.event_indices[match_idx]];
+              ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                                  ImVec2(10.0f, 10.0f));
+              ImGui::BeginTooltip();
+              char ts_buf[32];
+              format_duration(ts_buf, sizeof(ts_buf),
+                              (double)e.ts - (double)tv->viewport.min_ts);
+              ImGui::Text("Time: %s", ts_buf);
+              ImGui::Separator();
+
+              double total = 0.0;
+              for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
+                StringRef key_ref = t.counter_series[s_idx];
+                double val = 0.0;
+                for (uint32_t arg_k = 0; arg_k < e.args_count; arg_k++) {
+                  const TraceArgPersisted& arg = td->args[e.args_offset + arg_k];
+                  if (arg.key_ref == key_ref) {
+                    val = arg.val_double;
+                    break;
+                  }
+                }
+                Str key = trace_data_get_string(td, key_ref);
+                ImGui::Text("%.*s: %g", (int)key.len, key.buf, val);
+                total += val;
+              }
+              if (t.counter_series.size > 1) {
+                ImGui::Separator();
+                ImGui::Text("Total: %g", total);
+              }
+              ImGui::EndTooltip();
+              ImGui::PopStyleVar();
+            }
           }
         }
 

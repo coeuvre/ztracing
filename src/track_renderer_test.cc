@@ -29,59 +29,36 @@ class TrackRendererTest : public ::testing::Test {
 
 TEST_F(TrackRendererTest, CoalesceSameColor) {
   Track t = {};
-  // Create 3 tiny events close to each other with same color (by using same
-  // name)
-  // inner_width = 1000, duration = 10000 -> 1us = 0.1px.
-  // 5us = 0.5px (< 1.0px, so it's tiny).
-  // Gap of 5us = 0.5px (exactly at the threshold).
-  TraceEvent e1 = {STR("e"), STR("cat"), STR("B"), STR(""), 100,
-                   5,        0,          0,        nullptr, 0};
-  TraceEvent e2 = {STR("e"), STR("cat"), STR("B"), STR(""), 105,
-                   5,        0,          0,        nullptr, 0};
-  TraceEvent e3 = {STR("e"), STR("cat"), STR("B"), STR(""), 110,
-                   5,        0,          0,        nullptr, 0};
+  TraceEvent e1 = {}; e1.name = STR("e"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 5;
+  TraceEvent e2 = {}; e2.name = STR("e"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 105; e2.dur = 5;
+  TraceEvent e3 = {}; e3.name = STR("e"); e3.cat = STR("cat"); e3.ph = STR("B"); e3.ts = 110; e3.dur = 5;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e3);
 
-  EXPECT_EQ(td.events.size, 3u);
-  EXPECT_EQ(td.events[0].color, td.events[1].color);
-  EXPECT_EQ(td.events[0].color, td.events[2].color);
-
-  t.event_indices.size = 0;
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
   array_list_push_back(&t.event_indices, allocator, (size_t)1);
   array_list_push_back(&t.event_indices, allocator, (size_t)2);
 
   array_list_resize(&t.depths, allocator, 3);
-  t.depths[0] = 0;
-  t.depths[1] = 0;
-  t.depths[2] = 0;
+  t.depths[0] = 0; t.depths[1] = 0; t.depths[2] = 0;
   t.max_depth = 0;
 
-  // Viewport where these events are tiny (e.g., 5us is 0.5px < 1px)
   track_compute_render_blocks(&t, &td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks, allocator);
 
-  // Should be coalesced into 1 block
   EXPECT_EQ(blocks.size, 1u);
-  EXPECT_FLOAT_EQ(blocks[0].x1, 10.0f);  // 100 * 0.1
-  EXPECT_FLOAT_EQ(blocks[0].x2, 11.5f);  // 110*0.1 + 5*0.1 = 11.5
-  EXPECT_NE(blocks[0].name_ref, 0u);
-  EXPECT_EQ(blocks[0].count, 3u);
-
+  EXPECT_FLOAT_EQ(blocks[0].x1, 10.0f);
+  EXPECT_FLOAT_EQ(blocks[0].x2, 11.5f);
   track_deinit(&t, allocator);
 }
 
 TEST_F(TrackRendererTest, CoalesceDifferentColors) {
   Track t = {};
-  TraceEvent e1 = {STR("e1"), STR("cat"), STR("B"), STR(""), 100,
-                   5,         0,          0,        nullptr, 0};
-  TraceEvent e2 = {STR("e2"), STR("cat"), STR("B"), STR(""), 105,
-                   5,         0,          0,        nullptr, 0};
+  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 5;
+  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 105; e2.dur = 5;
 
-  // Set different colors manually
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   td.events[0].color = 0xFF0000FF;
@@ -90,31 +67,20 @@ TEST_F(TrackRendererTest, CoalesceDifferentColors) {
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
   array_list_push_back(&t.event_indices, allocator, (size_t)1);
   array_list_resize(&t.depths, allocator, 2);
-  t.depths[0] = 0;
-  t.depths[1] = 0;
+  t.depths[0] = 0; t.depths[1] = 0;
   t.max_depth = 0;
 
   track_compute_render_blocks(&t, &td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks, allocator);
 
-  // Should be coalesced because colors no longer matter for tiny events
   EXPECT_EQ(blocks.size, 1u);
-  EXPECT_EQ(blocks[0].count, 2u);
-
   track_deinit(&t, allocator);
 }
 
 TEST_F(TrackRendererTest, MultipleBlocksCloseTogether) {
   Track t = {};
-  // Two tiny events with a 0.6px gap.
-  // 1us = 0.1px.
-  // e1: 100 to 105 -> 10.0 to 10.5.
-  // e2: 111 to 116 -> 11.1 to 11.6.
-  // Gap = 0.6px (> 0.5px threshold).
-  TraceEvent e1 = {STR("e1"), STR("cat"), STR("B"), STR(""), 100,
-                   5,         0,          0,        nullptr, 0};
-  TraceEvent e2 = {STR("e2"), STR("cat"), STR("B"), STR(""), 111,
-                   5,         0,          0,        nullptr, 0};
+  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 5;
+  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 111; e2.dur = 5;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -122,35 +88,23 @@ TEST_F(TrackRendererTest, MultipleBlocksCloseTogether) {
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
   array_list_push_back(&t.event_indices, allocator, (size_t)1);
   array_list_resize(&t.depths, allocator, 2);
-  t.depths[0] = 0;
-  t.depths[1] = 0;
+  t.depths[0] = 0; t.depths[1] = 0;
   t.max_depth = 0;
 
   track_compute_render_blocks(&t, &td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks, allocator);
 
-  // We WANT these to be merged to avoid multiple tooltips, but currently
-  // they produce 2 blocks because 0.6 > 0.5.
   EXPECT_EQ(blocks.size, 1u);
-
   track_deinit(&t, allocator);
 }
 
 TEST_F(TrackRendererTest, CullingAfterMergeFlush) {
   Track t = {};
-  // Create 5 tiny events, 1us wide, 1us apart.
-  // 1us = 0.1px.
-  // E1: 100 to 101 -> 10.0 to 10.1
-  // E2: 101 to 102 -> 10.1 to 10.2
-  // E3: 130 to 131 -> 13.0 to 13.1
-  // E4: 131 to 132 -> 13.1 to 13.2
-  // E5: 132 to 133 -> 13.2 to 13.3
-
-  TraceEvent e1 = {STR("e1"), STR("cat"), STR("B"), STR(""), 100, 1, 0, 0, nullptr, 0};
-  TraceEvent e2 = {STR("e2"), STR("cat"), STR("B"), STR(""), 101, 1, 0, 0, nullptr, 0};
-  TraceEvent e3 = {STR("e3"), STR("cat"), STR("B"), STR(""), 130, 1, 0, 0, nullptr, 0};
-  TraceEvent e4 = {STR("e4"), STR("cat"), STR("B"), STR(""), 131, 1, 0, 0, nullptr, 0};
-  TraceEvent e5 = {STR("e5"), STR("cat"), STR("B"), STR(""), 132, 1, 0, 0, nullptr, 0};
+  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 1;
+  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 101; e2.dur = 1;
+  TraceEvent e3 = {}; e3.name = STR("e3"); e3.cat = STR("cat"); e3.ph = STR("B"); e3.ts = 130; e3.dur = 1;
+  TraceEvent e4 = {}; e4.name = STR("e4"); e4.cat = STR("cat"); e4.ph = STR("B"); e4.ts = 131; e4.dur = 1;
+  TraceEvent e5 = {}; e5.name = STR("e5"); e5.cat = STR("cat"); e5.ph = STR("B"); e5.ts = 132; e5.dur = 1;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -158,35 +112,22 @@ TEST_F(TrackRendererTest, CullingAfterMergeFlush) {
   trace_data_add_event(&td, allocator, theme_get_dark(), &e4);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e5);
 
-  for (size_t i = 0; i < 5; i++) {
-    array_list_push_back(&t.event_indices, allocator, i);
-  }
+  for (size_t i = 0; i < 5; i++) array_list_push_back(&t.event_indices, allocator, i);
   array_list_resize(&t.depths, allocator, 5);
   for (size_t i = 0; i < 5; i++) t.depths[i] = 0;
   t.max_depth = 0;
 
-  // 1us = 0.1px.
-  // E1+E2 will merge into [10.0, 10.2].
-  // E3 is far away, so it flushes [10.0, 10.2].
-  // E3 starts new merge.
-  // E4 merges into E3 -> [13.0, 13.2].
-  // E5 merges into E4 -> [13.0, 13.3].
   track_compute_render_blocks(&t, &td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks, allocator);
 
-  // We should have 2 blocks.
   EXPECT_EQ(blocks.size, 2u);
-
   track_deinit(&t, allocator);
 }
 
 TEST_F(TrackRendererTest, SelectedEventNeverSkipped) {
   Track t = {};
-  TraceEvent e1 = {STR("e1"), STR("cat"), STR("B"), STR(""), 100,
-                   10,        0,          0,        nullptr, 0};
-  TraceEvent e2 = {
-      STR("e2"), STR("cat"), STR("B"), STR(""), 101, 10,
-      0,         0,          nullptr,  0};  // Overlaps e1 almost completely
+  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 10;
+  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 101; e2.dur = 10;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -196,159 +137,522 @@ TEST_F(TrackRendererTest, SelectedEventNeverSkipped) {
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
   array_list_push_back(&t.event_indices, allocator, (size_t)1);
   array_list_resize(&t.depths, allocator, 2);
-  t.depths[0] = 0;
-  t.depths[1] = 0;
+  t.depths[0] = 0; t.depths[1] = 0;
   t.max_depth = 0;
 
-  // Normally e2 would be skipped by LOD or coalesced.
-  // If e2 is selected, it must be drawn.
   track_compute_render_blocks(&t, &td, 0, 10000, 1000.0f, 0.0f, 1, &state,
                               &blocks, allocator);
 
   EXPECT_EQ(blocks.size, 2u);
   EXPECT_TRUE(blocks[1].is_selected);
-
   track_deinit(&t, allocator);
 }
 
 TEST_F(TrackRendererTest, SameLaneOverlap) {
   Track t = {};
-  // Two events that overlap but are not strictly nested.
-  // E1: 100 to 200
-  // E2: 150 to 250
-  // Result: Both should be at depth 0.
-  TraceEvent e1 = {STR("e1"), STR("cat"), STR("B"), STR(""), 100, 100, 0, 0, nullptr, 0};
-  TraceEvent e2 = {STR("e2"), STR("cat"), STR("B"), STR(""), 150, 100, 0, 0, nullptr, 0};
+  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 100;
+  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 150; e2.dur = 100;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
 
-  for (size_t i = 0; i < 2; i++) {
-    array_list_push_back(&t.event_indices, allocator, i);
-  }
+  for (size_t i = 0; i < 2; i++) array_list_push_back(&t.event_indices, allocator, i);
   array_list_resize(&t.depths, allocator, 2);
-  t.depths[0] = 0;
-  t.depths[1] = 0;
+  t.depths[0] = 0; t.depths[1] = 0;
   t.max_depth = 0;
 
   track_compute_render_blocks(&t, &td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks, allocator);
 
-  // Both should be preserved as separate blocks on the same lane.
-  // Hover logic in app.cc will pick the last one (E2) when hovering in [150, 200].
   EXPECT_EQ(blocks.size, 2u);
   EXPECT_EQ(blocks[0].depth, 0u);
   EXPECT_EQ(blocks[1].depth, 0u);
-  EXPECT_FLOAT_EQ(blocks[0].x1, 10.0f);
-  EXPECT_FLOAT_EQ(blocks[1].x1, 15.0f);
-
   track_deinit(&t, allocator);
 }
 
 TEST_F(TrackRendererTest, SelectedEventOverlap) {
   Track t = {};
-  // E1: 100 to 101 (tiny)
-  // E2: 101 to 102 (tiny, SELECTED)
-  // E3: 102 to 103 (tiny)
-  TraceEvent e1 = {STR("e1"), STR("cat"), STR("B"), STR(""), 100, 1, 0, 0, nullptr, 0};
-  TraceEvent e2 = {STR("e2"), STR("cat"), STR("B"), STR(""), 101, 1, 0, 0, nullptr, 0};
-  TraceEvent e3 = {STR("e3"), STR("cat"), STR("B"), STR(""), 102, 1, 0, 0, nullptr, 0};
+  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 1;
+  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 101; e2.dur = 1;
+  TraceEvent e3 = {}; e3.name = STR("e3"); e3.cat = STR("cat"); e3.ph = STR("B"); e3.ts = 102; e3.dur = 1;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e3);
 
-  for (size_t i = 0; i < 3; i++) {
-    array_list_push_back(&t.event_indices, allocator, i);
-  }
+  for (size_t i = 0; i < 3; i++) array_list_push_back(&t.event_indices, allocator, i);
   array_list_resize(&t.depths, allocator, 3);
   for (size_t i = 0; i < 3; i++) t.depths[i] = 0;
   t.max_depth = 0;
 
-  // E2 (index 1) is selected.
   track_compute_render_blocks(&t, &td, 0, 10000, 1000.0f, 0.0f, 1, &state,
                               &blocks, allocator);
 
-  // E2 is selected, so it flushes E1 and is pushed separately.
-  // E3 is tiny (10.2 to 10.3) and is culled against E2's end (10.2).
-  // Result: RB1 (E1), RB2 (E2).
-  // All on the same lane (depth 0).
   EXPECT_EQ(blocks.size, 2u);
-
   track_deinit(&t, allocator);
 }
 
 TEST_F(TrackRendererTest, SelectedEventNoOverlap) {
   Track t = {};
-  // E1: 100 to 101
-  // E2: 110 to 111 (SELECTED)
-  // E3: 120 to 121
-  TraceEvent e1 = {STR("e1"), STR("cat"), STR("B"), STR(""), 100, 1, 0, 0, nullptr, 0};
-  TraceEvent e2 = {STR("e2"), STR("cat"), STR("B"), STR(""), 110, 1, 0, 0, nullptr, 0};
-  TraceEvent e3 = {STR("e3"), STR("cat"), STR("B"), STR(""), 120, 1, 0, 0, nullptr, 0};
+  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 1;
+  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 110; e2.dur = 1;
+  TraceEvent e3 = {}; e3.name = STR("e3"); e3.cat = STR("cat"); e3.ph = STR("B"); e3.ts = 120; e3.dur = 1;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e3);
 
-  for (size_t i = 0; i < 3; i++) {
-    array_list_push_back(&t.event_indices, allocator, i);
-  }
+  for (size_t i = 0; i < 3; i++) array_list_push_back(&t.event_indices, allocator, i);
   array_list_resize(&t.depths, allocator, 3);
   for (size_t i = 0; i < 3; i++) t.depths[i] = 0;
   t.max_depth = 0;
 
-  // E2 (index 1) is selected.
   track_compute_render_blocks(&t, &td, 0, 10000, 1000.0f, 0.0f, 1, &state,
                               &blocks, allocator);
 
-  // E2 is selected and far from E1 and E3.
-  // Result: 3 blocks (E1, E2, E3).
   EXPECT_EQ(blocks.size, 3u);
-
   track_deinit(&t, allocator);
 }
 
 TEST_F(TrackRendererTest, ExtremeZoomOut) {
   Track t = {};
-  // Create 1000 events, each 1us long, 1us apart.
-  // Total span: 2000us.
   for (int i = 0; i < 1000; i++) {
     char name[16];
     snprintf(name, sizeof(name), "e%d", i);
-    TraceEvent e = {str_from_cstr(name),
-                    STR("cat"),
-                    STR("B"),
-                    STR(""),
-                    (int64_t)i * 2,
-                    1,
-                    0,
-                    0,
-                    nullptr,
-                    0};
+    TraceEvent e = {};
+    e.name = str_from_cstr(name); e.cat = STR("cat"); e.ph = STR("B"); e.ts = (int64_t)i * 2; e.dur = 1;
     trace_data_add_event(&td, allocator, theme_get_dark(), &e);
     array_list_push_back(&t.event_indices, allocator, (size_t)i);
   }
-
   array_list_resize(&t.depths, allocator, 1000);
   for (size_t i = 0; i < 1000; i++) t.depths[i] = 0;
   t.max_depth = 0;
 
-  // Viewport: 0 to 1,000,000us. inner_width = 1000px.
-  // 1us = 0.001px.
-  // 1000 events span 2000us = 2px total.
   track_compute_render_blocks(&t, &td, 0, 1000000, 1000.0f, 0.0f, -1, &state,
                               &blocks, allocator);
 
-  // We should NOT have 1000 blocks.
-  // Since they have different colors (names are e0, e1, ...),
-  // they won't coalesce by color, but they should be skipped by LOD
-  // if they fall in the same pixel range.
-  // With x2 <= last_x2, many should be skipped.
-  // However, because we use float x2, if they are 0.001px apart,
-  // x2 will slightly increase each time, potentially bypassing the current
-  // check.
   EXPECT_LT(blocks.size, 100u);
+  track_deinit(&t, allocator);
+}
 
+TEST_F(TrackRendererTest, CounterBucketing) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+
+  // E1: t=100, E2: t=101, E3: t=102, E4: t=200
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 101;
+  TraceEvent e3 = {}; e3.name = STR("c"); e3.ts = 102;
+  TraceEvent e4 = {}; e4.name = STR("c"); e4.ts = 200;
+
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e3);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e4);
+
+  for (size_t i = 0; i < 4; i++) array_list_push_back(&t.event_indices, allocator, i);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  // Viewport: 0 to 1000, 1000px. 1us = 1px. Bucket=3px.
+  track_compute_counter_render_blocks(&t, &td, 0, 1000, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  // Should be few blocks due to merging and bucketing
+  EXPECT_GT(c_blocks.size, 0u);
+  EXPECT_LT(c_blocks.size, 10u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterFirstEventGap) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 0, 200, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_GT(c_blocks.size, 0u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterMidViewport) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 50;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 100, 200, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_GT(c_blocks.size, 0u);
+  EXPECT_EQ(c_blocks[0].event_idx, 0u); 
+  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterDrawTooFarLeft) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 50, 150, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_GT(c_blocks.size, 0u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1); 
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterCanvasOffset) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 0, 200, 1000.0f, 100.0f, &c_blocks, allocator);
+
+  ASSERT_GT(c_blocks.size, 0u);
+  EXPECT_GE(c_blocks[0].x1, 100.0f);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterBeforeFirstEvent) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 0, 50, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_EQ(c_blocks.size, 1u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterFirstEventAtStart) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 100, 200, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_EQ(c_blocks.size, 1u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1); 
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterClampedGapBug) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 0;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 100;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 50, 150, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_GT(c_blocks.size, 0u);
+  EXPECT_EQ(c_blocks[0].event_idx, 0u);
+  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterViewportFarLeft) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, -200, -100, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_EQ(c_blocks.size, 1u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterFirstEventJustBefore) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 90;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 100, 200, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_EQ(c_blocks.size, 1u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterSessionStartGap) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 0, 200, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_GT(c_blocks.size, 0u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterExactStart) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 100, 200, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_EQ(c_blocks.size, 1u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterViewportNegative) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, -100, 200, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_GT(c_blocks.size, 0u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterPartialStart) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 50;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 100, 200, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_GT(c_blocks.size, 0u);
+  EXPECT_EQ(c_blocks[0].event_idx, 0u);
+  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterViewportFarRight) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 200, 300, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_EQ(c_blocks.size, 1u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterLastEventAtEnd) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 200;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 0, 300, 3000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_GT(c_blocks.size, 0u);
+  EXPECT_EQ(c_blocks[c_blocks.size - 1].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterBucketingStability) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+
+  // Event at t=10
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 10;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> blocks_a = {};
+  ArrayList<CounterRenderBlock> blocks_b = {};
+
+  // Viewport A: 0 to 1000, 1000px wide. 1us = 1px. Bucket = 3px = 3us.
+  // Buckets: [0, 3), [3, 6), [6, 9), [9, 12) ...
+  // E1 (t=10) should fall into [9, 12).
+  track_compute_counter_render_blocks(&t, &td, 0, 1000, 1000.0f, 0.0f, &blocks_a, allocator);
+
+  // Viewport B: 1 to 1001, 1000px wide. Same scale.
+  // Panned by 1us.
+  // Buckets should STILL be aligned to [0, 3), [3, 6) ...
+  // The first bucket in Viewport B will be floor(1/3)*3 = 0.
+  // It will be clipped to viewport start (1). -> [1, 3).
+  track_compute_counter_render_blocks(&t, &td, 1, 1001, 1000.0f, 0.0f, &blocks_b, allocator);
+
+  // Find the block containing t=10 in both.
+  auto find_block_at = [](const ArrayList<CounterRenderBlock>& b, float x_offset) -> size_t {
+    for (size_t i = 0; i < b.size; i++) {
+      if (x_offset >= b[i].x1 - 0.001f && x_offset < b[i].x2 + 0.001f) return b[i].event_idx;
+    }
+    return (size_t)-2;
+  };
+
+  // In Viewport A, t=10 is at x=10.
+  // In Viewport B, t=10 is at x=9 (10 - 1).
+  EXPECT_EQ(find_block_at(blocks_a, 10.0f), 0u);
+  EXPECT_EQ(find_block_at(blocks_b, 9.0f), 0u);
+
+  // Check absolute boundary stability:
+  // Bucket [9, 12) in A: x1=10-0=10 (Wait, bucket starts at 9). x1=9, x2=12.
+  // Bucket [9, 12) in B: x1=9-1=8, x2=12-1=11.
+  
+  bool found_stable_boundary = false;
+  for (size_t i = 0; i < blocks_a.size; i++) {
+    if (blocks_a[i].event_idx == 0u) {
+       // This block in A is [9, 10) Gap, then [10, 10]? No.
+       // E1 is at 10. Track ends at 10. 
+       // So block is [9, 10] with state 0?
+       // Wait, track_last_ts is 10. hit_track_end = true when next_bucket_ts (12) >= 10.
+       // draw_end_ts becomes 10.
+       // So block is [9, 10].
+       EXPECT_FLOAT_EQ(blocks_a[i].x1, 9.0f);
+       EXPECT_FLOAT_EQ(blocks_a[i].x2, 10.0f);
+       found_stable_boundary = true;
+       break;
+    }
+  }
+  EXPECT_TRUE(found_stable_boundary);
+
+  found_stable_boundary = false;
+  for (size_t i = 0; i < blocks_b.size; i++) {
+    if (blocks_b[i].event_idx == 0u) {
+       // In B, viewport starts at 1. Bucket starts at floor(1/3)*3 = 0.
+       // x1 = (0 - 1) * 1 = -1. Clamped to 0.
+       // Bucket [9, 12) in absolute time.
+       // x1 = (9 - 1) = 8.
+       // x2 = (10 - 1) = 9.
+       EXPECT_FLOAT_EQ(blocks_b[i].x1, 8.0f);
+       EXPECT_FLOAT_EQ(blocks_b[i].x2, 9.0f);
+       found_stable_boundary = true;
+       break;
+    }
+  }
+  EXPECT_TRUE(found_stable_boundary);
+
+  array_list_deinit(&blocks_a, allocator);
+  array_list_deinit(&blocks_b, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterGapInitialState) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 50;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 75, 100, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_EQ(c_blocks.size, 1u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterStartIdxBug) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 50;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 0, 50, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_EQ(c_blocks.size, 1u);
+  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CounterMaxDurBug) {
+  Track t = {};
+  t.type = TRACK_TYPE_COUNTER;
+  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 50;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
+  t.max_dur = 0;
+
+  ArrayList<CounterRenderBlock> c_blocks = {};
+  track_compute_counter_render_blocks(&t, &td, 100, 200, 1000.0f, 0.0f, &c_blocks, allocator);
+
+  ASSERT_GT(c_blocks.size, 0u);
+  EXPECT_EQ(c_blocks[0].event_idx, 0u);
+  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
 }

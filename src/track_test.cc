@@ -304,7 +304,7 @@ TEST(TrackTest, OrganizeTracksEmpty) {
 
   ArrayList<Track> tracks = {};
   int64_t min_ts = -1, max_ts = -1;
-  track_organize(&td, a, &tracks, &min_ts, &max_ts);
+  track_organize(&td, a, theme_get_dark(), &tracks, &min_ts, &max_ts);
 
   EXPECT_EQ(tracks.size, 0u);
   // min_ts/max_ts are not updated if no events
@@ -336,7 +336,7 @@ TEST(TrackTest, OrganizeTracksSorting) {
     m.pid = pid;
     m.tid = tid;
     m.name = STR("thread_sort_index");
-    TraceArg arg = {STR("sort_index"), STR("")};
+    TraceArg arg = {STR("sort_index"), STR(""), 0.0};
     char buf[16];
     snprintf(buf, sizeof(buf), "%d", sort_idx);
     arg.val = {buf, strlen(buf)};
@@ -354,23 +354,26 @@ TEST(TrackTest, OrganizeTracksSorting) {
 
   ArrayList<Track> tracks = {};
   int64_t min_ts, max_ts;
-  track_organize(&td, a, &tracks, &min_ts, &max_ts);
+  track_organize(&td, a, theme_get_dark(), &tracks, &min_ts, &max_ts);
 
   ASSERT_EQ(tracks.size, 3u);
 
   // 1. PID 10, TID 1 (sort_index -5)
   EXPECT_EQ(tracks[0].pid, 10);
   EXPECT_EQ(tracks[0].sort_index, -5);
+  EXPECT_EQ(tracks[0].type, TRACK_TYPE_THREAD);
 
   // 2. PID 1, TID 1 (sort_index 0 default)
   EXPECT_EQ(tracks[1].pid, 1);
   EXPECT_EQ(tracks[1].tid, 1);
   EXPECT_EQ(tracks[1].sort_index, 0);
+  EXPECT_EQ(tracks[1].type, TRACK_TYPE_THREAD);
 
   // 3. PID 1, TID 2 (sort_index 5)
   EXPECT_EQ(tracks[2].pid, 1);
   EXPECT_EQ(tracks[2].tid, 2);
   EXPECT_EQ(tracks[2].sort_index, 5);
+  EXPECT_EQ(tracks[2].type, TRACK_TYPE_THREAD);
 
   for (size_t i = 0; i < tracks.size; i++) track_deinit(&tracks[i], a);
   array_list_deinit(&tracks, a);
@@ -387,14 +390,14 @@ TEST(TrackTest, OrganizeTracksMetadataOnly) {
   m.pid = 1;
   m.tid = 1;
   m.name = STR("thread_name");
-  TraceArg arg = {STR("name"), STR("Meta Only")};
+  TraceArg arg = {STR("name"), STR("Meta Only"), 0.0};
   m.args = &arg;
   m.args_count = 1;
   trace_data_add_event(&td, a, theme_get_dark(), &m);
 
   ArrayList<Track> tracks = {};
   int64_t min_ts = -1, max_ts = -1;
-  track_organize(&td, a, &tracks, &min_ts, &max_ts);
+  track_organize(&td, a, theme_get_dark(), &tracks, &min_ts, &max_ts);
 
   EXPECT_EQ(tracks.size, 1u);
   EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "Meta Only");
@@ -428,7 +431,7 @@ TEST(TrackTest, OrganizeTracksMixedOrder) {
   m1.pid = 1;
   m1.tid = 1;
   m1.name = STR("thread_name");
-  TraceArg arg1 = {STR("name"), STR("Mixed")};
+  TraceArg arg1 = {STR("name"), STR("Mixed"), 0.0};
   m1.args = &arg1;
   m1.args_count = 1;
   trace_data_add_event(&td, a, theme_get_dark(), &m1);
@@ -444,7 +447,7 @@ TEST(TrackTest, OrganizeTracksMixedOrder) {
 
   ArrayList<Track> tracks = {};
   int64_t min_ts, max_ts;
-  track_organize(&td, a, &tracks, &min_ts, &max_ts);
+  track_organize(&td, a, theme_get_dark(), &tracks, &min_ts, &max_ts);
 
   ASSERT_EQ(tracks.size, 2u);
 
@@ -460,6 +463,146 @@ TEST(TrackTest, OrganizeTracksMixedOrder) {
 
   EXPECT_EQ(min_ts, 100);
   EXPECT_EQ(max_ts, 600);
+
+  for (size_t i = 0; i < tracks.size; i++) track_deinit(&tracks[i], a);
+  array_list_deinit(&tracks, a);
+  trace_data_deinit(&td, a);
+}
+
+TEST(TrackTest, OrganizeTracksCounters) {
+  Allocator a = allocator_get_default();
+  TraceData td;
+  trace_data_init(&td, a);
+
+  // 1. Regular thread event
+  TraceEvent e1 = {};
+  e1.ph = STR("X");
+  e1.pid = 1;
+  e1.tid = 1;
+  e1.ts = 100;
+  trace_data_add_event(&td, a, theme_get_dark(), &e1);
+
+  // 2. Counter event for same PID
+  TraceEvent c1 = {};
+  c1.ph = STR("C");
+  c1.name = STR("my_counter");
+  c1.pid = 1;
+  c1.tid = 1; // TID is usually ignored for counters in grouping
+  c1.ts = 150;
+  TraceArg arg1 = {STR("val"), STR("10"), 10.0};
+  c1.args = &arg1;
+  c1.args_count = 1;
+  trace_data_add_event(&td, a, theme_get_dark(), &c1);
+
+  // 3. Counter event with ID
+  TraceEvent c2 = {};
+  c2.ph = STR("C");
+  c2.name = STR("my_counter");
+  c2.id = STR("1");
+  c2.pid = 1;
+  c2.ts = 200;
+  trace_data_add_event(&td, a, theme_get_dark(), &c2);
+
+  ArrayList<Track> tracks = {};
+  int64_t min_ts, max_ts;
+  track_organize(&td, a, theme_get_dark(), &tracks, &min_ts, &max_ts);
+
+  ASSERT_EQ(tracks.size, 3u);
+
+  // Counter track (no ID) - Type 0
+  EXPECT_EQ(tracks[0].pid, 1);
+  EXPECT_EQ(tracks[0].tid, -1);
+  EXPECT_EQ(tracks[0].type, TRACK_TYPE_COUNTER);
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "my_counter");
+  EXPECT_EQ(tracks[0].id_ref, 0u);
+
+  // Counter track (with ID) - Type 0
+  EXPECT_EQ(tracks[1].pid, 1);
+  EXPECT_EQ(tracks[1].tid, -1);
+  EXPECT_EQ(tracks[1].type, TRACK_TYPE_COUNTER);
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[1].name_ref).buf, "my_counter");
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[1].id_ref).buf, "1");
+
+  // Thread track - Type 1
+  EXPECT_EQ(tracks[2].pid, 1);
+  EXPECT_EQ(tracks[2].tid, 1);
+  EXPECT_EQ(tracks[2].type, TRACK_TYPE_THREAD);
+
+  for (size_t i = 0; i < tracks.size; i++) track_deinit(&tracks[i], a);
+  array_list_deinit(&tracks, a);
+  trace_data_deinit(&td, a);
+}
+
+TEST(TrackTest, OrganizeTracksCountersSorting) {
+  Allocator a = allocator_get_default();
+  TraceData td;
+  trace_data_init(&td, a);
+
+  // Add counter events in non-alphabetical order
+  TraceEvent c1 = {}; c1.ph = STR("C"); c1.name = STR("zebra"); c1.pid = 1;
+  TraceEvent c2 = {}; c2.ph = STR("C"); c2.name = STR("apple"); c2.pid = 1;
+  TraceEvent c3 = {}; c3.ph = STR("C"); c3.name = STR("apple"); c3.id = STR("2"); c3.pid = 1;
+  TraceEvent c4 = {}; c4.ph = STR("C"); c4.name = STR("apple"); c4.id = STR("1"); c4.pid = 1;
+
+  trace_data_add_event(&td, a, theme_get_dark(), &c1);
+  trace_data_add_event(&td, a, theme_get_dark(), &c2);
+  trace_data_add_event(&td, a, theme_get_dark(), &c3);
+  trace_data_add_event(&td, a, theme_get_dark(), &c4);
+
+  ArrayList<Track> tracks = {};
+  int64_t min_ts, max_ts;
+  track_organize(&td, a, theme_get_dark(), &tracks, &min_ts, &max_ts);
+
+  ASSERT_EQ(tracks.size, 4u);
+
+  // Expected order (TRACK_TYPE_COUNTER is 0, so they all come before threads):
+  // 1. apple (no id)
+  // 2. apple (id 1)
+  // 3. apple (id 2)
+  // 4. zebra
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "apple");
+  EXPECT_EQ(tracks[0].id_ref, 0u);
+
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[1].name_ref).buf, "apple");
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[1].id_ref).buf, "1");
+
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[2].name_ref).buf, "apple");
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[2].id_ref).buf, "2");
+
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[3].name_ref).buf, "zebra");
+
+  for (size_t i = 0; i < tracks.size; i++) track_deinit(&tracks[i], a);
+  array_list_deinit(&tracks, a);
+  trace_data_deinit(&td, a);
+}
+
+TEST(TrackTest, OrganizeTracksCountersSortingIgnoreCase) {
+  Allocator a = allocator_get_default();
+  TraceData td;
+  trace_data_init(&td, a);
+
+  // Add counter events with mixed case names
+  TraceEvent c1 = {}; c1.ph = STR("C"); c1.name = STR("zebra"); c1.pid = 1;
+  TraceEvent c2 = {}; c2.ph = STR("C"); c2.name = STR("APPLE"); c2.pid = 1;
+  TraceEvent c3 = {}; c3.ph = STR("C"); c3.name = STR("apple"); c3.id = STR("1"); c3.pid = 1;
+
+  trace_data_add_event(&td, a, theme_get_dark(), &c1);
+  trace_data_add_event(&td, a, theme_get_dark(), &c2);
+  trace_data_add_event(&td, a, theme_get_dark(), &c3);
+
+  ArrayList<Track> tracks = {};
+  int64_t min_ts, max_ts;
+  track_organize(&td, a, theme_get_dark(), &tracks, &min_ts, &max_ts);
+
+  ASSERT_EQ(tracks.size, 3u);
+
+  // Expected order:
+  // 1. APPLE (case-insensitive 'a' comes before 'z')
+  // 2. apple (id 1)
+  // 3. zebra
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "APPLE");
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[1].name_ref).buf, "apple");
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[2].name_ref).buf, "zebra");
 
   for (size_t i = 0; i < tracks.size; i++) track_deinit(&tracks[i], a);
   array_list_deinit(&tracks, a);

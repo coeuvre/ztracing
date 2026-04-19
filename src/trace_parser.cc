@@ -168,17 +168,6 @@ void trace_parser_feed(TraceParser* p, const char* buf, size_t len,
   p->is_eof = is_eof;
 }
 
-static int64_t str_to_int64(Str s) {
-  // Simple atoi for now, should handle more cases if needed
-  char tmp[64];
-  size_t len = s.len < 63 ? s.len : 63;
-  memcpy(tmp, s.buf, len);
-  tmp[len] = '\0';
-  return atoll(tmp);
-}
-
-static int32_t str_to_int32(Str s) { return (int32_t)str_to_int64(s); }
-
 static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
   JsonToken tok = json_reader_next(r);
   if (tok.type != JSON_TOKEN_OBJECT_START) return false;
@@ -227,6 +216,13 @@ static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_NUMBER) return false;
       event->tid = str_to_int32(tok.str);
+    } else if (str_eq(key, STR("id"))) {
+      tok = json_reader_next(r);
+      if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER) {
+        event->id = tok.str;
+      } else {
+        return false;
+      }
     } else if (str_eq(key, STR("args"))) {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_OBJECT_START) return false;
@@ -242,9 +238,13 @@ static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
         // Value can be string, number, etc. For now we just take the raw token
         // string.
         tok = json_reader_next(r);
+        arg.val_double = 0.0;
         if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER ||
             tok.type == JSON_TOKEN_BOOLEAN || tok.type == JSON_TOKEN_NULL_VAL) {
           arg.val = tok.str;
+          if (tok.type == JSON_TOKEN_NUMBER) {
+            arg.val_double = str_to_double(tok.str);
+          }
         } else if (tok.type == JSON_TOKEN_OBJECT_START ||
                    tok.type == JSON_TOKEN_ARRAY_START) {
           // Nested object/array. We should skip it and return raw JSON.
