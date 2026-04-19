@@ -21,6 +21,8 @@ const Theme* theme_get_dark() {
 
       // Tracks
       IM_COL32(255, 255, 255, 255), // track_text
+      IM_COL32(35, 35, 35, 255),    // track_header_bg
+      IM_COL32(60, 60, 60, 255),    // track_separator
 
       // Status
       ImVec4(1, 1, 0, 1), // status_loading
@@ -60,6 +62,8 @@ const Theme* theme_get_light() {
 
       // Tracks
       IM_COL32(50, 50, 50, 255),    // track_text
+      IM_COL32(220, 220, 220, 255), // track_header_bg
+      IM_COL32(200, 200, 200, 255), // track_separator
 
       // Status
       ImVec4(0.8f, 0.4f, 0.0f, 1.0f), // status_loading (Dark Orange)

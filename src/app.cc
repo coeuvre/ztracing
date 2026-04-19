@@ -1,6 +1,8 @@
 #include "src/app.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <algorithm>
 #include <math.h>
 
@@ -93,6 +95,36 @@ static void app_organize_tracks(App* app) {
       last_track_idx = track_idx;
     }
 
+    // Check for metadata events to set track name or sort index
+    Str ph = trace_data_get_string(&app->trace_data, e.ph_offset);
+    if (str_eq(ph, STR("M"))) {
+      Str name = trace_data_get_string(&app->trace_data, e.name_offset);
+      if (str_eq(name, STR("thread_name"))) {
+        for (size_t k = 0; k < e.args_count; k++) {
+          const TraceArgPersisted& arg = app->trace_data.args[e.args_offset + k];
+          Str key = trace_data_get_string(&app->trace_data, arg.key_offset);
+          if (str_eq(key, STR("name"))) {
+            app->tracks[track_idx].name_offset = arg.val_offset;
+            break;
+          }
+        }
+      } else if (str_eq(name, STR("thread_sort_index"))) {
+        for (size_t k = 0; k < e.args_count; k++) {
+          const TraceArgPersisted& arg = app->trace_data.args[e.args_offset + k];
+          Str key = trace_data_get_string(&app->trace_data, arg.key_offset);
+          if (str_eq(key, STR("sort_index"))) {
+            Str val = trace_data_get_string(&app->trace_data, arg.val_offset);
+            char tmp[64];
+            size_t len = val.len < 63 ? val.len : 63;
+            memcpy(tmp, val.buf, len);
+            tmp[len] = '\0';
+            app->tracks[track_idx].sort_index = (int32_t)atoi(tmp);
+            break;
+          }
+        }
+      }
+    }
+
     array_list_push_back(&app->tracks[track_idx].event_indices, app->allocator, i);
   }
 
@@ -101,6 +133,13 @@ static void app_organize_tracks(App* app) {
     track_update_max_dur(&app->tracks[i], &app->trace_data);
     track_calculate_depths(&app->tracks[i], &app->trace_data, app->allocator);
   }
+
+  // Sort tracks by sort_index, then PID, then TID.
+  std::sort(app->tracks.data, app->tracks.data + app->tracks.size, [](const Track& a, const Track& b) {
+    if (a.sort_index != b.sort_index) return a.sort_index < b.sort_index;
+    if (a.pid != b.pid) return a.pid < b.pid;
+    return a.tid < b.tid;
+  });
 
   app->viewport.start_time = (double)app->viewport.min_ts;
   app->viewport.end_time = (double)app->viewport.max_ts;
@@ -192,11 +231,10 @@ void app_update(App* app) {
         double duration = app->viewport.end_time - app->viewport.start_time;
         if (duration <= 0) duration = 1.0;
 
-        float ruler_height = 25.0f;
+        float ruler_height = 28.0f;
         app_draw_time_ruler(app, draw_list, canvas_pos, ImVec2(canvas_size.x, ruler_height));
 
-        float lane_height = 20.0f;
-        float track_spacing = 4.0f;
+        float lane_height = 28.0f;
 
         ImGuiWindowFlags child_flags = ImGuiWindowFlags_NoMove;
         if (ImGui::IsKeyDown(ImGuiMod_Ctrl)) child_flags |= ImGuiWindowFlags_NoScrollWithMouse;
@@ -211,7 +249,7 @@ void app_update(App* app) {
           
           float total_height = 0.0f;
           for (size_t i = 0; i < app->tracks.size; i++) {
-            total_height += (float)(app->tracks[i].max_depth + 1) * lane_height + track_spacing;
+            total_height += (float)(app->tracks[i].max_depth + 2) * lane_height;
           }
           ImGui::Dummy(ImVec2(0.0f, total_height));
           ImGui::SetCursorPos(ImVec2(0, 0));
@@ -222,16 +260,51 @@ void app_update(App* app) {
           float cumulative_y = 0.0f;
           for (size_t i = 0; i < app->tracks.size; i++) {
             const Track& t = app->tracks[i];
-            float track_height = (float)(t.max_depth + 1) * lane_height;
+            float track_height = (float)(t.max_depth + 2) * lane_height;
             ImVec2 track_pos = ImVec2(tracks_canvas_pos.x, tracks_canvas_pos.y + cumulative_y);
             
             // Frustum culling: skip tracks that are not visible
             if (track_pos.y + track_height < canvas_pos.y + ruler_height || track_pos.y > canvas_pos.y + canvas_size.y) {
-              cumulative_y += track_height + track_spacing;
+              cumulative_y += track_height;
               continue;
             }
 
             track_draw_list->AddRectFilled(track_pos, ImVec2(track_pos.x + inner_width, track_pos.y + track_height), theme.track_bg);
+            
+            // Render track header
+            track_draw_list->AddRectFilled(track_pos, ImVec2(track_pos.x + inner_width, track_pos.y + lane_height), theme.track_header_bg);
+            track_draw_list->AddLine(ImVec2(track_pos.x, track_pos.y + lane_height - 1), ImVec2(track_pos.x + inner_width, track_pos.y + lane_height - 1), theme.track_separator);
+
+            // Sticky header text
+            float sticky_x = std::max(track_pos.x, tracks_canvas_pos.x);
+
+            char default_name[32];
+            Str thread_name = trace_data_get_string(&app->trace_data, t.name_offset);
+            const char* display_name = thread_name.buf;
+            size_t display_name_len = thread_name.len;
+
+            if (display_name_len == 0) {
+              snprintf(default_name, sizeof(default_name), "Thread %d", t.tid);
+              display_name = default_name;
+              display_name_len = strlen(default_name);
+            }
+
+            float font_size = ImGui::GetFontSize();
+            ImVec2 text_pos = ImVec2(sticky_x + 5, track_pos.y + (lane_height - font_size) * 0.5f);
+            track_draw_list->AddText(ImGui::GetFont(), font_size, text_pos,
+                                     theme.track_text, display_name, display_name + display_name_len);
+
+            ImVec2 text_size = ImGui::GetFont()->CalcTextSizeA(font_size, FLT_MAX, 0.0f, display_name, display_name + display_name_len);
+            if (ImGui::IsMouseHoveringRect(text_pos, ImVec2(text_pos.x + text_size.x, text_pos.y + text_size.y))) {
+              ImGui::BeginTooltip();
+              ImGui::Text("PID: %d", t.pid);
+              ImGui::Text("TID: %d", t.tid);
+              if (thread_name.len > 0) {
+                ImGui::Separator();
+                ImGui::Text("Name: %.*s", (int)thread_name.len, thread_name.buf);
+              }
+              ImGui::EndTooltip();
+            }
 
             size_t start_idx = track_find_visible_start_index(&t, &app->trace_data, (int64_t)app->viewport.start_time);
 
@@ -253,7 +326,7 @@ void app_update(App* app) {
               
               if (x2 - x1 < 0.1f) x2 = x1 + 0.1f;
               
-              float y1 = track_pos.y + (float)depth * lane_height;
+              float y1 = track_pos.y + (float)(depth + 1) * lane_height;
               float y2 = y1 + lane_height - 1.0f;
 
               bool is_hovered = ImGui::IsMouseHoveringRect(ImVec2(x1, y1), ImVec2(x2, y2), true);
@@ -293,10 +366,10 @@ void app_update(App* app) {
                   ImU32 text_col = is_selected ? theme.event_text_selected : theme.event_text;
                   
                   // Vertically center text
-                  float font_size = ImGui::GetFontSize();
-                  float text_y = y1 + (lane_height - font_size) * 0.5f;
+                  float event_font_size = ImGui::GetFontSize();
+                  float text_y = y1 + (lane_height - event_font_size) * 0.5f;
 
-                  float text_width = ImGui::GetFont()->CalcTextSizeA(font_size, FLT_MAX, 0.0f, name.buf, name.buf + name.len).x;
+                  float text_width = ImGui::GetFont()->CalcTextSizeA(event_font_size, FLT_MAX, 0.0f, name.buf, name.buf + name.len).x;
                   float available_width = (visible_x2 - padding_h) - (visible_x1 + padding_h);
 
                   // Use ImGui's internal clipping by providing a clip rect to AddText
@@ -305,7 +378,7 @@ void app_update(App* app) {
                   ImVec4 fine_clip_rect(visible_x1, y1, visible_x2 - padding_h, y2);
                   const ImVec4* clip_ptr = (text_width > available_width) ? &fine_clip_rect : nullptr;
 
-                  track_draw_list->AddText(ImGui::GetFont(), font_size, 
+                  track_draw_list->AddText(ImGui::GetFont(), event_font_size, 
                                            ImVec2(visible_x1 + padding_h, text_y), 
                                            text_col, name.buf, name.buf + name.len, 0.0f, clip_ptr);
                 }
@@ -316,11 +389,7 @@ void app_update(App* app) {
               }
             }
 
-            char label[64];
-            snprintf(label, sizeof(label), "TID:%d", t.tid);
-            track_draw_list->AddText(ImVec2(track_pos.x + 5, track_pos.y + 2), theme.track_text, label);
-
-            cumulative_y += track_height + track_spacing;
+            cumulative_y += track_height;
           }
         }
         ImGui::EndChild();

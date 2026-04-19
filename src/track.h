@@ -11,6 +11,7 @@ struct Track {
   int32_t pid;
   int32_t tid;
   uint32_t name_offset;
+  int32_t sort_index;
   ArrayList<size_t> event_indices;
   ArrayList<uint32_t> depths;
   int64_t max_dur;

@@ -44,8 +44,18 @@
 
 - **Layout**: The "Trace Viewport" is docked in the central area. Other panels ("Status", "Details") are docked at the bottom by default. The viewport window has no title bar or tabs for a cleaner look.
 - **Time Ruler**: A persistent horizontal ruler at the top displays the current time range with adaptive units (s, ms, us) and nice tick intervals.
-- **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically. Individual tracks have variable heights based on their maximum nesting depth.
+- **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically. Individual tracks have variable heights based on their maximum nesting depth plus a dedicated header lane.
+- **Contiguous Tracks**: Tracks follow each other with no gaps (`track_spacing = 0`). This creates a denser, more professional "Performance" view similar to modern browser profilers.
+- **Track Headers**: 
+    - **Structure**: Each track is divided into a **Header** (top lane) and **Content** (event lanes). A horizontal separator line clearly divides the two.
+    - **Naming**: The header displays the **Thread Name** (or "Thread <TID>" fallback) at the left edge.
+    - **Sticky Labels**: Headers use "sticky" positioning to keep the thread name visible while panning horizontally.
+    - **Details Tooltip**: Hovering over the thread name label displays a detailed tooltip containing the **PID**, **TID**, and full **Name**.
+- **Track Sorting**: Tracks are automatically organized using trace metadata. They are sorted primarily by **thread_sort_index** (ascending), with **PID** and **TID** as stable fallbacks.
 - **Downwards Flame Graph**: Overlapping events within a track are organized into hierarchical lanes. An event is placed in a lower lane only if it is strictly contained within a parent event (Strict Containment Hierarchy). Non-strictly nested events move up to share the highest available lane.
+- **Proportions**:
+    - **Lane Height**: **30px** (increased from 20px for better legibility and more spacious interaction).
+    - **Ruler Height**: **30px**.
 - **Navigation**: 
     - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor. Requires modern ImGui modifier checks (`ImGui::IsKeyDown`).
     - **Pan (Horizontal)**: `Shift + MouseWheel` or horizontal scroll wheel.

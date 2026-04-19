@@ -24,6 +24,8 @@ struct Theme {
 
   // Tracks
   ImU32 track_text;
+  ImU32 track_header_bg;
+  ImU32 track_separator;
 
   // Status
   ImVec4 status_loading;
