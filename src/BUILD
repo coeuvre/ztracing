@@ -215,6 +215,45 @@ cc_test(
 )
 
 cc_library(
+    name = "trace_viewer",
+    srcs = ["trace_viewer.cc"],
+    hdrs = ["trace_viewer.h"],
+    deps = [
+        ":allocator",
+        ":array_list",
+        ":colors",
+        ":format",
+        ":logging",
+        ":platform",
+        ":trace_data",
+        ":trace_parser",
+        ":track",
+        ":track_renderer",
+        "@imgui",
+    ],
+)
+
+cc_library(
+    name = "loading_screen",
+    srcs = ["loading_screen.cc"],
+    hdrs = ["loading_screen.h"],
+    deps = [
+        ":colors",
+        "@imgui",
+    ],
+)
+
+cc_library(
+    name = "welcome_screen",
+    srcs = ["welcome_screen.cc"],
+    hdrs = ["welcome_screen.h"],
+    deps = [
+        ":colors",
+        "@imgui",
+    ],
+)
+
+cc_library(
     name = "app",
     srcs = ["app.cc"],
     hdrs = ["app.h"],
@@ -223,14 +262,15 @@ cc_library(
         ":array_list",
         ":colors",
         ":format",
-        ":hash_table",
         ":imgui_impl_wasm",
+        ":loading_screen",
         ":logging",
         ":platform",
         ":trace_data",
         ":trace_parser",
+        ":trace_viewer",
         ":track",
-        ":track_renderer",
+        ":welcome_screen",
         "@imgui",
     ],
 )

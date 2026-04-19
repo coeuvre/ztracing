@@ -35,7 +35,10 @@
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic. Supports 32-bit indices for large traces.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
-- `src/app`: Pure application logic and UI logic (ImGui). Manages viewport state, event selection, and theme orchestration.
+- `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer) and handles file streaming and data parsing.
+- `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and event details.
+- `src/loading_screen`: Specialized scene for displaying parsing progress and filename during trace loading.
+- `src/welcome_screen`: Initial "drop file" landing scene.
 - `src/colors`: Theme management system. Defines a `Theme` struct and provides standard Dark and Light theme implementations.
 - `src/track`: Logic for organizing events into tracks, sorting, and depth calculation.
     - **Track Organization**: Implements a high-performance two-pass organization algorithm (`track_organize`) that uses a `HashTable` for $O(1)$ track discovery and a sequential cache for consecutive events. Decoupled from `App` for modularity and unit testing.
@@ -47,9 +50,9 @@
 - `src/logging`: Simple logging utility with WASM console and native stdout integration.
 - `src/track_renderer`: Standalone rendering module that implements performance optimizations like LOD and event coalescing. Decouples rendering calculations from ImGui-specific logic to allow for comprehensive unit testing.
 
-## Trace Viewport
+## Main Viewport
 
-- **Layout**: The "Trace Viewport" is docked in the central area. Other panels ("Status", "Details") are docked at the bottom by default. The viewport window has no title bar or tabs for a cleaner look.
+- **Layout**: The "Main Viewport" is docked in the central area. Other panels ("Status", "Details") are docked at the bottom by default. The viewport window has no title bar or tabs for a cleaner look.
 - **Time Ruler**: A persistent horizontal ruler at the top displays the current time range with adaptive units (s, ms, us) and nice tick intervals.
 - **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically. Individual tracks have variable heights based on their maximum nesting depth plus a dedicated header lane.
 - **Contiguous Tracks**: Tracks follow each other with no gaps (`track_spacing = 0`). This creates a denser, more professional "Performance" view similar to modern browser profilers.
@@ -104,7 +107,7 @@
 - **WASM Bridge**: `ztracing.js` handles both drag-and-drop and direct stream loading (via `ztracing_start` options).
 - **Direct Loading**: `shell.html` parses the `trace` URL parameter and fetches the trace file automatically if present.
 - **Responsiveness**: Parsing yields to the browser's event loop every 100ms during loading (via `setTimeout(0)` in JS). This prevents the microtask-based `ReadableStream` loop from starving the main thread, ensuring `requestAnimationFrame` can fire and keep the UI responsive.
-- **Progress Feedback**: `app.cc` displays live parsing statistics (event count and MB loaded) while `trace_parser_active` is true.
+- **Progress Feedback**: Displays live parsing statistics (event count and MB loaded) and the filename within the `LoadingScreen` while `trace_parser_active` is true.
 - **WASM Exports**: `ztracing_malloc`, `ztracing_free`, `ztracing_begin_session`, and `ztracing_handle_file_chunk` are used for memory and data transfer.
 
 ## Memory Management

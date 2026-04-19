@@ -6,7 +6,7 @@
 #include "third_party/imgui/imgui.h"
 
 struct Theme {
-  // Trace Viewport Backgrounds
+  // Main Viewport Backgrounds
   ImU32 viewport_bg;
   ImU32 track_bg;
 

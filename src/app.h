@@ -6,20 +6,12 @@
 #include "src/colors.h"
 #include "src/trace_data.h"
 #include "src/trace_parser.h"
-#include "src/track.h"
-#include "src/track_renderer.h"
+#include "src/trace_viewer.h"
 
 enum ThemeMode {
   THEME_MODE_AUTO = 0,
   THEME_MODE_DARK = 1,
   THEME_MODE_LIGHT = 2,
-};
-
-struct HoverMatch {
-  size_t track_idx;
-  size_t block_idx;
-  float y1, y2;
-  TrackRenderBlock rb;
 };
 
 struct App {
@@ -39,18 +31,7 @@ struct App {
   int current_session_id;
   ArrayList<char> trace_filename;
 
-  struct Viewport {
-    int64_t min_ts;
-    int64_t max_ts;
-    double start_time;
-    double end_time;
-  } viewport;
-
-  ArrayList<Track> tracks;
-  TrackRendererState track_renderer_state;
-  ArrayList<TrackRenderBlock> render_blocks;
-  ArrayList<HoverMatch> hover_matches;
-  int64_t selected_event_index;
+  TraceViewer trace_viewer;
 };
 
 // Initializes the application state.

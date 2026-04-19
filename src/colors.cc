@@ -2,7 +2,7 @@
 
 const Theme* theme_get_dark() {
   static const Theme dark_theme = {
-      // Trace Viewport Backgrounds
+      // Main Viewport Backgrounds
       IM_COL32(0, 0, 0, 255),     // viewport_bg
       IM_COL32(25, 25, 25, 255),  // track_bg
 
@@ -44,7 +44,7 @@ const Theme* theme_get_dark() {
 
 const Theme* theme_get_light() {
   static const Theme light_theme = {
-      // Trace Viewport Backgrounds
+      // Main Viewport Backgrounds
       IM_COL32(245, 245, 245, 255),  // viewport_bg
       IM_COL32(230, 230, 230, 255),  // track_bg
 

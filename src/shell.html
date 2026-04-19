@@ -6,10 +6,9 @@
     <title>ztracing</title>
     <style>
         body { margin: 0; background-color: black; color: white; font-family: sans-serif; }
-        canvas.emscripten { display: none; border: 0 none; background-color: black; width: 100vw; height: 100vh; }
+        canvas.emscripten { border: 0 none; background-color: black; width: 100vw; height: 100vh; }
         #error-container { display: none; padding: 20px; }
         #error-container h1 { color: #ff4444; }
-        #loading-container { display: none; padding: 20px; }
     </style>
 </head>
 <body>
@@ -17,30 +16,14 @@
         <h1>Error</h1>
         <p id="error-message"></p>
     </div>
-    <div id="loading-container">
-        <p>Loading trace...</p>
-    </div>
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
     <script>
       function showError(message) {
         console.error('ztracing error:', message);
         document.getElementById('canvas').style.display = 'none';
-        document.getElementById('loading-container').style.display = 'none';
         const container = document.getElementById('error-container');
         container.style.display = 'block';
         document.getElementById('error-message').textContent = message;
-      }
-
-      function showLoading() {
-        document.getElementById('loading-container').style.display = 'block';
-      }
-
-      function hideLoading() {
-        document.getElementById('loading-container').style.display = 'none';
-      }
-
-      function showCanvas() {
-        document.getElementById('canvas').style.display = 'block';
       }
 
       var Module = {
@@ -50,7 +33,6 @@
           let trace = null;
 
           if (traceUrl) {
-            showLoading();
             try {
               const response = await fetch(traceUrl);
               if (response.ok) {
@@ -67,12 +49,9 @@
             } catch (e) {
               showError(`Error fetching trace from URL: ${traceUrl}. ${e.message}`);
               return;
-            } finally {
-              hideLoading();
             }
           }
 
-          showCanvas();
           Module.ztracing_start({
             canvasSelector: '#canvas',
             // Noto Sans TTF URL extracted from Google Fonts CSS API.
