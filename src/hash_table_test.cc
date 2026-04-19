@@ -11,7 +11,9 @@ struct IntKeyHash {
 };
 
 struct IntKeyEq {
-  bool operator()(const IntKey& a, const IntKey& b) const { return a.value == b.value; }
+  bool operator()(const IntKey& a, const IntKey& b) const {
+    return a.value == b.value;
+  }
 };
 
 TEST(HashTableTest, Basic) {
@@ -39,7 +41,8 @@ TEST(HashTableTest, Basic) {
 
 TEST(HashTableTest, DefaultTypes) {
   Allocator a = allocator_get_default();
-  HashTable<int32_t, int> ht; // Uses DefaultHash<int32_t> and DefaultEq<int32_t>
+  HashTable<int32_t, int>
+      ht;  // Uses DefaultHash<int32_t> and DefaultEq<int32_t>
   hash_table_init(&ht, a);
 
   hash_table_put(&ht, a, 1, 10);

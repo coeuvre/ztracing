@@ -168,8 +168,9 @@ static int32_t parse_int32(Str s) {
   return neg ? -val : val;
 }
 
-void track_organize(const TraceData* td, Allocator a, ArrayList<Track>* out_tracks,
-                    int64_t* out_min_ts, int64_t* out_max_ts) {
+void track_organize(const TraceData* td, Allocator a,
+                    ArrayList<Track>* out_tracks, int64_t* out_min_ts,
+                    int64_t* out_max_ts) {
   for (size_t i = 0; i < out_tracks->size; i++) {
     track_deinit(&(*out_tracks)[i], a);
   }

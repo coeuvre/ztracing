@@ -1,4 +1,5 @@
 #include "src/allocator.h"
+
 #include <gtest/gtest.h>
 
 TEST(AllocatorTest, DefaultAllocator) {
@@ -34,8 +35,12 @@ TEST(AllocatorTest, CountingAllocator) {
   EXPECT_EQ(counting_allocator_get_allocated_bytes(&ca), 0u);
 }
 
-static void* fail_alloc(void* ctx, void* ptr, size_t old_size, size_t new_size) {
-  (void)ctx; (void)ptr; (void)old_size; (void)new_size;
+static void* fail_alloc(void* ctx, void* ptr, size_t old_size,
+                        size_t new_size) {
+  (void)ctx;
+  (void)ptr;
+  (void)old_size;
+  (void)new_size;
   return nullptr;
 }
 

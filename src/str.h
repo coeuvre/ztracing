@@ -10,8 +10,7 @@ struct Str {
 };
 
 // Create a Str from a string literal.
-#define STR(literal) \
-  Str { (literal), sizeof(literal) - 1 }
+#define STR(literal) Str{(literal), sizeof(literal) - 1}
 
 // Create a Str from a null-terminated string.
 inline Str str_from_cstr(const char* s) {

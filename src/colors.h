@@ -2,6 +2,7 @@
 #define ZTRACING_SRC_COLORS_H_
 
 #include <stdint.h>
+
 #include "third_party/imgui/imgui.h"
 
 struct Theme {

@@ -76,8 +76,8 @@ StringRef trace_data_push_string(TraceData* td, Allocator a, Str s) {
   entry.len = (uint32_t)s.len;
 
   array_list_append(&td->string_buffer, a, s.buf, s.len);
-  // Add null terminator for C-string compatibility if needed, though not strictly
-  // necessary with lengths.
+  // Add null terminator for C-string compatibility if needed, though not
+  // strictly necessary with lengths.
   char null_terminator = '\0';
   array_list_push_back(&td->string_buffer, a, null_terminator);
 

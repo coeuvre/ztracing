@@ -29,7 +29,8 @@ struct DefaultEq {
   bool operator()(const T& a, const T& b) const { return a == b; }
 };
 
-template <typename K, typename V, typename Hash = DefaultHash<K>, typename Eq = DefaultEq<K>>
+template <typename K, typename V, typename Hash = DefaultHash<K>,
+          typename Eq = DefaultEq<K>>
 struct HashTable {
   struct Entry {
     K key;
@@ -46,14 +47,16 @@ struct HashTable {
 };
 
 template <typename K, typename V, typename Hash, typename Eq>
-void hash_table_init(HashTable<K, V, Hash, Eq>* ht, Allocator a, size_t initial_capacity = 16) {
+void hash_table_init(HashTable<K, V, Hash, Eq>* ht, Allocator a,
+                     size_t initial_capacity = 16) {
   if (initial_capacity < 4) initial_capacity = 4;
   size_t cap = 1;
   while (cap < initial_capacity) cap <<= 1;
 
   ht->entries = (typename HashTable<K, V, Hash, Eq>::Entry*)allocator_alloc(
       a, cap * sizeof(typename HashTable<K, V, Hash, Eq>::Entry));
-  memset(ht->entries, 0, cap * sizeof(typename HashTable<K, V, Hash, Eq>::Entry));
+  memset(ht->entries, 0,
+         cap * sizeof(typename HashTable<K, V, Hash, Eq>::Entry));
   ht->size = 0;
   ht->capacity = cap;
   ht->capacity_mask = cap - 1;
@@ -62,16 +65,20 @@ void hash_table_init(HashTable<K, V, Hash, Eq>* ht, Allocator a, size_t initial_
 template <typename K, typename V, typename Hash, typename Eq>
 void hash_table_deinit(HashTable<K, V, Hash, Eq>* ht, Allocator a) {
   if (ht->entries) {
-    allocator_free(a, ht->entries, ht->capacity * sizeof(typename HashTable<K, V, Hash, Eq>::Entry));
+    allocator_free(
+        a, ht->entries,
+        ht->capacity * sizeof(typename HashTable<K, V, Hash, Eq>::Entry));
   }
   memset(ht, 0, sizeof(HashTable<K, V, Hash, Eq>));
 }
 
 template <typename K, typename V, typename Hash, typename Eq>
-void hash_table_put(HashTable<K, V, Hash, Eq>* ht, Allocator a, const K& key, const V& value);
+void hash_table_put(HashTable<K, V, Hash, Eq>* ht, Allocator a, const K& key,
+                    const V& value);
 
 template <typename K, typename V, typename Hash, typename Eq>
-void hash_table_resize(HashTable<K, V, Hash, Eq>* ht, Allocator a, size_t new_capacity) {
+void hash_table_resize(HashTable<K, V, Hash, Eq>* ht, Allocator a,
+                       size_t new_capacity) {
   HashTable<K, V, Hash, Eq> new_ht;
   hash_table_init(&new_ht, a, new_capacity);
   new_ht.hash_fn = ht->hash_fn;
@@ -88,7 +95,8 @@ void hash_table_resize(HashTable<K, V, Hash, Eq>* ht, Allocator a, size_t new_ca
 }
 
 template <typename K, typename V, typename Hash, typename Eq>
-void hash_table_put(HashTable<K, V, Hash, Eq>* ht, Allocator a, const K& key, const V& value) {
+void hash_table_put(HashTable<K, V, Hash, Eq>* ht, Allocator a, const K& key,
+                    const V& value) {
   if (ht->size * 2 > ht->capacity) {
     hash_table_resize(ht, a, ht->capacity * 2);
   }
@@ -130,7 +138,8 @@ V* hash_table_get(HashTable<K, V, Hash, Eq>* ht, const K& key) {
 template <typename K, typename V, typename Hash, typename Eq>
 void hash_table_clear(HashTable<K, V, Hash, Eq>* ht) {
   if (ht->entries) {
-    memset(ht->entries, 0, ht->capacity * sizeof(typename HashTable<K, V, Hash, Eq>::Entry));
+    memset(ht->entries, 0,
+           ht->capacity * sizeof(typename HashTable<K, V, Hash, Eq>::Entry));
   }
   ht->size = 0;
 }

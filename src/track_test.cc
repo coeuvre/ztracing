@@ -1,7 +1,8 @@
 #include "src/track.h"
-#include "src/colors.h"
 
 #include <gtest/gtest.h>
+
+#include "src/colors.h"
 
 TEST(TrackTest, SortEvents) {
   Allocator a = allocator_get_default();
@@ -215,9 +216,9 @@ TEST(TrackTest, CalculateDepthsSiblings) {
   track_sort_events(&t, &td);
   track_calculate_depths(&t, &td, a);
 
-  EXPECT_EQ(t.depths[0], 0u); // ev0
-  EXPECT_EQ(t.depths[1], 1u); // ev1
-  EXPECT_EQ(t.depths[2], 1u); // ev2 - should be depth 1, not 0 or 2
+  EXPECT_EQ(t.depths[0], 0u);  // ev0
+  EXPECT_EQ(t.depths[1], 1u);  // ev1
+  EXPECT_EQ(t.depths[2], 1u);  // ev2 - should be depth 1, not 0 or 2
 
   track_deinit(&t, a);
   trace_data_deinit(&td, a);
@@ -286,9 +287,11 @@ TEST(TrackTest, CalculateDepthsNonStrict) {
   track_sort_events(&t, &td);
   track_calculate_depths(&t, &td, a);
 
-  EXPECT_EQ(t.depths[0], 0u); // ev0
-  EXPECT_EQ(t.depths[1], 0u); // ev1 - moved up to depth 0 because ev0 doesn't strictly contain it
-  EXPECT_EQ(t.depths[2], 0u); // ev2
+  EXPECT_EQ(t.depths[0], 0u);  // ev0
+  EXPECT_EQ(
+      t.depths[1],
+      0u);  // ev1 - moved up to depth 0 because ev0 doesn't strictly contain it
+  EXPECT_EQ(t.depths[2], 0u);  // ev2
 
   track_deinit(&t, a);
   trace_data_deinit(&td, a);
@@ -346,8 +349,8 @@ TEST(TrackTest, OrganizeTracksSorting) {
   add_event(10, 1, 100);
   add_event(1, 2, 100);
   add_event(1, 1, 100);
-  add_sort_idx(10, 1, -5); // Should be first
-  add_sort_idx(1, 2, 5);   // Should be last
+  add_sort_idx(10, 1, -5);  // Should be first
+  add_sort_idx(1, 2, 5);    // Should be last
 
   ArrayList<Track> tracks = {};
   int64_t min_ts, max_ts;
@@ -396,9 +399,9 @@ TEST(TrackTest, OrganizeTracksMetadataOnly) {
   EXPECT_EQ(tracks.size, 1u);
   EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "Meta Only");
   EXPECT_EQ(tracks[0].event_indices.size, 0u);
-  
+
   // Viewport range should not be updated by metadata
-  EXPECT_EQ(min_ts, 0); // min_ts/max_ts are 0 as initialized in track_organize
+  EXPECT_EQ(min_ts, 0);  // min_ts/max_ts are 0 as initialized in track_organize
   EXPECT_EQ(max_ts, 0);
 
   array_list_deinit(&tracks, a);
@@ -412,19 +415,31 @@ TEST(TrackTest, OrganizeTracksMixedOrder) {
 
   // 1. Regular event
   TraceEvent e1 = {};
-  e1.ph = STR("X"); e1.pid = 1; e1.tid = 1; e1.ts = 500; e1.dur = 100;
+  e1.ph = STR("X");
+  e1.pid = 1;
+  e1.tid = 1;
+  e1.ts = 500;
+  e1.dur = 100;
   trace_data_add_event(&td, a, theme_get_dark(), &e1);
 
   // 2. Metadata for same track
   TraceEvent m1 = {};
-  m1.ph = STR("M"); m1.pid = 1; m1.tid = 1; m1.name = STR("thread_name");
+  m1.ph = STR("M");
+  m1.pid = 1;
+  m1.tid = 1;
+  m1.name = STR("thread_name");
   TraceArg arg1 = {STR("name"), STR("Mixed")};
-  m1.args = &arg1; m1.args_count = 1;
+  m1.args = &arg1;
+  m1.args_count = 1;
   trace_data_add_event(&td, a, theme_get_dark(), &m1);
 
   // 3. Regular event for another track
   TraceEvent e2 = {};
-  e2.ph = STR("X"); e2.pid = 2; e2.tid = 1; e2.ts = 100; e2.dur = 50;
+  e2.ph = STR("X");
+  e2.pid = 2;
+  e2.tid = 1;
+  e2.ts = 100;
+  e2.dur = 50;
   trace_data_add_event(&td, a, theme_get_dark(), &e2);
 
   ArrayList<Track> tracks = {};
@@ -432,7 +447,7 @@ TEST(TrackTest, OrganizeTracksMixedOrder) {
   track_organize(&td, a, &tracks, &min_ts, &max_ts);
 
   ASSERT_EQ(tracks.size, 2u);
-  
+
   // Sorted by PID (both have sort_index 0)
   EXPECT_EQ(tracks[0].pid, 1);
   EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "Mixed");

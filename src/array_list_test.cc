@@ -1,5 +1,7 @@
 #include "src/array_list.h"
+
 #include <gtest/gtest.h>
+
 #include "src/allocator.h"
 
 TEST(ArrayListTest, ZII) {

@@ -10,5 +10,5 @@ double platform_get_now() {
 }
 
 bool platform_is_dark_mode() {
-  return true; // Default to dark mode for native
+  return true;  // Default to dark mode for native
 }

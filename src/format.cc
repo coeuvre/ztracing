@@ -3,7 +3,8 @@
 #include <math.h>
 #include <stdio.h>
 
-void format_duration(char* buf, size_t buf_size, double us, double interval_us) {
+void format_duration(char* buf, size_t buf_size, double us,
+                     double interval_us) {
   if (us == 0.0) {
     snprintf(buf, buf_size, "0");
     return;
