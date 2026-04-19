@@ -56,96 +56,13 @@ void app_deinit(App* app) {
 }
 
 static void app_organize_tracks(App* app) {
-  for (size_t i = 0; i < app->tracks.size; i++) {
-    track_deinit(&app->tracks[i], app->allocator);
-  }
-  array_list_clear(&app->tracks);
-  if (app->trace_data.events.size == 0) return;
-
-  app->viewport.min_ts = app->trace_data.events[0].ts;
-  app->viewport.max_ts = app->trace_data.events[0].ts + app->trace_data.events[0].dur;
-
-  // Simple track cache to speed up O(N*M) search
-  size_t last_track_idx = (size_t)-1;
-
-  for (size_t i = 0; i < app->trace_data.events.size; i++) {
-    const TraceEventPersisted& e = app->trace_data.events[i];
-    if (e.ts < app->viewport.min_ts) app->viewport.min_ts = e.ts;
-    if (e.ts + e.dur > app->viewport.max_ts) app->viewport.max_ts = e.ts + e.dur;
-
-    size_t track_idx = (size_t)-1;
-    if (last_track_idx != (size_t)-1 && 
-        app->tracks[last_track_idx].pid == e.pid && 
-        app->tracks[last_track_idx].tid == e.tid) {
-      track_idx = last_track_idx;
-    } else {
-      for (size_t j = 0; j < app->tracks.size; j++) {
-        if (app->tracks[j].pid == e.pid && app->tracks[j].tid == e.tid) {
-          track_idx = j;
-          last_track_idx = j;
-          break;
-        }
-      }
-    }
-
-    if (track_idx == (size_t)-1) {
-      Track t = {};
-      t.pid = e.pid;
-      t.tid = e.tid;
-      array_list_push_back(&app->tracks, app->allocator, t);
-      track_idx = app->tracks.size - 1;
-      last_track_idx = track_idx;
-    }
-
-    // Check for metadata events to set track name or sort index
-    Str ph = trace_data_get_string(&app->trace_data, e.ph_offset);
-    if (str_eq(ph, STR("M"))) {
-      Str name = trace_data_get_string(&app->trace_data, e.name_offset);
-      if (str_eq(name, STR("thread_name"))) {
-        for (size_t k = 0; k < e.args_count; k++) {
-          const TraceArgPersisted& arg = app->trace_data.args[e.args_offset + k];
-          Str key = trace_data_get_string(&app->trace_data, arg.key_offset);
-          if (str_eq(key, STR("name"))) {
-            app->tracks[track_idx].name_offset = arg.val_offset;
-            break;
-          }
-        }
-      } else if (str_eq(name, STR("thread_sort_index"))) {
-        for (size_t k = 0; k < e.args_count; k++) {
-          const TraceArgPersisted& arg = app->trace_data.args[e.args_offset + k];
-          Str key = trace_data_get_string(&app->trace_data, arg.key_offset);
-          if (str_eq(key, STR("sort_index"))) {
-            Str val = trace_data_get_string(&app->trace_data, arg.val_offset);
-            char tmp[64];
-            size_t len = val.len < 63 ? val.len : 63;
-            memcpy(tmp, val.buf, len);
-            tmp[len] = '\0';
-            app->tracks[track_idx].sort_index = (int32_t)atoi(tmp);
-            break;
-          }
-        }
-      }
-    }
-
-    array_list_push_back(&app->tracks[track_idx].event_indices, app->allocator, i);
-  }
-
-  for (size_t i = 0; i < app->tracks.size; i++) {
-    track_sort_events(&app->tracks[i], &app->trace_data);
-    track_update_max_dur(&app->tracks[i], &app->trace_data);
-    track_calculate_depths(&app->tracks[i], &app->trace_data, app->allocator);
-  }
-
-  // Sort tracks by sort_index, then PID, then TID.
-  std::sort(app->tracks.data, app->tracks.data + app->tracks.size, [](const Track& a, const Track& b) {
-    if (a.sort_index != b.sort_index) return a.sort_index < b.sort_index;
-    if (a.pid != b.pid) return a.pid < b.pid;
-    return a.tid < b.tid;
-  });
+  track_organize(&app->trace_data, app->allocator, &app->tracks,
+                 &app->viewport.min_ts, &app->viewport.max_ts);
 
   app->viewport.start_time = (double)app->viewport.min_ts;
   app->viewport.end_time = (double)app->viewport.max_ts;
-  LOG_INFO("organized %zu tracks, time range: [%lld, %lld]", app->tracks.size, (long long)app->viewport.min_ts, (long long)app->viewport.max_ts);
+  LOG_INFO("organized %zu tracks, time range: [%lld, %lld]", app->tracks.size,
+           (long long)app->viewport.min_ts, (long long)app->viewport.max_ts);
 }
 
 static void app_draw_time_ruler(App* app, ImDrawList* draw_list, ImVec2 pos,
@@ -188,7 +105,7 @@ static void app_draw_time_ruler(App* app, ImDrawList* draw_list, ImVec2 pos,
   }
 }
 
-static void app_draw_event(App* app, ImDrawList* draw_list, float x1, float x2, float y1, float y2, ImU32 col, bool is_selected, uint32_t name_offset, float inner_width, float tracks_canvas_pos_x) {
+static void app_draw_event(App* app, ImDrawList* draw_list, float x1, float x2, float y1, float y2, ImU32 col, bool is_selected, StringRef name_ref, float inner_width, float tracks_canvas_pos_x) {
   const Theme& theme = *app->theme;
   float lane_height = y2 - y1 + 1.0f;
   
@@ -201,14 +118,14 @@ static void app_draw_event(App* app, ImDrawList* draw_list, float x1, float x2, 
   ImU32 border_col = is_selected ? theme.event_border_selected : theme.event_border;
   draw_list->AddRect(ImVec2(x1, y1), ImVec2(x2, y2), border_col, 0.0f, 0, border_thickness);
 
-  // Draw event name if there is enough space and it's not a merged block (name_offset != 0)
-  if (name_offset != 0) {
+  // Draw event name if there is enough space and it's not a merged block (name_ref != 0)
+  if (name_ref != 0) {
     float visible_x1 = std::max(x1, tracks_canvas_pos_x);
     float visible_x2 = std::min(x2, tracks_canvas_pos_x + inner_width);
     float padding_h = 6.0f;
     
     if (visible_x2 - visible_x1 > padding_h * 2.0f + 20.0f) {
-      Str name = trace_data_get_string(&app->trace_data, name_offset);
+      Str name = trace_data_get_string(&app->trace_data, name_ref);
       if (name.len > 0) {
         ImU32 text_col = is_selected ? theme.event_text_selected : theme.event_text;
         float event_font_size = ImGui::GetFontSize();
@@ -311,7 +228,7 @@ void app_update(App* app) {
           bool something_hovered = false;
           float sel_x1 = 0, sel_x2 = 0, sel_y1 = 0, sel_y2 = 0;
           ImU32 sel_col = 0;
-          uint32_t sel_name_offset = 0;
+          StringRef sel_name_ref = 0;
 
           for (size_t i = 0; i < app->tracks.size; i++) {
             const Track& t = app->tracks[i];
@@ -334,7 +251,7 @@ void app_update(App* app) {
             float sticky_x = std::max(track_pos.x, tracks_canvas_pos.x);
 
             char default_name[32];
-            Str thread_name = trace_data_get_string(&app->trace_data, t.name_offset);
+            Str thread_name = trace_data_get_string(&app->trace_data, t.name_ref);
             const char* display_name = thread_name.buf;
             size_t display_name_len = thread_name.len;
 
@@ -392,7 +309,7 @@ void app_update(App* app) {
                 }
               }
 
-              ImU32 col = rb.col;
+              ImU32 col = rb.color;
               if (is_hovered && !rb.is_selected) {
                 ImVec4 col_v = ImGui::ColorConvertU32ToFloat4(col);
                 col_v.x = std::min(col_v.x + 0.15f, 1.0f);
@@ -408,9 +325,9 @@ void app_update(App* app) {
                 sel_y1 = y1;
                 sel_y2 = y2;
                 sel_col = col;
-                sel_name_offset = rb.name_offset;
+                sel_name_ref = rb.name_ref;
               } else {
-                app_draw_event(app, track_draw_list, rb.x1, rb.x2, y1, y2, col, rb.is_selected, rb.name_offset, inner_width, tracks_canvas_pos.x);
+                app_draw_event(app, track_draw_list, rb.x1, rb.x2, y1, y2, col, rb.is_selected, rb.name_ref, inner_width, tracks_canvas_pos.x);
               }
 
               if (is_hovered && ImGui::IsMouseReleased(0) && !was_drag) {
@@ -438,7 +355,7 @@ void app_update(App* app) {
           }
 
           if (sel_found) {
-            app_draw_event(app, track_draw_list, sel_x1, sel_x2, sel_y1, sel_y2, sel_col, true, sel_name_offset, inner_width, tracks_canvas_pos.x);
+            app_draw_event(app, track_draw_list, sel_x1, sel_x2, sel_y1, sel_y2, sel_col, true, sel_name_ref, inner_width, tracks_canvas_pos.x);
           }
 
           if (track_list_hovered && !something_hovered && ImGui::IsMouseReleased(0) && !was_drag) {
@@ -528,9 +445,9 @@ void app_update(App* app) {
   if (app->selected_event_index != -1) {
     if (ImGui::Begin("Details")) {
       const TraceEventPersisted& e = app->trace_data.events[(size_t)app->selected_event_index];
-      Str name = trace_data_get_string(&app->trace_data, e.name_offset);
-      Str cat = trace_data_get_string(&app->trace_data, e.cat_offset);
-      Str ph = trace_data_get_string(&app->trace_data, e.ph_offset);
+      Str name = trace_data_get_string(&app->trace_data, e.name_ref);
+      Str cat = trace_data_get_string(&app->trace_data, e.cat_ref);
+      Str ph = trace_data_get_string(&app->trace_data, e.ph_ref);
 
       ImGui::Text("Name: %.*s", (int)name.len, name.buf);
       ImGui::Text("Category: %.*s", (int)cat.len, cat.buf);
@@ -544,8 +461,8 @@ void app_update(App* app) {
         ImGui::Text("Arguments:");
         for (uint32_t k = 0; k < e.args_count; k++) {
           const TraceArgPersisted& arg = app->trace_data.args[e.args_offset + k];
-          Str key = trace_data_get_string(&app->trace_data, arg.key_offset);
-          Str val = trace_data_get_string(&app->trace_data, arg.val_offset);
+          Str key = trace_data_get_string(&app->trace_data, arg.key_ref);
+          Str val = trace_data_get_string(&app->trace_data, arg.val_ref);
           ImGui::BulletText("%.*s: %.*s", (int)key.len, key.buf, (int)val.len, val.buf);
         }
       }

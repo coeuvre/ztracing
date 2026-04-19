@@ -3,10 +3,10 @@
 
 #include "src/allocator.h"
 #include "src/array_list.h"
+#include "src/colors.h"
 #include "src/trace_data.h"
 #include "src/trace_parser.h"
 #include "src/track.h"
-#include "src/colors.h"
 #include "src/track_renderer.h"
 
 enum ThemeMode {

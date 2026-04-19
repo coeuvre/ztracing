@@ -10,18 +10,13 @@ protected:
     allocator = allocator_get_default();
     trace_data_init(&td, allocator);
     state = {};
-    array_list_init(&blocks);
+    blocks = {};
   }
 
   void TearDown() override {
     array_list_deinit(&blocks, allocator);
     track_renderer_state_deinit(&state, allocator);
     trace_data_deinit(&td, allocator);
-  }
-
-  template <typename T>
-  void array_list_init(ArrayList<T>* al) {
-    *al = {};
   }
 
   Allocator allocator;
@@ -64,7 +59,7 @@ TEST_F(TrackRendererTest, CoalesceSameColor) {
   EXPECT_EQ(blocks.size, 1u);
   EXPECT_FLOAT_EQ(blocks[0].x1, 10.0f); // 100 * 0.1
   EXPECT_FLOAT_EQ(blocks[0].x2, 13.5f); // 125*0.1 + 10*0.1 = 13.5
-  EXPECT_EQ(blocks[0].name_offset, 0u);
+  EXPECT_EQ(blocks[0].name_ref, 0u);
 
   track_deinit(&t, allocator);
 }

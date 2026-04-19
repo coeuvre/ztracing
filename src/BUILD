@@ -143,6 +143,7 @@ cc_library(
         ":allocator",
         ":array_list",
         ":colors",
+        ":hash_table",
         ":str",
         ":trace_parser",
     ],
@@ -158,12 +159,28 @@ cc_test(
 )
 
 cc_library(
+    name = "hash_table",
+    hdrs = ["hash_table.h"],
+    deps = [":allocator"],
+)
+
+cc_test(
+    name = "hash_table_test",
+    srcs = ["hash_table_test.cc"],
+    deps = [
+        ":hash_table",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "track",
     srcs = ["track.cc"],
     hdrs = ["track.h"],
     deps = [
         ":allocator",
         ":array_list",
+        ":hash_table",
         ":trace_data",
     ],
 )
@@ -206,6 +223,8 @@ cc_library(
         ":array_list",
         ":colors",
         ":format",
+        ":hash_table",
+        ":imgui_impl_wasm",
         ":logging",
         ":platform",
         ":trace_data",

@@ -11,6 +11,7 @@
 - **Backend**: Custom WebGL 2.0 (Rendering) and Custom Emscripten HTML5 (Platform).
 - **Build System**: Bazel with Bzlmod.
 - **Target**: WASM/Browser via Emscripten.
+- **Includes**: All internal headers must be included using their full project path (e.g., `#include "src/app.h"`).
 
 ## Development Workflow
 
@@ -26,17 +27,19 @@
 - `src/allocator`: Custom C-style allocator with `allocator_alloc`, `allocator_realloc`, and `allocator_free` helpers.
 - `src/str`: Basic `Str` struct (buffer and length) for string views.
 - `src/array_list`: Generic `ArrayList<T>` (vector) with explicit allocation and ZII.
+- `src/hash_table`: Generic `HashTable<K, V>` with open addressing and linear probing. Supports stateful functors for hashing and equality, enabling complex key types (like string pool indices).
 - `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments.
-- `src/trace_data`: Persistent storage for parsed events. Uses a string pool with offset-based addressing to prevent pointer invalidation during reallocations.
+- `src/trace_data`: Persistent storage for parsed events. 
+    - **String Table**: Uses a de-duplicated String Table with global hashing to minimize memory usage for repetitive trace data (e.g., event names, categories).
+    - **StringRef**: Events and arguments store `StringRef` (indices) into the table rather than raw offsets, providing $O(1)$ access to both string data and length without `strlen` overhead.
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic. Supports 32-bit indices for large traces.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
-    - **Keyboard**: Implements a "polite" keyboard passthrough strategy where events bubble to the browser by default (allowing F12, F5, etc. to work) and are only blocked for disruptive keys (Tab, Arrows, Backspace, etc.) when `io.WantCaptureKeyboard` is true.
-    - **Mouse**: `mousemove` and `mouseup` are registered on `EMSCRIPTEN_EVENT_TARGET_WINDOW` to ensure reliable dragging and release detection even when the mouse leaves the canvas or browser window. `mousedown` is registered on the canvas to ensure interactions only start within the application.
-    - **Coordinates**: Uses a custom `get_canvas_pos` helper (via `EM_JS` and `getBoundingClientRect`) to map viewport-relative coordinates to canvas-relative coordinates, correctly handling arbitrary canvas positioning.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
 - `src/app`: Pure application logic and UI logic (ImGui). Manages viewport state, event selection, and theme orchestration.
 - `src/colors`: Theme management system. Defines a `Theme` struct and provides standard Dark and Light theme implementations.
-- `src/track`: Logic for organizing events into tracks, sorting (timestamp asc, duration desc), and strict containment-based depth calculation (flame graph layout).
+- `src/track`: Logic for organizing events into tracks, sorting, and depth calculation.
+    - **Track Organization**: Implements a high-performance two-pass organization algorithm (`track_organize`) that uses a `HashTable` for $O(1)$ track discovery and a sequential cache for consecutive events. Decoupled from `App` for modularity and unit testing.
+    - **Event Sorting**: Optimized for massive tracks using a cache-friendly temporary `SortKey` array to minimize cache misses during indirect data lookups.
 - `src/format`: Human-readable time formatting (s, ms, us) and tick interval calculation.
 - `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
 - `src/ztracing.h`: Clean C API for the WASM-to-JS bridge.

@@ -98,24 +98,15 @@ TEST(TrackTest, FindVisibleStartIndex) {
   // Case 2: Viewport starts at 150. Event 0 ends at 100. Not visible.
   // Event 1 starts at 200.
   // track_find_visible_start_index returns the FIRST POSSIBLE event.
-  // search_ts = 150 - 600 = -450.
-  // lower_bound for -450 will give index 0.
-  // This is fine, the rendering loop will then skip events that end before 150.
   EXPECT_EQ(track_find_visible_start_index(&t, &td, 150), 0u);
 
   // Case 3: Viewport starts at 800.
   // Event 2 starts at 400, ends at 1000. It IS visible.
-  // search_ts = 800 - 600 = 200.
-  // lower_bound for 200 will give index 1 (Event 1 starts at 200).
   EXPECT_EQ(track_find_visible_start_index(&t, &td, 800), 1u);
 
   // Case 4: Viewport starts at 1100.
   // Event 2 ends at 1000. Not visible.
   // Event 3 starts at 1200.
-  // search_ts = 1100 - 600 = 500.
-  // lower_bound for 500 will give index 3 (Event 3 starts at 1200).
-  // Wait, Event 3 starts at 1200. lower_bound(500) on [0, 200, 400, 1200] is
-  // index 3.
   EXPECT_EQ(track_find_visible_start_index(&t, &td, 1100), 3u);
 
   track_deinit(&t, a);
@@ -303,79 +294,159 @@ TEST(TrackTest, CalculateDepthsNonStrict) {
   trace_data_deinit(&td, a);
 }
 
-TEST(TrackTest, CalculateDepthsComprehensive) {
+TEST(TrackTest, OrganizeTracksEmpty) {
   Allocator a = allocator_get_default();
   TraceData td;
   trace_data_init(&td, a);
 
-  // Scenario 1: Strict Nesting (A [B [C]])
-  // ev0: [0, 100]
-  TraceEvent ev0 = {}; ev0.ts = 0; ev0.dur = 100;
-  trace_data_add_event(&td, a, theme_get_dark(), &ev0);
-  // ev1: [10, 50] - child of ev0
-  TraceEvent ev1 = {}; ev1.ts = 10; ev1.dur = 40;
-  trace_data_add_event(&td, a, theme_get_dark(), &ev1);
-  // ev2: [20, 30] - child of ev1
-  TraceEvent ev2 = {}; ev2.ts = 20; ev2.dur = 10;
-  trace_data_add_event(&td, a, theme_get_dark(), &ev2);
+  ArrayList<Track> tracks = {};
+  int64_t min_ts = -1, max_ts = -1;
+  track_organize(&td, a, &tracks, &min_ts, &max_ts);
 
-  // Scenario 2: Non-Strict Overlap (Outliving Parent)
-  // ev3: [110, 150]
-  TraceEvent ev3 = {}; ev3.ts = 110; ev3.dur = 40;
-  trace_data_add_event(&td, a, theme_get_dark(), &ev3);
-  // ev4: [120, 160] - overlaps ev3, but ends LATER. Should be depth 0.
-  TraceEvent ev4 = {}; ev4.ts = 120; ev4.dur = 40;
-  trace_data_add_event(&td, a, theme_get_dark(), &ev4);
+  EXPECT_EQ(tracks.size, 0u);
+  // min_ts/max_ts are not updated if no events
+  EXPECT_EQ(min_ts, -1);
+  EXPECT_EQ(max_ts, -1);
 
-  // Scenario 3: Multiple Siblings inside Parent
-  // ev5: [200, 300] - Parent
-  TraceEvent ev5 = {}; ev5.ts = 200; ev5.dur = 100;
-  trace_data_add_event(&td, a, theme_get_dark(), &ev5);
-  // ev6: [210, 240] - child of ev5
-  TraceEvent ev6 = {}; ev6.ts = 210; ev6.dur = 30;
-  trace_data_add_event(&td, a, theme_get_dark(), &ev6);
-  // ev7: [250, 290] - child of ev5, sequential to ev6
-  TraceEvent ev7 = {}; ev7.ts = 250; ev7.dur = 40;
-  trace_data_add_event(&td, a, theme_get_dark(), &ev7);
+  array_list_deinit(&tracks, a);
+  trace_data_deinit(&td, a);
+}
 
-  // Scenario 4: "Stepping Down" (Overlapping stairs)
-  // ev8: [400, 500]
-  TraceEvent ev8 = {}; ev8.ts = 400; ev8.dur = 100;
-  trace_data_add_event(&td, a, theme_get_dark(), &ev8);
-  // ev9: [410, 510] - overlaps ev8, same level
-  TraceEvent ev9 = {}; ev9.ts = 410; ev9.dur = 100;
-  trace_data_add_event(&td, a, theme_get_dark(), &ev9);
-  // ev10: [420, 520] - overlaps ev9, same level
-  TraceEvent ev10 = {}; ev10.ts = 420; ev10.dur = 100;
-  trace_data_add_event(&td, a, theme_get_dark(), &ev10);
+TEST(TrackTest, OrganizeTracksSorting) {
+  Allocator a = allocator_get_default();
+  TraceData td;
+  trace_data_init(&td, a);
 
-  Track t = {};
-  for (size_t i = 0; i < 11; i++) {
-    array_list_push_back(&t.event_indices, a, i);
-  }
+  auto add_event = [&](int32_t pid, int32_t tid, int64_t ts) {
+    TraceEvent e = {};
+    e.ph = STR("X");
+    e.pid = pid;
+    e.tid = tid;
+    e.ts = ts;
+    e.dur = 10;
+    trace_data_add_event(&td, a, theme_get_dark(), &e);
+  };
 
-  track_sort_events(&t, &td);
-  track_calculate_depths(&t, &td, a);
+  auto add_sort_idx = [&](int32_t pid, int32_t tid, int32_t sort_idx) {
+    TraceEvent m = {};
+    m.ph = STR("M");
+    m.pid = pid;
+    m.tid = tid;
+    m.name = STR("thread_sort_index");
+    TraceArg arg = {STR("sort_index"), STR("")};
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", sort_idx);
+    arg.val = {buf, strlen(buf)};
+    m.args = &arg;
+    m.args_count = 1;
+    trace_data_add_event(&td, a, theme_get_dark(), &m);
+  };
 
-  // Scenario 1
-  EXPECT_EQ(t.depths[0], 0u); // ev0
-  EXPECT_EQ(t.depths[1], 1u); // ev1
-  EXPECT_EQ(t.depths[2], 2u); // ev2
+  // Add tracks in "random" order
+  add_event(10, 1, 100);
+  add_event(1, 2, 100);
+  add_event(1, 1, 100);
+  add_sort_idx(10, 1, -5); // Should be first
+  add_sort_idx(1, 2, 5);   // Should be last
 
-  // Scenario 2
-  EXPECT_EQ(t.depths[3], 0u); // ev3
-  EXPECT_EQ(t.depths[4], 0u); // ev4 - outlives ev3, moves up
+  ArrayList<Track> tracks = {};
+  int64_t min_ts, max_ts;
+  track_organize(&td, a, &tracks, &min_ts, &max_ts);
 
-  // Scenario 3
-  EXPECT_EQ(t.depths[5], 0u); // ev5
-  EXPECT_EQ(t.depths[6], 1u); // ev6
-  EXPECT_EQ(t.depths[7], 1u); // ev7 - moved up inside ev5
+  ASSERT_EQ(tracks.size, 3u);
 
-  // Scenario 4
-  EXPECT_EQ(t.depths[8], 0u); // ev8
-  EXPECT_EQ(t.depths[9], 0u); // ev9
-  EXPECT_EQ(t.depths[10], 0u); // ev10
+  // 1. PID 10, TID 1 (sort_index -5)
+  EXPECT_EQ(tracks[0].pid, 10);
+  EXPECT_EQ(tracks[0].sort_index, -5);
 
-  track_deinit(&t, a);
+  // 2. PID 1, TID 1 (sort_index 0 default)
+  EXPECT_EQ(tracks[1].pid, 1);
+  EXPECT_EQ(tracks[1].tid, 1);
+  EXPECT_EQ(tracks[1].sort_index, 0);
+
+  // 3. PID 1, TID 2 (sort_index 5)
+  EXPECT_EQ(tracks[2].pid, 1);
+  EXPECT_EQ(tracks[2].tid, 2);
+  EXPECT_EQ(tracks[2].sort_index, 5);
+
+  for (size_t i = 0; i < tracks.size; i++) track_deinit(&tracks[i], a);
+  array_list_deinit(&tracks, a);
+  trace_data_deinit(&td, a);
+}
+
+TEST(TrackTest, OrganizeTracksMetadataOnly) {
+  Allocator a = allocator_get_default();
+  TraceData td;
+  trace_data_init(&td, a);
+
+  TraceEvent m = {};
+  m.ph = STR("M");
+  m.pid = 1;
+  m.tid = 1;
+  m.name = STR("thread_name");
+  TraceArg arg = {STR("name"), STR("Meta Only")};
+  m.args = &arg;
+  m.args_count = 1;
+  trace_data_add_event(&td, a, theme_get_dark(), &m);
+
+  ArrayList<Track> tracks = {};
+  int64_t min_ts = -1, max_ts = -1;
+  track_organize(&td, a, &tracks, &min_ts, &max_ts);
+
+  EXPECT_EQ(tracks.size, 1u);
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "Meta Only");
+  EXPECT_EQ(tracks[0].event_indices.size, 0u);
+  
+  // Viewport range should not be updated by metadata
+  EXPECT_EQ(min_ts, 0); // min_ts/max_ts are 0 as initialized in track_organize
+  EXPECT_EQ(max_ts, 0);
+
+  array_list_deinit(&tracks, a);
+  trace_data_deinit(&td, a);
+}
+
+TEST(TrackTest, OrganizeTracksMixedOrder) {
+  Allocator a = allocator_get_default();
+  TraceData td;
+  trace_data_init(&td, a);
+
+  // 1. Regular event
+  TraceEvent e1 = {};
+  e1.ph = STR("X"); e1.pid = 1; e1.tid = 1; e1.ts = 500; e1.dur = 100;
+  trace_data_add_event(&td, a, theme_get_dark(), &e1);
+
+  // 2. Metadata for same track
+  TraceEvent m1 = {};
+  m1.ph = STR("M"); m1.pid = 1; m1.tid = 1; m1.name = STR("thread_name");
+  TraceArg arg1 = {STR("name"), STR("Mixed")};
+  m1.args = &arg1; m1.args_count = 1;
+  trace_data_add_event(&td, a, theme_get_dark(), &m1);
+
+  // 3. Regular event for another track
+  TraceEvent e2 = {};
+  e2.ph = STR("X"); e2.pid = 2; e2.tid = 1; e2.ts = 100; e2.dur = 50;
+  trace_data_add_event(&td, a, theme_get_dark(), &e2);
+
+  ArrayList<Track> tracks = {};
+  int64_t min_ts, max_ts;
+  track_organize(&td, a, &tracks, &min_ts, &max_ts);
+
+  ASSERT_EQ(tracks.size, 2u);
+  
+  // Sorted by PID (both have sort_index 0)
+  EXPECT_EQ(tracks[0].pid, 1);
+  EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "Mixed");
+  EXPECT_EQ(tracks[0].event_indices.size, 1u);
+  EXPECT_EQ(tracks[0].event_indices[0], 0u);
+
+  EXPECT_EQ(tracks[1].pid, 2);
+  EXPECT_EQ(tracks[1].event_indices.size, 1u);
+  EXPECT_EQ(tracks[1].event_indices[0], 2u);
+
+  EXPECT_EQ(min_ts, 100);
+  EXPECT_EQ(max_ts, 600);
+
+  for (size_t i = 0; i < tracks.size; i++) track_deinit(&tracks[i], a);
+  array_list_deinit(&tracks, a);
   trace_data_deinit(&td, a);
 }

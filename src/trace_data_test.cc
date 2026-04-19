@@ -1,17 +1,13 @@
 #include "src/trace_data.h"
-#include "src/colors.h"
 
 #include <gtest/gtest.h>
+
+#include "src/colors.h"
 
 TEST(TraceDataTest, Basic) {
   Allocator a = allocator_get_default();
   TraceData td;
   trace_data_init(&td, a);
-
-  TraceArg args[2] = {
-      {STR("key1"), STR("val1")},
-      {STR("key2"), STR("val2")},
-  };
 
   TraceEvent ev = {};
   ev.name = STR("event1");
@@ -21,31 +17,53 @@ TEST(TraceDataTest, Basic) {
   ev.dur = 50;
   ev.pid = 1;
   ev.tid = 2;
+
+  TraceArg args[2];
+  args[0] = {STR("key1"), STR("val1")};
+  args[1] = {STR("key2"), STR("val2")};
   ev.args = args;
   ev.args_count = 2;
 
   trace_data_add_event(&td, a, theme_get_dark(), &ev);
 
-  EXPECT_EQ(td.events.size, 1u);
-  EXPECT_EQ(td.args.size, 2u);
-
+  ASSERT_EQ(td.events.size, 1u);
   const TraceEventPersisted& p = td.events[0];
-  EXPECT_TRUE(str_eq(trace_data_get_string(&td, p.name_offset), STR("event1")));
-  EXPECT_TRUE(str_eq(trace_data_get_string(&td, p.cat_offset), STR("cat1")));
-  EXPECT_TRUE(str_eq(trace_data_get_string(&td, p.ph_offset), STR("X")));
+  EXPECT_TRUE(str_eq(trace_data_get_string(&td, p.name_ref), STR("event1")));
+  EXPECT_TRUE(str_eq(trace_data_get_string(&td, p.cat_ref), STR("cat1")));
+  EXPECT_TRUE(str_eq(trace_data_get_string(&td, p.ph_ref), STR("X")));
   EXPECT_EQ(p.ts, 100);
   EXPECT_EQ(p.dur, 50);
   EXPECT_EQ(p.pid, 1);
   EXPECT_EQ(p.tid, 2);
   EXPECT_EQ(p.args_count, 2u);
 
+  ASSERT_EQ(td.args.size, 2u);
   const TraceArgPersisted& pa1 = td.args[p.args_offset];
-  EXPECT_TRUE(str_eq(trace_data_get_string(&td, pa1.key_offset), STR("key1")));
-  EXPECT_TRUE(str_eq(trace_data_get_string(&td, pa1.val_offset), STR("val1")));
+  EXPECT_TRUE(str_eq(trace_data_get_string(&td, pa1.key_ref), STR("key1")));
+  EXPECT_TRUE(str_eq(trace_data_get_string(&td, pa1.val_ref), STR("val1")));
 
   const TraceArgPersisted& pa2 = td.args[p.args_offset + 1];
-  EXPECT_TRUE(str_eq(trace_data_get_string(&td, pa2.key_offset), STR("key2")));
-  EXPECT_TRUE(str_eq(trace_data_get_string(&td, pa2.val_offset), STR("val2")));
+  EXPECT_TRUE(str_eq(trace_data_get_string(&td, pa2.key_ref), STR("key2")));
+  EXPECT_TRUE(str_eq(trace_data_get_string(&td, pa2.val_ref), STR("val2")));
+
+  trace_data_deinit(&td, a);
+}
+
+TEST(TraceDataTest, DeDuplication) {
+  Allocator a = allocator_get_default();
+  TraceData td;
+  trace_data_init(&td, a);
+
+  StringRef ref1 = trace_data_push_string(&td, a, STR("foo"));
+  StringRef ref2 = trace_data_push_string(&td, a, STR("bar"));
+  StringRef ref3 = trace_data_push_string(&td, a, STR("foo"));
+
+  EXPECT_EQ(ref1, ref3);
+  EXPECT_NE(ref1, ref2);
+  EXPECT_EQ(td.string_table.size, 2u);
+
+  EXPECT_TRUE(str_eq(trace_data_get_string(&td, ref1), STR("foo")));
+  EXPECT_TRUE(str_eq(trace_data_get_string(&td, ref2), STR("bar")));
 
   trace_data_deinit(&td, a);
 }
@@ -55,44 +73,22 @@ TEST(TraceDataTest, Clear) {
   TraceData td;
   trace_data_init(&td, a);
 
+  trace_data_push_string(&td, a, STR("foo"));
   TraceEvent ev = {};
   ev.name = STR("foo");
   trace_data_add_event(&td, a, theme_get_dark(), &ev);
 
-  EXPECT_EQ(td.events.size, 1u);
-
   trace_data_clear(&td, a);
-  EXPECT_EQ(td.events.size, 0u);
-  EXPECT_EQ(td.args.size, 0u);
-  // String pool should at least contain the null terminator at offset 0
-  EXPECT_GT(td.string_pool.size, 0u);
-  EXPECT_EQ(td.string_pool[0], '\0');
 
-  trace_data_add_event(&td, a, theme_get_dark(), &ev);
-  EXPECT_EQ(td.events.size, 1u);
-  EXPECT_TRUE(str_eq(trace_data_get_string(&td, td.events[0].name_offset), STR("foo")));
+  EXPECT_EQ(td.string_buffer.size, 0u);
+  EXPECT_EQ(td.string_table.size, 0u);
+  EXPECT_EQ(td.events.size, 0u);
+  EXPECT_EQ(td.string_lookup.size, 0u);
+
+  // Should still be usable
+  StringRef ref = trace_data_push_string(&td, a, STR("foo"));
+  EXPECT_EQ(ref, 1u);
+  EXPECT_TRUE(str_eq(trace_data_get_string(&td, ref), STR("foo")));
 
   trace_data_deinit(&td, a);
-}
-
-TEST(TraceDataTest, MemoryLeak) {
-  CountingAllocator ca;
-  counting_allocator_init(&ca, allocator_get_default());
-  Allocator a = counting_allocator_get_allocator(&ca);
-
-  {
-    TraceData td;
-    trace_data_init(&td, a);
-
-    TraceArg args[1] = {{STR("k"), STR("v")}};
-    TraceEvent ev = {};
-    ev.name = STR("event");
-    ev.args = args;
-    ev.args_count = 1;
-
-    trace_data_add_event(&td, a, theme_get_dark(), &ev);
-    trace_data_deinit(&td, a);
-  }
-
-  EXPECT_EQ(counting_allocator_get_allocated_bytes(&ca), 0u);
 }

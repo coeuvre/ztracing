@@ -66,7 +66,7 @@ void track_compute_render_blocks(
         m.col = col;
         m.active = true;
       } else {
-        TrackRenderBlock rb = {x1, x2, col, e.name_offset, depth, is_selected};
+        TrackRenderBlock rb = {x1, x2, col, e.name_ref, depth, is_selected};
         array_list_push_back(out_blocks, a, rb);
       }
     }
