@@ -29,7 +29,7 @@
 - `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments.
 - `src/trace_data`: Persistent storage for parsed events. Uses a string pool with offset-based addressing to prevent pointer invalidation during reallocations.
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic. Supports 32-bit indices for large traces.
-- `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
+- `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`. Implements a "polite" keyboard passthrough strategy where events bubble to the browser by default (allowing F12, F5, etc. to work) and are only blocked for disruptive keys (Tab, Arrows, Backspace, etc.) when `io.WantCaptureKeyboard` is true.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
 - `src/app`: Pure application logic and UI logic (ImGui). Manages viewport state, event selection, and theme orchestration.
 - `src/colors`: Theme management system. Defines a `Theme` struct and provides standard Dark and Light theme implementations.

@@ -118,6 +118,29 @@ static ImGuiKey string_to_imgui_key(const char* code) {
   return ImGuiKey_None;
 }
 
+static bool is_disruptive_browser_key(ImGuiKey key) {
+  switch (key) {
+    case ImGuiKey_Tab:
+    case ImGuiKey_LeftArrow:
+    case ImGuiKey_RightArrow:
+    case ImGuiKey_UpArrow:
+    case ImGuiKey_DownArrow:
+    case ImGuiKey_PageUp:
+    case ImGuiKey_PageDown:
+    case ImGuiKey_Home:
+    case ImGuiKey_End:
+    case ImGuiKey_Backspace:
+    case ImGuiKey_Space:
+    case ImGuiKey_Enter:
+    case ImGuiKey_Escape:
+    case ImGuiKey_Insert:
+    case ImGuiKey_Delete:
+      return true;
+    default:
+      return false;
+  }
+}
+
 static EM_BOOL on_key(int event_type, const EmscriptenKeyboardEvent* key_event,
                       void* user_data) {
   (void)user_data;
@@ -139,9 +162,14 @@ static EM_BOOL on_key(int event_type, const EmscriptenKeyboardEvent* key_event,
 
   imgui_impl_wasm_request_update();
 
-  // Prevent browser from handling keys like Tab or Backspace when ImGui wants
-  // them
-  return io.WantCaptureKeyboard ? EM_TRUE : EM_FALSE;
+  // "Polite" passthrough: allow browser to handle keys by default (e.g. F12, F5)
+  // Only block keys that would cause disruptive browser behavior (scrolling,
+  // focus change) when ImGui explicitly wants the keyboard.
+  if (io.WantCaptureKeyboard && is_disruptive_browser_key(key)) {
+    return EM_TRUE;
+  }
+
+  return EM_FALSE;
 }
 
 static EM_BOOL on_resize(int event_type, const EmscriptenUiEvent* ui_event,
