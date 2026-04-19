@@ -44,7 +44,6 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   array_list_clear(&g_canvas_selector);
   array_list_append(&g_canvas_selector, allocator, canvas_selector,
                     strlen(canvas_selector) + 1);
-  app_init(&g_app, allocator);
 
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
@@ -65,9 +64,10 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   }
   emscripten_webgl_make_context_current(ctx);
 
-  ImGui::StyleColorsDark();
   imgui_impl_wasm_init(g_canvas_selector.data, allocator);
   imgui_impl_webgl_init(allocator);
+
+  app_init(&g_app, allocator);
 
   LOG_DEBUG("ztracing initialized successfully.");
   return 0;

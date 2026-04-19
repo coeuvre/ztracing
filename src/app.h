@@ -6,9 +6,11 @@
 #include "src/trace_data.h"
 #include "src/trace_parser.h"
 #include "src/track.h"
+#include "src/colors.h"
 
 struct App {
   Allocator allocator;
+  const Theme* theme;
   bool power_save_mode;
   bool first_frame;
   bool show_demo_window;

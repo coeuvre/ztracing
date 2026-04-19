@@ -6,6 +6,7 @@
 
 #include "src/format.h"
 #include "src/platform.h"
+#include "src/colors.h"
 
 #include "src/logging.h"
 #include "third_party/imgui/imgui.h"
@@ -14,6 +15,8 @@
 void app_init(App* app, Allocator allocator) {
   *app = {};
   app->allocator = allocator;
+  app->theme = theme_get_dark();
+  ImGui::StyleColorsDark();
   app->power_save_mode = true;
   app->first_frame = true;
   app->show_demo_window = false;
@@ -96,12 +99,14 @@ static void app_draw_time_ruler(App* app, ImDrawList* draw_list, ImVec2 pos,
   double duration = end_time - start_time;
   if (duration <= 0) return;
 
+  const Theme& theme = *app->theme;
+
   // Ruler background
   draw_list->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
-                           IM_COL32(40, 40, 40, 255));
+                           theme.ruler_bg);
   draw_list->AddLine(ImVec2(pos.x, pos.y + size.y - 1),
                      ImVec2(pos.x + size.x, pos.y + size.y - 1),
-                     IM_COL32(100, 100, 100, 255));
+                     theme.ruler_border);
 
   // Determine tick interval
   double tick_interval = calculate_tick_interval(duration, size.x, 100.0);
@@ -117,17 +122,18 @@ static void app_draw_time_ruler(App* app, ImDrawList* draw_list, ImVec2 pos,
 
     draw_list->AddLine(ImVec2(x, pos.y + size.y * 0.6f),
                        ImVec2(x, pos.y + size.y - 1),
-                       IM_COL32(150, 150, 150, 255));
+                       theme.ruler_tick);
 
     char label[32];
     format_duration(label, sizeof(label), t_rel, tick_interval);
 
-    draw_list->AddText(ImVec2(x + 3, pos.y + 2), IM_COL32(200, 200, 200, 255),
+    draw_list->AddText(ImVec2(x + 3, pos.y + 2), theme.ruler_text,
                        label);
   }
 }
 
 void app_update(App* app) {
+  const Theme& theme = *app->theme;
   // 1. Setup DockSpace
   ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None;
   ImGuiID dockspace_id = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), dockspace_flags);
@@ -167,8 +173,7 @@ void app_update(App* app) {
         ImVec2 canvas_size = ImGui::GetContentRegionAvail();
 
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
-        draw_list->AddRectFilled(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), IM_COL32(30, 30, 30, 255));
-
+        draw_list->AddRectFilled(canvas_pos, ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y), theme.viewport_bg);
         double duration = app->viewport.end_time - app->viewport.start_time;
         if (duration <= 0) duration = 1.0;
 
@@ -183,6 +188,10 @@ void app_update(App* app) {
 
         ImGui::SetCursorScreenPos(ImVec2(canvas_pos.x, canvas_pos.y + ruler_height));
         if (ImGui::BeginChild("TrackList", ImVec2(0, canvas_size.y - ruler_height), ImGuiChildFlags_None, child_flags)) {
+          if (ImGui::IsWindowHovered() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+            ImGui::SetScrollY(ImGui::GetScrollY() - ImGui::GetIO().MouseDelta.y);
+          }
+
           ImDrawList* track_draw_list = ImGui::GetWindowDrawList();
           
           float total_height = 0.0f;
@@ -207,7 +216,7 @@ void app_update(App* app) {
               continue;
             }
 
-            track_draw_list->AddRectFilled(track_pos, ImVec2(track_pos.x + inner_width, track_pos.y + track_height), IM_COL32(50, 50, 50, 255));
+            track_draw_list->AddRectFilled(track_pos, ImVec2(track_pos.x + inner_width, track_pos.y + track_height), theme.track_bg);
 
             size_t start_idx = track_find_visible_start_index(&t, &app->trace_data, (int64_t)app->viewport.start_time);
 
@@ -232,33 +241,69 @@ void app_update(App* app) {
               float y1 = track_pos.y + (float)depth * lane_height;
               float y2 = y1 + lane_height - 1.0f;
 
-              ImU32 col = (app->selected_event_index == (int64_t)event_idx) ? IM_COL32(255, 255, 0, 255) : IM_COL32(100, 180, 100, 255);
+              bool is_hovered = ImGui::IsMouseHoveringRect(ImVec2(x1, y1), ImVec2(x2, y2), true);
+              bool is_selected = (app->selected_event_index == (int64_t)event_idx);
+
+              ImU32 col = e.color;
+              if (is_selected) {
+                col = theme.event_selected; // Keep selection yellow for high contrast
+              } else if (is_hovered) {
+                // Brighten the color if hovered
+                ImVec4 col_v = ImGui::ColorConvertU32ToFloat4(col);
+                col_v.x = std::min(col_v.x + 0.15f, 1.0f);
+                col_v.y = std::min(col_v.y + 0.15f, 1.0f);
+                col_v.z = std::min(col_v.z + 0.15f, 1.0f);
+                col = ImGui::ColorConvertFloat4ToU32(col_v);
+              }
+              
               track_draw_list->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), col);
+              
+              ImU32 border_col = theme.event_border;
+              float thickness = 1.0f;
+              if (is_selected) {
+                border_col = theme.event_border_selected;
+                thickness = 3.0f;
+              }
+              track_draw_list->AddRect(ImVec2(x1, y1), ImVec2(x2, y2), border_col, 0.0f, 0, thickness);
 
               // Draw event name if there is enough space
               float visible_x1 = std::max(x1, tracks_canvas_pos.x);
               float visible_x2 = std::min(x2, tracks_canvas_pos.x + inner_width);
-              if (visible_x2 - visible_x1 > 10.0f) {
+              float padding_h = 6.0f;
+              
+              // Only draw text if the visible width is large enough for some content
+              if (visible_x2 - visible_x1 > padding_h * 2.0f + 20.0f) {
                 Str name = trace_data_get_string(&app->trace_data, e.name_offset);
                 if (name.len > 0) {
-                  ImU32 text_col = (app->selected_event_index == (int64_t)event_idx) ? IM_COL32(0, 0, 0, 255) : IM_COL32(255, 255, 255, 255);
-                  track_draw_list->PushClipRect(ImVec2(visible_x1, y1), ImVec2(visible_x2, y2), true);
-                  track_draw_list->AddText(ImVec2(visible_x1 + 2.0f, y1 + 2.0f), text_col, name.buf, name.buf + name.len);
-                  track_draw_list->PopClipRect();
+                  ImU32 text_col = is_selected ? theme.event_text_selected : theme.event_text;
+                  
+                  // Vertically center text
+                  float font_size = ImGui::GetFontSize();
+                  float text_y = y1 + (lane_height - font_size) * 0.5f;
+
+                  float text_width = ImGui::GetFont()->CalcTextSizeA(font_size, FLT_MAX, 0.0f, name.buf, name.buf + name.len).x;
+                  float available_width = (visible_x2 - padding_h) - (visible_x1 + padding_h);
+
+                  // Use ImGui's internal clipping by providing a clip rect to AddText
+                  // This is more efficient than PushClipRect/PopClipRect as it doesn't split draw calls
+                  // We only provide the clip rect if the text is actually larger than the available area.
+                  ImVec4 fine_clip_rect(visible_x1, y1, visible_x2 - padding_h, y2);
+                  const ImVec4* clip_ptr = (text_width > available_width) ? &fine_clip_rect : nullptr;
+
+                  track_draw_list->AddText(ImGui::GetFont(), font_size, 
+                                           ImVec2(visible_x1 + padding_h, text_y), 
+                                           text_col, name.buf, name.buf + name.len, 0.0f, clip_ptr);
                 }
               }
 
-              if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered()) {
-                ImVec2 mouse_pos = ImGui::GetMousePos();
-                if (mouse_pos.x >= x1 && mouse_pos.x <= x2 && mouse_pos.y >= y1 && mouse_pos.y <= y2) {
-                  app->selected_event_index = (int64_t)event_idx;
-                }
+              if (is_hovered && ImGui::IsMouseClicked(0)) {
+                app->selected_event_index = (int64_t)event_idx;
               }
             }
 
             char label[64];
             snprintf(label, sizeof(label), "TID:%d", t.tid);
-            track_draw_list->AddText(ImVec2(track_pos.x + 5, track_pos.y + 2), IM_COL32(255, 255, 255, 255), label);
+            track_draw_list->AddText(ImVec2(track_pos.x + 5, track_pos.y + 2), theme.track_text, label);
 
             cumulative_y += track_height + track_spacing;
           }
@@ -308,6 +353,33 @@ void app_update(App* app) {
   {
     if (ImGui::Begin("Status")) {
       ImGui::Checkbox("Power-save Mode", &app->power_save_mode);
+
+      static int current_theme_idx = 0; // 0 for Dark, 1 for Light
+      const char* theme_names[] = {"Dark", "Light"};
+      if (ImGui::Combo("Theme", &current_theme_idx, theme_names, IM_ARRAYSIZE(theme_names))) {
+        if (current_theme_idx == 0) {
+          app->theme = theme_get_dark();
+          ImGui::StyleColorsDark();
+        } else {
+          app->theme = theme_get_light();
+          ImGui::StyleColorsLight();
+        }
+
+        // Re-compute all event colors when theme changes
+        for (size_t i = 0; i < app->trace_data.events.size; i++) {
+          TraceEventPersisted& e = app->trace_data.events[i];
+          TraceEvent temp_event = {};
+          temp_event.name = trace_data_get_string(&app->trace_data, e.name_offset);
+          temp_event.cname = trace_data_get_string(&app->trace_data, e.cname_offset);
+          
+          // Use a dummy compute function or exposed logic to update color
+          // For now we need a way to re-compute. Let's add a helper in trace_data.cc
+          // Or just expose compute_event_color.
+          // Since compute_event_color is static in trace_data.cc, let's add a public update function.
+          trace_data_update_event_color(&app->trace_data, (uint32_t)i, app->theme);
+        }
+      }
+
       if (ImGui::Button("Reset Viewport")) {
           app->viewport.start_time = (double)app->viewport.min_ts;
           app->viewport.end_time = (double)app->viewport.max_ts;
@@ -320,7 +392,7 @@ void app_update(App* app) {
         ImGui::Text("Trace: %s", app->trace_filename.size > 0 ? app->trace_filename.data : "unknown");
         ImGui::Text("Events: %zu", app->trace_data.events.size);
         if (app->trace_parser_active) {
-            ImGui::TextColored(ImVec4(1, 1, 0, 1), "LOADING...");
+            ImGui::TextColored(theme.status_loading, "LOADING...");
         }
       }
     }
@@ -393,7 +465,7 @@ void app_handle_file_chunk(App* app, int session_id, const char* data,
   TraceEvent event;
   while (trace_parser_next(&app->trace_parser, &event)) {
     app->trace_event_count++;
-    trace_data_add_event(&app->trace_data, app->allocator, &event);
+    trace_data_add_event(&app->trace_data, app->allocator, app->theme, &event);
   }
 
   if (is_eof) {

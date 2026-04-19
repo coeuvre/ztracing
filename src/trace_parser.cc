@@ -207,6 +207,10 @@ static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_STRING) return false;
       event->ph = tok.str;
+    } else if (str_eq(key, STR("cname"))) {
+      tok = json_reader_next(r);
+      if (tok.type != JSON_TOKEN_STRING) return false;
+      event->cname = tok.str;
     } else if (str_eq(key, STR("ts"))) {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_NUMBER) return false;

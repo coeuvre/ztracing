@@ -31,7 +31,8 @@
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic. Supports 32-bit indices for large traces.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
-- `src/app`: Pure application logic and UI logic (ImGui). Manages viewport state and event selection.
+- `src/app`: Pure application logic and UI logic (ImGui). Manages viewport state, event selection, and theme orchestration.
+- `src/colors`: Theme management system. Defines a `Theme` struct and provides standard Dark and Light theme implementations.
 - `src/track`: Logic for organizing events into tracks, sorting (timestamp asc, duration desc), and strict containment-based depth calculation (flame graph layout).
 - `src/format`: Human-readable time formatting (s, ms, us) and tick interval calculation.
 - `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
@@ -47,12 +48,23 @@
 - **Downwards Flame Graph**: Overlapping events within a track are organized into hierarchical lanes. An event is placed in a lower lane only if it is strictly contained within a parent event (Strict Containment Hierarchy). Non-strictly nested events move up to share the highest available lane.
 - **Navigation**: 
     - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor. Requires modern ImGui modifier checks (`ImGui::IsKeyDown`).
-    - **Pan**: Left-mouse drag or `Shift + MouseWheel` or horizontal scroll wheel to pan horizontally.
+    - **Pan (Horizontal)**: `Shift + MouseWheel` or horizontal scroll wheel.
+    - **Pan (Dual-Axis)**: Left-mouse drag within the track viewport allows for simultaneous horizontal and vertical panning.
 - **Rendering Optimization**:
     - **Visibility Culling (Horizontal)**: Events are grouped into tracks. Each track maintains a `max_dur` (maximum event duration) and sorted `event_indices`. Binary search is used to find the first potentially visible event at `viewport_start - max_dur`, ensuring partially visible events are correctly rendered.
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
-    - **Level of Detail (LOD)**: (TODO) To handle massive traces (10M+ events), the renderer should skip events that occupy less than 0.1 pixels of screen space or are hidden by already drawn events when zoomed out.
-    - **Event Names**: Names are rendered inside event blocks if the visible width is >10 pixels. "Sticky" positioning is used to keep names visible at the left edge of the viewport when an event's start is off-screen.
+    - **Level of Detail (LOD)**: (TODO) To handle massive traces (10M+ events), the renderer should skip events that occupy less than 0.1 pixels of screen space or are hidden by already drawn events when zoomed out. Event names are only rendered if the visible width is sufficient for padded text (>padding_h * 2 + 20px).
+    - **Text Rendering**: Optimized via CPU-side clipping using the `ImDrawList::AddText` overload with a `cpu_fine_clip_rect`. This avoids draw call splits from `PushClipRect` and is only applied when text actually exceeds the available area.
+    - **Event Names**: Names are vertically centered within event blocks. Horizontal padding (`6.0f`) is applied to both sides. "Sticky" positioning is used to keep names visible at the left edge of the viewport when an event's start is off-screen.
+- **Theming**:
+    - **Theme Struct**: A centralized `Theme` struct in `src/colors.h` holds all UI colors, including backgrounds, ruler elements, and event palettes.
+    - **Dark Theme**: Muted, professional palette with dark grey tracks and solid black background.
+    - **Light Theme**: Based on "MRS. L'S CLASSROOM" palette with brightened green/teal for optimal legibility of black text.
+    - **Dynamic Switching**: Themes can be toggled via the "Status" window, automatically updating both application-specific colors and ImGui's built-in styles.
+- **Event Coloring**:
+    - **cname Support**: Standard Chrome Trace `cname` values are mapped to specific theme-appropriate colors.
+    - **Name Hashing**: Consistent fallback coloring using FNV-1a hash of the event name to select from a balanced palette.
+    - **Caching**: Colors are pre-computed and cached in `TraceEventPersisted` during parsing to maximize rendering performance.
 - **32-bit Indices**: ImGui is patched via `MODULE.bazel` to use `unsigned int` for `ImDrawIdx`, allowing for more than 65,535 vertices (required for large traces).
 
 ## Trace Parser Integration

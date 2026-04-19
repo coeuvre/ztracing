@@ -17,6 +17,8 @@ struct TraceEventPersisted {
   uint32_t name_offset;
   uint32_t cat_offset;
   uint32_t ph_offset;
+  uint32_t cname_offset;
+  uint32_t color;
   int64_t ts;
   int64_t dur;
   int32_t pid;
@@ -31,11 +33,14 @@ struct TraceData {
   ArrayList<TraceArgPersisted> args;
 };
 
+struct Theme;
+
 void trace_data_init(TraceData* td, Allocator a);
 void trace_data_deinit(TraceData* td, Allocator a);
 void trace_data_clear(TraceData* td, Allocator a);
 
-void trace_data_add_event(TraceData* td, Allocator a, const TraceEvent* event);
+void trace_data_add_event(TraceData* td, Allocator a, const Theme* theme, const TraceEvent* event);
+void trace_data_update_event_color(TraceData* td, uint32_t event_idx, const Theme* theme);
 
 // Helper to get a string from an offset.
 inline Str trace_data_get_string(const TraceData* td, uint32_t offset) {

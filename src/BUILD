@@ -129,12 +129,20 @@ cc_library(
 )
 
 cc_library(
+    name = "colors",
+    srcs = ["colors.cc"],
+    hdrs = ["colors.h"],
+    deps = ["@imgui"],
+)
+
+cc_library(
     name = "trace_data",
     srcs = ["trace_data.cc"],
     hdrs = ["trace_data.h"],
     deps = [
         ":allocator",
         ":array_list",
+        ":colors",
         ":str",
         ":trace_parser",
     ],
@@ -176,6 +184,7 @@ cc_library(
     deps = [
         ":allocator",
         ":array_list",
+        ":colors",
         ":format",
         ":logging",
         ":platform",

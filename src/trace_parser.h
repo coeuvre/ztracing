@@ -20,6 +20,7 @@ struct TraceEvent {
   Str name;
   Str cat;
   Str ph;
+  Str cname;
   int64_t ts;
   int64_t dur;
   int32_t pid;
