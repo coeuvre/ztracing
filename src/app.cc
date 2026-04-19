@@ -55,7 +55,8 @@ void app_init(App* app, Allocator allocator) {
       app, platform_is_dark_mode() ? theme_get_dark() : theme_get_light());
   app->power_save_mode = true;
   app->first_frame = true;
-  app->show_demo_window = false;
+  app->show_metrics_window = false;
+  app->show_about_window = false;
 
   trace_data_init(&app->trace_data, app->allocator);
   trace_viewer_init(&app->trace_viewer, app->allocator);
@@ -71,6 +72,49 @@ void app_deinit(App* app) {
 }
 
 void app_update(App* app) {
+  // 0. Main Menu Bar
+  if (ImGui::BeginMainMenuBar()) {
+    if (ImGui::BeginMenu("View")) {
+      if (ImGui::MenuItem("Reset View")) {
+        app->trace_viewer.viewport.start_time =
+            (double)app->trace_viewer.viewport.min_ts;
+        app->trace_viewer.viewport.end_time =
+            (double)app->trace_viewer.viewport.max_ts;
+      }
+      ImGui::Separator();
+
+      ImGui::MenuItem("Power-save Mode", nullptr, &app->power_save_mode);
+      ImGui::MenuItem("Details Panel", nullptr, &app->trace_viewer.show_details_panel);
+
+      ImGui::Separator();
+      if (ImGui::BeginMenu("Theme")) {
+        if (ImGui::MenuItem("Auto", nullptr, app->theme_mode == THEME_MODE_AUTO)) {
+          app->theme_mode = THEME_MODE_AUTO;
+          app_on_theme_changed(app);
+        }
+        if (ImGui::MenuItem("Dark", nullptr, app->theme_mode == THEME_MODE_DARK)) {
+          app->theme_mode = THEME_MODE_DARK;
+          app_apply_theme(app, theme_get_dark());
+        }
+        if (ImGui::MenuItem("Light", nullptr, app->theme_mode == THEME_MODE_LIGHT)) {
+          app->theme_mode = THEME_MODE_LIGHT;
+          app_apply_theme(app, theme_get_light());
+        }
+        ImGui::EndMenu();
+      }
+      ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Tools")) {
+      ImGui::MenuItem("Metrics/Debugger", nullptr, &app->show_metrics_window);
+      ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Help")) {
+      ImGui::MenuItem("About Dear ImGui", nullptr, &app->show_about_window);
+      ImGui::EndMenu();
+    }
+    ImGui::EndMainMenuBar();
+  }
+
   // 1. Setup DockSpace
   ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None;
   ImGuiID dockspace_id = ImGui::DockSpaceOverViewport(
@@ -84,20 +128,22 @@ void app_update(App* app) {
     ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->Size);
 
     ImGuiID dock_id_main = dockspace_id;
-    ImGuiID dock_id_bottom = ImGui::DockBuilderSplitNode(
-        dock_id_main, ImGuiDir_Down, 0.25f, nullptr, &dock_id_main);
+    if (app->trace_viewer.show_details_panel) {
+      ImGuiID dock_id_bottom = ImGui::DockBuilderSplitNode(
+          dock_id_main, ImGuiDir_Down, 0.25f, nullptr, &dock_id_main);
+      ImGui::DockBuilderDockWindow("Details", dock_id_bottom);
+    }
 
     // Hide tab bar for the main viewport area
     ImGuiDockNode* main_node = ImGui::DockBuilderGetNode(dock_id_main);
     if (main_node) main_node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
 
     ImGui::DockBuilderDockWindow("Main Viewport", dock_id_main);
-    ImGui::DockBuilderDockWindow("Status", dock_id_bottom);
-    ImGui::DockBuilderDockWindow("Details", dock_id_bottom);
     ImGui::DockBuilderFinish(dockspace_id);
   }
 
-  if (app->show_demo_window) ImGui::ShowDemoWindow(&app->show_demo_window);
+  if (app->show_metrics_window) ImGui::ShowMetricsWindow(&app->show_metrics_window);
+  if (app->show_about_window) ImGui::ShowAboutWindow(&app->show_about_window);
 
   // 2. Scene Rendering
   ImGuiWindowFlags viewport_flags =
@@ -124,39 +170,6 @@ void app_update(App* app) {
   }
   ImGui::End();
   ImGui::PopStyleVar(3);
-
-  // 3. Status/Control Overlay
-  {
-    if (ImGui::Begin("Status")) {
-      ImGui::Checkbox("Power-save Mode", &app->power_save_mode);
-
-      int current_theme_idx = (int)app->theme_mode;
-      const char* theme_names[] = {"Auto", "Dark", "Light"};
-      if (ImGui::Combo("Theme", &current_theme_idx, theme_names,
-                       IM_ARRAYSIZE(theme_names))) {
-        app->theme_mode = (ThemeMode)current_theme_idx;
-        if (app->theme_mode == THEME_MODE_DARK) {
-          app_apply_theme(app, theme_get_dark());
-        } else if (app->theme_mode == THEME_MODE_LIGHT) {
-          app_apply_theme(app, theme_get_light());
-        } else {
-          // THEME_MODE_AUTO: handled in app_update or immediately here
-          app_apply_theme(app, platform_is_dark_mode() ? theme_get_dark()
-                                                       : theme_get_light());
-        }
-      }
-
-      if (ImGui::Button("Reset Viewport")) {
-        app->trace_viewer.viewport.start_time =
-            (double)app->trace_viewer.viewport.min_ts;
-        app->trace_viewer.viewport.end_time =
-            (double)app->trace_viewer.viewport.max_ts;
-      }
-      ImGui::SameLine();
-      if (ImGui::Button("Demo")) app->show_demo_window = !app->show_demo_window;
-    }
-    ImGui::End();
-  }
 }
 
 void app_on_theme_changed(App* app) {

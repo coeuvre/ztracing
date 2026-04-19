@@ -28,6 +28,7 @@ struct TraceViewer {
   ArrayList<TrackRenderBlock> render_blocks;
   ArrayList<HoverMatch> hover_matches;
   int64_t selected_event_index;
+  bool show_details_panel;
 };
 
 void trace_viewer_init(TraceViewer* tv, Allocator allocator);

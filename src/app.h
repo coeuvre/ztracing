@@ -20,7 +20,8 @@ struct App {
   const Theme* theme;
   bool power_save_mode;
   bool first_frame;
-  bool show_demo_window;
+  bool show_metrics_window;
+  bool show_about_window;
 
   TraceParser trace_parser;
   TraceData trace_data;

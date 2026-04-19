@@ -18,6 +18,7 @@ void trace_viewer_init(TraceViewer* tv, Allocator allocator) {
   (void)allocator;
   *tv = {};
   tv->selected_event_index = -1;
+  tv->show_details_panel = true;
 }
 
 void trace_viewer_deinit(TraceViewer* tv, Allocator allocator) {
@@ -92,32 +93,36 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
   // Draw event name if there is enough space and it's not a merged block
   // (name_ref != 0)
   if (name_ref != 0) {
-    float visible_x1 = std::max(x1, tracks_canvas_pos_x);
-    float visible_x2 = std::min(x2, tracks_canvas_pos_x + inner_width);
     float padding_h = 6.0f;
+    float event_width = x2 - x1;
 
-    if (visible_x2 - visible_x1 > padding_h * 2.0f + 20.0f) {
-      Str name = trace_data_get_string(td, name_ref);
-      if (name.len > 0) {
-        ImU32 text_col =
-            is_selected ? theme.event_text_selected : theme.event_text;
-        float event_font_size = ImGui::GetFontSize();
-        float text_y = y1 + (lane_height - event_font_size) * 0.5f;
+    if (event_width > padding_h * 2.0f + 10.0f) {
+      float visible_x1 = std::max(x1, tracks_canvas_pos_x);
+      float visible_x2 = std::min(x2, tracks_canvas_pos_x + inner_width);
 
-        float text_width = ImGui::GetFont()
-                               ->CalcTextSizeA(event_font_size, FLT_MAX, 0.0f,
-                                               name.buf, name.buf + name.len)
-                               .x;
-        float available_width =
-            (visible_x2 - padding_h) - (visible_x1 + padding_h);
+      if (visible_x2 > visible_x1) {
+        Str name = trace_data_get_string(td, name_ref);
+        if (name.len > 0) {
+          ImU32 text_col =
+              is_selected ? theme.event_text_selected : theme.event_text;
+          float event_font_size = ImGui::GetFontSize();
+          float text_y = y1 + (lane_height - event_font_size) * 0.5f;
 
-        ImVec4 fine_clip_rect(visible_x1, y1, visible_x2 - padding_h, y2);
-        const ImVec4* clip_ptr =
-            (text_width > available_width) ? &fine_clip_rect : nullptr;
+          float text_width = ImGui::GetFont()
+                                 ->CalcTextSizeA(event_font_size, FLT_MAX, 0.0f,
+                                                 name.buf, name.buf + name.len)
+                                 .x;
 
-        draw_list->AddText(ImGui::GetFont(), event_font_size,
-                           ImVec2(visible_x1 + padding_h, text_y), text_col,
-                           name.buf, name.buf + name.len, 0.0f, clip_ptr);
+          float text_x = x1 + (event_width - text_width) * 0.5f;
+
+          ImVec4 fine_clip_rect(visible_x1 + padding_h, y1,
+                                visible_x2 - padding_h, y2);
+          const ImVec4* clip_ptr = &fine_clip_rect;
+
+          draw_list->AddText(ImGui::GetFont(), event_font_size,
+                             ImVec2(text_x, text_y), text_col, name.buf,
+                             name.buf + name.len, 0.0f, clip_ptr);
+        }
       }
     }
   }
@@ -139,11 +144,11 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     double duration = tv->viewport.end_time - tv->viewport.start_time;
     if (duration <= 0) duration = 1.0;
 
-    float ruler_height = 28.0f;
+    float ruler_height = ImGui::GetFrameHeight();
     trace_viewer_draw_time_ruler(tv, draw_list, canvas_pos,
                                  ImVec2(canvas_size.x, ruler_height), theme);
 
-    float lane_height = 28.0f;
+    float lane_height = ImGui::GetFrameHeight();
 
     ImGuiWindowFlags child_flags = ImGuiWindowFlags_NoMove;
     if (ImGui::IsKeyDown(ImGuiMod_Ctrl))
@@ -473,34 +478,40 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     }
   }
 
-  // Details Overlay
-  if (tv->selected_event_index != -1) {
-    if (ImGui::Begin("Details")) {
-      const TraceEventPersisted& e =
-          td->events[(size_t)tv->selected_event_index];
-      Str name = trace_data_get_string(td, e.name_ref);
-      Str cat = trace_data_get_string(td, e.cat_ref);
-      Str ph = trace_data_get_string(td, e.ph_ref);
+  // Details Panel
+  if (tv->show_details_panel) {
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
+    if (ImGui::Begin("Details", &tv->show_details_panel)) {
+      if (tv->selected_event_index != -1) {
+        const TraceEventPersisted& e = td->events[(size_t)tv->selected_event_index];
+        Str name = trace_data_get_string(td, e.name_ref);
+        Str cat = trace_data_get_string(td, e.cat_ref);
+        Str ph = trace_data_get_string(td, e.ph_ref);
 
-      ImGui::Text("Name: %.*s", (int)name.len, name.buf);
-      ImGui::Text("Category: %.*s", (int)cat.len, cat.buf);
-      ImGui::Text("PH: %.*s", (int)ph.len, ph.buf);
-      ImGui::Text("Timestamp: %lld", (long long)e.ts);
-      ImGui::Text("Duration: %lld", (long long)e.dur);
-      ImGui::Text("PID: %d, TID: %d", e.pid, e.tid);
+        ImGui::Text("Name: %.*s", (int)name.len, name.buf);
+        ImGui::Text("Category: %.*s", (int)cat.len, cat.buf);
+        ImGui::Text("PH: %.*s", (int)ph.len, ph.buf);
+        ImGui::Text("Timestamp: %lld", (long long)e.ts);
+        ImGui::Text("Duration: %lld", (long long)e.dur);
+        ImGui::Text("PID: %d, TID: %d", e.pid, e.tid);
 
-      if (e.args_count > 0) {
-        ImGui::Separator();
-        ImGui::Text("Arguments:");
-        for (uint32_t k = 0; k < e.args_count; k++) {
-          const TraceArgPersisted& arg = td->args[e.args_offset + k];
-          Str key = trace_data_get_string(td, arg.key_ref);
-          Str val = trace_data_get_string(td, arg.val_ref);
-          ImGui::BulletText("%.*s: %.*s", (int)key.len, key.buf, (int)val.len,
-                            val.buf);
+        if (e.args_count > 0) {
+          ImGui::Separator();
+          ImGui::Text("Arguments:");
+          for (uint32_t k = 0; k < e.args_count; k++) {
+            const TraceArgPersisted& arg = td->args[e.args_offset + k];
+            Str key = trace_data_get_string(td, arg.key_ref);
+            Str val = trace_data_get_string(td, arg.val_ref);
+            ImGui::BulletText("%.*s: %.*s", (int)key.len, key.buf, (int)val.len,
+                              val.buf);
+          }
         }
+      } else {
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
+                           "Select an event to see details.");
       }
     }
     ImGui::End();
+    ImGui::PopStyleVar();
   }
 }

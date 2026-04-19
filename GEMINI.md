@@ -36,7 +36,7 @@
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
 - `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer) and handles file streaming and data parsing.
-- `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and event details.
+- `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
 - `src/loading_screen`: Specialized scene for displaying parsing progress and filename during trace loading.
 - `src/welcome_screen`: Initial "drop file" landing scene.
 - `src/colors`: Theme management system. Defines a `Theme` struct and provides standard Dark and Light theme implementations.
@@ -52,7 +52,11 @@
 
 ## Main Viewport
 
-- **Layout**: The "Main Viewport" is docked in the central area. Other panels ("Status", "Details") are docked at the bottom by default. The viewport window has no title bar or tabs for a cleaner look.
+- **Global Menu Bar**: A persistent menu bar at the top provides access to:
+    - **View**: Reset View, Power-save Mode toggle, Details Panel toggle, and Theme selection (Auto, Dark, Light).
+    - **Tools**: Access to "Metrics/Debugger" (ImGui's built-in debugger).
+    - **Help**: "About Dear ImGui" information.
+- **Layout**: The "Main Viewport" is docked in the central area. The "Details" panel is docked at the bottom by default and can be toggled via the View menu. The viewport window has no title bar or tabs.
 - **Time Ruler**: A persistent horizontal ruler at the top displays the current time range with adaptive units (s, ms, us) and nice tick intervals.
 - **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically. Individual tracks have variable heights based on their maximum nesting depth plus a dedicated header lane.
 - **Contiguous Tracks**: Tracks follow each other with no gaps (`track_spacing = 0`). This creates a denser, more professional "Performance" view similar to modern browser profilers.
@@ -64,8 +68,8 @@
 - **Track Sorting**: Tracks are automatically organized using trace metadata. They are sorted primarily by **thread_sort_index** (ascending), with **PID** and **TID** as stable fallbacks.
 - **Downwards Flame Graph**: Overlapping events within a track are organized into hierarchical lanes. An event is placed in a lower lane only if it is strictly contained within a parent event (Strict Containment Hierarchy). Non-strictly nested events move up to share the highest available lane, even if they temporally overlap. This creates a denser, containment-focused view similar to modern profilers.
 - **Proportions**:
-    - **Lane Height**: **30px** (increased from 20px for better legibility and more spacious interaction).
-    - **Ruler Height**: **30px**.
+    - **Lane Height**: Dynamically matches the menu bar height using `ImGui::GetFrameHeight()`.
+    - **Ruler Height**: Dynamically matches the menu bar height using `ImGui::GetFrameHeight()`.
 - **Navigation**: 
     - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor. Requires modern ImGui modifier checks (`ImGui::IsKeyDown`).
     - **Pan (Horizontal)**: `Shift + MouseWheel` or horizontal scroll wheel.
@@ -86,12 +90,12 @@
         - **Deselection**: Clicking on an empty area of the track viewport deselects the current event.
         - **Drag Protection**: Selection and deselection only trigger on a clean click (mouse release without exceeding the `MouseDragThreshold`), preventing accidental changes while panning.
     - **Text Rendering**: Optimized via CPU-side clipping using the `ImDrawList::AddText` overload with a `cpu_fine_clip_rect`. This avoids draw call splits from `PushClipRect` and is only applied when text actually exceeds the available area.
-    - **Event Names**: Names are vertically centered within event blocks. Horizontal padding (`6.0f`) is applied to both sides. "Sticky" positioning is used to keep names visible at the left edge of the viewport when an event's start is off-screen.
+    - **Event Names**: Names are centered both vertically and horizontally within event blocks. Horizontal padding (`6.0f`) is applied to both sides. "Sticky" positioning for names is disabled to prioritize centering.
 - **Theming**:
     - **Theme Struct**: A centralized `Theme` struct in `src/colors.h` holds all UI colors, including backgrounds, ruler elements, and event palettes.
     - **Dark Theme**: Muted, professional palette with dark grey tracks and solid black background.
     - **Light Theme**: Based on "MRS. L'S CLASSROOM" palette with brightened green/teal for optimal legibility of black text.
-    - **Dynamic Switching**: Themes can be toggled via the "Status" window, automatically updating both application-specific colors and ImGui's built-in styles.
+    - **Dynamic Switching**: Themes can be toggled via the global menu bar, automatically updating both application-specific colors and ImGui's built-in styles.
     - **Auto Mode (Default)**: Tracks the system's preferred color scheme.
     - **Event-Driven Updates**: Uses `matchMedia.addEventListener` in `ztracing.js` to notify the application of system theme changes via the `ztracing_on_theme_changed` WASM export, avoiding unnecessary polling.
 - **Event Coloring**:
@@ -99,6 +103,14 @@
     - **Name Hashing**: Consistent fallback coloring using FNV-1a hash of the event name to select from a balanced palette.
     - **Caching**: Colors are pre-computed and cached in `TraceEventPersisted` during parsing to maximize rendering performance.
 - **32-bit Indices**: ImGui is patched via `MODULE.bazel` to use `unsigned int` for `ImDrawIdx`, allowing for more than 65,535 vertices (required for large traces).
+
+## Details Panel
+
+- **Visibility**: Can be toggled via the "View" menu. Docked at the bottom by default.
+- **Behavior**:
+    - **Content**: Displays detailed information for the currently selected event (Name, Category, PH, Timestamp, Duration, PID, TID, and all Arguments).
+    - **Selection Prompt**: Displays a "Select an event to see details" prompt when no event is selected.
+    - **Padding**: Uses `10.0f` window padding for better legibility.
 
 ## Trace Parser Integration
 
