@@ -32,6 +32,9 @@ EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(int session_id,
                                                      const char* data, int size,
                                                      bool is_eof);
 
+// Notifies the application that the system theme has changed.
+EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed();
+
 }  // extern "C"
 
 #endif  // ZTRACING_SRC_ZTRACING_H_

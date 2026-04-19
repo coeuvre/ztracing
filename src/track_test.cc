@@ -1,4 +1,5 @@
 #include "src/track.h"
+#include "src/colors.h"
 
 #include <gtest/gtest.h>
 
@@ -9,11 +10,11 @@ TEST(TrackTest, SortEvents) {
 
   TraceEvent ev1 = {};
   ev1.ts = 200;
-  trace_data_add_event(&td, a, &ev1);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev1);
 
   TraceEvent ev2 = {};
   ev2.ts = 100;
-  trace_data_add_event(&td, a, &ev2);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev2);
 
   Track t = {};
   array_list_push_back(&t.event_indices, a, (size_t)0);
@@ -35,11 +36,11 @@ TEST(TrackTest, UpdateMaxDur) {
 
   TraceEvent ev1 = {};
   ev1.dur = 100;
-  trace_data_add_event(&td, a, &ev1);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev1);
 
   TraceEvent ev2 = {};
   ev2.dur = 500;
-  trace_data_add_event(&td, a, &ev2);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev2);
 
   Track t = {};
   array_list_push_back(&t.event_indices, a, (size_t)0);
@@ -62,25 +63,25 @@ TEST(TrackTest, FindVisibleStartIndex) {
   TraceEvent ev0 = {};
   ev0.ts = 0;
   ev0.dur = 100;
-  trace_data_add_event(&td, a, &ev0);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev0);
 
   // Event 1: [200, 300]
   TraceEvent ev1 = {};
   ev1.ts = 200;
   ev1.dur = 100;
-  trace_data_add_event(&td, a, &ev1);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev1);
 
   // Event 2: [400, 1000] - very long
   TraceEvent ev2 = {};
   ev2.ts = 400;
   ev2.dur = 600;
-  trace_data_add_event(&td, a, &ev2);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev2);
 
   // Event 3: [1200, 1300]
   TraceEvent ev3 = {};
   ev3.ts = 1200;
   ev3.dur = 100;
-  trace_data_add_event(&td, a, &ev3);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev3);
 
   Track t = {};
   for (size_t i = 0; i < 4; i++) {
@@ -130,31 +131,31 @@ TEST(TrackTest, CalculateDepths) {
   TraceEvent ev0 = {};
   ev0.ts = 0;
   ev0.dur = 100;
-  trace_data_add_event(&td, a, &ev0);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev0);
 
   // [10, 50] - nested in ev0
   TraceEvent ev1 = {};
   ev1.ts = 10;
   ev1.dur = 40;
-  trace_data_add_event(&td, a, &ev1);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev1);
 
   // [10, 20] - nested in ev1, same start time as ev1 (if dur is shorter)
   TraceEvent ev2 = {};
   ev2.ts = 10;
   ev2.dur = 10;
-  trace_data_add_event(&td, a, &ev2);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev2);
 
   // [60, 90] - nested in ev0, sequential to ev1
   TraceEvent ev3 = {};
   ev3.ts = 60;
   ev3.dur = 30;
-  trace_data_add_event(&td, a, &ev3);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev3);
 
   // [110, 120] - sequential to ev0
   TraceEvent ev4 = {};
   ev4.ts = 110;
   ev4.dur = 10;
-  trace_data_add_event(&td, a, &ev4);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev4);
 
   Track t = {};
   for (size_t i = 0; i < 5; i++) {
@@ -201,19 +202,19 @@ TEST(TrackTest, CalculateDepthsSiblings) {
   TraceEvent ev0 = {};
   ev0.ts = 0;
   ev0.dur = 100;
-  trace_data_add_event(&td, a, &ev0);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev0);
 
   // Child 1 [10, 50]
   TraceEvent ev1 = {};
   ev1.ts = 10;
   ev1.dur = 40;
-  trace_data_add_event(&td, a, &ev1);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev1);
 
   // Child 2 [50, 100] - starts when ev1 ends, ends when ev0 ends
   TraceEvent ev2 = {};
   ev2.ts = 50;
   ev2.dur = 50;
-  trace_data_add_event(&td, a, &ev2);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev2);
 
   Track t = {};
   for (size_t i = 0; i < 3; i++) {
@@ -240,12 +241,12 @@ TEST(TrackTest, CalculateDepthsDuplicates) {
   TraceEvent ev0 = {};
   ev0.ts = 0;
   ev0.dur = 100;
-  trace_data_add_event(&td, a, &ev0);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev0);
 
   TraceEvent ev1 = {};
   ev1.ts = 0;
   ev1.dur = 100;
-  trace_data_add_event(&td, a, &ev1);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev1);
 
   Track t = {};
   for (size_t i = 0; i < 2; i++) {
@@ -272,19 +273,19 @@ TEST(TrackTest, CalculateDepthsNonStrict) {
   TraceEvent ev0 = {};
   ev0.ts = 0;
   ev0.dur = 100;
-  trace_data_add_event(&td, a, &ev0);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev0);
 
   // Child [10, 110] - outlives parent!
   TraceEvent ev1 = {};
   ev1.ts = 10;
   ev1.dur = 100;
-  trace_data_add_event(&td, a, &ev1);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev1);
 
   // New [105, 120] - sequential to ev0, should be at depth 0
   TraceEvent ev2 = {};
   ev2.ts = 105;
   ev2.dur = 15;
-  trace_data_add_event(&td, a, &ev2);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev2);
 
   Track t = {};
   for (size_t i = 0; i < 3; i++) {
@@ -310,43 +311,43 @@ TEST(TrackTest, CalculateDepthsComprehensive) {
   // Scenario 1: Strict Nesting (A [B [C]])
   // ev0: [0, 100]
   TraceEvent ev0 = {}; ev0.ts = 0; ev0.dur = 100;
-  trace_data_add_event(&td, a, &ev0);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev0);
   // ev1: [10, 50] - child of ev0
   TraceEvent ev1 = {}; ev1.ts = 10; ev1.dur = 40;
-  trace_data_add_event(&td, a, &ev1);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev1);
   // ev2: [20, 30] - child of ev1
   TraceEvent ev2 = {}; ev2.ts = 20; ev2.dur = 10;
-  trace_data_add_event(&td, a, &ev2);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev2);
 
   // Scenario 2: Non-Strict Overlap (Outliving Parent)
   // ev3: [110, 150]
   TraceEvent ev3 = {}; ev3.ts = 110; ev3.dur = 40;
-  trace_data_add_event(&td, a, &ev3);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev3);
   // ev4: [120, 160] - overlaps ev3, but ends LATER. Should be depth 0.
   TraceEvent ev4 = {}; ev4.ts = 120; ev4.dur = 40;
-  trace_data_add_event(&td, a, &ev4);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev4);
 
   // Scenario 3: Multiple Siblings inside Parent
   // ev5: [200, 300] - Parent
   TraceEvent ev5 = {}; ev5.ts = 200; ev5.dur = 100;
-  trace_data_add_event(&td, a, &ev5);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev5);
   // ev6: [210, 240] - child of ev5
   TraceEvent ev6 = {}; ev6.ts = 210; ev6.dur = 30;
-  trace_data_add_event(&td, a, &ev6);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev6);
   // ev7: [250, 290] - child of ev5, sequential to ev6
   TraceEvent ev7 = {}; ev7.ts = 250; ev7.dur = 40;
-  trace_data_add_event(&td, a, &ev7);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev7);
 
   // Scenario 4: "Stepping Down" (Overlapping stairs)
   // ev8: [400, 500]
   TraceEvent ev8 = {}; ev8.ts = 400; ev8.dur = 100;
-  trace_data_add_event(&td, a, &ev8);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev8);
   // ev9: [410, 510] - overlaps ev8, same level
   TraceEvent ev9 = {}; ev9.ts = 410; ev9.dur = 100;
-  trace_data_add_event(&td, a, &ev9);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev9);
   // ev10: [420, 520] - overlaps ev9, same level
   TraceEvent ev10 = {}; ev10.ts = 420; ev10.dur = 100;
-  trace_data_add_event(&td, a, &ev10);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev10);
 
   Track t = {};
   for (size_t i = 0; i < 11; i++) {

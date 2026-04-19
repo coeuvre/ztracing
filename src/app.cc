@@ -12,11 +12,26 @@
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"
 
+static void app_apply_theme(App* app, const Theme* theme) {
+  if (app->theme == theme) return;
+  app->theme = theme;
+  if (theme == theme_get_dark()) {
+    ImGui::StyleColorsDark();
+  } else {
+    ImGui::StyleColorsLight();
+  }
+
+  // Re-compute all event colors when theme changes
+  for (size_t i = 0; i < app->trace_data.events.size; i++) {
+    trace_data_update_event_color(&app->trace_data, (uint32_t)i, app->theme);
+  }
+}
+
 void app_init(App* app, Allocator allocator) {
   *app = {};
   app->allocator = allocator;
-  app->theme = theme_get_dark();
-  ImGui::StyleColorsDark();
+  app->theme_mode = THEME_MODE_AUTO;
+  app_apply_theme(app, platform_is_dark_mode() ? theme_get_dark() : theme_get_light());
   app->power_save_mode = true;
   app->first_frame = true;
   app->show_demo_window = false;
@@ -354,29 +369,17 @@ void app_update(App* app) {
     if (ImGui::Begin("Status")) {
       ImGui::Checkbox("Power-save Mode", &app->power_save_mode);
 
-      static int current_theme_idx = 0; // 0 for Dark, 1 for Light
-      const char* theme_names[] = {"Dark", "Light"};
+      int current_theme_idx = (int)app->theme_mode;
+      const char* theme_names[] = {"Auto", "Dark", "Light"};
       if (ImGui::Combo("Theme", &current_theme_idx, theme_names, IM_ARRAYSIZE(theme_names))) {
-        if (current_theme_idx == 0) {
-          app->theme = theme_get_dark();
-          ImGui::StyleColorsDark();
+        app->theme_mode = (ThemeMode)current_theme_idx;
+        if (app->theme_mode == THEME_MODE_DARK) {
+          app_apply_theme(app, theme_get_dark());
+        } else if (app->theme_mode == THEME_MODE_LIGHT) {
+          app_apply_theme(app, theme_get_light());
         } else {
-          app->theme = theme_get_light();
-          ImGui::StyleColorsLight();
-        }
-
-        // Re-compute all event colors when theme changes
-        for (size_t i = 0; i < app->trace_data.events.size; i++) {
-          TraceEventPersisted& e = app->trace_data.events[i];
-          TraceEvent temp_event = {};
-          temp_event.name = trace_data_get_string(&app->trace_data, e.name_offset);
-          temp_event.cname = trace_data_get_string(&app->trace_data, e.cname_offset);
-          
-          // Use a dummy compute function or exposed logic to update color
-          // For now we need a way to re-compute. Let's add a helper in trace_data.cc
-          // Or just expose compute_event_color.
-          // Since compute_event_color is static in trace_data.cc, let's add a public update function.
-          trace_data_update_event_color(&app->trace_data, (uint32_t)i, app->theme);
+          // THEME_MODE_AUTO: handled in app_update or immediately here
+          app_apply_theme(app, platform_is_dark_mode() ? theme_get_dark() : theme_get_light());
         }
       }
 
@@ -426,6 +429,12 @@ void app_update(App* app) {
       }
     }
     ImGui::End();
+  }
+}
+
+void app_on_theme_changed(App* app) {
+  if (app->theme_mode == THEME_MODE_AUTO) {
+    app_apply_theme(app, platform_is_dark_mode() ? theme_get_dark() : theme_get_light());
   }
 }
 

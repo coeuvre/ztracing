@@ -1,4 +1,5 @@
 #include "src/trace_data.h"
+#include "src/colors.h"
 
 #include <gtest/gtest.h>
 
@@ -12,7 +13,7 @@ TEST(TraceDataTest, Basic) {
       {STR("key2"), STR("val2")},
   };
 
-  TraceEvent ev;
+  TraceEvent ev = {};
   ev.name = STR("event1");
   ev.cat = STR("cat1");
   ev.ph = STR("X");
@@ -23,7 +24,7 @@ TEST(TraceDataTest, Basic) {
   ev.args = args;
   ev.args_count = 2;
 
-  trace_data_add_event(&td, a, &ev);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev);
 
   EXPECT_EQ(td.events.size, 1u);
   EXPECT_EQ(td.args.size, 2u);
@@ -56,7 +57,7 @@ TEST(TraceDataTest, Clear) {
 
   TraceEvent ev = {};
   ev.name = STR("foo");
-  trace_data_add_event(&td, a, &ev);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev);
 
   EXPECT_EQ(td.events.size, 1u);
 
@@ -67,7 +68,7 @@ TEST(TraceDataTest, Clear) {
   EXPECT_GT(td.string_pool.size, 0u);
   EXPECT_EQ(td.string_pool[0], '\0');
 
-  trace_data_add_event(&td, a, &ev);
+  trace_data_add_event(&td, a, theme_get_dark(), &ev);
   EXPECT_EQ(td.events.size, 1u);
   EXPECT_TRUE(str_eq(trace_data_get_string(&td, td.events[0].name_offset), STR("foo")));
 
@@ -89,7 +90,7 @@ TEST(TraceDataTest, MemoryLeak) {
     ev.args = args;
     ev.args_count = 1;
 
-    trace_data_add_event(&td, a, &ev);
+    trace_data_add_event(&td, a, theme_get_dark(), &ev);
     trace_data_deinit(&td, a);
   }
 

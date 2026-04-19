@@ -8,8 +8,15 @@
 #include "src/track.h"
 #include "src/colors.h"
 
+enum ThemeMode {
+  THEME_MODE_AUTO = 0,
+  THEME_MODE_DARK = 1,
+  THEME_MODE_LIGHT = 2,
+};
+
 struct App {
   Allocator allocator;
+  ThemeMode theme_mode;
   const Theme* theme;
   bool power_save_mode;
   bool first_frame;
@@ -43,6 +50,9 @@ void app_deinit(App* app);
 
 // Updates the application state and UI for a single frame.
 void app_update(App* app);
+
+// Notifies the application that the system theme has changed.
+void app_on_theme_changed(App* app);
 
 // Begins a new loading session.
 void app_begin_session(App* app, int session_id, const char* filename);

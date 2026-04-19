@@ -98,6 +98,13 @@
     Module.ccall('ztracing_init', 'number', ['string'], [canvasSelector]);
     await loadFont(fontUrl);
     
+    if (window.matchMedia) {
+      const media = window.matchMedia('(prefers-color-scheme: dark)');
+      media.addEventListener('change', () => {
+        Module.ccall('ztracing_on_theme_changed', null, [], []);
+      });
+    }
+
     if (trace) {
       loadFromStream(trace.stream, trace.name, trace.size, trace.contentType);
     } else {

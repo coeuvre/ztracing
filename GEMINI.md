@@ -61,6 +61,8 @@
     - **Dark Theme**: Muted, professional palette with dark grey tracks and solid black background.
     - **Light Theme**: Based on "MRS. L'S CLASSROOM" palette with brightened green/teal for optimal legibility of black text.
     - **Dynamic Switching**: Themes can be toggled via the "Status" window, automatically updating both application-specific colors and ImGui's built-in styles.
+    - **Auto Mode (Default)**: Tracks the system's preferred color scheme.
+    - **Event-Driven Updates**: Uses `matchMedia.addEventListener` in `ztracing.js` to notify the application of system theme changes via the `ztracing_on_theme_changed` WASM export, avoiding unnecessary polling.
 - **Event Coloring**:
     - **cname Support**: Standard Chrome Trace `cname` values are mapped to specific theme-appropriate colors.
     - **Name Hashing**: Consistent fallback coloring using FNV-1a hash of the event name to select from a balanced palette.

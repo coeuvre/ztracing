@@ -123,4 +123,9 @@ EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(int session_id,
   app_handle_file_chunk(&g_app, session_id, data, (size_t)size, is_eof);
   imgui_impl_wasm_request_update();
 }
+
+EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed() {
+  app_on_theme_changed(&g_app);
+  imgui_impl_wasm_request_update();
+}
 }
