@@ -1,10 +1,24 @@
 #include "src/imgui_impl_wasm.h"
 
+#include <emscripten.h>
 #include <emscripten/html5.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "src/allocator.h"
+
+EM_JS(void, get_canvas_pos, (const char* selector, float* x, float* y), {
+  var selectorStr = UTF8ToString(selector);
+  var el = document.querySelector(selectorStr);
+  if (el) {
+    var rect = el.getBoundingClientRect();
+    window.Module.HEAPF32[x >> 2] = rect.left;
+    window.Module.HEAPF32[y >> 2] = rect.top;
+  } else {
+    window.Module.HEAPF32[x >> 2] = 0;
+    window.Module.HEAPF32[y >> 2] = 0;
+  }
+});
 
 struct BackendData {
   Allocator allocator;
@@ -52,22 +66,38 @@ static EM_BOOL on_mouse_move(int event_type,
                              const EmscriptenMouseEvent* mouse_event,
                              void* user_data) {
   (void)event_type;
-  (void)user_data;
+  BackendData* bd = (BackendData*)user_data;
   ImGuiIO& io = ImGui::GetIO();
-  io.AddMousePosEvent((float)mouse_event->targetX, (float)mouse_event->targetY);
+
+  float x, y;
+  get_canvas_pos(bd->canvas_selector, &x, &y);
+  io.AddMousePosEvent((float)mouse_event->clientX - x,
+                      (float)mouse_event->clientY - y);
+
   imgui_impl_wasm_request_update();
-  return EM_TRUE;
+  return EM_FALSE;
 }
 
 static EM_BOOL on_mouse_button(int event_type,
                                const EmscriptenMouseEvent* mouse_event,
                                void* user_data) {
-  (void)user_data;
+  BackendData* bd = (BackendData*)user_data;
   ImGuiIO& io = ImGui::GetIO();
+
+  float x, y;
+  get_canvas_pos(bd->canvas_selector, &x, &y);
+  io.AddMousePosEvent((float)mouse_event->clientX - x,
+                      (float)mouse_event->clientY - y);
+
   io.AddMouseButtonEvent(mouse_event->button,
                          event_type == EMSCRIPTEN_EVENT_MOUSEDOWN);
+
   imgui_impl_wasm_request_update();
-  return EM_TRUE;
+
+  if (event_type == EMSCRIPTEN_EVENT_MOUSEDOWN) {
+    return EM_TRUE;
+  }
+  return EM_FALSE;
 }
 
 static EM_BOOL on_wheel(int event_type, const EmscriptenWheelEvent* wheel_event,
@@ -162,9 +192,9 @@ static EM_BOOL on_key(int event_type, const EmscriptenKeyboardEvent* key_event,
 
   imgui_impl_wasm_request_update();
 
-  // "Polite" passthrough: allow browser to handle keys by default (e.g. F12, F5)
-  // Only block keys that would cause disruptive browser behavior (scrolling,
-  // focus change) when ImGui explicitly wants the keyboard.
+  // "Polite" passthrough: allow browser to handle keys by default (e.g. F12,
+  // F5) Only block keys that would cause disruptive browser behavior
+  // (scrolling, focus change) when ImGui explicitly wants the keyboard.
   if (io.WantCaptureKeyboard && is_disruptive_browser_key(key)) {
     return EM_TRUE;
   }
@@ -199,13 +229,13 @@ bool imgui_impl_wasm_init(const char* canvas_selector, Allocator allocator) {
   io.BackendPlatformName = "imgui_impl_wasm";
   io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;
 
-  emscripten_set_mousemove_callback(canvas_selector, nullptr, EM_FALSE,
-                                    on_mouse_move);
-  emscripten_set_mousedown_callback(canvas_selector, nullptr, EM_FALSE,
+  emscripten_set_mousemove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, (void*)bd,
+                                    EM_FALSE, on_mouse_move);
+  emscripten_set_mousedown_callback(canvas_selector, (void*)bd, EM_FALSE,
                                     on_mouse_button);
-  emscripten_set_mouseup_callback(canvas_selector, nullptr, EM_FALSE,
-                                  on_mouse_button);
-  emscripten_set_wheel_callback(canvas_selector, nullptr, EM_FALSE, on_wheel);
+  emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, (void*)bd,
+                                  EM_FALSE, on_mouse_button);
+  emscripten_set_wheel_callback(canvas_selector, (void*)bd, EM_FALSE, on_wheel);
 
   emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
                                   EM_FALSE, on_key);
