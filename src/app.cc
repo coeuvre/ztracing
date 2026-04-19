@@ -54,6 +54,7 @@ void app_deinit(App* app) {
   array_list_deinit(&app->tracks, app->allocator);
   track_renderer_state_deinit(&app->track_renderer_state, app->allocator);
   array_list_deinit(&app->render_blocks, app->allocator);
+  array_list_deinit(&app->hover_matches, app->allocator);
 }
 
 static void app_organize_tracks(App* app) {
@@ -112,7 +113,7 @@ static void app_draw_event(App* app, ImDrawList* draw_list, float x1, float x2,
   const Theme& theme = *app->theme;
   float lane_height = y2 - y1 + 1.0f;
 
-  float border_thickness = is_selected ? 3.0f : 1.0f;
+  float border_thickness = is_selected ? TRACK_MIN_EVENT_WIDTH : 1.0f;
   float min_width = 2.0f * border_thickness + 1.0f;
   if (x2 - x1 < min_width) x2 = x1 + min_width;
 
@@ -255,10 +256,11 @@ void app_update(App* app) {
 
           float cumulative_y = 0.0f;
           bool sel_found = false;
-          bool something_hovered = false;
           float sel_x1 = 0, sel_x2 = 0, sel_y1 = 0, sel_y2 = 0;
           ImU32 sel_col = 0;
           StringRef sel_name_ref = 0;
+
+          array_list_clear(&app->hover_matches);
 
           for (size_t i = 0; i < app->tracks.size; i++) {
             const Track& t = app->tracks[i];
@@ -317,6 +319,7 @@ void app_update(App* app) {
             if (ImGui::IsMouseHoveringRect(text_pos,
                                            ImVec2(text_pos.x + text_size.x,
                                                   text_pos.y + text_size.y))) {
+              ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
               ImGui::BeginTooltip();
               ImGui::Text("PID: %d", t.pid);
               ImGui::Text("TID: %d", t.tid);
@@ -326,10 +329,8 @@ void app_update(App* app) {
                             thread_name.buf);
               }
               ImGui::EndTooltip();
+              ImGui::PopStyleVar();
             }
-
-            size_t start_idx = track_find_visible_start_index(
-                &t, &app->trace_data, (int64_t)app->viewport.start_time);
 
             track_compute_render_blocks(
                 &t, &app->trace_data, app->viewport.start_time,
@@ -346,29 +347,18 @@ void app_update(App* app) {
               float y1 = track_pos.y + (float)(rb.depth + 1) * lane_height;
               float y2 = y1 + lane_height - 1.0f;
 
-              bool is_hovered = false;
-              if (track_list_hovered && mouse_in_track_y) {
-                // For hovering, we use a slightly larger area to make it easier
-                // to select tiny events
-                float hover_x1 = rb.x1;
-                float hover_x2 = rb.x2;
-                if (hover_x2 - hover_x1 < 3.0f) {
-                  hover_x2 = hover_x1 + 3.0f;
-                }
-                if (mouse_pos.x >= hover_x1 && mouse_pos.x < hover_x2 &&
-                    mouse_pos.y >= y1 && mouse_pos.y < y2) {
-                  is_hovered = true;
-                  something_hovered = true;
-                }
-              }
+              float x1 = rb.x1;
+              float x2 = rb.x2;
+              float border_thickness = rb.is_selected ? TRACK_MIN_EVENT_WIDTH : 1.0f;
+              float min_width = 2.0f * border_thickness + 1.0f;
+              if (x2 - x1 < min_width) x2 = x1 + min_width;
 
-              ImU32 col = rb.color;
-              if (is_hovered && !rb.is_selected) {
-                ImVec4 col_v = ImGui::ColorConvertU32ToFloat4(col);
-                col_v.x = std::min(col_v.x + 0.15f, 1.0f);
-                col_v.y = std::min(col_v.y + 0.15f, 1.0f);
-                col_v.z = std::min(col_v.z + 0.15f, 1.0f);
-                col = ImGui::ColorConvertFloat4ToU32(col_v);
+              if (track_list_hovered && mouse_in_track_y) {
+                if (mouse_pos.x >= x1 && mouse_pos.x < x2 &&
+                    mouse_pos.y >= y1 && mouse_pos.y < y2) {
+                  HoverMatch hm = {i, k, y1, y2, rb};
+                  array_list_push_back(&app->hover_matches, app->allocator, hm);
+                }
               }
 
               if (rb.is_selected) {
@@ -377,41 +367,139 @@ void app_update(App* app) {
                 sel_x2 = rb.x2;
                 sel_y1 = y1;
                 sel_y2 = y2;
-                sel_col = col;
+                sel_col = rb.color;
                 sel_name_ref = rb.name_ref;
               } else {
-                app_draw_event(app, track_draw_list, rb.x1, rb.x2, y1, y2, col,
-                               rb.is_selected, rb.name_ref, inner_width,
+                app_draw_event(app, track_draw_list, rb.x1, rb.x2, y1, y2,
+                               rb.color, false, rb.name_ref, inner_width,
                                tracks_canvas_pos.x);
-              }
-
-              if (is_hovered && ImGui::IsMouseReleased(0) && !was_drag) {
-                // Re-calculate which event was clicked
-                // (This is a bit inefficient but it's only on click)
-                for (size_t idx_k = start_idx; idx_k < t.event_indices.size;
-                     idx_k++) {
-                  size_t event_idx = t.event_indices[idx_k];
-                  const TraceEventPersisted& e =
-                      app->trace_data.events[event_idx];
-                  if (e.ts > (int64_t)app->viewport.end_time) break;
-                  if (t.depths[idx_k] != rb.depth) continue;
-
-                  float ex1 =
-                      (float)(tracks_canvas_pos.x +
-                              ((double)e.ts - app->viewport.start_time) *
-                                  inv_duration);
-                  float ex2 = (float)(ex1 + (double)e.dur * inv_duration);
-                  if (ex2 - ex1 < 3.0f) ex2 = ex1 + 3.0f;
-
-                  if (mouse_pos.x >= ex1 && mouse_pos.x < ex2) {
-                    app->selected_event_index = (int64_t)event_idx;
-                    break;
-                  }
-                }
               }
             }
 
             cumulative_y += track_height;
+          }
+
+          // Handle hover highlighting and tooltip
+          bool something_hovered = false;
+          if (app->hover_matches.size > 0) {
+            something_hovered = true;
+            // Best match is the one drawn last
+            const HoverMatch* best_hm =
+                &app->hover_matches[app->hover_matches.size - 1];
+
+            const TrackRenderBlock& rb = best_hm->rb;
+            const Track& t = app->tracks[best_hm->track_idx];
+
+            // Re-draw hovered block with highlight
+            ImU32 col = rb.color;
+            if (!rb.is_selected) {
+              ImVec4 col_v = ImGui::ColorConvertU32ToFloat4(col);
+              col_v.x = std::min(col_v.x + 0.15f, 1.0f);
+              col_v.y = std::min(col_v.y + 0.15f, 1.0f);
+              col_v.z = std::min(col_v.z + 0.15f, 1.0f);
+              col = ImGui::ColorConvertFloat4ToU32(col_v);
+
+              app_draw_event(app, track_draw_list, rb.x1, rb.x2, best_hm->y1,
+                             best_hm->y2, col, false, rb.name_ref, inner_width,
+                             tracks_canvas_pos.x);
+            }
+
+            // Show tooltip
+            if (rb.count == 1) {
+              size_t start_idx = track_find_visible_start_index(
+                  &t, &app->trace_data, (int64_t)app->viewport.start_time);
+              for (size_t idx_k = start_idx; idx_k < t.event_indices.size;
+                   idx_k++) {
+                size_t event_idx = t.event_indices[idx_k];
+                const TraceEventPersisted& e =
+                    app->trace_data.events[event_idx];
+                if (e.ts > (int64_t)app->viewport.end_time) break;
+                if (t.depths[idx_k] != rb.depth) continue;
+
+                float ex1 =
+                    (float)(tracks_canvas_pos.x +
+                            ((double)e.ts - app->viewport.start_time) *
+                                inv_duration);
+                float ex2 = (float)(ex1 + (double)e.dur * inv_duration);
+                if (ex2 - ex1 < TRACK_MIN_EVENT_WIDTH)
+                  ex2 = ex1 + TRACK_MIN_EVENT_WIDTH;
+
+                if (mouse_pos.x >= ex1 && mouse_pos.x < ex2) {
+                  Str name = trace_data_get_string(&app->trace_data, e.name_ref);
+                  Str cat = trace_data_get_string(&app->trace_data, e.cat_ref);
+
+                  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
+                  ImGui::BeginTooltip();
+                  ImGui::TextUnformatted(name.buf, name.buf + name.len);
+                  if (cat.len > 0) {
+                    ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                                       "Category: %.*s", (int)cat.len,
+                                       cat.buf);
+                  }
+                  ImGui::Separator();
+
+                  char ts_buf[32];
+                  format_duration(ts_buf, sizeof(ts_buf),
+                                  (double)e.ts - (double)app->viewport.min_ts);
+                  ImGui::Text("Start: %s", ts_buf);
+
+                  char dur_buf[32];
+                  format_duration(dur_buf, sizeof(dur_buf), (double)e.dur);
+                  ImGui::Text("Duration: %s", dur_buf);
+
+                  if (e.args_count > 0) {
+                    ImGui::Separator();
+                    for (uint32_t arg_idx = 0; arg_idx < e.args_count;
+                         arg_idx++) {
+                      const TraceArgPersisted& arg =
+                          app->trace_data.args[e.args_offset + arg_idx];
+                      Str key =
+                          trace_data_get_string(&app->trace_data, arg.key_ref);
+                      Str val =
+                          trace_data_get_string(&app->trace_data, arg.val_ref);
+                      ImGui::Text("%.*s: %.*s", (int)key.len, key.buf,
+                                  (int)val.len, val.buf);
+                    }
+                  }
+                  ImGui::EndTooltip();
+                  ImGui::PopStyleVar();
+                  break;
+                }
+              }
+            } else {
+              ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
+              ImGui::BeginTooltip();
+              ImGui::Text("%u merged events", rb.count);
+              ImGui::EndTooltip();
+              ImGui::PopStyleVar();
+            }
+
+            // Handle selection
+            if (ImGui::IsMouseReleased(0) && !was_drag) {
+              size_t start_idx = track_find_visible_start_index(
+                  &t, &app->trace_data, (int64_t)app->viewport.start_time);
+              for (size_t idx_k = start_idx; idx_k < t.event_indices.size;
+                   idx_k++) {
+                size_t event_idx = t.event_indices[idx_k];
+                const TraceEventPersisted& e =
+                    app->trace_data.events[event_idx];
+                if (e.ts > (int64_t)app->viewport.end_time) break;
+                if (t.depths[idx_k] != rb.depth) continue;
+
+                float ex1 =
+                    (float)(tracks_canvas_pos.x +
+                            ((double)e.ts - app->viewport.start_time) *
+                                inv_duration);
+                float ex2 = (float)(ex1 + (double)e.dur * inv_duration);
+                if (ex2 - ex1 < TRACK_MIN_EVENT_WIDTH)
+                  ex2 = ex1 + TRACK_MIN_EVENT_WIDTH;
+
+                if (mouse_pos.x >= ex1 && mouse_pos.x < ex2) {
+                  app->selected_event_index = (int64_t)event_idx;
+                  break;
+                }
+              }
+            }
           }
 
           if (sel_found) {

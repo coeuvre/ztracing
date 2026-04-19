@@ -15,6 +15,13 @@ enum ThemeMode {
   THEME_MODE_LIGHT = 2,
 };
 
+struct HoverMatch {
+  size_t track_idx;
+  size_t block_idx;
+  float y1, y2;
+  TrackRenderBlock rb;
+};
+
 struct App {
   Allocator allocator;
   ThemeMode theme_mode;
@@ -42,6 +49,7 @@ struct App {
   ArrayList<Track> tracks;
   TrackRendererState track_renderer_state;
   ArrayList<TrackRenderBlock> render_blocks;
+  ArrayList<HoverMatch> hover_matches;
   int64_t selected_event_index;
 };
 

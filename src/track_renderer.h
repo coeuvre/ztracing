@@ -7,18 +7,23 @@
 #include "src/trace_data.h"
 #include "src/track.h"
 
+#define TRACK_MIN_EVENT_WIDTH 3.0f
+
 struct TrackRenderBlock {
   float x1;
   float x2;
   uint32_t color;
-  StringRef name_ref;  // 0 if it's a merged block
+  StringRef name_ref;
   uint32_t depth;
+  uint32_t count;
   bool is_selected;
 };
 
 struct TrackMergeBlock {
   float x1, x2;
   uint32_t col;
+  StringRef name_ref;
+  uint32_t count;
   bool active;
 };
 

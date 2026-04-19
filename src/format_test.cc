@@ -42,7 +42,7 @@ TEST(FormatTest, FormatDurationWithInterval) {
 
   // Large value, large interval -> s
   format_duration(buf, sizeof(buf), 136567000.0, 1000000.0);
-  EXPECT_STREQ(buf, "136.567 s");
+  EXPECT_STREQ(buf, "136.57 s");
 
   // Large value, medium interval -> ms
   format_duration(buf, sizeof(buf), 136567000.0, 1000.0);

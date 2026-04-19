@@ -43,8 +43,11 @@ void track_calculate_depths(Track* t, const TraceData* td, Allocator a) {
     }
 
     // Find the deepest parent that strictly contains this event.
-    // Since the stack might contain events that are not strictly nested in each
-    // other (due to our "move up" rule), we search backwards.
+    // Events that are not strictly nested in each other are allowed to share
+    // the same lane (depth), even if they overlap in time. This creates a
+    // denser view similar to modern profilers where the primary hierarchy is
+    // containment, and temporal overlaps within a lane are handled by drawing
+    // order (Z-order).
     uint32_t depth = 0;
     for (int j = (int)stack.size - 1; j >= 0; j--) {
       if (stack[(size_t)j].end >= end_ts) {

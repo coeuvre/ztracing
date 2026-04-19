@@ -59,7 +59,7 @@
     - **Sticky Labels**: Headers use "sticky" positioning to keep the thread name visible while panning horizontally.
     - **Details Tooltip**: Hovering over the thread name label displays a detailed tooltip containing the **PID**, **TID**, and full **Name**.
 - **Track Sorting**: Tracks are automatically organized using trace metadata. They are sorted primarily by **thread_sort_index** (ascending), with **PID** and **TID** as stable fallbacks.
-- **Downwards Flame Graph**: Overlapping events within a track are organized into hierarchical lanes. An event is placed in a lower lane only if it is strictly contained within a parent event (Strict Containment Hierarchy). Non-strictly nested events move up to share the highest available lane.
+- **Downwards Flame Graph**: Overlapping events within a track are organized into hierarchical lanes. An event is placed in a lower lane only if it is strictly contained within a parent event (Strict Containment Hierarchy). Non-strictly nested events move up to share the highest available lane, even if they temporally overlap. This creates a denser, containment-focused view similar to modern profilers.
 - **Proportions**:
     - **Lane Height**: **30px** (increased from 20px for better legibility and more spacious interaction).
     - **Ruler Height**: **30px**.
@@ -70,13 +70,18 @@
 - **Rendering Optimization**:
     - **Visibility Culling (Horizontal)**: Events are grouped into tracks. Each track maintains a `max_dur` (maximum event duration) and sorted `event_indices`. Binary search is used to find the first potentially visible event at `viewport_start - max_dur`, ensuring partially visible events are correctly rendered.
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
-    - **Level of Detail (LOD)**: To handle massive traces (10M+ events), the renderer skips events that are "tiny" (sub-pixel) and don't advance the visual horizontal range by at least 0.5 pixels. Currently selected events always bypass LOD to remain visible and interactive.
-    - **Event Coalescing**: Adjacent "tiny" events (typically < 2.0 pixels) that share the same color are merged into a single rendering block. This drastically reduces the number of ImGui primitives and draw calls in dense regions of the trace.
+    - **Level of Detail (LOD)**: To handle massive traces (10M+ events), the renderer skips "tiny" events (typically < 1.0 pixel wide) that fall into the same pixel range as a previously drawn block in the same lane.
+    - **Event Coalescing**: Consecutive events that are very close to each other (typically within 0.5 - 3.0 pixels) are merged into a single rendering block. 
+        - **Color Agnostic**: Different colored events can be merged when they are too small to be visually distinguished, significantly reducing ImGui primitives in dense areas.
+        - **Bucket Limit**: Merged blocks are capped at a maximum width (typically 3.0 pixels) to preserve a reasonably accurate representation of event density.
     - **Selection & Hover**:
-        - **Precision**: Hit-testing for tiny events uses an expanded 3.0-pixel area to ensure reliable selection even at high zoom-out levels.
+        - **Hit-Testing**: Hover detection perfectly aligns with the visual representation, including the minimum rendering width (3.0px). If an event is visible, it is interactive.
+        - **Visual Priority & Z-Order**: When multiple events overlap in a lane (due to the "move up" rule) or are too small to distinguish, the UI prioritizes the event that was **drawn last** for both highlighting and tooltips.
+        - **Tooltips**: Hovering over an event displays a rich tooltip with `10.0f` padding:
+            - **Single Events**: Shows full name, category, relative start time (from trace start), duration, and all associated arguments.
+            - **Merged Blocks**: Shows the exact number of coalesced events (e.g., "5 merged events").
         - **Deselection**: Clicking on an empty area of the track viewport deselects the current event.
         - **Drag Protection**: Selection and deselection only trigger on a clean click (mouse release without exceeding the `MouseDragThreshold`), preventing accidental changes while panning.
-        - **Visual Priority**: The currently selected event is always drawn last (on top of all other events and track headers) to maintain visibility in dense or overlapping regions.
     - **Text Rendering**: Optimized via CPU-side clipping using the `ImDrawList::AddText` overload with a `cpu_fine_clip_rect`. This avoids draw call splits from `PushClipRect` and is only applied when text actually exceeds the available area.
     - **Event Names**: Names are vertically centered within event blocks. Horizontal padding (`6.0f`) is applied to both sides. "Sticky" positioning is used to keep names visible at the left edge of the viewport when an event's start is off-screen.
 - **Theming**:

@@ -16,7 +16,7 @@ const Theme* theme_get_dark() {
       IM_COL32(255, 255, 255, 50),   // event_border
       IM_COL32(255, 255, 255, 255),  // event_border_selected
       IM_COL32(255, 255, 255, 255),  // event_text
-      IM_COL32(0, 0, 0, 255),        // event_text_selected
+      IM_COL32(255, 255, 255, 255),  // event_text_selected
       IM_COL32(180, 160, 0,
                255),  // event_selected (Muted gold instead of bright yellow)
 

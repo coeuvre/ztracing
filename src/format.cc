@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 void format_duration(char* buf, size_t buf_size, double us,
                      double interval_us) {
@@ -15,13 +16,30 @@ void format_duration(char* buf, size_t buf_size, double us,
     abs_interval = (us < 0) ? -us : us;
   }
 
+  const char* unit = "us";
+  double val = us;
+
   if (abs_interval >= 1000000.0) {
-    snprintf(buf, buf_size, "%.10g s", us / 1000000.0);
+    unit = "s";
+    val = us / 1000000.0;
   } else if (abs_interval >= 1000.0) {
-    snprintf(buf, buf_size, "%.10g ms", us / 1000.0);
-  } else {
-    snprintf(buf, buf_size, "%.10g us", us);
+    unit = "ms";
+    val = us / 1000.0;
   }
+
+  int n = snprintf(buf, buf_size, "%.2f", val);
+  if (n > 0 && n < (int)buf_size) {
+    char* p = buf + n - 1;
+    while (p > buf && *p == '0') {
+      *p-- = '\0';
+    }
+    if (p > buf && *p == '.') {
+      *p-- = '\0';
+    }
+  }
+
+  size_t len = strlen(buf);
+  snprintf(buf + len, buf_size - len, " %s", unit);
 }
 
 double calculate_tick_interval(double duration, double width,
