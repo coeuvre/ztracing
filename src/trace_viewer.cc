@@ -138,8 +138,8 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
 static void trace_viewer_draw_counter_track(
     TraceViewer* tv, TraceData* td, ImDrawList* draw_list, const Track& t,
     ImVec2 pos, float width, float height, double viewport_start,
-    double viewport_end, const Theme& theme, Allocator allocator) {
-  (void)theme;
+    double viewport_end, double viewport_min_ts, const Theme& theme,
+    ImVec2 mouse_pos, bool track_list_hovered, Allocator allocator) {
   if (t.event_indices.size == 0) return;
 
   double duration = viewport_end - viewport_start;
@@ -155,8 +155,13 @@ static void trace_viewer_draw_counter_track(
                                       width, pos.x, &state->counter_peaks,
                                       &tv->counter_render_blocks, allocator);
 
+  // Pass 1: Filled areas and hover highlight
   for (size_t i = 0; i < tv->counter_render_blocks.size; i++) {
     const CounterRenderBlock& rb = tv->counter_render_blocks[i];
+
+    bool hovered = track_list_hovered && mouse_pos.x >= rb.x1 &&
+                   mouse_pos.x < rb.x2 && mouse_pos.y >= pos.y &&
+                   mouse_pos.y < pos.y + height;
 
     // Draw stack
     double current_y_offset = 0.0;
@@ -171,6 +176,71 @@ static void trace_viewer_draw_counter_track(
                                  t.counter_colors[s_idx]);
         current_y_offset += val;
       }
+    }
+
+    if (hovered) {
+      draw_list->AddRectFilled(ImVec2(rb.x1, pos.y),
+                               ImVec2(rb.x2, pos.y + height),
+                               IM_COL32(255, 255, 255, 30));
+
+      if (rb.event_idx != (size_t)-1) {
+        const TraceEventPersisted& e = td->events[rb.event_idx];
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
+        ImGui::BeginTooltip();
+        char ts_buf[32];
+        format_duration(ts_buf, sizeof(ts_buf),
+                        (double)e.ts - (double)viewport_min_ts);
+        ImGui::Text("Time: %s", ts_buf);
+        ImGui::Separator();
+
+        double total = 0.0;
+        for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
+          StringRef key_ref = t.counter_series[s_idx];
+          double val = 0.0;
+          for (uint32_t arg_k = 0; arg_k < e.args_count; arg_k++) {
+            const TraceArgPersisted& arg = td->args[e.args_offset + arg_k];
+            if (arg.key_ref == key_ref) {
+              val = arg.val_double;
+              break;
+            }
+          }
+          Str key = trace_data_get_string(td, key_ref);
+          ImGui::Text("%.*s: %g", (int)key.len, key.buf, val);
+          total += val;
+        }
+        if (t.counter_series.size > 1) {
+          ImGui::Separator();
+          ImGui::Text("Total: %g", total);
+        }
+        ImGui::EndTooltip();
+        ImGui::PopStyleVar();
+      }
+    }
+  }
+
+  // Pass 2: Step lines
+  for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
+    float prev_y_top = -1.0f;
+    for (size_t i = 0; i < tv->counter_render_blocks.size; i++) {
+      const CounterRenderBlock& rb = tv->counter_render_blocks[i];
+
+      double cumulative_val = 0.0;
+      for (size_t j = 0; j <= s_idx; j++) {
+        cumulative_val += state->counter_peaks[i * t.counter_series.size + j];
+      }
+      float y_top =
+          (float)(pos.y + height - cumulative_val / max_total * height);
+
+      // Horizontal segment
+      draw_list->AddLine(ImVec2(rb.x1, y_top), ImVec2(rb.x2, y_top),
+                         theme.event_border);
+
+      // Vertical segment (connect to previous bucket)
+      if (prev_y_top != -1.0f && y_top != prev_y_top) {
+        draw_list->AddLine(ImVec2(rb.x1, prev_y_top), ImVec2(rb.x1, y_top),
+                           theme.event_border);
+      }
+      prev_y_top = y_top;
     }
   }
 }
@@ -378,59 +448,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
               tv, td, track_draw_list, t,
               ImVec2(track_pos.x, track_pos.y + lane_height), inner_width,
               track_height - lane_height, tv->viewport.start_time,
-              tv->viewport.end_time, theme, allocator);
-
-          // Counter Tooltip
-          if (track_list_hovered && mouse_pos.y >= track_pos.y + lane_height &&
-              mouse_pos.y < track_pos.y + track_height) {
-            double mouse_ts =
-                tv->viewport.start_time +
-                (double)(mouse_pos.x - tracks_canvas_pos.x) / inv_duration;
-
-            size_t start_idx = track_find_visible_start_index(
-                &t, td, (int64_t)tv->viewport.start_time);
-            size_t match_idx = (size_t)-1;
-            for (size_t k = start_idx; k < t.event_indices.size; k++) {
-              const TraceEventPersisted& e = td->events[t.event_indices[k]];
-              if (e.ts > (int64_t)mouse_ts) break;
-              match_idx = k;
-            }
-
-            if (match_idx != (size_t)-1) {
-              const TraceEventPersisted& e =
-                  td->events[t.event_indices[match_idx]];
-              ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
-                                  ImVec2(10.0f, 10.0f));
-              ImGui::BeginTooltip();
-              char ts_buf[32];
-              format_duration(ts_buf, sizeof(ts_buf),
-                              (double)e.ts - (double)tv->viewport.min_ts);
-              ImGui::Text("Time: %s", ts_buf);
-              ImGui::Separator();
-
-              double total = 0.0;
-              for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
-                StringRef key_ref = t.counter_series[s_idx];
-                double val = 0.0;
-                for (uint32_t arg_k = 0; arg_k < e.args_count; arg_k++) {
-                  const TraceArgPersisted& arg = td->args[e.args_offset + arg_k];
-                  if (arg.key_ref == key_ref) {
-                    val = arg.val_double;
-                    break;
-                  }
-                }
-                Str key = trace_data_get_string(td, key_ref);
-                ImGui::Text("%.*s: %g", (int)key.len, key.buf, val);
-                total += val;
-              }
-              if (t.counter_series.size > 1) {
-                ImGui::Separator();
-                ImGui::Text("Total: %g", total);
-              }
-              ImGui::EndTooltip();
-              ImGui::PopStyleVar();
-            }
-          }
+              tv->viewport.end_time, (double)tv->viewport.min_ts, theme,
+              mouse_pos, track_list_hovered, allocator);
         }
 
         cumulative_y += track_height;
