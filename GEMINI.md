@@ -78,11 +78,13 @@
 - **Downwards Flame Graph**: Overlapping events within a thread track are organized into hierarchical lanes. An event is placed in a lower lane only if it is strictly contained within a parent event (Strict Containment Hierarchy). Non-strictly nested events move up to share the highest available lane, even if they temporally overlap. This creates a denser, containment-focused view similar to modern profilers.
 - **Counter Tracks**:
     - **Stacked Area Chart**: Renders multiple data series as a stacked area chart using a step-function approach.
-    - **Step Lines**: A continuous step line is drawn on top of each filled area using the theme's border color, providing sharp definition between series.
+    - **Step Lines**: A continuous step line is drawn on top of each filled area. These lines are rendered without anti-aliasing to ensure pixel-perfect sharpness.
+    - **Minimum Visual Height**: Every series in the stack is guaranteed a minimum visual height of 1.0 pixel, ensuring that even series with 0.0 value are visible as thin lines.
     - **Stable Time-Based Bucketing**: To prevent flickering during dragging, buckets are aligned to absolute timestamps (multiples of the time equivalent of 3 pixels).
-    - **Performance**: Complexity is $O(W \log N)$ via binary search jumping, where $W$ is the viewport width and $N$ is the event count, making rendering performance independent of total event count.
+    - **Performance**: Complexity is $O(W \log N)$ via binary search jumping, where $W$ is the viewport width and $N$ is the event count. Internal calculations use pre-calculated visual offsets ($O(W \cdot S)$) to minimize per-frame overhead.
     - **Hover Highlighting**: Hovering over a counter track highlights the active bucket/block with a semi-transparent overlay.
-    - **Interactive Tooltip**: Displays values for all series at the hovered bucket's timestamp, including a cumulative total for multi-series counters.
+    - **Selection Highlighting**: Selecting a counter event highlights all horizontal step lines in the active bucket with the theme's selection color and increased thickness. Vertical connection lines remain neutral.
+    - **Interactive Tooltip**: Displays values for all series at the hovered bucket's timestamp, including a cumulative total for multi-series counters. Supports both string and numeric arguments.
     - **Coloring**: Each series is assigned a unique color from the theme's event palette based on the hash of its key.
 - **Proportions**:
     - **Lane Height**: Dynamically matches the menu bar height using `ImGui::GetFrameHeight()`.
@@ -129,6 +131,7 @@
 - **Visibility**: Can be toggled via the "View" menu. Docked at the bottom by default.
 - **Behavior**:
     - **Content**: Displays detailed information for the currently selected event (Name, Category, PH, Timestamp, Duration, PID, TID, and all Arguments).
+    - **Arguments**: Supports both string and numeric arguments (`val_double`), ensuring counter values are correctly displayed.
     - **Selection Prompt**: Displays a "Select an event to see details" prompt when no event is selected.
     - **Padding**: Uses `10.0f` window padding for better legibility.
 

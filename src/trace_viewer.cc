@@ -139,7 +139,8 @@ static void trace_viewer_draw_counter_track(
     TraceViewer* tv, TraceData* td, ImDrawList* draw_list, const Track& t,
     ImVec2 pos, float width, float height, double viewport_start,
     double viewport_end, double viewport_min_ts, const Theme& theme,
-    ImVec2 mouse_pos, bool track_list_hovered, Allocator allocator) {
+    ImVec2 mouse_pos, bool track_list_hovered, bool was_drag,
+    bool* something_hovered, Allocator allocator) {
   if (t.event_indices.size == 0) return;
 
   double duration = viewport_end - viewport_start;
@@ -155,8 +156,28 @@ static void trace_viewer_draw_counter_track(
                                       width, pos.x, &state->counter_peaks,
                                       &tv->counter_render_blocks, allocator);
 
+  if (tv->counter_render_blocks.size == 0) return;
+
+  size_t n_blocks = tv->counter_render_blocks.size;
+  size_t n_series = t.counter_series.size;
+  array_list_resize(&state->counter_visual_offsets, allocator,
+                    n_blocks * (n_series + 1));
+
+  float min_h = 1.0f;
+  for (size_t i = 0; i < n_blocks; i++) {
+    float current_y_offset_px = 0.0f;
+    state->counter_visual_offsets[i * (n_series + 1)] = 0.0f;
+    for (size_t s_idx = 0; s_idx < n_series; s_idx++) {
+      double val = state->counter_peaks[i * n_series + s_idx];
+      double visual_val = std::max(val, (double)min_h / height * max_total);
+      current_y_offset_px += (float)(visual_val / max_total * height);
+      state->counter_visual_offsets[i * (n_series + 1) + s_idx + 1] =
+          current_y_offset_px;
+    }
+  }
+
   // Pass 1: Filled areas and hover highlight
-  for (size_t i = 0; i < tv->counter_render_blocks.size; i++) {
+  for (size_t i = 0; i < n_blocks; i++) {
     const CounterRenderBlock& rb = tv->counter_render_blocks[i];
 
     bool hovered = track_list_hovered && mouse_pos.x >= rb.x1 &&
@@ -164,24 +185,26 @@ static void trace_viewer_draw_counter_track(
                    mouse_pos.y < pos.y + height;
 
     // Draw stack
-    double current_y_offset = 0.0;
-    for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
-      double val = state->counter_peaks[i * t.counter_series.size + s_idx];
-      if (val > 0) {
-        float y_top = (float)(pos.y + height -
-                              (current_y_offset + val) / max_total * height);
-        float y_bottom =
-            (float)(pos.y + height - current_y_offset / max_total * height);
-        draw_list->AddRectFilled(ImVec2(rb.x1, y_top), ImVec2(rb.x2, y_bottom),
-                                 t.counter_colors[s_idx]);
-        current_y_offset += val;
-      }
+    for (size_t s_idx = 0; s_idx < n_series; s_idx++) {
+      float off_bottom = state->counter_visual_offsets[i * (n_series + 1) + s_idx];
+      float off_top = state->counter_visual_offsets[i * (n_series + 1) + s_idx + 1];
+
+      float y_top = pos.y + height - off_top;
+      float y_bottom = pos.y + height - off_bottom;
+
+      draw_list->AddRectFilled(ImVec2(rb.x1, y_top), ImVec2(rb.x2, y_bottom),
+                               t.counter_colors[s_idx]);
     }
 
     if (hovered) {
+      *something_hovered = true;
       draw_list->AddRectFilled(ImVec2(rb.x1, pos.y),
                                ImVec2(rb.x2, pos.y + height),
                                IM_COL32(255, 255, 255, 30));
+
+      if (ImGui::IsMouseReleased(0) && !was_drag && rb.event_idx != (size_t)-1) {
+        tv->selected_event_index = (int64_t)rb.event_idx;
+      }
 
       if (rb.event_idx != (size_t)-1) {
         const TraceEventPersisted& e = td->events[rb.event_idx];
@@ -218,22 +241,30 @@ static void trace_viewer_draw_counter_track(
     }
   }
 
-  // Pass 2: Step lines
-  for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
-    float prev_y_top = -1.0f;
-    for (size_t i = 0; i < tv->counter_render_blocks.size; i++) {
-      const CounterRenderBlock& rb = tv->counter_render_blocks[i];
+  // Pass 2: Step lines (no anti-aliasing for sharp lines)
+  ImDrawListFlags old_flags = draw_list->Flags;
+  draw_list->Flags &= ~ImDrawListFlags_AntiAliasedLines;
 
-      double cumulative_val = 0.0;
-      for (size_t j = 0; j <= s_idx; j++) {
-        cumulative_val += state->counter_peaks[i * t.counter_series.size + j];
+  for (size_t s_idx = 0; s_idx < n_series; s_idx++) {
+    float prev_y_top = -1.0f;
+    for (size_t i = 0; i < n_blocks; i++) {
+      const CounterRenderBlock& rb = tv->counter_render_blocks[i];
+      bool event_selected = (rb.event_idx != (size_t)-1 &&
+                             (int64_t)rb.event_idx == tv->selected_event_index);
+
+      float off_top = state->counter_visual_offsets[i * (n_series + 1) + s_idx + 1];
+      float y_top = pos.y + height - off_top;
+
+      ImU32 line_col = theme.event_border;
+      float thickness = 1.0f;
+      if (event_selected) {
+        line_col = theme.event_border_selected;
+        thickness = 2.0f;
       }
-      float y_top =
-          (float)(pos.y + height - cumulative_val / max_total * height);
 
       // Horizontal segment
-      draw_list->AddLine(ImVec2(rb.x1, y_top), ImVec2(rb.x2, y_top),
-                         theme.event_border);
+      draw_list->AddLine(ImVec2(rb.x1, y_top), ImVec2(rb.x2, y_top), line_col,
+                         thickness);
 
       // Vertical segment (connect to previous bucket)
       if (prev_y_top != -1.0f && y_top != prev_y_top) {
@@ -243,6 +274,8 @@ static void trace_viewer_draw_counter_track(
       prev_y_top = y_top;
     }
   }
+
+  draw_list->Flags = old_flags;
 }
 
 void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
@@ -311,6 +344,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       float sel_x1 = 0, sel_x2 = 0, sel_y1 = 0, sel_y2 = 0;
       ImU32 sel_col = 0;
       StringRef sel_name_ref = 0;
+      bool something_hovered = false;
 
       array_list_clear(&tv->hover_matches);
 
@@ -449,14 +483,14 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
               ImVec2(track_pos.x, track_pos.y + lane_height), inner_width,
               track_height - lane_height, tv->viewport.start_time,
               tv->viewport.end_time, (double)tv->viewport.min_ts, theme,
-              mouse_pos, track_list_hovered, allocator);
+              mouse_pos, track_list_hovered, was_drag, &something_hovered,
+              allocator);
         }
 
         cumulative_y += track_height;
       }
 
       // Handle hover highlighting and tooltip
-      bool something_hovered = false;
       if (tv->hover_matches.size > 0) {
         something_hovered = true;
         // Best match is the one drawn last
@@ -530,9 +564,14 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                   const TraceArgPersisted& arg =
                       td->args[e.args_offset + arg_idx];
                   Str key = trace_data_get_string(td, arg.key_ref);
-                  Str val = trace_data_get_string(td, arg.val_ref);
-                  ImGui::Text("%.*s: %.*s", (int)key.len, key.buf,
-                              (int)val.len, val.buf);
+                  if (arg.val_ref != 0) {
+                    Str val = trace_data_get_string(td, arg.val_ref);
+                    ImGui::Text("%.*s: %.*s", (int)key.len, key.buf,
+                                (int)val.len, val.buf);
+                  } else {
+                    ImGui::Text("%.*s: %g", (int)key.len, key.buf,
+                                arg.val_double);
+                  }
                 }
               }
               ImGui::EndTooltip();
@@ -649,9 +688,14 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           for (uint32_t k = 0; k < e.args_count; k++) {
             const TraceArgPersisted& arg = td->args[e.args_offset + k];
             Str key = trace_data_get_string(td, arg.key_ref);
-            Str val = trace_data_get_string(td, arg.val_ref);
-            ImGui::BulletText("%.*s: %.*s", (int)key.len, key.buf, (int)val.len,
-                              val.buf);
+            if (arg.val_ref != 0) {
+              Str val = trace_data_get_string(td, arg.val_ref);
+              ImGui::BulletText("%.*s: %.*s", (int)key.len, key.buf,
+                                (int)val.len, val.buf);
+            } else {
+              ImGui::BulletText("%.*s: %g", (int)key.len, key.buf,
+                                arg.val_double);
+            }
           }
         }
       } else {

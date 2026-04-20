@@ -38,6 +38,7 @@ struct TrackRendererState {
   ArrayList<TrackMergeBlock> merge_levels;
   ArrayList<double> counter_values;
   ArrayList<double> counter_peaks;
+  ArrayList<float> counter_visual_offsets;
 };
 
 inline void track_renderer_state_init(TrackRendererState* state, Allocator a) {
@@ -51,6 +52,7 @@ inline void track_renderer_state_deinit(TrackRendererState* state,
   array_list_deinit(&state->merge_levels, a);
   array_list_deinit(&state->counter_values, a);
   array_list_deinit(&state->counter_peaks, a);
+  array_list_deinit(&state->counter_visual_offsets, a);
 }
 
 inline void track_renderer_state_clear(TrackRendererState* state) {
@@ -58,6 +60,7 @@ inline void track_renderer_state_clear(TrackRendererState* state) {
   array_list_clear(&state->merge_levels);
   array_list_clear(&state->counter_values);
   array_list_clear(&state->counter_peaks);
+  array_list_clear(&state->counter_visual_offsets);
 }
 
 void track_compute_render_blocks(
