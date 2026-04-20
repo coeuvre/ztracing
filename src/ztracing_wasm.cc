@@ -55,6 +55,7 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   emscripten_webgl_init_context_attributes(&attrs);
   attrs.majorVersion = 2;
   attrs.minorVersion = 0;
+
   EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx =
       emscripten_webgl_create_context(g_canvas_selector.data, &attrs);
   if (ctx <= 0) {
@@ -65,7 +66,9 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   emscripten_webgl_make_context_current(ctx);
 
   imgui_impl_wasm_init(g_canvas_selector.data, allocator);
-  imgui_impl_webgl_init(allocator);
+  if (!imgui_impl_webgl_init(allocator)) {
+    return 2;
+  }
 
   app_init(&g_app, allocator);
 

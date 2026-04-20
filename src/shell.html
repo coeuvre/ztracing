@@ -5,8 +5,8 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>ztracing</title>
     <style>
-        html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background-color: black; color: white; font-family: sans-serif; }
-        canvas.emscripten { border: 0 none; background-color: black; width: 100%; height: 100%; display: block; }
+        html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; }
+        canvas.emscripten { border: 0 none; width: 100%; height: 100%; display: block; }
         #error-container { display: none; padding: 20px; }
         #error-container h1 { color: #ff4444; }
     </style>
@@ -18,12 +18,12 @@
     </div>
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()"></canvas>
     <script>
-      function showError(message) {
-        console.error('ztracing error:', message);
+      function showError(errorCode, errorMessage) {
+        console.error(`ztracing error [${errorCode}]:`, errorMessage);
         document.getElementById('canvas').style.display = 'none';
         const container = document.getElementById('error-container');
         container.style.display = 'block';
-        document.getElementById('error-message').textContent = message;
+        document.getElementById('error-message').textContent = errorMessage + ` (Error Code: ${errorCode})`;
       }
 
       var Module = {
@@ -56,7 +56,8 @@
             canvasSelector: '#canvas',
             // Noto Sans TTF URL extracted from Google Fonts CSS API.
             fontUrl: 'https://fonts.gstatic.com/s/notosans/v42/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyD9A-9a6Vc.ttf',
-            trace: trace
+            trace: trace,
+            onError: showError
           });
         }
       };

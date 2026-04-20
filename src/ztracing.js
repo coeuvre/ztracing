@@ -101,8 +101,20 @@ function setupDragDrop(canvasSelector) {
 }
 
 Module['ztracing_start'] = async function(options) {
-  const {canvasSelector, fontUrl, trace} = options;
-  Module.ccall('ztracing_init', 'number', ['string'], [canvasSelector]);
+  const {canvasSelector, fontUrl, trace, onError} = options;
+  const result = Module.ccall('ztracing_init', 'number', ['string'], [canvasSelector]);
+  if (result !== 0) {
+    if (typeof onError === 'function') {
+      let message = 'Unknown initialization error';
+      if (result === 1) {
+        message = 'Failed to create WebGL 2.0 context. Please ensure your browser supports WebGL 2 and it is not disabled.';
+      } else if (result === 2) {
+        message = 'Failed to initialize WebGL renderer (shader compilation or linking failed).';
+      }
+      onError(result, message);
+    }
+    return;
+  }
   await loadFont(fontUrl);
 
   if (window.matchMedia) {

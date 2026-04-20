@@ -126,7 +126,7 @@
     - **Event Names**: Names are centered both vertically and horizontally within event blocks if they fit. If the name is larger than the available area, it starts rendering from the beginning of the block (with padding). Horizontal padding (`6.0f`) is applied to both sides. "Sticky" positioning for names is disabled to prioritize centering.
 - **Theming**:
     - **Theme Struct**: A centralized `Theme` struct in `src/colors.h` holds all UI colors, including backgrounds, ruler elements, and event palettes.
-    - **Dark Theme**: Muted, professional palette with dark grey tracks and solid black background.
+    - **Dark Theme**: Muted, professional palette with dark grey tracks and solid black background (rendered within the canvas).
     - **Light Theme**: Based on "MRS. L'S CLASSROOM" palette with brightened green/teal for optimal legibility of black text.
     - **Dynamic Switching**: Themes can be toggled via the global menu bar, automatically updating both application-specific colors and ImGui's built-in styles.
     - **Color Updates**: Switching themes triggers a full re-computation of both event colors (`trace_data_update_event_color`) and counter track series colors (`track_update_colors`) to maintain visual consistency.
@@ -159,6 +159,7 @@
 - **Responsiveness**: Parsing yields to the browser's event loop every 100ms during loading (via `setTimeout(0)` in JS). This prevents the microtask-based `ReadableStream` loop from starving the main thread, ensuring `requestAnimationFrame` can fire and keep the UI responsive.
 - **Progress Feedback**: Displays live parsing statistics (event count and MB loaded) and the filename within the `LoadingScreen` while `trace_parser_active` is true.
 - **WASM Exports**: `ztracing_malloc`, `ztracing_free`, `ztracing_begin_session`, and `ztracing_handle_file_chunk` are used for memory and data transfer.
+- **Error Handling**: `ztracing_init` returns specific error codes (1 for WebGL context creation failure, 2 for renderer initialization failure). The `ztracing_start` JS bridge accepts an `onError(errorCode, errorMessage)` callback to display custom error pages in the DOM.
 
 ## Memory Management
 
