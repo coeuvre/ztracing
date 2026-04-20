@@ -163,6 +163,26 @@ void track_sort_events(Track* t, const TraceData* td) {
   }
 }
 
+void track_update_colors(ArrayList<Track>* tracks, const TraceData* td,
+                          const Theme* theme) {
+  for (size_t i = 0; i < tracks->size; i++) {
+    Track& t = (*tracks)[i];
+    if (t.type == TRACK_TYPE_COUNTER) {
+      for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
+        Str key_str = trace_data_get_string(td, t.counter_series[s_idx]);
+        uint32_t hash = 2166136261u;
+        for (size_t char_idx = 0; char_idx < key_str.len; ++char_idx) {
+          hash ^= (uint8_t)key_str.buf[char_idx];
+          hash *= 16777619u;
+        }
+        t.counter_colors[s_idx] =
+            theme->event_palette[hash % (sizeof(theme->event_palette) /
+                                         sizeof(theme->event_palette[0]))];
+      }
+    }
+  }
+}
+
 void track_organize(const TraceData* td, Allocator a, const Theme* theme,
                     ArrayList<Track>* out_tracks, int64_t* out_min_ts,
                     int64_t* out_max_ts) {
@@ -345,17 +365,11 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
 
       // Cache colors
       array_list_resize(&t.counter_colors, a, t.counter_series.size);
-      for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
-        Str key_str = trace_data_get_string(td, t.counter_series[s_idx]);
-        uint32_t hash = 2166136261u;
-        for (size_t char_idx = 0; char_idx < key_str.len; ++char_idx) {
-          hash ^= (uint8_t)key_str.buf[char_idx];
-          hash *= 16777619u;
-        }
-        t.counter_colors[s_idx] = theme->event_palette[hash % (sizeof(theme->event_palette) / sizeof(theme->event_palette[0]))];
-      }
     }
   }
+
+  // Update colors based on the current theme
+  track_update_colors(out_tracks, td, theme);
 
   // Final track sort
   std::sort(out_tracks->data, out_tracks->data + out_tracks->size,

@@ -51,6 +51,7 @@
 - `src/colors`: Theme management system. Defines a `Theme` struct and provides standard Dark and Light theme implementations.
 - `src/track`: Logic for organizing events into tracks, sorting, and depth calculation.
     - **Track Organization**: Implements a high-performance two-pass organization algorithm (`track_organize`) that uses a `HashTable` for $O(1)$ track discovery and a sequential cache for consecutive events. Decoupled from `App` for modularity and unit testing.
+    - **Coloring**: Provides `track_update_colors` to update counter track colors based on the current theme. This is used both during initial organization and when switching themes dynamically.
     - **Event Sorting**: Optimized for massive tracks using a cache-friendly temporary `SortKey` array to minimize cache misses during indirect data lookups.
 - `src/format`: Human-readable time formatting (s, ms, us) and tick interval calculation.
 - `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
@@ -119,6 +120,7 @@
     - **Dark Theme**: Muted, professional palette with dark grey tracks and solid black background.
     - **Light Theme**: Based on "MRS. L'S CLASSROOM" palette with brightened green/teal for optimal legibility of black text.
     - **Dynamic Switching**: Themes can be toggled via the global menu bar, automatically updating both application-specific colors and ImGui's built-in styles.
+    - **Color Updates**: Switching themes triggers a full re-computation of both event colors (`trace_data_update_event_color`) and counter track series colors (`track_update_colors`) to maintain visual consistency.
     - **Auto Mode (Default)**: Tracks the system's preferred color scheme.
     - **Event-Driven Updates**: Uses `matchMedia.addEventListener` in `ztracing.js` to notify the application of system theme changes via the `ztracing_on_theme_changed` WASM export, avoiding unnecessary polling.
 - **Event Coloring**:

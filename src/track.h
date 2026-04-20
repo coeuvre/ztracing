@@ -34,6 +34,8 @@ void track_update_max_dur(Track* t, const TraceData* td);
 void track_calculate_depths(Track* t, const TraceData* td, Allocator a);
 size_t track_find_visible_start_index(const Track* t, const TraceData* td,
                                       int64_t viewport_start_ts);
+void track_update_colors(ArrayList<Track>* tracks, const TraceData* td,
+                          const Theme* theme);
 void track_organize(const TraceData* td, Allocator a, const Theme* theme,
                     ArrayList<Track>* out_tracks, int64_t* out_min_ts,
                     int64_t* out_max_ts);

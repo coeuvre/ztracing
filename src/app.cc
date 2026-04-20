@@ -45,6 +45,9 @@ static void app_apply_theme(App* app, const Theme* theme) {
   for (size_t i = 0; i < app->trace_data.events.size; i++) {
     trace_data_update_event_color(&app->trace_data, (uint32_t)i, app->theme);
   }
+
+  // Re-compute all counter track colors when theme changes
+  track_update_colors(&app->trace_viewer.tracks, &app->trace_data, app->theme);
 }
 
 void app_init(App* app, Allocator allocator) {
