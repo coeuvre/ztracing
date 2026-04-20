@@ -14,6 +14,9 @@
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"
 
+const double TRACE_VIEWER_MAX_ZOOM_FACTOR = 1.2;
+const double TRACE_VIEWER_MIN_ZOOM_DURATION = 1000.0;  // 1ms = 1000us
+
 void trace_viewer_init(TraceViewer* tv, Allocator allocator) {
   (void)allocator;
   *tv = {};
@@ -648,8 +651,19 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
             tv->viewport.end_time - tv->viewport.start_time;
         double mouse_ts =
             tv->viewport.start_time + mouse_x_rel * current_duration;
-        double zoom_factor = (wheel_v > 0.0f) ? 0.8 : 1.2;
+        double zoom_factor = (wheel_v > 0.0f) ? 0.8 : TRACE_VIEWER_MAX_ZOOM_FACTOR;
         double new_duration = current_duration * zoom_factor;
+
+        // Enforce zoom limits
+        double trace_duration =
+            (double)(tv->viewport.max_ts - tv->viewport.min_ts);
+        double max_duration = trace_duration * TRACE_VIEWER_MAX_ZOOM_FACTOR;
+        double min_duration = TRACE_VIEWER_MIN_ZOOM_DURATION;
+        if (max_duration < min_duration) max_duration = min_duration;
+
+        if (new_duration < min_duration) new_duration = min_duration;
+        if (new_duration > max_duration) new_duration = max_duration;
+
         tv->viewport.start_time = mouse_ts - mouse_x_rel * new_duration;
         tv->viewport.end_time = tv->viewport.start_time + new_duration;
       } else if (wheel_h != 0.0f ||
@@ -706,4 +720,18 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     ImGui::End();
     ImGui::PopStyleVar();
   }
+}
+
+void trace_viewer_reset_view(TraceViewer* tv) {
+  double trace_start = (double)tv->viewport.min_ts;
+  double trace_end = (double)tv->viewport.max_ts;
+  double trace_duration = trace_end - trace_start;
+
+  double max_duration = trace_duration * TRACE_VIEWER_MAX_ZOOM_FACTOR;
+  double min_duration = TRACE_VIEWER_MIN_ZOOM_DURATION;
+  if (max_duration < min_duration) max_duration = min_duration;
+
+  double center = (trace_start + trace_end) * 0.5;
+  tv->viewport.start_time = center - max_duration * 0.5;
+  tv->viewport.end_time = center + max_duration * 0.5;
 }

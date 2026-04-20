@@ -22,10 +22,7 @@ static void app_organize_tracks(App* app) {
                  &app->trace_viewer.tracks, &app->trace_viewer.viewport.min_ts,
                  &app->trace_viewer.viewport.max_ts);
 
-  app->trace_viewer.viewport.start_time =
-      (double)app->trace_viewer.viewport.min_ts;
-  app->trace_viewer.viewport.end_time =
-      (double)app->trace_viewer.viewport.max_ts;
+  trace_viewer_reset_view(&app->trace_viewer);
   LOG_INFO("organized %zu tracks, time range: [%lld, %lld]",
            app->trace_viewer.tracks.size,
            (long long)app->trace_viewer.viewport.min_ts,
@@ -79,10 +76,7 @@ void app_update(App* app) {
   if (ImGui::BeginMainMenuBar()) {
     if (ImGui::BeginMenu("View")) {
       if (ImGui::MenuItem("Reset View")) {
-        app->trace_viewer.viewport.start_time =
-            (double)app->trace_viewer.viewport.min_ts;
-        app->trace_viewer.viewport.end_time =
-            (double)app->trace_viewer.viewport.max_ts;
+        trace_viewer_reset_view(&app->trace_viewer);
       }
       ImGui::Separator();
 

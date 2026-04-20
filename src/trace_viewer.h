@@ -34,6 +34,7 @@ struct TraceViewer {
 
 void trace_viewer_init(TraceViewer* tv, Allocator allocator);
 void trace_viewer_deinit(TraceViewer* tv, Allocator allocator);
+void trace_viewer_reset_view(TraceViewer* tv);
 void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                        const Theme* theme);
 
