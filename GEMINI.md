@@ -59,7 +59,7 @@
 - `src/platform`: Platform abstraction layer (e.g., high-resolution timestamps). Supports both WASM and native (for tests).
 - `src/logging`: Simple logging utility with WASM console and native stdout integration.
 - `src/track_renderer`: Standalone rendering module that implements performance optimizations like LOD and event coalescing. 
-    - **Allocation-Free Rendering**: Uses a persistent `TrackRendererState` (Zero-Is-Initialization compatible) to host temporary buffers (`counter_current_values`, `counter_bucket_max_values`, etc.), eliminating per-frame heap allocations during rendering.
+    - **Allocation-Free Rendering**: Uses a persistent `TrackRendererState` (Zero-Is-Initialization compatible) to host temporary buffers (`thread_bucket_states`, `counter_current_values`, etc.), eliminating per-frame heap allocations during rendering.
     - **Decoupling**: Separates rendering calculations from ImGui-specific logic to allow for comprehensive unit testing.
 
 ## Main Viewport
@@ -108,9 +108,11 @@
     - **Level of Detail (LOD)**: To handle massive traces (10M+ events):
         - **Tiny Events**: Skips rendering of events < 1.0 pixel wide that fall into the same pixel range as a previously drawn block.
         - **Event Borders**: Borders are only drawn for selected events or those wider than 5.0 pixels. For dense areas, this reduces the triangle count from 10 to 2 per event, significantly lowering GPU load.
-    - **Event Coalescing**: Consecutive events that are very close to each other (typically within 0.5 - 3.0 pixels) are merged into a single rendering block. 
-        - **Color Agnostic**: Different colored events can be merged when they are too small to be visually distinguished, significantly reducing ImGui primitives in dense areas.
+    - **Event Coalescing & Bucketing**: To maintain performance and visual stability in dense areas:
+        - **Stable Bucketing**: Both thread and counter tracks utilize a stable bucketing system. Viewports are divided into buckets aligned to absolute timestamps (typically 3.0 pixels wide). This eliminates the "flickering" or "dancing" of block boundaries during horizontal panning.
+        - **Thread-Track Merging**: For thread tracks, sub-pixel events within a bucket are merged at each depth. The event with the longest duration is chosen as the "representative," providing the color, name, and tooltip for the merged block.
         - **Bucket Limit**: Merged blocks are capped at a maximum width (typically 3.0 pixels) to preserve a reasonably accurate representation of event density.
+        - **Large Event Bypass**: Events wider than a bucket or currently selected events bypass the bucketing logic and are rendered with full precision, ensuring critical detail is preserved.
     - **Selection & Hover**:
         - **Hit-Testing**: Hover detection perfectly aligns with the visual representation, including the minimum rendering width (3.0px). If an event is visible, it is interactive.
         - **Block-Based Interaction**: Both highlighting and selection are driven by the same `TrackRenderBlock` data structure. Each block carries an `event_idx`, ensuring that the event highlighted by the mouse is always the one selected when clicking. This eliminates discrepancies between the visual feedback and the actual selection.

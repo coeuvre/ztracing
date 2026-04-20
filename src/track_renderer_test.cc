@@ -47,9 +47,56 @@ TEST_F(TrackRendererTest, CoalesceSameColor) {
   track_compute_render_blocks(&t, &td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks, allocator);
 
+  // Viewport: 0 to 10000us, 1000px. 1px = 10us. Bucket size = 3px = 30us.
+  // Events: 100, 105, 110. All fall into bucket [90, 120)us.
+  // Visual range: [9px, 12px).
   EXPECT_EQ(blocks.size, 1u);
-  EXPECT_FLOAT_EQ(blocks[0].x1, 10.0f);
+  EXPECT_FLOAT_EQ(blocks[0].x1, 9.0f);
+  EXPECT_FLOAT_EQ(blocks[0].x2, 12.0f);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, ThreadBucketingStability) {
+  Track t = {};
+  // Tiny events at 100, 105, 110.
+  TraceEvent e1 = {}; e1.name = "e"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 1;
+  TraceEvent e2 = {}; e2.name = "e"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 105; e2.dur = 1;
+  TraceEvent e3 = {}; e3.name = "e"; e3.cat = "cat"; e3.ph = "B"; e3.ts = 110; e3.dur = 1;
+
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e3);
+
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
+  array_list_push_back(&t.event_indices, allocator, (size_t)2);
+
+  array_list_resize(&t.depths, allocator, 3);
+  t.depths[0] = 0; t.depths[1] = 0; t.depths[2] = 0;
+  t.max_depth = 0;
+
+  // Viewport A: 0 to 10000. 1px = 10us. Bucket = 30us.
+  // First bucket start: floor(0/30)*30 = 0.
+  // Bucket containing events: [90, 120).
+  track_compute_render_blocks(&t, &td, 0, 10000, 1000.0f, 0.0f, -1, &state,
+                              &blocks, allocator);
+  EXPECT_EQ(blocks.size, 1u);
+  EXPECT_FLOAT_EQ(blocks[0].x1, 9.0f);
+  EXPECT_FLOAT_EQ(blocks[0].x2, 12.0f);
+
+  // Viewport B: 5 to 10005. Panned slightly.
+  // Bucket size still 30us.
+  // First bucket start: floor(5/30)*30 = 0.
+  // Bucket containing events still: [90, 120).
+  // x1 = (90 - 5) * 0.1 = 8.5
+  // x2 = (120 - 5) * 0.1 = 11.5
+  array_list_clear(&blocks);
+  track_compute_render_blocks(&t, &td, 5, 10005, 1000.0f, 0.0f, -1, &state,
+                              &blocks, allocator);
+  EXPECT_EQ(blocks.size, 1u);
+  EXPECT_FLOAT_EQ(blocks[0].x1, 8.5f);
   EXPECT_FLOAT_EQ(blocks[0].x2, 11.5f);
+
   track_deinit(&t, allocator);
 }
 

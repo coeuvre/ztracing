@@ -3,6 +3,28 @@
 #include <algorithm>
 #include <cmath>
 
+void track_flush_bucket_depth(ArrayList<TrackRenderBlock>* out_blocks,
+                              double viewport_start, double inv_duration,
+                              float tracks_canvas_pos_x,
+                              double current_bucket_ts, double next_bucket_ts,
+                              uint32_t depth, ThreadBucketState* s,
+                              const TraceData* trace_data, Allocator a) {
+  if (s->count == 0) return;
+
+  float x1 = (float)(tracks_canvas_pos_x +
+                     (current_bucket_ts - viewport_start) * inv_duration);
+  float x2 = (float)(tracks_canvas_pos_x +
+                     (next_bucket_ts - viewport_start) * inv_duration);
+
+  const TraceEventPersisted& rep_e = trace_data->events[s->rep_event_idx];
+  TrackRenderBlock rb = {x1, x2, rep_e.color, rep_e.name_ref, depth, s->count,
+                         false, s->rep_event_idx};
+  array_list_push_back(out_blocks, a, rb);
+  s->count = 0;
+  s->max_dur = -1;
+  s->rep_event_idx = (size_t)-1;
+}
+
 void track_compute_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
     double viewport_end, float inner_width, float tracks_canvas_pos_x,
@@ -15,78 +37,92 @@ void track_compute_render_blocks(
   if (duration <= 0) return;
   double inv_duration = (double)inner_width / duration;
 
-  size_t start_idx = track_find_visible_start_index(track, trace_data,
-                                                    (int64_t)viewport_start);
+  double bucket_dur = (double)TRACK_MIN_EVENT_WIDTH / inv_duration;
+  double current_bucket_ts = floor(viewport_start / bucket_dur) * bucket_dur;
 
-  array_list_resize(&state->last_x2_per_depth, a, track->max_depth + 1);
-  array_list_resize(&state->merge_levels, a, track->max_depth + 1);
-  for (size_t d = 0; d < state->last_x2_per_depth.size; d++) {
-    state->last_x2_per_depth[d] = -1e30f;
-    state->merge_levels[d].active = false;
+  size_t k = track_find_visible_start_index(track, trace_data,
+                                            (int64_t)current_bucket_ts);
+
+  array_list_resize(&state->thread_bucket_states, a, track->max_depth + 1);
+  for (size_t d = 0; d < state->thread_bucket_states.size; d++) {
+    state->thread_bucket_states[d].count = 0;
+    state->thread_bucket_states[d].max_dur = -1;
+    state->thread_bucket_states[d].rep_event_idx = (size_t)-1;
+    state->thread_bucket_states[d].blocked = false;
   }
 
-  for (size_t k = start_idx; k < track->event_indices.size; k++) {
-    size_t event_idx = track->event_indices[k];
-    const TraceEventPersisted& e = trace_data->events[event_idx];
-    uint32_t depth = track->depths[k];
+  while (current_bucket_ts < viewport_end) {
+    double next_bucket_ts = current_bucket_ts + bucket_dur;
 
-    if (e.ts > (int64_t)viewport_end) break;
+    for (size_t d = 0; d < state->thread_bucket_states.size; d++) {
+      state->thread_bucket_states[d].blocked = false;
+    }
 
-    bool is_selected = (selected_event_index == (int64_t)event_idx);
+    while (k < track->event_indices.size) {
+      size_t event_idx = track->event_indices[k];
+      const TraceEventPersisted& e = trace_data->events[event_idx];
+      if (e.ts >= (int64_t)next_bucket_ts) break;
 
-    float x1 = (float)(tracks_canvas_pos_x +
-                       ((double)e.ts - viewport_start) * inv_duration);
-    float x2 = (float)(x1 + (double)e.dur * inv_duration);
+      uint32_t depth = track->depths[k];
+      bool is_selected = (selected_event_index == (int64_t)event_idx);
+      bool is_large = (double)e.dur * inv_duration >= TRACK_MIN_EVENT_WIDTH;
 
-    TrackMergeBlock& m = state->merge_levels[depth];
-    uint32_t col = e.color;
+      if (is_selected || is_large) {
+        // Flush pending bucket state for this depth
+        track_flush_bucket_depth(out_blocks, viewport_start, inv_duration,
+                                 tracks_canvas_pos_x, current_bucket_ts,
+                                 next_bucket_ts, depth,
+                                 &state->thread_bucket_states[depth],
+                                 trace_data, a);
 
-    if (!is_selected && m.active && x1 <= m.x2 + TRACK_MIN_EVENT_WIDTH &&
-        (x2 - m.x1) <= TRACK_MIN_EVENT_WIDTH) {
-      m.x2 = std::max(m.x2, x2);
-      m.count++;
-      state->last_x2_per_depth[depth] = m.x2;
-    } else {
-      if (m.active) {
-        TrackRenderBlock rb = {m.x1, m.x2, m.col, m.name_ref, depth, m.count,
-                               false, m.event_idx};
+        float x1 = (float)(tracks_canvas_pos_x +
+                           ((double)e.ts - viewport_start) * inv_duration);
+        float x2 = (float)(x1 + (double)e.dur * inv_duration);
+        TrackRenderBlock rb = {x1, x2, e.color, e.name_ref, depth, 1,
+                               is_selected, event_idx};
         array_list_push_back(out_blocks, a, rb);
-        m.active = false;
+        state->thread_bucket_states[depth].blocked = true;
+      } else if (!state->thread_bucket_states[depth].blocked) {
+        ThreadBucketState& s = state->thread_bucket_states[depth];
+        if (e.dur > s.max_dur) {
+          s.max_dur = e.dur;
+          s.rep_event_idx = event_idx;
+        }
+        s.count++;
       }
+      k++;
+    }
 
-      // Visibility culling: skip tiny events that fall into the same pixel range
-      bool is_tiny = (x2 - x1) < 1.0f;
-      if (!is_selected && is_tiny &&
-          x2 <= state->last_x2_per_depth[depth] + 0.5f) {
-        continue;
-      }
-      state->last_x2_per_depth[depth] = x2;
+    // Flush remaining bucket states
+    for (size_t d = 0; d < state->thread_bucket_states.size; d++) {
+      track_flush_bucket_depth(out_blocks, viewport_start, inv_duration,
+                               tracks_canvas_pos_x, current_bucket_ts,
+                               next_bucket_ts, (uint32_t)d,
+                               &state->thread_bucket_states[d], trace_data, a);
+    }
 
-      if (!is_selected && (x2 - x1) < TRACK_MIN_EVENT_WIDTH) {
-        m.x1 = x1;
-        m.x2 = x2;
-        m.col = col;
-        m.name_ref = e.name_ref;
-        m.count = 1;
-        m.event_idx = event_idx;
-        m.active = true;
+    current_bucket_ts = next_bucket_ts;
+  }
+
+  // Post-processing: merge consecutive blocks that share the same depth and
+  // representative event. This happens for events that span multiple buckets.
+  if (out_blocks->size > 1) {
+    size_t write_idx = 0;
+    for (size_t read_idx = 1; read_idx < out_blocks->size; read_idx++) {
+      TrackRenderBlock& current = (*out_blocks)[write_idx];
+      TrackRenderBlock& next = (*out_blocks)[read_idx];
+
+      if (!current.is_selected && !next.is_selected &&
+          current.depth == next.depth &&
+          current.event_idx == next.event_idx) {
+        current.x2 = next.x2;
+        current.count += next.count;
       } else {
-        TrackRenderBlock rb = {x1, x2, col, e.name_ref, depth, 1, is_selected,
-                               event_idx};
-        array_list_push_back(out_blocks, a, rb);
+        write_idx++;
+        (*out_blocks)[write_idx] = next;
       }
     }
-  }
-
-  // Flush remaining merges
-  for (size_t d = 0; d < state->merge_levels.size; d++) {
-    TrackMergeBlock& m = state->merge_levels[d];
-    if (m.active) {
-      TrackRenderBlock rb = {m.x1, m.x2, m.col, m.name_ref, (uint32_t)d, m.count,
-                             false, m.event_idx};
-      array_list_push_back(out_blocks, a, rb);
-      m.active = false;
-    }
+    out_blocks->size = write_idx + 1;
   }
 }
 
