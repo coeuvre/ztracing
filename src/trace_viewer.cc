@@ -21,7 +21,6 @@ void trace_viewer_init(TraceViewer* tv, Allocator allocator) {
   (void)allocator;
   *tv = {};
   tv->selected_event_index = -1;
-  tv->show_details_panel = true;
 }
 
 void trace_viewer_deinit(TraceViewer* tv, Allocator allocator) {
@@ -207,6 +206,7 @@ static void trace_viewer_draw_counter_track(
 
       if (ImGui::IsMouseReleased(0) && !was_drag && rb.event_idx != (size_t)-1) {
         tv->selected_event_index = (int64_t)rb.event_idx;
+        tv->show_details_panel = true;
       }
 
       if (rb.event_idx != (size_t)-1) {
@@ -612,6 +612,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
             if (mouse_pos.x >= ex1 && mouse_pos.x < ex2) {
               tv->selected_event_index = (int64_t)event_idx;
+              tv->show_details_panel = true;
               break;
             }
           }
@@ -682,7 +683,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
   // Details Panel
   if (tv->show_details_panel) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
-    if (ImGui::Begin("Details", &tv->show_details_panel)) {
+    if (ImGui::Begin("Details", &tv->show_details_panel,
+                     ImGuiWindowFlags_NoFocusOnAppearing)) {
       if (tv->selected_event_index != -1) {
         const TraceEventPersisted& e = td->events[(size_t)tv->selected_event_index];
         Str name = trace_data_get_string(td, e.name_ref);

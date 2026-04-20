@@ -125,11 +125,9 @@ void app_update(App* app) {
     ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->Size);
 
     ImGuiID dock_id_main = dockspace_id;
-    if (app->trace_viewer.show_details_panel) {
-      ImGuiID dock_id_bottom = ImGui::DockBuilderSplitNode(
-          dock_id_main, ImGuiDir_Down, 0.25f, nullptr, &dock_id_main);
-      ImGui::DockBuilderDockWindow("Details", dock_id_bottom);
-    }
+    ImGuiID dock_id_bottom = ImGui::DockBuilderSplitNode(
+        dock_id_main, ImGuiDir_Down, 0.25f, nullptr, &dock_id_main);
+    ImGui::DockBuilderDockWindow("Details", dock_id_bottom);
 
     // Hide tab bar for the main viewport area
     ImGuiDockNode* main_node = ImGui::DockBuilderGetNode(dock_id_main);

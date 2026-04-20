@@ -136,6 +136,9 @@
 
 - **Visibility**: Can be toggled via the "View" menu. Docked at the bottom by default.
 - **Behavior**:
+    - **Closed by Default**: The panel is initially closed to maximize the viewport area.
+    - **Auto-Open**: Automatically opens when an event is selected in either the thread track or counter track. 
+    - **Focus Management**: When automatically opened, it does not steal focus (`ImGuiWindowFlags_NoFocusOnAppearing`), ensuring the user can continue navigating the viewport uninterrupted.
     - **Content**: Displays detailed information for the currently selected event (Name, Category, PH, Timestamp, Duration, PID, TID, and all Arguments).
     - **Arguments**: Supports both string and numeric arguments (`val_double`), ensuring counter values are correctly displayed.
     - **Selection Prompt**: Displays a "Select an event to see details" prompt when no event is selected.
