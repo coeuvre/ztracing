@@ -82,17 +82,12 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
   (void)tv;
   float lane_height = y2 - y1 + 1.0f;
 
-  float border_thickness = is_selected ? TRACK_MIN_EVENT_WIDTH : 1.0f;
-  float min_width = 2.0f * border_thickness + 1.0f;
-  bool draw_border = true;
-  if (x2 - x1 < min_width) {
-    x2 = x1 + min_width;
-    draw_border = false;
-  }
+  float border_thickness = is_selected ? 2.0f : 1.0f;
+  float event_width = x2 - x1;
+  bool draw_border = (event_width > TRACK_MIN_EVENT_WIDTH);
 
   draw_list->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), col);
 
-  float event_width = x2 - x1;
   if (is_selected || draw_border) {
     ImU32 border_col =
         is_selected ? theme.event_border_selected : theme.event_border;
@@ -453,10 +448,6 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
             float x1 = rb.x1;
             float x2 = rb.x2;
-            float border_thickness =
-                rb.is_selected ? TRACK_MIN_EVENT_WIDTH : 1.0f;
-            float min_width = 2.0f * border_thickness + 1.0f;
-            if (x2 - x1 < min_width) x2 = x1 + min_width;
 
             if (track_list_hovered && mouse_in_track_y) {
               if (mouse_pos.x >= x1 && mouse_pos.x < x2 && mouse_pos.y >= y1 &&
@@ -476,8 +467,9 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
               sel_name_ref = rb.name_ref;
             } else {
               trace_viewer_draw_event(tv, td, track_draw_list, rb.x1, rb.x2, y1,
-                                      y2, rb.color, false, rb.name_ref,
-                                      inner_width, tracks_canvas_pos.x, theme);
+                                      y2, rb.color, false,
+                                      rb.name_ref, inner_width,
+                                      tracks_canvas_pos.x, theme);
             }
           }
         } else {
@@ -578,8 +570,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       }
 
       if (sel_found) {
-        trace_viewer_draw_event(tv, td, track_draw_list, sel_x1, sel_x2,
-                                sel_y1, sel_y2, sel_col, true, sel_name_ref,
+        trace_viewer_draw_event(tv, td, track_draw_list, sel_x1, sel_x2, sel_y1,
+                                sel_y2, sel_col, true, sel_name_ref,
                                 inner_width, tracks_canvas_pos.x, theme);
       }
 
