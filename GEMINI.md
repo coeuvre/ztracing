@@ -66,7 +66,7 @@
     - **View**: Reset View, Power-save Mode toggle, Details Panel toggle, and Theme selection (Auto, Dark, Light).
     - **Tools**: Access to "Metrics/Debugger" (ImGui's built-in debugger).
     - **Help**: "About Dear ImGui" information.
-- **Layout**: The "Main Viewport" is docked in the central area. The "Details" panel is docked at the bottom by default and can be toggled via the View menu. The viewport window has no title bar or tabs.
+- **Layout**: The "Main Viewport" is docked in the central area. The "Details" panel is docked at the bottom by default and can be toggled via the View menu. The viewport window has no title bar or tabs, and docking other windows directly into it is disabled (though splitting the area is allowed).
 - **Time Ruler**: A persistent horizontal ruler at the top displays the current time range with adaptive units (s, ms, us) and nice tick intervals.
 - **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically. Individual tracks have variable heights based on their maximum nesting depth plus a dedicated header lane.
 - **Contiguous Tracks**: Tracks follow each other with no gaps (`track_spacing = 0`). This creates a denser, more professional "Performance" view similar to modern browser profilers.
@@ -91,7 +91,7 @@
 - **Proportions**:
     - **Lane Height**: Dynamically matches the menu bar height using `ImGui::GetFrameHeight()`.
     - **Ruler Height**: Dynamically matches the menu bar height using `ImGui::GetFrameHeight()`.
-    - **Counter Height**: Counter tracks have a fixed height equivalent to 2 lanes.
+    - **Counter Height**: Counter tracks have a fixed height equivalent to 3 lanes.
 - **Navigation**: 
     - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor. Requires modern ImGui modifier checks (`ImGui::IsKeyDown`).
         - **Max Zoom-out**: Limited to 1.2x the trace's total duration.

@@ -302,6 +302,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                                  ImVec2(canvas_size.x, ruler_height), theme);
 
     float lane_height = ImGui::GetFrameHeight();
+    float counter_track_height = 3.0f * lane_height;
 
     ImGuiWindowFlags child_flags = ImGuiWindowFlags_NoMove;
     if (ImGui::IsKeyDown(ImGuiMod_Ctrl))
@@ -322,7 +323,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       for (size_t i = 0; i < tv->tracks.size; i++) {
         const Track& t = tv->tracks[i];
         if (t.type == TRACK_TYPE_COUNTER) {
-          total_height += 2.0f * lane_height;
+          total_height += counter_track_height;
         } else {
           total_height += (float)(t.max_depth + 2) * lane_height;
         }
@@ -354,7 +355,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       for (size_t i = 0; i < tv->tracks.size; i++) {
         const Track& t = tv->tracks[i];
         float track_height = (t.type == TRACK_TYPE_COUNTER)
-                                 ? 2.0f * lane_height
+                                 ? counter_track_height
                                  : (float)(t.max_depth + 2) * lane_height;
         ImVec2 track_pos =
             ImVec2(tracks_canvas_pos.x, tracks_canvas_pos.y + cumulative_y);

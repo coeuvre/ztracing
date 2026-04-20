@@ -129,9 +129,12 @@ void app_update(App* app) {
         dock_id_main, ImGuiDir_Down, 0.25f, nullptr, &dock_id_main);
     ImGui::DockBuilderDockWindow("Details", dock_id_bottom);
 
-    // Hide tab bar for the main viewport area
+    // Hide tab bar and prevent docking over the main viewport area
     ImGuiDockNode* main_node = ImGui::DockBuilderGetNode(dock_id_main);
-    if (main_node) main_node->LocalFlags |= ImGuiDockNodeFlags_NoTabBar;
+    if (main_node) {
+      main_node->LocalFlags |=
+          ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_NoDockingOverMe;
+    }
 
     ImGui::DockBuilderDockWindow("Main Viewport", dock_id_main);
     ImGui::DockBuilderFinish(dockspace_id);
