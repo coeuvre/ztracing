@@ -122,7 +122,7 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
                                                  name.buf, name.buf + name.len)
                                  .x;
 
-          float text_x = x1 + (event_width - text_width) * 0.5f;
+          float text_x = std::max(x1 + padding_h, x1 + (event_width - text_width) * 0.5f);
 
           ImVec4 fine_clip_rect(visible_x1 + padding_h, y1,
                                 visible_x2 - padding_h, y2);
