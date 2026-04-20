@@ -37,7 +37,11 @@
     - **Hash Caching**: Each `StringEntry` stores a persistent hash, computed once during insertion. This makes subsequent lookups for the same string (which occur frequently during trace ingestion) extremely efficient.
     - **StringRef**: Events and arguments store `StringRef` (indices) into the table rather than raw offsets, providing $O(1)$ access to both string data and length without `strlen` overhead.
     - **Pre-parsed Numbers**: Numeric arguments are pre-parsed into `double` values during ingestion to eliminate conversion overhead during rendering.
-- `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic. Supports 32-bit indices for large traces.
+- `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic.
+    - **Single-Upload Strategy**: To minimize WASM-JS bridge overhead, all vertex and index data for a frame are concatenated on the CPU and uploaded in just two `glBufferData` calls.
+    - **Persistent VAO**: Reuses a single Vertex Array Object to capture and restore vertex attribute state, eliminating per-frame setup costs.
+    - **Index Adjustment**: Indices are adjusted on the CPU to be absolute, allowing for a single `glVertexAttribPointer` setup per frame.
+    - **32-bit Indices**: Supports more than 65,535 vertices (required for large traces).
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
 - `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer) and handles file streaming and data parsing.
@@ -88,7 +92,9 @@
 - **Rendering Optimization**:
     - **Visibility Culling (Horizontal)**: Events are grouped into tracks. Each track maintains a `max_dur` (maximum event duration) and sorted `event_indices`. Binary search is used to find the first potentially visible event at `viewport_start - max_dur`, ensuring partially visible events are correctly rendered.
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
-    - **Level of Detail (LOD)**: To handle massive traces (10M+ events), the renderer skips "tiny" events (typically < 1.0 pixel wide) that fall into the same pixel range as a previously drawn block in the same lane.
+    - **Level of Detail (LOD)**: To handle massive traces (10M+ events):
+        - **Tiny Events**: Skips rendering of events < 1.0 pixel wide that fall into the same pixel range as a previously drawn block.
+        - **Event Borders**: Borders are only drawn for selected events or those wider than 5.0 pixels. For dense areas, this reduces the triangle count from 10 to 2 per event, significantly lowering GPU load.
     - **Event Coalescing**: Consecutive events that are very close to each other (typically within 0.5 - 3.0 pixels) are merged into a single rendering block. 
         - **Color Agnostic**: Different colored events can be merged when they are too small to be visually distinguished, significantly reducing ImGui primitives in dense areas.
         - **Bucket Limit**: Merged blocks are capped at a maximum width (typically 3.0 pixels) to preserve a reasonably accurate representation of event density.

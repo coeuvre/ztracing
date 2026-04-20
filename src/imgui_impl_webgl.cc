@@ -6,15 +6,19 @@
 #include <stdlib.h>
 
 #include "src/allocator.h"
+#include "src/array_list.h"
 #include "src/logging.h"
 
 struct BackendData {
   Allocator allocator;
   GLuint shader_program;
   GLuint vbo, ebo;
+  GLuint vao;
   GLuint font_texture;
   GLint attrib_location_pos, attrib_location_uv, attrib_location_color;
   GLint attrib_location_proj_mtx;
+  ArrayList<ImDrawVert> vtx_staging;
+  ArrayList<ImDrawIdx> idx_staging;
 };
 
 static BackendData* get_backend_data() {
@@ -49,19 +53,6 @@ static void setup_render_state(ImDrawData* draw_data, int fb_width,
   glUniformMatrix4fv(bd->attrib_location_proj_mtx, 1, GL_FALSE,
                      &ortho_projection[0][0]);
   glBindVertexArray(vertex_array_object);
-
-  glBindBuffer(GL_ARRAY_BUFFER, bd->vbo);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bd->ebo);
-  glEnableVertexAttribArray((GLuint)bd->attrib_location_pos);
-  glEnableVertexAttribArray((GLuint)bd->attrib_location_uv);
-  glEnableVertexAttribArray((GLuint)bd->attrib_location_color);
-  glVertexAttribPointer((GLuint)bd->attrib_location_pos, 2, GL_FLOAT, GL_FALSE,
-                        sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, pos));
-  glVertexAttribPointer((GLuint)bd->attrib_location_uv, 2, GL_FLOAT, GL_FALSE,
-                        sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, uv));
-  glVertexAttribPointer((GLuint)bd->attrib_location_color, 4, GL_UNSIGNED_BYTE,
-                        GL_TRUE, sizeof(ImDrawVert),
-                        (GLvoid*)offsetof(ImDrawVert, col));
 }
 
 void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
@@ -71,31 +62,69 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
       (int)(draw_data->DisplaySize.y * draw_data->FramebufferScale.y);
   if (fb_width <= 0 || fb_height <= 0) return;
 
-  GLuint vao = 0;
-  glGenVertexArrays(1, &vao);
-  setup_render_state(draw_data, fb_width, fb_height, vao);
+  BackendData* bd = get_backend_data();
+  Allocator allocator = bd->allocator;
+
+  // 1. Calculate total counts and prepare staging buffers
+  size_t total_vtx_count = 0;
+  size_t total_idx_count = 0;
+  for (int n = 0; n < draw_data->CmdListsCount; n++) {
+    const ImDrawList* cmd_list = draw_data->CmdLists[n];
+    total_vtx_count += (size_t)cmd_list->VtxBuffer.Size;
+    total_idx_count += (size_t)cmd_list->IdxBuffer.Size;
+  }
+
+  array_list_resize(&bd->vtx_staging, allocator, total_vtx_count);
+  array_list_resize(&bd->idx_staging, allocator, total_idx_count);
+
+  // 2. Concatenate and adjust indices
+  size_t vtx_dst_offset = 0;
+  size_t idx_dst_offset = 0;
+  for (int n = 0; n < draw_data->CmdListsCount; n++) {
+    const ImDrawList* cmd_list = draw_data->CmdLists[n];
+    size_t vtx_count = (size_t)cmd_list->VtxBuffer.Size;
+    size_t idx_count = (size_t)cmd_list->IdxBuffer.Size;
+
+    memcpy(bd->vtx_staging.data + vtx_dst_offset, cmd_list->VtxBuffer.Data,
+           vtx_count * sizeof(ImDrawVert));
+
+    const ImDrawIdx* idx_src = cmd_list->IdxBuffer.Data;
+    ImDrawIdx* idx_dst = bd->idx_staging.data + idx_dst_offset;
+    ImDrawIdx base_vtx_idx = (ImDrawIdx)vtx_dst_offset;
+
+    for (size_t i = 0; i < idx_count; i++) {
+      idx_dst[i] = idx_src[i] + base_vtx_idx;
+    }
+
+    vtx_dst_offset += vtx_count;
+    idx_dst_offset += idx_count;
+  }
+
+  // 3. One single upload to GPU
+  glBindBuffer(GL_ARRAY_BUFFER, bd->vbo);
+  glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(total_vtx_count * sizeof(ImDrawVert)),
+               bd->vtx_staging.data, GL_STREAM_DRAW);
+
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bd->ebo);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)(total_idx_count * sizeof(ImDrawIdx)),
+               bd->idx_staging.data, GL_STREAM_DRAW);
+
+  // 4. Setup state and render
+  setup_render_state(draw_data, fb_width, fb_height, bd->vao);
 
   ImVec2 clip_off = draw_data->DisplayPos;
   ImVec2 clip_scale = draw_data->FramebufferScale;
+  size_t global_idx_offset = 0;
 
   for (int n = 0; n < draw_data->CmdListsCount; n++) {
     const ImDrawList* cmd_list = draw_data->CmdLists[n];
-
-    glBufferData(
-        GL_ARRAY_BUFFER,
-        (GLsizeiptr)((size_t)cmd_list->VtxBuffer.Size * sizeof(ImDrawVert)),
-        (const GLvoid*)cmd_list->VtxBuffer.Data, GL_STREAM_DRAW);
-    glBufferData(
-        GL_ELEMENT_ARRAY_BUFFER,
-        (GLsizeiptr)((size_t)cmd_list->IdxBuffer.Size * sizeof(ImDrawIdx)),
-        (const GLvoid*)cmd_list->IdxBuffer.Data, GL_STREAM_DRAW);
-
     for (int cmd_i = 0; cmd_i < cmd_list->CmdBuffer.Size; cmd_i++) {
       const ImDrawCmd* pcmd = &cmd_list->CmdBuffer[cmd_i];
       ImVec2 clip_min((pcmd->ClipRect.x - clip_off.x) * clip_scale.x,
                       (pcmd->ClipRect.y - clip_off.y) * clip_scale.y);
       ImVec2 clip_max((pcmd->ClipRect.z - clip_off.x) * clip_scale.x,
                       (pcmd->ClipRect.w - clip_off.y) * clip_scale.y);
+
       if (clip_min.x < (float)fb_width && clip_min.y < (float)fb_height &&
           clip_max.x >= 0.0f && clip_max.y >= 0.0f) {
         glScissor((int)clip_min.x, (int)((float)fb_height - clip_max.y),
@@ -105,11 +134,12 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
         glDrawElements(
             GL_TRIANGLES, (GLsizei)pcmd->ElemCount,
             sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT,
-            (void*)(intptr_t)(pcmd->IdxOffset * sizeof(ImDrawIdx)));
+            (void*)(intptr_t)((global_idx_offset + pcmd->IdxOffset) *
+                              sizeof(ImDrawIdx)));
       }
     }
+    global_idx_offset += (size_t)cmd_list->IdxBuffer.Size;
   }
-  glDeleteVertexArrays(1, &vao);
 }
 
 bool imgui_impl_webgl_init(Allocator allocator) {
@@ -189,8 +219,30 @@ bool imgui_impl_webgl_init(Allocator allocator) {
   bd->attrib_location_uv = glGetAttribLocation(bd->shader_program, "UV");
   bd->attrib_location_color = glGetAttribLocation(bd->shader_program, "Color");
 
+  bd->vtx_staging = {};
+  bd->idx_staging = {};
+
   glGenBuffers(1, &bd->vbo);
   glGenBuffers(1, &bd->ebo);
+  glGenVertexArrays(1, &bd->vao);
+
+  glBindVertexArray(bd->vao);
+  glBindBuffer(GL_ARRAY_BUFFER, bd->vbo);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bd->ebo);
+
+  glEnableVertexAttribArray((GLuint)bd->attrib_location_pos);
+  glEnableVertexAttribArray((GLuint)bd->attrib_location_uv);
+  glEnableVertexAttribArray((GLuint)bd->attrib_location_color);
+
+  glVertexAttribPointer((GLuint)bd->attrib_location_pos, 2, GL_FLOAT, GL_FALSE,
+                        sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, pos));
+  glVertexAttribPointer((GLuint)bd->attrib_location_uv, 2, GL_FLOAT, GL_FALSE,
+                        sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, uv));
+  glVertexAttribPointer((GLuint)bd->attrib_location_color, 4, GL_UNSIGNED_BYTE,
+                        GL_TRUE, sizeof(ImDrawVert),
+                        (GLvoid*)offsetof(ImDrawVert, col));
+
+  glBindVertexArray(0);
 
   if (!imgui_impl_webgl_create_fonts_texture()) return false;
 
@@ -229,9 +281,12 @@ void imgui_impl_webgl_shutdown() {
   BackendData* bd = get_backend_data();
   glDeleteBuffers(1, &bd->vbo);
   glDeleteBuffers(1, &bd->ebo);
+  glDeleteVertexArrays(1, &bd->vao);
   glDeleteProgram(bd->shader_program);
   imgui_impl_webgl_destroy_fonts_texture();
   Allocator allocator = bd->allocator;
+  array_list_deinit(&bd->vtx_staging, allocator);
+  array_list_deinit(&bd->idx_staging, allocator);
   allocator_free(allocator, bd, sizeof(BackendData));
   ImGui::GetIO().BackendRendererUserData = nullptr;
 }

@@ -123,6 +123,7 @@ cc_library(
     hdrs = ["imgui_impl_webgl.h"],
     deps = [
         ":allocator",
+        ":array_list",
         ":logging",
         "@imgui",
     ],

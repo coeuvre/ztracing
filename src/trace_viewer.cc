@@ -82,20 +82,26 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
 
   float border_thickness = is_selected ? TRACK_MIN_EVENT_WIDTH : 1.0f;
   float min_width = 2.0f * border_thickness + 1.0f;
-  if (x2 - x1 < min_width) x2 = x1 + min_width;
+  bool draw_border = true;
+  if (x2 - x1 < min_width) {
+    x2 = x1 + min_width;
+    draw_border = false;
+  }
 
   draw_list->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), col);
 
-  ImU32 border_col =
-      is_selected ? theme.event_border_selected : theme.event_border;
-  draw_list->AddRect(ImVec2(x1, y1), ImVec2(x2, y2), border_col, 0.0f, 0,
-                     border_thickness);
+  float event_width = x2 - x1;
+  if (is_selected || draw_border) {
+    ImU32 border_col =
+        is_selected ? theme.event_border_selected : theme.event_border;
+    draw_list->AddRect(ImVec2(x1, y1), ImVec2(x2, y2), border_col, 0.0f, 0,
+                       border_thickness);
+  }
 
   // Draw event name if there is enough space and it's not a merged block
   // (name_ref != 0)
   if (name_ref != 0) {
     float padding_h = 6.0f;
-    float event_width = x2 - x1;
 
     if (event_width > padding_h * 2.0f + 10.0f) {
       float visible_x1 = std::max(x1, tracks_canvas_pos_x);
