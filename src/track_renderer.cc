@@ -96,16 +96,12 @@ void track_compute_counter_render_blocks(
   array_list_clear(out_peaks);
   if (track->event_indices.size == 0) return;
 
+  int64_t track_first_ts = trace_data->events[track->event_indices[0]].ts;
   int64_t track_last_ts =
       trace_data->events[track->event_indices[track->event_indices.size - 1]].ts;
 
-  if ((int64_t)viewport_start >= track_last_ts) {
-    CounterRenderBlock rb = {tracks_canvas_pos_x, tracks_canvas_pos_x + width,
-                             (size_t)-1};
-    array_list_push_back(out_blocks, a, rb);
-    for (size_t i = 0; i < track->counter_series.size; i++) {
-      array_list_push_back(out_peaks, a, 0.0);
-    }
+  if (viewport_end <= (double)track_first_ts ||
+      viewport_start >= (double)track_last_ts) {
     return;
   }
 
@@ -119,6 +115,11 @@ void track_compute_counter_render_blocks(
   // Align current_bucket_ts to a multiple of bucket_dur for stability during
   // panning.
   double current_bucket_ts = floor(viewport_start / bucket_dur) * bucket_dur;
+
+  // Fast-forward to the first bucket that could contain data
+  if (current_bucket_ts < (double)track_first_ts) {
+    current_bucket_ts = floor((double)track_first_ts / bucket_dur) * bucket_dur;
+  }
 
   // Find the initial state (values from the last event before the viewport
   // starts)
@@ -189,6 +190,7 @@ void track_compute_counter_render_blocks(
     }
 
     // Determine the end boundary for this bucket (clamped to track end)
+    double draw_start_ts = std::max(current_bucket_ts, (double)track_first_ts);
     double draw_end_ts = next_bucket_ts;
     bool hit_track_end = false;
     if (draw_end_ts >= (double)track_last_ts) {
@@ -197,7 +199,7 @@ void track_compute_counter_render_blocks(
     }
 
     float x1 = (float)(tracks_canvas_pos_x +
-                       (current_bucket_ts - viewport_start) * inv_duration);
+                       (draw_start_ts - viewport_start) * inv_duration);
     float x2 = (float)(tracks_canvas_pos_x +
                        (draw_end_ts - viewport_start) * inv_duration);
 
@@ -231,6 +233,8 @@ void track_compute_counter_render_blocks(
         if (last_event_idx_in_bucket == (size_t)-1) {
           if (it != track->event_indices.data) {
             rb.event_idx = *(it - 1);
+          } else if (track->event_indices.size > 0 && draw_start_ts >= (double)track_first_ts) {
+            rb.event_idx = track->event_indices[0];
           }
         }
         array_list_push_back(out_blocks, a, rb);
@@ -241,14 +245,6 @@ void track_compute_counter_render_blocks(
     }
 
     if (hit_track_end) {
-      // Fill the rest with a gap
-      if (x2 < tracks_canvas_pos_x + width) {
-        CounterRenderBlock rb = {x2, tracks_canvas_pos_x + width, (size_t)-1};
-        array_list_push_back(out_blocks, a, rb);
-        for (size_t i = 0; i < bucket_max_values.size; i++) {
-          array_list_push_back(out_peaks, a, 0.0);
-        }
-      }
       break;
     }
 

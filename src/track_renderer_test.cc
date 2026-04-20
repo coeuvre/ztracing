@@ -260,7 +260,8 @@ TEST_F(TrackRendererTest, CounterBucketing) {
   // Should be few blocks due to merging and bucketing
   EXPECT_GT(c_blocks.size, 0u);
   EXPECT_LT(c_blocks.size, 50u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  // First block should NOT be a gap
+  EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
 
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
@@ -271,16 +272,20 @@ TEST_F(TrackRendererTest, CounterFirstEventGap) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
   TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
 
   ArrayList<CounterRenderBlock> c_blocks = {};
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, 0, 200, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
+  // Expect no blocks before 100, and no blocks after 150.
   ASSERT_GT(c_blocks.size, 0u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
-  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
+  EXPECT_NE(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
 
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
@@ -303,7 +308,7 @@ TEST_F(TrackRendererTest, CounterMidViewport) {
 
   ASSERT_GT(c_blocks.size, 0u);
   EXPECT_EQ(c_blocks[0].event_idx, 0u); 
-  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  EXPECT_NE(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -313,15 +318,18 @@ TEST_F(TrackRendererTest, CounterDrawTooFarLeft) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
   TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
 
   ArrayList<CounterRenderBlock> c_blocks = {};
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, 50, 150, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
   ASSERT_GT(c_blocks.size, 0u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1); 
+  EXPECT_NE(c_blocks[0].event_idx, (size_t)-1); 
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -331,8 +339,11 @@ TEST_F(TrackRendererTest, CounterCanvasOffset) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
   TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
 
   ArrayList<CounterRenderBlock> c_blocks = {};
   ArrayList<double> peaks = {};
@@ -340,7 +351,7 @@ TEST_F(TrackRendererTest, CounterCanvasOffset) {
 
   ASSERT_GT(c_blocks.size, 0u);
   EXPECT_GE(c_blocks[0].x1, 100.0f);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -357,8 +368,7 @@ TEST_F(TrackRendererTest, CounterBeforeFirstEvent) {
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, 0, 50, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
-  ASSERT_EQ(c_blocks.size, 1u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  ASSERT_EQ(c_blocks.size, 0u);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -375,8 +385,8 @@ TEST_F(TrackRendererTest, CounterFirstEventAtStart) {
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, 100, 200, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
-  ASSERT_EQ(c_blocks.size, 1u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1); 
+  // Still 0 because viewport_start (100) >= track_last_ts (100)
+  ASSERT_EQ(c_blocks.size, 0u);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -398,7 +408,8 @@ TEST_F(TrackRendererTest, CounterClampedGapBug) {
 
   ASSERT_GT(c_blocks.size, 0u);
   EXPECT_EQ(c_blocks[0].event_idx, 0u);
-  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  // Last block should be at 100 (track_last_ts)
+  EXPECT_NE(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -415,8 +426,7 @@ TEST_F(TrackRendererTest, CounterViewportFarLeft) {
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, -200, -100, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
-  ASSERT_EQ(c_blocks.size, 1u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  ASSERT_EQ(c_blocks.size, 0u);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -433,8 +443,8 @@ TEST_F(TrackRendererTest, CounterFirstEventJustBefore) {
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, 100, 200, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
-  ASSERT_EQ(c_blocks.size, 1u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  // 0 because viewport_start (100) >= track_last_ts (90)
+  ASSERT_EQ(c_blocks.size, 0u);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -444,16 +454,20 @@ TEST_F(TrackRendererTest, CounterSessionStartGap) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
   TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
 
   ArrayList<CounterRenderBlock> c_blocks = {};
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, 0, 200, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
   ASSERT_GT(c_blocks.size, 0u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
-  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  // First block should NOT be a gap anymore
+  EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
+  EXPECT_NE(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -463,15 +477,18 @@ TEST_F(TrackRendererTest, CounterExactStart) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
   TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
 
   ArrayList<CounterRenderBlock> c_blocks = {};
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, 100, 200, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
-  ASSERT_EQ(c_blocks.size, 1u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  ASSERT_GT(c_blocks.size, 0u);
+  EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -480,16 +497,19 @@ TEST_F(TrackRendererTest, CounterViewportNegative) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
   TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
 
   ArrayList<CounterRenderBlock> c_blocks = {};
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, -100, 200, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
   ASSERT_GT(c_blocks.size, 0u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
-  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
+  EXPECT_NE(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -511,7 +531,7 @@ TEST_F(TrackRendererTest, CounterPartialStart) {
 
   ASSERT_GT(c_blocks.size, 0u);
   EXPECT_EQ(c_blocks[0].event_idx, 0u);
-  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  EXPECT_NE(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -528,8 +548,7 @@ TEST_F(TrackRendererTest, CounterViewportFarRight) {
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, 200, 300, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
-  ASSERT_EQ(c_blocks.size, 1u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  ASSERT_EQ(c_blocks.size, 0u);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -550,7 +569,8 @@ TEST_F(TrackRendererTest, CounterLastEventAtEnd) {
   track_compute_counter_render_blocks(&t, &td, 0, 300, 3000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
   ASSERT_GT(c_blocks.size, 0u);
-  EXPECT_EQ(c_blocks[c_blocks.size - 1].event_idx, (size_t)-1);
+  // Last block should NOT be a gap anymore
+  EXPECT_NE(c_blocks[c_blocks.size - 1].event_idx, (size_t)-1);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -598,10 +618,13 @@ TEST_F(TrackRendererTest, CounterBucketingStability) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
 
-  // Event at t=10
+  // Event at t=10 and t=20
   TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 10;
+  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 20;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_push_back(&t.event_indices, allocator, (size_t)1);
 
   ArrayList<CounterRenderBlock> blocks_a = {};
   ArrayList<CounterRenderBlock> blocks_b = {};
@@ -609,19 +632,20 @@ TEST_F(TrackRendererTest, CounterBucketingStability) {
   ArrayList<double> peaks_b = {};
 
   // Viewport A: 0 to 1000, 1000px wide. 1us = 1px. Bucket = 3px = 3us.
-  // Buckets: [0, 3), [3, 6), [6, 9), [9, 12) ...
-  // E1 (t=10) should fall into [9, 12) if bucketed as (floor(10/3)*3).
-  // Our code aligns buckets to floor(viewport_start / bucket_dur) * bucket_dur.
-  // For A: floor(0 / 3) * 3 = 0. Buckets: [0, 3), [3, 6), [6, 9), [9, 12).
+  // track_first_ts = 10, track_last_ts = 20.
+  // floor(10 / 3) * 3 = 9.
+  // First bucket: current_bucket_ts = 9, next_bucket_ts = 12.
+  // draw_start_ts = max(9, 10) = 10, draw_end_ts = min(12, 20) = 12.
+  // Block 0: x1 = 10, x2 = 12.
   track_compute_counter_render_blocks(&t, &td, 0, 1000, 1000.0f, 0.0f, &peaks_a, &blocks_a, allocator);
 
   // Viewport B: 1 to 1001, 1000px wide. Same scale.
-  // Panned by 1us.
-  // Buckets should STILL be aligned to [0, 3), [3, 6) ...
-  // For B: floor(1 / 3) * 3 = 0. First bucket starts at 0, clipped to 1. -> [1, 3).
+  // Buckets still align from 10 -> 9.
+  // First bucket: draw_start_ts = max(9, 10) = 10.
+  // x1 = 10 - 1 = 9. x2 = 12 - 1 = 11.
   track_compute_counter_render_blocks(&t, &td, 1, 1001, 1000.0f, 0.0f, &peaks_b, &blocks_b, allocator);
 
-  // Find the block containing t=10 in both.
+  // Find the block containing t=11 in both.
   auto find_block_at = [](const ArrayList<CounterRenderBlock>& b, float x_offset) -> size_t {
     for (size_t i = 0; i < b.size; i++) {
       if (x_offset >= b[i].x1 - 0.001f && x_offset < b[i].x2 + 0.001f) return b[i].event_idx;
@@ -629,19 +653,17 @@ TEST_F(TrackRendererTest, CounterBucketingStability) {
     return (size_t)-2;
   };
 
-  // In Viewport A, t=10 is at x=10.
-  // In Viewport B, t=10 is at x=9 (10 - 1).
-  EXPECT_EQ(find_block_at(blocks_a, 10.0f), 0u);
-  EXPECT_EQ(find_block_at(blocks_b, 9.0f), 0u);
+  // In Viewport A, t=11 is at x=11.
+  // In Viewport B, t=11 is at x=10 (11 - 1).
+  EXPECT_EQ(find_block_at(blocks_a, 11.0f), 0u);
+  EXPECT_EQ(find_block_at(blocks_b, 10.0f), 0u);
 
   // Check absolute boundary stability:
-  // Bucket [9, 12) in A: x1=9, x2=10 (Track ends at 10).
-  
   bool found_stable_boundary = false;
   for (size_t i = 0; i < blocks_a.size; i++) {
     if (blocks_a[i].event_idx == 0u) {
-       EXPECT_NEAR(blocks_a[i].x1, 9.0f, 0.01f);
-       EXPECT_NEAR(blocks_a[i].x2, 10.0f, 0.01f);
+       EXPECT_NEAR(blocks_a[i].x1, 10.0f, 0.01f);
+       EXPECT_NEAR(blocks_a[i].x2, 12.0f, 0.01f);
        found_stable_boundary = true;
        break;
     }
@@ -651,11 +673,8 @@ TEST_F(TrackRendererTest, CounterBucketingStability) {
   found_stable_boundary = false;
   for (size_t i = 0; i < blocks_b.size; i++) {
     if (blocks_b[i].event_idx == 0u) {
-       // In B, viewport starts at 1. Bucket starts at 0.
-       // x1 = (9 - 1) = 8.
-       // x2 = (10 - 1) = 9.
-       EXPECT_NEAR(blocks_b[i].x1, 8.0f, 0.01f);
-       EXPECT_NEAR(blocks_b[i].x2, 9.0f, 0.01f);
+       EXPECT_NEAR(blocks_b[i].x1, 9.0f, 0.01f);
+       EXPECT_NEAR(blocks_b[i].x2, 11.0f, 0.01f);
        found_stable_boundary = true;
        break;
     }
@@ -680,8 +699,8 @@ TEST_F(TrackRendererTest, CounterGapInitialState) {
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, 75, 100, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
-  ASSERT_EQ(c_blocks.size, 1u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  // 0 because viewport_start (75) >= track_last_ts (50)
+  ASSERT_EQ(c_blocks.size, 0u);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -698,8 +717,8 @@ TEST_F(TrackRendererTest, CounterStartIdxBug) {
   ArrayList<double> peaks = {};
   track_compute_counter_render_blocks(&t, &td, 0, 50, 1000.0f, 0.0f, &peaks, &c_blocks, allocator);
 
-  ASSERT_EQ(c_blocks.size, 1u);
-  EXPECT_EQ(c_blocks[0].event_idx, (size_t)-1);
+  // 0 because viewport_end (50) <= track_first_ts (50)
+  ASSERT_EQ(c_blocks.size, 0u);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
@@ -722,7 +741,7 @@ TEST_F(TrackRendererTest, CounterMaxDurBug) {
 
   ASSERT_GT(c_blocks.size, 0u);
   EXPECT_EQ(c_blocks[0].event_idx, 0u);
-  EXPECT_EQ(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
+  EXPECT_NE(c_blocks[c_blocks.size-1].event_idx, (size_t)-1);
   array_list_deinit(&peaks, allocator);
   array_list_deinit(&c_blocks, allocator);
   track_deinit(&t, allocator);
