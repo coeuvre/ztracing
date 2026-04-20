@@ -58,7 +58,9 @@
 - `src/ztracing.h`: Clean C API for the WASM-to-JS bridge.
 - `src/platform`: Platform abstraction layer (e.g., high-resolution timestamps). Supports both WASM and native (for tests).
 - `src/logging`: Simple logging utility with WASM console and native stdout integration.
-- `src/track_renderer`: Standalone rendering module that implements performance optimizations like LOD and event coalescing. Decouples rendering calculations from ImGui-specific logic to allow for comprehensive unit testing.
+- `src/track_renderer`: Standalone rendering module that implements performance optimizations like LOD and event coalescing. 
+    - **Allocation-Free Rendering**: Uses a persistent `TrackRendererState` (Zero-Is-Initialization compatible) to host temporary buffers (`counter_current_values`, `counter_bucket_max_values`, etc.), eliminating per-frame heap allocations during rendering.
+    - **Decoupling**: Separates rendering calculations from ImGui-specific logic to allow for comprehensive unit testing.
 
 ## Main Viewport
 
@@ -82,6 +84,7 @@
     - **Step Lines**: A continuous step line is drawn on top of each filled area. These lines are rendered without anti-aliasing to ensure pixel-perfect sharpness.
     - **Minimum Visual Height**: Every series in the stack is guaranteed a minimum visual height of 1.0 pixel, ensuring that even series with 0.0 value are visible as thin lines.
     - **Stable Time-Based Bucketing**: To prevent flickering during dragging, buckets are aligned to absolute timestamps (multiples of the time equivalent of 3 pixels).
+    - **Stub-Free Peaks**: When a value drop occurs within a bucket, the renderer prioritizes new event values over carry-overs for peak calculation. This eliminates high-value "stubs" in the selection highlight for drop events while still capturing upward spikes as peaks.
     - **Data Clamping**: Rendering is strictly limited to the range between the first and last events in the track. "Gap" blocks before the first event or after the last event are not generated, providing a cleaner view.
     - **Performance**: Complexity is $O(W \log N)$ via binary search jumping, where $W$ is the viewport width and $N$ is the event count. Internal calculations use pre-calculated visual offsets ($O(W \cdot S)$) to minimize per-frame overhead.
     - **Hover Highlighting**: Hovering over a counter track highlights the active bucket/block with a semi-transparent overlay.

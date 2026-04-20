@@ -192,7 +192,7 @@ static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
   JsonToken tok = json_reader_next(r);
   if (tok.type != JSON_TOKEN_OBJECT_START) return false;
 
-  memset(event, 0, sizeof(TraceEvent));
+  *event = {};
   array_list_clear(&p->args_buffer);
 
   while (true) {

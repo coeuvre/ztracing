@@ -152,10 +152,10 @@ static void trace_viewer_draw_counter_track(
   if (max_total <= 0) max_total = 1.0;
 
   TrackRendererState* state = &tv->track_renderer_state;
-  array_list_resize(&state->counter_values, allocator, t.counter_series.size);
+  array_list_resize(&state->counter_current_values, allocator, t.counter_series.size);
 
   track_compute_counter_render_blocks(&t, td, viewport_start, viewport_end,
-                                      width, pos.x, &state->counter_peaks,
+                                      width, pos.x, state,
                                       &tv->counter_render_blocks, allocator);
 
   if (tv->counter_render_blocks.size == 0) return;

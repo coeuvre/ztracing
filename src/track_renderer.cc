@@ -1,6 +1,7 @@
 #include "src/track_renderer.h"
 
 #include <algorithm>
+#include <cmath>
 
 void track_compute_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
@@ -92,10 +93,10 @@ void track_compute_render_blocks(
 void track_compute_counter_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
     double viewport_end, float width, float tracks_canvas_pos_x,
-    ArrayList<double>* out_peaks, ArrayList<CounterRenderBlock>* out_blocks,
+    TrackRendererState* state, ArrayList<CounterRenderBlock>* out_blocks,
     Allocator a) {
   array_list_clear(out_blocks);
-  array_list_clear(out_peaks);
+  array_list_clear(&state->counter_peaks);
   if (track->event_indices.size == 0) return;
 
   int64_t track_first_ts = trace_data->events[track->event_indices[0]].ts;
@@ -125,9 +126,9 @@ void track_compute_counter_render_blocks(
 
   // Find the initial state (values from the last event before the viewport
   // starts)
-  ArrayList<double> current_values = {};
-  array_list_resize(&current_values, a, track->counter_series.size);
-  for (size_t i = 0; i < current_values.size; i++) current_values[i] = 0.0;
+  array_list_resize(&state->counter_current_values, a, track->counter_series.size);
+  for (size_t i = 0; i < state->counter_current_values.size; i++)
+    state->counter_current_values[i] = 0.0;
 
   auto it_start = std::lower_bound(
       track->event_indices.data,
@@ -141,7 +142,7 @@ void track_compute_counter_render_blocks(
       const TraceArgPersisted& arg = trace_data->args[e.args_offset + arg_k];
       for (size_t s_idx = 0; s_idx < track->counter_series.size; s_idx++) {
         if (track->counter_series[s_idx] == arg.key_ref) {
-          current_values[s_idx] = arg.val_double;
+          state->counter_current_values[s_idx] = arg.val_double;
           break;
         }
       }
@@ -152,16 +153,17 @@ void track_compute_counter_render_blocks(
   const size_t* search_end =
       track->event_indices.data + track->event_indices.size;
 
-  ArrayList<double> bucket_max_values = {};
-  array_list_resize(&bucket_max_values, a, track->counter_series.size);
+  array_list_resize(&state->counter_bucket_max_values, a, track->counter_series.size);
+  array_list_resize(&state->counter_series_updated, a, track->counter_series.size);
 
   while (current_bucket_ts < viewport_end) {
     double next_bucket_ts = current_bucket_ts + bucket_dur;
 
     // Initialize bucket maximums with the values carried over from the previous
     // bucket.
-    for (size_t i = 0; i < current_values.size; i++) {
-      bucket_max_values[i] = current_values[i];
+    for (size_t i = 0; i < state->counter_current_values.size; i++) {
+      state->counter_bucket_max_values[i] = state->counter_current_values[i];
+      state->counter_series_updated[i] = 0;
     }
 
     size_t last_event_idx_in_bucket = (size_t)-1;
@@ -180,9 +182,16 @@ void track_compute_counter_render_blocks(
         const TraceArgPersisted& arg = trace_data->args[e.args_offset + arg_k];
         for (size_t s_idx = 0; s_idx < track->counter_series.size; s_idx++) {
           if (track->counter_series[s_idx] == arg.key_ref) {
-            current_values[s_idx] = arg.val_double;
-            if (current_values[s_idx] > bucket_max_values[s_idx]) {
-              bucket_max_values[s_idx] = current_values[s_idx];
+            state->counter_current_values[s_idx] = arg.val_double;
+            if (!state->counter_series_updated[s_idx]) {
+              state->counter_bucket_max_values[s_idx] = arg.val_double;
+              state->counter_series_updated[s_idx] = 1;
+            } else {
+              if (state->counter_current_values[s_idx] >
+                  state->counter_bucket_max_values[s_idx]) {
+                state->counter_bucket_max_values[s_idx] =
+                    state->counter_current_values[s_idx];
+              }
             }
             break;
           }
@@ -219,8 +228,8 @@ void track_compute_counter_render_blocks(
           size_t series_count = track->counter_series.size;
           size_t last_peaks_offset = (out_blocks->size - 1) * series_count;
           for (size_t i = 0; i < series_count; i++) {
-            if (out_peaks->data[last_peaks_offset + i] !=
-                bucket_max_values[i]) {
+            if (state->counter_peaks.data[last_peaks_offset + i] !=
+                state->counter_bucket_max_values[i]) {
               can_merge = false;
               break;
             }
@@ -235,13 +244,15 @@ void track_compute_counter_render_blocks(
         if (last_event_idx_in_bucket == (size_t)-1) {
           if (it != track->event_indices.data) {
             rb.event_idx = *(it - 1);
-          } else if (track->event_indices.size > 0 && draw_start_ts >= (double)track_first_ts) {
+          } else if (track->event_indices.size > 0 &&
+                     draw_start_ts >= (double)track_first_ts) {
             rb.event_idx = track->event_indices[0];
           }
         }
         array_list_push_back(out_blocks, a, rb);
-        for (size_t i = 0; i < bucket_max_values.size; i++) {
-          array_list_push_back(out_peaks, a, bucket_max_values[i]);
+        for (size_t i = 0; i < state->counter_bucket_max_values.size; i++) {
+          array_list_push_back(&state->counter_peaks, a,
+                               state->counter_bucket_max_values[i]);
         }
       }
     }
@@ -252,7 +263,4 @@ void track_compute_counter_render_blocks(
 
     current_bucket_ts = next_bucket_ts;
   }
-
-  array_list_deinit(&current_values, a);
-  array_list_deinit(&bucket_max_values, a);
 }

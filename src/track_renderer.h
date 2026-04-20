@@ -38,21 +38,20 @@ struct TrackMergeBlock {
 struct TrackRendererState {
   ArrayList<float> last_x2_per_depth;
   ArrayList<TrackMergeBlock> merge_levels;
-  ArrayList<double> counter_values;
+  ArrayList<double> counter_current_values;
+  ArrayList<double> counter_bucket_max_values;
+  ArrayList<uint8_t> counter_series_updated;
   ArrayList<double> counter_peaks;
   ArrayList<float> counter_visual_offsets;
 };
-
-inline void track_renderer_state_init(TrackRendererState* state, Allocator a) {
-  (void)a;
-  memset(state, 0, sizeof(TrackRendererState));
-}
 
 inline void track_renderer_state_deinit(TrackRendererState* state,
                                         Allocator a) {
   array_list_deinit(&state->last_x2_per_depth, a);
   array_list_deinit(&state->merge_levels, a);
-  array_list_deinit(&state->counter_values, a);
+  array_list_deinit(&state->counter_current_values, a);
+  array_list_deinit(&state->counter_bucket_max_values, a);
+  array_list_deinit(&state->counter_series_updated, a);
   array_list_deinit(&state->counter_peaks, a);
   array_list_deinit(&state->counter_visual_offsets, a);
 }
@@ -60,7 +59,9 @@ inline void track_renderer_state_deinit(TrackRendererState* state,
 inline void track_renderer_state_clear(TrackRendererState* state) {
   array_list_clear(&state->last_x2_per_depth);
   array_list_clear(&state->merge_levels);
-  array_list_clear(&state->counter_values);
+  array_list_clear(&state->counter_current_values);
+  array_list_clear(&state->counter_bucket_max_values);
+  array_list_clear(&state->counter_series_updated);
   array_list_clear(&state->counter_peaks);
   array_list_clear(&state->counter_visual_offsets);
 }
@@ -74,7 +75,7 @@ void track_compute_render_blocks(
 void track_compute_counter_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
     double viewport_end, float width, float tracks_canvas_pos_x,
-    ArrayList<double>* out_peaks, ArrayList<CounterRenderBlock>* out_blocks,
+    TrackRendererState* state, ArrayList<CounterRenderBlock>* out_blocks,
     Allocator a);
 
 #endif  // ZTRACING_SRC_TRACK_RENDERER_H_

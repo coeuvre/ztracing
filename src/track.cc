@@ -164,9 +164,9 @@ void track_sort_events(Track* t, const TraceData* td) {
     }
 
     std::sort(keys, keys + t->event_indices.size,
-              [](const SortKey& a, const SortKey& b) {
-                if (a.ts != b.ts) return a.ts < b.ts;
-                return a.dur > b.dur;
+              [](const SortKey& sk1, const SortKey& sk2) {
+                if (sk1.ts != sk2.ts) return sk1.ts < sk2.ts;
+                return sk1.dur > sk2.dur;
               });
 
     for (size_t i = 0; i < t->event_indices.size; i++) {
@@ -395,25 +395,25 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
 
   // Final track sort
   std::sort(out_tracks->data, out_tracks->data + out_tracks->size,
-            [&](const Track& a, const Track& b) {
-              if (a.sort_index != b.sort_index)
-                return a.sort_index < b.sort_index;
-              if (a.pid != b.pid) return a.pid < b.pid;
-              if (a.type != b.type) return (int)a.type < (int)b.type;
+            [&](const Track& tr1, const Track& tr2) {
+              if (tr1.sort_index != tr2.sort_index)
+                return tr1.sort_index < tr2.sort_index;
+              if (tr1.pid != tr2.pid) return tr1.pid < tr2.pid;
+              if (tr1.type != tr2.type) return (int)tr1.type < (int)tr2.type;
 
-              if (a.type == TRACK_TYPE_COUNTER) {
-                std::string_view na = trace_data_get_string(td, a.name_ref);
-                std::string_view nb = trace_data_get_string(td, b.name_ref);
+              if (tr1.type == TRACK_TYPE_COUNTER) {
+                std::string_view na = trace_data_get_string(td, tr1.name_ref);
+                std::string_view nb = trace_data_get_string(td, tr2.name_ref);
                 int res = str_compare_ignore_case(na, nb);
                 if (res != 0) return res < 0;
 
-                std::string_view ia = trace_data_get_string(td, a.id_ref);
-                std::string_view ib = trace_data_get_string(td, b.id_ref);
+                std::string_view ia = trace_data_get_string(td, tr1.id_ref);
+                std::string_view ib = trace_data_get_string(td, tr2.id_ref);
                 return ia < ib;
               } else {
-                if (a.tid != b.tid) return a.tid < b.tid;
-                if (a.name_ref != b.name_ref) return a.name_ref < b.name_ref;
-                return a.id_ref < b.id_ref;
+                if (tr1.tid != tr2.tid) return tr1.tid < tr2.tid;
+                if (tr1.name_ref != tr2.name_ref) return tr1.name_ref < tr2.name_ref;
+                return tr1.id_ref < tr2.id_ref;
               }
             });
 
