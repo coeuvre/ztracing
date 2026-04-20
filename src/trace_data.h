@@ -2,11 +2,11 @@
 #define ZTRACING_SRC_TRACE_DATA_H_
 
 #include <stdint.h>
+#include <string_view>
 
 #include "src/allocator.h"
 #include "src/array_list.h"
 #include "src/hash_table.h"
-#include "src/str.h"
 #include "src/trace_parser.h"
 
 // A reference to a string in the TraceData string pool.
@@ -59,7 +59,7 @@ struct TraceData {
 
   // Temporary storage for hashing during push
   struct {
-    Str current_str;
+    std::string_view current_str;
     uint32_t current_hash;
   } tmp;
 };
@@ -70,7 +70,7 @@ void trace_data_init(TraceData* td, Allocator a);
 void trace_data_deinit(TraceData* td, Allocator a);
 void trace_data_clear(TraceData* td, Allocator a);
 
-StringRef trace_data_push_string(TraceData* td, Allocator a, Str s);
+StringRef trace_data_push_string(TraceData* td, Allocator a, std::string_view s);
 
 void trace_data_add_event(TraceData* td, Allocator a, const Theme* theme,
                           const TraceEvent* event);
@@ -78,8 +78,8 @@ void trace_data_update_event_color(TraceData* td, uint32_t event_idx,
                                    const Theme* theme);
 
 // Helper to get a string from a reference.
-inline Str trace_data_get_string(const TraceData* td, StringRef ref) {
-  if (ref == 0 || ref > td->string_table.size) return {nullptr, 0};
+inline std::string_view trace_data_get_string(const TraceData* td, StringRef ref) {
+  if (ref == 0 || ref > td->string_table.size) return {};
   const StringEntry& e = td->string_table[ref - 1];
   return {&td->string_buffer[e.offset], (size_t)e.len};
 }

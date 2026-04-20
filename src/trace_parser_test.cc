@@ -13,9 +13,9 @@ TEST(TraceParserTest, BasicArray) {
 
   TraceEvent ev;
   EXPECT_TRUE(trace_parser_next(&p, &ev));
-  EXPECT_TRUE(str_eq(ev.name, STR("foo")));
-  EXPECT_TRUE(str_eq(ev.cat, STR("bar")));
-  EXPECT_TRUE(str_eq(ev.ph, STR("B")));
+  EXPECT_EQ(ev.name, "foo");
+  EXPECT_EQ(ev.cat, "bar");
+  EXPECT_EQ(ev.ph, "B");
   EXPECT_EQ(ev.ts, 123);
   EXPECT_EQ(ev.pid, 1);
   EXPECT_EQ(ev.tid, 2);
@@ -34,7 +34,7 @@ TEST(TraceParserTest, BasicObject) {
 
   TraceEvent ev;
   EXPECT_TRUE(trace_parser_next(&p, &ev));
-  EXPECT_TRUE(str_eq(ev.name, STR("foo")));
+  EXPECT_EQ(ev.name, "foo");
 
   EXPECT_FALSE(trace_parser_next(&p, &ev));
 
@@ -54,10 +54,10 @@ TEST(TraceParserTest, Streaming) {
 
   trace_parser_feed(&p, chunk2, strlen(chunk2), true);
   EXPECT_TRUE(trace_parser_next(&p, &ev));
-  EXPECT_TRUE(str_eq(ev.name, STR("foo")));
+  EXPECT_EQ(ev.name, "foo");
 
   EXPECT_TRUE(trace_parser_next(&p, &ev));
-  EXPECT_TRUE(str_eq(ev.name, STR("bar")));
+  EXPECT_EQ(ev.name, "bar");
 
   EXPECT_FALSE(trace_parser_next(&p, &ev));
 
@@ -74,12 +74,12 @@ TEST(TraceParserTest, StreamingMiddleOfSecondEvent) {
   trace_parser_feed(&p, chunk1, strlen(chunk1), false);
   TraceEvent ev;
   EXPECT_TRUE(trace_parser_next(&p, &ev));
-  EXPECT_TRUE(str_eq(ev.name, STR("foo")));
+  EXPECT_EQ(ev.name, "foo");
   EXPECT_FALSE(trace_parser_next(&p, &ev));
 
   trace_parser_feed(&p, chunk2, strlen(chunk2), true);
   EXPECT_TRUE(trace_parser_next(&p, &ev));
-  EXPECT_TRUE(str_eq(ev.name, STR("bar")));
+  EXPECT_EQ(ev.name, "bar");
 
   EXPECT_FALSE(trace_parser_next(&p, &ev));
 
@@ -98,12 +98,12 @@ TEST(TraceParserTest, Args) {
   TraceEvent ev;
   EXPECT_TRUE(trace_parser_next(&p, &ev));
   EXPECT_EQ(ev.args_count, 3u);
-  EXPECT_TRUE(str_eq(ev.args[0].key, STR("url")));
-  EXPECT_TRUE(str_eq(ev.args[0].val, STR("http://foo")));
-  EXPECT_TRUE(str_eq(ev.args[1].key, STR("id")));
-  EXPECT_TRUE(str_eq(ev.args[1].val, STR("123")));
-  EXPECT_TRUE(str_eq(ev.args[2].key, STR("obj")));
-  EXPECT_TRUE(str_eq(ev.args[2].val, STR("{\"x\":1}")));
+  EXPECT_EQ(ev.args[0].key, "url");
+  EXPECT_EQ(ev.args[0].val, "http://foo");
+  EXPECT_EQ(ev.args[1].key, "id");
+  EXPECT_EQ(ev.args[1].val, "123");
+  EXPECT_EQ(ev.args[2].key, "obj");
+  EXPECT_EQ(ev.args[2].val, "{\"x\":1}");
 
   trace_parser_deinit(&p);
 }

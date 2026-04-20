@@ -4,7 +4,6 @@
 
 #include "src/allocator.h"
 #include "src/colors.h"
-#include "src/str.h"
 
 class TrackRendererTest : public ::testing::Test {
  protected:
@@ -29,9 +28,9 @@ class TrackRendererTest : public ::testing::Test {
 
 TEST_F(TrackRendererTest, CoalesceSameColor) {
   Track t = {};
-  TraceEvent e1 = {}; e1.name = STR("e"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 5;
-  TraceEvent e2 = {}; e2.name = STR("e"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 105; e2.dur = 5;
-  TraceEvent e3 = {}; e3.name = STR("e"); e3.cat = STR("cat"); e3.ph = STR("B"); e3.ts = 110; e3.dur = 5;
+  TraceEvent e1 = {}; e1.name = "e"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 5;
+  TraceEvent e2 = {}; e2.name = "e"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 105; e2.dur = 5;
+  TraceEvent e3 = {}; e3.name = "e"; e3.cat = "cat"; e3.ph = "B"; e3.ts = 110; e3.dur = 5;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -56,8 +55,8 @@ TEST_F(TrackRendererTest, CoalesceSameColor) {
 
 TEST_F(TrackRendererTest, CoalesceDifferentColors) {
   Track t = {};
-  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 5;
-  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 105; e2.dur = 5;
+  TraceEvent e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 5;
+  TraceEvent e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 105; e2.dur = 5;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -79,8 +78,8 @@ TEST_F(TrackRendererTest, CoalesceDifferentColors) {
 
 TEST_F(TrackRendererTest, MultipleBlocksCloseTogether) {
   Track t = {};
-  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 5;
-  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 111; e2.dur = 5;
+  TraceEvent e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 5;
+  TraceEvent e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 111; e2.dur = 5;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -100,11 +99,11 @@ TEST_F(TrackRendererTest, MultipleBlocksCloseTogether) {
 
 TEST_F(TrackRendererTest, CullingAfterMergeFlush) {
   Track t = {};
-  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 1;
-  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 101; e2.dur = 1;
-  TraceEvent e3 = {}; e3.name = STR("e3"); e3.cat = STR("cat"); e3.ph = STR("B"); e3.ts = 130; e3.dur = 1;
-  TraceEvent e4 = {}; e4.name = STR("e4"); e4.cat = STR("cat"); e4.ph = STR("B"); e4.ts = 131; e4.dur = 1;
-  TraceEvent e5 = {}; e5.name = STR("e5"); e5.cat = STR("cat"); e5.ph = STR("B"); e5.ts = 132; e5.dur = 1;
+  TraceEvent e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 1;
+  TraceEvent e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 101; e2.dur = 1;
+  TraceEvent e3 = {}; e3.name = "e3"; e3.cat = "cat"; e3.ph = "B"; e3.ts = 130; e3.dur = 1;
+  TraceEvent e4 = {}; e4.name = "e4"; e4.cat = "cat"; e4.ph = "B"; e4.ts = 131; e4.dur = 1;
+  TraceEvent e5 = {}; e5.name = "e5"; e5.cat = "cat"; e5.ph = "B"; e5.ts = 132; e5.dur = 1;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -126,8 +125,8 @@ TEST_F(TrackRendererTest, CullingAfterMergeFlush) {
 
 TEST_F(TrackRendererTest, SelectedEventNeverSkipped) {
   Track t = {};
-  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 10;
-  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 101; e2.dur = 10;
+  TraceEvent e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 10;
+  TraceEvent e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 101; e2.dur = 10;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -150,8 +149,8 @@ TEST_F(TrackRendererTest, SelectedEventNeverSkipped) {
 
 TEST_F(TrackRendererTest, SameLaneOverlap) {
   Track t = {};
-  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 100;
-  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 150; e2.dur = 100;
+  TraceEvent e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 100;
+  TraceEvent e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 150; e2.dur = 100;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -172,9 +171,9 @@ TEST_F(TrackRendererTest, SameLaneOverlap) {
 
 TEST_F(TrackRendererTest, SelectedEventOverlap) {
   Track t = {};
-  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 1;
-  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 101; e2.dur = 1;
-  TraceEvent e3 = {}; e3.name = STR("e3"); e3.cat = STR("cat"); e3.ph = STR("B"); e3.ts = 102; e3.dur = 1;
+  TraceEvent e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 1;
+  TraceEvent e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 101; e2.dur = 1;
+  TraceEvent e3 = {}; e3.name = "e3"; e3.cat = "cat"; e3.ph = "B"; e3.ts = 102; e3.dur = 1;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -194,9 +193,9 @@ TEST_F(TrackRendererTest, SelectedEventOverlap) {
 
 TEST_F(TrackRendererTest, SelectedEventNoOverlap) {
   Track t = {};
-  TraceEvent e1 = {}; e1.name = STR("e1"); e1.cat = STR("cat"); e1.ph = STR("B"); e1.ts = 100; e1.dur = 1;
-  TraceEvent e2 = {}; e2.name = STR("e2"); e2.cat = STR("cat"); e2.ph = STR("B"); e2.ts = 110; e2.dur = 1;
-  TraceEvent e3 = {}; e3.name = STR("e3"); e3.cat = STR("cat"); e3.ph = STR("B"); e3.ts = 120; e3.dur = 1;
+  TraceEvent e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 1;
+  TraceEvent e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 110; e2.dur = 1;
+  TraceEvent e3 = {}; e3.name = "e3"; e3.cat = "cat"; e3.ph = "B"; e3.ts = 120; e3.dur = 1;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -220,7 +219,7 @@ TEST_F(TrackRendererTest, ExtremeZoomOut) {
     char name[16];
     snprintf(name, sizeof(name), "e%d", i);
     TraceEvent e = {};
-    e.name = str_from_cstr(name); e.cat = STR("cat"); e.ph = STR("B"); e.ts = (int64_t)i * 2; e.dur = 1;
+    e.name = name; e.cat = "cat"; e.ph = "B"; e.ts = (int64_t)i * 2; e.dur = 1;
     trace_data_add_event(&td, allocator, theme_get_dark(), &e);
     array_list_push_back(&t.event_indices, allocator, (size_t)i);
   }
@@ -240,10 +239,10 @@ TEST_F(TrackRendererTest, CounterBucketing) {
   t.type = TRACK_TYPE_COUNTER;
 
   // E1: t=100, E2: t=101, E3: t=102, E4: t=200
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 101;
-  TraceEvent e3 = {}; e3.name = STR("c"); e3.ts = 102;
-  TraceEvent e4 = {}; e4.name = STR("c"); e4.ts = 200;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 101;
+  TraceEvent e3 = {}; e3.name = "c"; e3.ts = 102;
+  TraceEvent e4 = {}; e4.name = "c"; e4.ts = 200;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
@@ -271,8 +270,8 @@ TEST_F(TrackRendererTest, CounterBucketing) {
 TEST_F(TrackRendererTest, CounterFirstEventGap) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
@@ -295,8 +294,8 @@ TEST_F(TrackRendererTest, CounterFirstEventGap) {
 TEST_F(TrackRendererTest, CounterMidViewport) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 50;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 50;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
@@ -317,8 +316,8 @@ TEST_F(TrackRendererTest, CounterMidViewport) {
 TEST_F(TrackRendererTest, CounterDrawTooFarLeft) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
@@ -338,8 +337,8 @@ TEST_F(TrackRendererTest, CounterDrawTooFarLeft) {
 TEST_F(TrackRendererTest, CounterCanvasOffset) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
@@ -360,7 +359,7 @@ TEST_F(TrackRendererTest, CounterCanvasOffset) {
 TEST_F(TrackRendererTest, CounterBeforeFirstEvent) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
 
@@ -377,7 +376,7 @@ TEST_F(TrackRendererTest, CounterBeforeFirstEvent) {
 TEST_F(TrackRendererTest, CounterFirstEventAtStart) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
 
@@ -395,8 +394,8 @@ TEST_F(TrackRendererTest, CounterFirstEventAtStart) {
 TEST_F(TrackRendererTest, CounterClampedGapBug) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 0;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 100;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 0;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 100;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
@@ -418,7 +417,7 @@ TEST_F(TrackRendererTest, CounterClampedGapBug) {
 TEST_F(TrackRendererTest, CounterViewportFarLeft) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
 
@@ -435,7 +434,7 @@ TEST_F(TrackRendererTest, CounterViewportFarLeft) {
 TEST_F(TrackRendererTest, CounterFirstEventJustBefore) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 90;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 90;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
 
@@ -453,8 +452,8 @@ TEST_F(TrackRendererTest, CounterFirstEventJustBefore) {
 TEST_F(TrackRendererTest, CounterSessionStartGap) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
@@ -476,8 +475,8 @@ TEST_F(TrackRendererTest, CounterSessionStartGap) {
 TEST_F(TrackRendererTest, CounterExactStart) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
@@ -496,8 +495,8 @@ TEST_F(TrackRendererTest, CounterExactStart) {
 TEST_F(TrackRendererTest, CounterViewportNegative) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
@@ -518,8 +517,8 @@ TEST_F(TrackRendererTest, CounterViewportNegative) {
 TEST_F(TrackRendererTest, CounterPartialStart) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 50;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 50;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
@@ -540,7 +539,7 @@ TEST_F(TrackRendererTest, CounterPartialStart) {
 TEST_F(TrackRendererTest, CounterViewportFarRight) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
 
@@ -557,8 +556,8 @@ TEST_F(TrackRendererTest, CounterViewportFarRight) {
 TEST_F(TrackRendererTest, CounterLastEventAtEnd) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 100;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 200;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 100;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 200;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
@@ -581,17 +580,17 @@ TEST_F(TrackRendererTest, CounterPeakPreservation) {
   t.type = TRACK_TYPE_COUNTER;
 
   // series "a"
-  TraceArg a1 = {STR("a"), STR("10"), 10.0};
-  TraceArg a2 = {STR("a"), STR("1"), 1.0};
+  TraceArg a1 = {"a", "10", 10.0};
+  TraceArg a2 = {"a", "1", 1.0};
   
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 10; e1.args = &a1; e1.args_count = 1;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 11; e2.args = &a2; e2.args_count = 1;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 10; e1.args = &a1; e1.args_count = 1;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 11; e2.args = &a2; e2.args_count = 1;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
   array_list_push_back(&t.event_indices, allocator, (size_t)1);
-  array_list_push_back(&t.counter_series, allocator, trace_data_push_string(&td, allocator, STR("a")));
+  array_list_push_back(&t.counter_series, allocator, trace_data_push_string(&td, allocator, "a"));
 
   ArrayList<CounterRenderBlock> blocks = {};
   ArrayList<double> peaks = {};
@@ -619,8 +618,8 @@ TEST_F(TrackRendererTest, CounterBucketingStability) {
   t.type = TRACK_TYPE_COUNTER;
 
   // Event at t=10 and t=20
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 10;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 20;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 10;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 20;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
@@ -691,7 +690,7 @@ TEST_F(TrackRendererTest, CounterBucketingStability) {
 TEST_F(TrackRendererTest, CounterGapInitialState) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 50;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 50;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
 
@@ -709,7 +708,7 @@ TEST_F(TrackRendererTest, CounterGapInitialState) {
 TEST_F(TrackRendererTest, CounterStartIdxBug) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 50;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 50;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
 
@@ -727,8 +726,8 @@ TEST_F(TrackRendererTest, CounterStartIdxBug) {
 TEST_F(TrackRendererTest, CounterMaxDurBug) {
   Track t = {};
   t.type = TRACK_TYPE_COUNTER;
-  TraceEvent e1 = {}; e1.name = STR("c"); e1.ts = 50;
-  TraceEvent e2 = {}; e2.name = STR("c"); e2.ts = 150;
+  TraceEvent e1 = {}; e1.name = "c"; e1.ts = 50;
+  TraceEvent e2 = {}; e2.name = "c"; e2.ts = 150;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   array_list_push_back(&t.event_indices, allocator, (size_t)0);

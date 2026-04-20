@@ -110,8 +110,8 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
       float visible_x2 = std::min(x2, tracks_canvas_pos_x + inner_width);
 
       if (visible_x2 > visible_x1) {
-        Str name = trace_data_get_string(td, name_ref);
-        if (name.len > 0) {
+        std::string_view name = trace_data_get_string(td, name_ref);
+        if (name.size() > 0) {
           ImU32 text_col =
               is_selected ? theme.event_text_selected : theme.event_text;
           float event_font_size = ImGui::GetFontSize();
@@ -119,7 +119,7 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
 
           float text_width = ImGui::GetFont()
                                  ->CalcTextSizeA(event_font_size, FLT_MAX, 0.0f,
-                                                 name.buf, name.buf + name.len)
+                                                 name.data(), name.data() + name.size())
                                  .x;
 
           float text_x = std::max(x1 + padding_h, x1 + (event_width - text_width) * 0.5f);
@@ -129,8 +129,8 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
           const ImVec4* clip_ptr = &fine_clip_rect;
 
           draw_list->AddText(ImGui::GetFont(), event_font_size,
-                             ImVec2(text_x, text_y), text_col, name.buf,
-                             name.buf + name.len, 0.0f, clip_ptr);
+                             ImVec2(text_x, text_y), text_col, name.data(),
+                             name.data() + name.size(), 0.0f, clip_ptr);
         }
       }
     }
@@ -230,8 +230,8 @@ static void trace_viewer_draw_counter_track(
               break;
             }
           }
-          Str key = trace_data_get_string(td, key_ref);
-          ImGui::Text("%.*s: %g", (int)key.len, key.buf, val);
+          std::string_view key = trace_data_get_string(td, key_ref);
+          ImGui::Text("%.*s: %g", (int)key.size(), key.data(), val);
           total += val;
         }
         if (t.counter_series.size > 1) {
@@ -385,10 +385,10 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         float sticky_x = std::max(track_pos.x, tracks_canvas_pos.x);
 
         char default_name[128];
-        Str name_str = trace_data_get_string(td, t.name_ref);
-        Str id_str = trace_data_get_string(td, t.id_ref);
-        const char* display_name = name_str.buf;
-        size_t display_name_len = name_str.len;
+        std::string_view name_str = trace_data_get_string(td, t.name_ref);
+        std::string_view id_str = trace_data_get_string(td, t.id_ref);
+        const char* display_name = name_str.data();
+        size_t display_name_len = name_str.size();
 
         if (display_name_len == 0) {
           if (t.type == TRACK_TYPE_THREAD) {
@@ -398,9 +398,9 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           }
           display_name = default_name;
           display_name_len = strlen(default_name);
-        } else if (id_str.len > 0) {
+        } else if (id_str.size() > 0) {
           snprintf(default_name, sizeof(default_name), "%.*s (%.*s)",
-                   (int)name_str.len, name_str.buf, (int)id_str.len, id_str.buf);
+                   (int)name_str.size(), name_str.data(), (int)id_str.size(), id_str.data());
           display_name = default_name;
           display_name_len = strlen(default_name);
         }
@@ -425,12 +425,12 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           if (t.type == TRACK_TYPE_THREAD) {
             ImGui::Text("TID: %d", t.tid);
           }
-          if (name_str.len > 0) {
+          if (name_str.size() > 0) {
             ImGui::Separator();
-            ImGui::Text("Name: %.*s", (int)name_str.len, name_str.buf);
+            ImGui::Text("Name: %.*s", (int)name_str.size(), name_str.data());
           }
-          if (id_str.len > 0) {
-            ImGui::Text("ID: %.*s", (int)id_str.len, id_str.buf);
+          if (id_str.size() > 0) {
+            ImGui::Text("ID: %.*s", (int)id_str.size(), id_str.data());
           }
           ImGui::EndTooltip();
           ImGui::PopStyleVar();
@@ -520,16 +520,16 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         // Show tooltip
         if (rb.count == 1) {
           const TraceEventPersisted& e = td->events[rb.event_idx];
-          Str name = trace_data_get_string(td, e.name_ref);
-          Str cat = trace_data_get_string(td, e.cat_ref);
+          std::string_view name = trace_data_get_string(td, e.name_ref);
+          std::string_view cat = trace_data_get_string(td, e.cat_ref);
 
           ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
                               ImVec2(10.0f, 10.0f));
           ImGui::BeginTooltip();
-          ImGui::TextUnformatted(name.buf, name.buf + name.len);
-          if (cat.len > 0) {
+          ImGui::TextUnformatted(name.data(), name.data() + name.size());
+          if (cat.size() > 0) {
             ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
-                               "Category: %.*s", (int)cat.len, cat.buf);
+                               "Category: %.*s", (int)cat.size(), cat.data());
           }
           ImGui::Separator();
 
@@ -548,13 +548,13 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                  arg_idx++) {
               const TraceArgPersisted& arg =
                   td->args[e.args_offset + arg_idx];
-              Str key = trace_data_get_string(td, arg.key_ref);
+              std::string_view key = trace_data_get_string(td, arg.key_ref);
               if (arg.val_ref != 0) {
-                Str val = trace_data_get_string(td, arg.val_ref);
-                ImGui::Text("%.*s: %.*s", (int)key.len, key.buf,
-                            (int)val.len, val.buf);
+                std::string_view val = trace_data_get_string(td, arg.val_ref);
+                ImGui::Text("%.*s: %.*s", (int)key.size(), key.data(),
+                            (int)val.size(), val.data());
               } else {
-                ImGui::Text("%.*s: %g", (int)key.len, key.buf,
+                ImGui::Text("%.*s: %g", (int)key.size(), key.data(),
                             arg.val_double);
               }
             }
@@ -645,13 +645,13 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                      ImGuiWindowFlags_NoFocusOnAppearing)) {
       if (tv->selected_event_index != -1) {
         const TraceEventPersisted& e = td->events[(size_t)tv->selected_event_index];
-        Str name = trace_data_get_string(td, e.name_ref);
-        Str cat = trace_data_get_string(td, e.cat_ref);
-        Str ph = trace_data_get_string(td, e.ph_ref);
+        std::string_view name = trace_data_get_string(td, e.name_ref);
+        std::string_view cat = trace_data_get_string(td, e.cat_ref);
+        std::string_view ph = trace_data_get_string(td, e.ph_ref);
 
-        ImGui::Text("Name: %.*s", (int)name.len, name.buf);
-        ImGui::Text("Category: %.*s", (int)cat.len, cat.buf);
-        ImGui::Text("PH: %.*s", (int)ph.len, ph.buf);
+        ImGui::Text("Name: %.*s", (int)name.size(), name.data());
+        ImGui::Text("Category: %.*s", (int)cat.size(), cat.data());
+        ImGui::Text("PH: %.*s", (int)ph.size(), ph.data());
         ImGui::Text("Timestamp: %lld", (long long)e.ts);
         ImGui::Text("Duration: %lld", (long long)e.dur);
         ImGui::Text("PID: %d, TID: %d", e.pid, e.tid);
@@ -661,13 +661,13 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           ImGui::Text("Arguments:");
           for (uint32_t k = 0; k < e.args_count; k++) {
             const TraceArgPersisted& arg = td->args[e.args_offset + k];
-            Str key = trace_data_get_string(td, arg.key_ref);
+            std::string_view key = trace_data_get_string(td, arg.key_ref);
             if (arg.val_ref != 0) {
-              Str val = trace_data_get_string(td, arg.val_ref);
-              ImGui::BulletText("%.*s: %.*s", (int)key.len, key.buf,
-                                (int)val.len, val.buf);
+              std::string_view val = trace_data_get_string(td, arg.val_ref);
+              ImGui::BulletText("%.*s: %.*s", (int)key.size(), key.data(),
+                                (int)val.size(), val.data());
             } else {
-              ImGui::BulletText("%.*s: %g", (int)key.len, key.buf,
+              ImGui::BulletText("%.*s: %g", (int)key.size(), key.data(),
                                 arg.val_double);
             }
           }

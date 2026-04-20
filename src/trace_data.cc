@@ -4,10 +4,10 @@
 
 #include "src/colors.h"
 
-static uint32_t compute_hash(Str s) {
+static uint32_t compute_hash(std::string_view s) {
   uint32_t hash = 2166136261u;
-  for (size_t i = 0; i < s.len; ++i) {
-    hash ^= (uint8_t)s.buf[i];
+  for (size_t i = 0; i < s.size(); ++i) {
+    hash ^= (uint8_t)s[i];
     hash *= 16777619u;
   }
   return hash;
@@ -19,7 +19,7 @@ uint32_t TraceData::StringLookupHash::operator()(uint32_t index) const {
 }
 
 bool TraceData::StringLookupEq::operator()(uint32_t a, uint32_t b) const {
-  Str sa, sb;
+  std::string_view sa, sb;
   if (a == 0)
     sa = td->tmp.current_str;
   else {
@@ -34,7 +34,7 @@ bool TraceData::StringLookupEq::operator()(uint32_t a, uint32_t b) const {
     sb = {&td->string_buffer[e.offset], (size_t)e.len};
   }
 
-  return str_eq(sa, sb);
+  return sa == sb;
 }
 
 void trace_data_init(TraceData* td, Allocator a) {
@@ -60,8 +60,8 @@ void trace_data_clear(TraceData* td, Allocator /*a*/) {
   array_list_clear(&td->args);
 }
 
-StringRef trace_data_push_string(TraceData* td, Allocator a, Str s) {
-  if (s.buf == nullptr) return 0;
+StringRef trace_data_push_string(TraceData* td, Allocator a, std::string_view s) {
+  if (s.data() == nullptr) return 0;
 
   td->tmp.current_str = s;
   uint32_t h = compute_hash(s);
@@ -73,10 +73,10 @@ StringRef trace_data_push_string(TraceData* td, Allocator a, Str s) {
   // New string
   StringEntry entry;
   entry.offset = (uint32_t)td->string_buffer.size;
-  entry.len = (uint32_t)s.len;
+  entry.len = (uint32_t)s.size();
   entry.hash = h;
 
-  array_list_append(&td->string_buffer, a, s.buf, s.len);
+  array_list_append(&td->string_buffer, a, s.data(), s.size());
   // Add null terminator for C-string compatibility if needed, though not
   // strictly necessary with lengths.
   char null_terminator = '\0';
@@ -97,31 +97,31 @@ static uint32_t compute_event_color(const Theme* theme,
       sizeof(theme->event_palette) / sizeof(theme->event_palette[0]);
 
   // 1. Check for explicit cname
-  if (event->cname.len > 0) {
-    if (str_eq(event->cname, STR("thread_state_running")))
+  if (!event->cname.empty()) {
+    if (event->cname == "thread_state_running")
       return theme->event_palette[3];  // Dark Green
-    if (str_eq(event->cname, STR("thread_state_runnable")))
+    if (event->cname == "thread_state_runnable")
       return theme->event_palette[2];  // Gold
-    if (str_eq(event->cname, STR("thread_state_sleeping")))
+    if (event->cname == "thread_state_sleeping")
       return theme->event_palette[4];  // Dark Teal
-    if (str_eq(event->cname, STR("thread_state_uninterruptible")))
+    if (event->cname == "thread_state_uninterruptible")
       return theme->event_palette[0];  // Dark Red
-    if (str_eq(event->cname, STR("thread_state_iowait")))
+    if (event->cname == "thread_state_iowait")
       return theme->event_palette[1];  // Burnt Orange
 
-    if (str_eq(event->cname, STR("rail_idle"))) return theme->event_palette[3];
-    if (str_eq(event->cname, STR("rail_animation")))
+    if (event->cname == "rail_idle") return theme->event_palette[3];
+    if (event->cname == "rail_animation")
       return theme->event_palette[6];  // Dark Purple
-    if (str_eq(event->cname, STR("rail_response")))
+    if (event->cname == "rail_response")
       return theme->event_palette[5];  // Deep Blue
-    if (str_eq(event->cname, STR("rail_load")))
+    if (event->cname == "rail_load")
       return theme->event_palette[1];  // Burnt Orange
 
-    if (str_eq(event->cname, STR("background_memory_dump")))
+    if (event->cname == "background_memory_dump")
       return theme->event_palette[4];  // Dark Teal
-    if (str_eq(event->cname, STR("light_memory_dump")))
+    if (event->cname == "light_memory_dump")
       return theme->event_palette[5];  // Deep Blue
-    if (str_eq(event->cname, STR("detailed_memory_dump")))
+    if (event->cname == "detailed_memory_dump")
       return theme->event_palette[7];  // Dark Maroon
   }
 

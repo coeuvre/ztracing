@@ -1,8 +1,10 @@
 #include "src/trace_parser.h"
 
 #include <ctype.h>
+#include <charconv>
 #include <stdlib.h>
 #include <string.h>
+#include <string_view>
 
 enum JsonTokenType {
   JSON_TOKEN_NONE,
@@ -21,7 +23,7 @@ enum JsonTokenType {
 
 struct JsonToken {
   JsonTokenType type;
-  Str str;
+  std::string_view str;
 };
 
 struct JsonReader {
@@ -46,7 +48,7 @@ static void json_reader_skip_whitespace(JsonReader* r) {
   }
 }
 
-static bool json_reader_read_string(JsonReader* r, Str* out) {
+static bool json_reader_read_string(JsonReader* r, std::string_view* out) {
   if (json_reader_peek(r) != '"') return false;
   json_reader_advance(r);
   size_t start = r->pos;
@@ -58,13 +60,12 @@ static bool json_reader_read_string(JsonReader* r, Str* out) {
     json_reader_advance(r);
   }
   if (json_reader_done(r)) return false;
-  out->buf = r->buf + start;
-  out->len = r->pos - start;
+  *out = {r->buf + start, r->pos - start};
   json_reader_advance(r);  // skip closing '"'
   return true;
 }
 
-static bool json_reader_read_number(JsonReader* r, Str* out) {
+static bool json_reader_read_number(JsonReader* r, std::string_view* out) {
   size_t start = r->pos;
   if (json_reader_peek(r) == '-') json_reader_advance(r);
   if (json_reader_done(r) || !isdigit(json_reader_peek(r))) return false;
@@ -74,8 +75,7 @@ static bool json_reader_read_number(JsonReader* r, Str* out) {
           json_reader_peek(r) == '+' || json_reader_peek(r) == '-')) {
     json_reader_advance(r);
   }
-  out->buf = r->buf + start;
-  out->len = r->pos - start;
+  *out = {r->buf + start, r->pos - start};
   return true;
 }
 
@@ -96,7 +96,7 @@ static bool json_reader_read_literal(JsonReader* r, const char* literal,
 
 static JsonToken json_reader_next(JsonReader* r) {
   json_reader_skip_whitespace(r);
-  if (json_reader_done(r)) return {JSON_TOKEN_NONE, {nullptr, 0}};
+  if (json_reader_done(r)) return {JSON_TOKEN_NONE, {}};
 
   char c = json_reader_peek(r);
   switch (c) {
@@ -119,9 +119,9 @@ static JsonToken json_reader_next(JsonReader* r) {
       json_reader_advance(r);
       return {JSON_TOKEN_COMMA, {r->buf + r->pos - 1, 1}};
     case '"': {
-      Str s;
+      std::string_view s;
       if (json_reader_read_string(r, &s)) return {JSON_TOKEN_STRING, s};
-      return {JSON_TOKEN_ERROR, {nullptr, 0}};
+      return {JSON_TOKEN_ERROR, {}};
     }
     case 't':
       if (json_reader_read_literal(r, "true", JSON_TOKEN_BOOLEAN, nullptr))
@@ -137,12 +137,12 @@ static JsonToken json_reader_next(JsonReader* r) {
       break;
     default:
       if (isdigit(c) || c == '-') {
-        Str s;
+        std::string_view s;
         if (json_reader_read_number(r, &s)) return {JSON_TOKEN_NUMBER, s};
       }
       break;
   }
-  return {JSON_TOKEN_ERROR, {nullptr, 0}};
+  return {JSON_TOKEN_ERROR, {}};
 }
 
 void trace_parser_init(TraceParser* p, Allocator a) {
@@ -168,6 +168,26 @@ void trace_parser_feed(TraceParser* p, const char* buf, size_t len,
   p->is_eof = is_eof;
 }
 
+static int64_t to_int64(std::string_view s) {
+  int64_t val = 0;
+  std::from_chars(s.data(), s.data() + s.size(), val);
+  return val;
+}
+
+static int32_t to_int32(std::string_view s) {
+  int32_t val = 0;
+  std::from_chars(s.data(), s.data() + s.size(), val);
+  return val;
+}
+
+static double to_double(std::string_view s) {
+  char tmp[64];
+  size_t len = s.size() < 63 ? s.size() : 63;
+  memcpy(tmp, s.data(), len);
+  tmp[len] = '\0';
+  return atof(tmp);
+}
+
 static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
   JsonToken tok = json_reader_next(r);
   if (tok.type != JSON_TOKEN_OBJECT_START) return false;
@@ -180,50 +200,50 @@ static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
     if (tok.type == JSON_TOKEN_OBJECT_END) break;
     if (tok.type != JSON_TOKEN_STRING) return false;
 
-    Str key = tok.str;
+    std::string_view key = tok.str;
     tok = json_reader_next(r);
     if (tok.type != JSON_TOKEN_COLON) return false;
 
-    if (str_eq(key, STR("name"))) {
+    if (key == "name") {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_STRING) return false;
       event->name = tok.str;
-    } else if (str_eq(key, STR("cat"))) {
+    } else if (key == "cat") {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_STRING) return false;
       event->cat = tok.str;
-    } else if (str_eq(key, STR("ph"))) {
+    } else if (key == "ph") {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_STRING) return false;
       event->ph = tok.str;
-    } else if (str_eq(key, STR("cname"))) {
+    } else if (key == "cname") {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_STRING) return false;
       event->cname = tok.str;
-    } else if (str_eq(key, STR("ts"))) {
+    } else if (key == "ts") {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_NUMBER) return false;
-      event->ts = str_to_int64(tok.str);
-    } else if (str_eq(key, STR("dur"))) {
+      event->ts = to_int64(tok.str);
+    } else if (key == "dur") {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_NUMBER) return false;
-      event->dur = str_to_int64(tok.str);
-    } else if (str_eq(key, STR("pid"))) {
+      event->dur = to_int64(tok.str);
+    } else if (key == "pid") {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_NUMBER) return false;
-      event->pid = str_to_int32(tok.str);
-    } else if (str_eq(key, STR("tid"))) {
+      event->pid = to_int32(tok.str);
+    } else if (key == "tid") {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_NUMBER) return false;
-      event->tid = str_to_int32(tok.str);
-    } else if (str_eq(key, STR("id"))) {
+      event->tid = to_int32(tok.str);
+    } else if (key == "id") {
       tok = json_reader_next(r);
       if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER) {
         event->id = tok.str;
       } else {
         return false;
       }
-    } else if (str_eq(key, STR("args"))) {
+    } else if (key == "args") {
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_OBJECT_START) return false;
       while (true) {
@@ -243,12 +263,12 @@ static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
             tok.type == JSON_TOKEN_BOOLEAN || tok.type == JSON_TOKEN_NULL_VAL) {
           arg.val = tok.str;
           if (tok.type == JSON_TOKEN_NUMBER) {
-            arg.val_double = str_to_double(tok.str);
+            arg.val_double = to_double(tok.str);
           }
         } else if (tok.type == JSON_TOKEN_OBJECT_START ||
                    tok.type == JSON_TOKEN_ARRAY_START) {
           // Nested object/array. We should skip it and return raw JSON.
-          size_t start = r->pos - tok.str.len;
+          size_t start = r->pos - tok.str.size();
           int depth = 1;
           while (depth > 0 && !json_reader_done(r)) {
             tok = json_reader_next(r);
@@ -330,7 +350,7 @@ bool trace_parser_next(TraceParser* p, TraceEvent* event) {
           goto done;
         }
         if (tok.type == JSON_TOKEN_STRING) {
-          bool is_trace_events = str_eq(tok.str, STR("traceEvents"));
+          bool is_trace_events = (tok.str == "traceEvents");
           tok = json_reader_next(&r);
           if (tok.type != JSON_TOKEN_COLON) return false;
           if (is_trace_events) {

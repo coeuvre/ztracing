@@ -322,7 +322,7 @@ TEST(TrackTest, OrganizeTracksSorting) {
 
   auto add_event = [&](int32_t pid, int32_t tid, int64_t ts) {
     TraceEvent e = {};
-    e.ph = STR("X");
+    e.ph = "X";
     e.pid = pid;
     e.tid = tid;
     e.ts = ts;
@@ -332,11 +332,11 @@ TEST(TrackTest, OrganizeTracksSorting) {
 
   auto add_sort_idx = [&](int32_t pid, int32_t tid, int32_t sort_idx) {
     TraceEvent m = {};
-    m.ph = STR("M");
+    m.ph = "M";
     m.pid = pid;
     m.tid = tid;
-    m.name = STR("thread_sort_index");
-    TraceArg arg = {STR("sort_index"), STR(""), 0.0};
+    m.name = "thread_sort_index";
+    TraceArg arg = {"sort_index", "", 0.0};
     char buf[16];
     snprintf(buf, sizeof(buf), "%d", sort_idx);
     arg.val = {buf, strlen(buf)};
@@ -386,11 +386,11 @@ TEST(TrackTest, OrganizeTracksMetadataOnly) {
   trace_data_init(&td, a);
 
   TraceEvent m = {};
-  m.ph = STR("M");
+  m.ph = "M";
   m.pid = 1;
   m.tid = 1;
-  m.name = STR("thread_name");
-  TraceArg arg = {STR("name"), STR("Meta Only"), 0.0};
+  m.name = "thread_name";
+  TraceArg arg = {"name", "Meta Only", 0.0};
   m.args = &arg;
   m.args_count = 1;
   trace_data_add_event(&td, a, theme_get_dark(), &m);
@@ -400,7 +400,7 @@ TEST(TrackTest, OrganizeTracksMetadataOnly) {
   track_organize(&td, a, theme_get_dark(), &tracks, &min_ts, &max_ts);
 
   EXPECT_EQ(tracks.size, 1u);
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "Meta Only");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[0].name_ref), "Meta Only");
   EXPECT_EQ(tracks[0].event_indices.size, 0u);
 
   // Viewport range should not be updated by metadata
@@ -418,7 +418,7 @@ TEST(TrackTest, OrganizeTracksMixedOrder) {
 
   // 1. Regular event
   TraceEvent e1 = {};
-  e1.ph = STR("X");
+  e1.ph = "X";
   e1.pid = 1;
   e1.tid = 1;
   e1.ts = 500;
@@ -427,18 +427,18 @@ TEST(TrackTest, OrganizeTracksMixedOrder) {
 
   // 2. Metadata for same track
   TraceEvent m1 = {};
-  m1.ph = STR("M");
+  m1.ph = "M";
   m1.pid = 1;
   m1.tid = 1;
-  m1.name = STR("thread_name");
-  TraceArg arg1 = {STR("name"), STR("Mixed"), 0.0};
+  m1.name = "thread_name";
+  TraceArg arg1 = {"name", "Mixed", 0.0};
   m1.args = &arg1;
   m1.args_count = 1;
   trace_data_add_event(&td, a, theme_get_dark(), &m1);
 
   // 3. Regular event for another track
   TraceEvent e2 = {};
-  e2.ph = STR("X");
+  e2.ph = "X";
   e2.pid = 2;
   e2.tid = 1;
   e2.ts = 100;
@@ -453,7 +453,7 @@ TEST(TrackTest, OrganizeTracksMixedOrder) {
 
   // Sorted by PID (both have sort_index 0)
   EXPECT_EQ(tracks[0].pid, 1);
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "Mixed");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[0].name_ref), "Mixed");
   EXPECT_EQ(tracks[0].event_indices.size, 1u);
   EXPECT_EQ(tracks[0].event_indices[0], 0u);
 
@@ -476,7 +476,7 @@ TEST(TrackTest, OrganizeTracksCounters) {
 
   // 1. Regular thread event
   TraceEvent e1 = {};
-  e1.ph = STR("X");
+  e1.ph = "X";
   e1.pid = 1;
   e1.tid = 1;
   e1.ts = 100;
@@ -484,21 +484,21 @@ TEST(TrackTest, OrganizeTracksCounters) {
 
   // 2. Counter event for same PID
   TraceEvent c1 = {};
-  c1.ph = STR("C");
-  c1.name = STR("my_counter");
+  c1.ph = "C";
+  c1.name = "my_counter";
   c1.pid = 1;
   c1.tid = 1; // TID is usually ignored for counters in grouping
   c1.ts = 150;
-  TraceArg arg1 = {STR("val"), STR("10"), 10.0};
+  TraceArg arg1 = {"val", "10", 10.0};
   c1.args = &arg1;
   c1.args_count = 1;
   trace_data_add_event(&td, a, theme_get_dark(), &c1);
 
   // 3. Counter event with ID
   TraceEvent c2 = {};
-  c2.ph = STR("C");
-  c2.name = STR("my_counter");
-  c2.id = STR("1");
+  c2.ph = "C";
+  c2.name = "my_counter";
+  c2.id = "1";
   c2.pid = 1;
   c2.ts = 200;
   trace_data_add_event(&td, a, theme_get_dark(), &c2);
@@ -513,15 +513,15 @@ TEST(TrackTest, OrganizeTracksCounters) {
   EXPECT_EQ(tracks[0].pid, 1);
   EXPECT_EQ(tracks[0].tid, -1);
   EXPECT_EQ(tracks[0].type, TRACK_TYPE_COUNTER);
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "my_counter");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[0].name_ref), "my_counter");
   EXPECT_EQ(tracks[0].id_ref, 0u);
 
   // Counter track (with ID) - Type 0
   EXPECT_EQ(tracks[1].pid, 1);
   EXPECT_EQ(tracks[1].tid, -1);
   EXPECT_EQ(tracks[1].type, TRACK_TYPE_COUNTER);
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[1].name_ref).buf, "my_counter");
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[1].id_ref).buf, "1");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[1].name_ref), "my_counter");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[1].id_ref), "1");
 
   // Thread track - Type 1
   EXPECT_EQ(tracks[2].pid, 1);
@@ -539,10 +539,10 @@ TEST(TrackTest, OrganizeTracksCountersSorting) {
   trace_data_init(&td, a);
 
   // Add counter events in non-alphabetical order
-  TraceEvent c1 = {}; c1.ph = STR("C"); c1.name = STR("zebra"); c1.pid = 1;
-  TraceEvent c2 = {}; c2.ph = STR("C"); c2.name = STR("apple"); c2.pid = 1;
-  TraceEvent c3 = {}; c3.ph = STR("C"); c3.name = STR("apple"); c3.id = STR("2"); c3.pid = 1;
-  TraceEvent c4 = {}; c4.ph = STR("C"); c4.name = STR("apple"); c4.id = STR("1"); c4.pid = 1;
+  TraceEvent c1 = {}; c1.ph = "C"; c1.name = "zebra"; c1.pid = 1;
+  TraceEvent c2 = {}; c2.ph = "C"; c2.name = "apple"; c2.pid = 1;
+  TraceEvent c3 = {}; c3.ph = "C"; c3.name = "apple"; c3.id = "2"; c3.pid = 1;
+  TraceEvent c4 = {}; c4.ph = "C"; c4.name = "apple"; c4.id = "1"; c4.pid = 1;
 
   trace_data_add_event(&td, a, theme_get_dark(), &c1);
   trace_data_add_event(&td, a, theme_get_dark(), &c2);
@@ -560,16 +560,16 @@ TEST(TrackTest, OrganizeTracksCountersSorting) {
   // 2. apple (id 1)
   // 3. apple (id 2)
   // 4. zebra
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "apple");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[0].name_ref), "apple");
   EXPECT_EQ(tracks[0].id_ref, 0u);
 
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[1].name_ref).buf, "apple");
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[1].id_ref).buf, "1");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[1].name_ref), "apple");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[1].id_ref), "1");
 
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[2].name_ref).buf, "apple");
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[2].id_ref).buf, "2");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[2].name_ref), "apple");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[2].id_ref), "2");
 
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[3].name_ref).buf, "zebra");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[3].name_ref), "zebra");
 
   for (size_t i = 0; i < tracks.size; i++) track_deinit(&tracks[i], a);
   array_list_deinit(&tracks, a);
@@ -582,9 +582,9 @@ TEST(TrackTest, OrganizeTracksCountersSortingIgnoreCase) {
   trace_data_init(&td, a);
 
   // Add counter events with mixed case names
-  TraceEvent c1 = {}; c1.ph = STR("C"); c1.name = STR("zebra"); c1.pid = 1;
-  TraceEvent c2 = {}; c2.ph = STR("C"); c2.name = STR("APPLE"); c2.pid = 1;
-  TraceEvent c3 = {}; c3.ph = STR("C"); c3.name = STR("apple"); c3.id = STR("1"); c3.pid = 1;
+  TraceEvent c1 = {}; c1.ph = "C"; c1.name = "zebra"; c1.pid = 1;
+  TraceEvent c2 = {}; c2.ph = "C"; c2.name = "APPLE"; c2.pid = 1;
+  TraceEvent c3 = {}; c3.ph = "C"; c3.name = "apple"; c3.id = "1"; c3.pid = 1;
 
   trace_data_add_event(&td, a, theme_get_dark(), &c1);
   trace_data_add_event(&td, a, theme_get_dark(), &c2);
@@ -600,9 +600,9 @@ TEST(TrackTest, OrganizeTracksCountersSortingIgnoreCase) {
   // 1. APPLE (case-insensitive 'a' comes before 'z')
   // 2. apple (id 1)
   // 3. zebra
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[0].name_ref).buf, "APPLE");
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[1].name_ref).buf, "apple");
-  EXPECT_STREQ(trace_data_get_string(&td, tracks[2].name_ref).buf, "zebra");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[0].name_ref), "APPLE");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[1].name_ref), "apple");
+  EXPECT_EQ(trace_data_get_string(&td, tracks[2].name_ref), "zebra");
 
   for (size_t i = 0; i < tracks.size; i++) track_deinit(&tracks[i], a);
   array_list_deinit(&tracks, a);

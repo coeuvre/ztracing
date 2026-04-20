@@ -3,8 +3,31 @@
 #include <string.h>
 
 #include <algorithm>
+#include <charconv>
+#include <string_view>
 
 #include "src/colors.h"
+
+static int str_compare_ignore_case(std::string_view a, std::string_view b) {
+  size_t min_len = a.size() < b.size() ? a.size() : b.size();
+  for (size_t i = 0; i < min_len; i++) {
+    char ca = a[i];
+    char cb = b[i];
+    if (ca >= 'A' && ca <= 'Z') ca = (char)(ca + ('a' - 'A'));
+    if (cb >= 'A' && cb <= 'Z') cb = (char)(cb + ('a' - 'A'));
+    if (ca < cb) return -1;
+    if (ca > cb) return 1;
+  }
+  if (a.size() < b.size()) return -1;
+  if (a.size() > b.size()) return 1;
+  return 0;
+}
+
+static int32_t to_int32(std::string_view s) {
+  int32_t val = 0;
+  std::from_chars(s.data(), s.data() + s.size(), val);
+  return val;
+}
 
 void track_deinit(Track* t, Allocator a) {
   array_list_deinit(&t->event_indices, a);
@@ -169,10 +192,10 @@ void track_update_colors(ArrayList<Track>* tracks, const TraceData* td,
     Track& t = (*tracks)[i];
     if (t.type == TRACK_TYPE_COUNTER) {
       for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
-        Str key_str = trace_data_get_string(td, t.counter_series[s_idx]);
+        std::string_view key_str = trace_data_get_string(td, t.counter_series[s_idx]);
         uint32_t hash = 2166136261u;
-        for (size_t char_idx = 0; char_idx < key_str.len; ++char_idx) {
-          hash ^= (uint8_t)key_str.buf[char_idx];
+        for (size_t char_idx = 0; char_idx < key_str.size(); ++char_idx) {
+          hash ^= (uint8_t)key_str[char_idx];
           hash *= 16777619u;
         }
         t.counter_colors[s_idx] =
@@ -209,8 +232,8 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
   // Pass 1: Discovery, Counting, and Metadata
   for (size_t i = 0; i < td->events.size; i++) {
     const TraceEventPersisted& e = td->events[i];
-    Str ph = trace_data_get_string(td, e.ph_ref);
-    bool is_counter = (ph.len == 1 && ph.buf[0] == 'C');
+    std::string_view ph = trace_data_get_string(td, e.ph_ref);
+    bool is_counter = (ph.size() == 1 && ph[0] == 'C');
 
     TrackKey key;
     if (is_counter) {
@@ -246,24 +269,24 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
     Track& t = (*out_tracks)[track_idx];
 
     // Check for metadata events
-    if (ph.len == 1 && ph.buf[0] == 'M') {
-      Str name_str = trace_data_get_string(td, e.name_ref);
-      if (str_eq(name_str, STR("thread_name"))) {
+    if (ph.size() == 1 && ph[0] == 'M') {
+      std::string_view name_str = trace_data_get_string(td, e.name_ref);
+      if (name_str == "thread_name") {
         for (size_t k = 0; k < e.args_count; k++) {
           const TraceArgPersisted& arg = td->args[e.args_offset + k];
-          Str key_str = trace_data_get_string(td, arg.key_ref);
-          if (str_eq(key_str, STR("name"))) {
+          std::string_view key_str = trace_data_get_string(td, arg.key_ref);
+          if (key_str == "name") {
             t.name_ref = arg.val_ref;
             break;
           }
         }
-      } else if (str_eq(name_str, STR("thread_sort_index"))) {
+      } else if (name_str == "thread_sort_index") {
         for (size_t k = 0; k < e.args_count; k++) {
           const TraceArgPersisted& arg = td->args[e.args_offset + k];
-          Str key_str = trace_data_get_string(td, arg.key_ref);
-          if (str_eq(key_str, STR("sort_index"))) {
-            Str val = trace_data_get_string(td, arg.val_ref);
-            t.sort_index = str_to_int32(val);
+          std::string_view key_str = trace_data_get_string(td, arg.key_ref);
+          if (key_str == "sort_index") {
+            std::string_view val = trace_data_get_string(td, arg.val_ref);
+            t.sort_index = to_int32(val);
             break;
           }
         }
@@ -294,10 +317,10 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
   // Pass 2: Grouping
   for (size_t i = 0; i < td->events.size; i++) {
     const TraceEventPersisted& e = td->events[i];
-    Str ph = trace_data_get_string(td, e.ph_ref);
-    if (ph.len == 1 && ph.buf[0] == 'M') continue;
+    std::string_view ph = trace_data_get_string(td, e.ph_ref);
+    if (ph.size() == 1 && ph[0] == 'M') continue;
 
-    bool is_counter = (ph.len == 1 && ph.buf[0] == 'C');
+    bool is_counter = (ph.size() == 1 && ph[0] == 'C');
     TrackKey key;
     if (is_counter) {
       key = {e.pid, -1, e.name_ref, e.id_ref};
@@ -357,10 +380,9 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
       std::sort(t.counter_series.data,
                 t.counter_series.data + t.counter_series.size,
                 [&](StringRef a_ref, StringRef b_ref) {
-                  Str sa = trace_data_get_string(td, a_ref);
-                  Str sb = trace_data_get_string(td, b_ref);
-                  if (sa.len != sb.len) return sa.len < sb.len;
-                  return memcmp(sa.buf, sb.buf, sa.len) < 0;
+                  std::string_view sa = trace_data_get_string(td, a_ref);
+                  std::string_view sb = trace_data_get_string(td, b_ref);
+                  return sa < sb;
                 });
 
       // Cache colors
@@ -380,14 +402,14 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
               if (a.type != b.type) return (int)a.type < (int)b.type;
 
               if (a.type == TRACK_TYPE_COUNTER) {
-                Str na = trace_data_get_string(td, a.name_ref);
-                Str nb = trace_data_get_string(td, b.name_ref);
+                std::string_view na = trace_data_get_string(td, a.name_ref);
+                std::string_view nb = trace_data_get_string(td, b.name_ref);
                 int res = str_compare_ignore_case(na, nb);
                 if (res != 0) return res < 0;
 
-                Str ia = trace_data_get_string(td, a.id_ref);
-                Str ib = trace_data_get_string(td, b.id_ref);
-                return str_compare(ia, ib) < 0;
+                std::string_view ia = trace_data_get_string(td, a.id_ref);
+                std::string_view ib = trace_data_get_string(td, b.id_ref);
+                return ia < ib;
               } else {
                 if (a.tid != b.tid) return a.tid < b.tid;
                 if (a.name_ref != b.name_ref) return a.name_ref < b.name_ref;

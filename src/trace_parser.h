@@ -6,23 +6,23 @@
 // https://docs.google.com/document/d/1CvAClvFfyA5R-PhYUmn5OOQtYMH4h6I0nSsKchNAySU/preview
 
 #include <stdint.h>
+#include <string_view>
 
 #include "src/allocator.h"
 #include "src/array_list.h"
-#include "src/str.h"
 
 struct TraceArg {
-  Str key;
-  Str val;
+  std::string_view key;
+  std::string_view val;
   double val_double;
 };
 
 struct TraceEvent {
-  Str name;
-  Str cat;
-  Str ph;
-  Str cname;
-  Str id;
+  std::string_view name;
+  std::string_view cat;
+  std::string_view ph;
+  std::string_view cname;
+  std::string_view id;
   int64_t ts;
   int64_t dur;
   int32_t pid;

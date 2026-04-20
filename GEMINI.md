@@ -25,7 +25,7 @@
 ## Architecture
 
 - `src/allocator`: Custom C-style allocator with `allocator_alloc`, `allocator_realloc`, and `allocator_free` helpers.
-- `src/str`: Basic `Str` struct (buffer and length) for string views. Includes high-performance string-to-number utilities (`str_to_int64`, `str_to_double`) with fast-path integer parsing.
+- `src/str`: (Removed) Migrated to `std::string_view`. String-to-number utilities have been moved to their respective usage locations (e.g., `src/trace_parser.cc`) and now utilize `std::from_chars` for improved performance.
 - `src/array_list`: Generic `ArrayList<T>` (vector) with explicit allocation and ZII.
 - `src/hash_table`: Generic `HashTable<K, V>` with open addressing and linear probing. 
     - **Hash Caching**: Stores the precomputed hash in each entry to accelerate lookups by avoiding equality checks when hashes differ.
