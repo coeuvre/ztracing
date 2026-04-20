@@ -48,7 +48,7 @@ void track_compute_render_blocks(
     } else {
       if (m.active) {
         TrackRenderBlock rb = {m.x1, m.x2, m.col, m.name_ref, depth, m.count,
-                               false};
+                               false, m.event_idx};
         array_list_push_back(out_blocks, a, rb);
         m.active = false;
       }
@@ -67,9 +67,11 @@ void track_compute_render_blocks(
         m.col = col;
         m.name_ref = e.name_ref;
         m.count = 1;
+        m.event_idx = event_idx;
         m.active = true;
       } else {
-        TrackRenderBlock rb = {x1, x2, col, e.name_ref, depth, 1, is_selected};
+        TrackRenderBlock rb = {x1, x2, col, e.name_ref, depth, 1, is_selected,
+                               event_idx};
         array_list_push_back(out_blocks, a, rb);
       }
     }
@@ -80,7 +82,7 @@ void track_compute_render_blocks(
     TrackMergeBlock& m = state->merge_levels[d];
     if (m.active) {
       TrackRenderBlock rb = {m.x1, m.x2, m.col, m.name_ref, (uint32_t)d, m.count,
-                             false};
+                             false, m.event_idx};
       array_list_push_back(out_blocks, a, rb);
       m.active = false;
     }

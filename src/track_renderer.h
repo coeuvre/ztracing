@@ -17,6 +17,7 @@ struct TrackRenderBlock {
   uint32_t depth;
   uint32_t count;
   bool is_selected;
+  size_t event_idx;
 };
 
 struct CounterRenderBlock {
@@ -30,6 +31,7 @@ struct TrackMergeBlock {
   uint32_t col;
   StringRef name_ref;
   uint32_t count;
+  size_t event_idx;
   bool active;
 };
 

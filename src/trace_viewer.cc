@@ -333,7 +333,6 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
       ImVec2 tracks_canvas_pos = ImGui::GetCursorScreenPos();
       float inner_width = ImGui::GetContentRegionAvail().x;
-      double inv_duration = inner_width / duration;
       ImVec2 mouse_pos = ImGui::GetMousePos();
       bool track_list_hovered =
           ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
@@ -502,7 +501,6 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
             &tv->hover_matches[tv->hover_matches.size - 1];
 
         const TrackRenderBlock& rb = best_hm->rb;
-        const Track& t = tv->tracks[best_hm->track_idx];
 
         // Re-draw hovered block with highlight
         ImU32 col = rb.color;
@@ -521,68 +519,48 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
         // Show tooltip
         if (rb.count == 1) {
-          size_t start_idx = track_find_visible_start_index(
-              &t, td, (int64_t)tv->viewport.start_time);
-          for (size_t idx_k = start_idx; idx_k < t.event_indices.size;
-               idx_k++) {
-            size_t event_idx = t.event_indices[idx_k];
-            const TraceEventPersisted& e = td->events[event_idx];
-            if (e.ts > (int64_t)tv->viewport.end_time) break;
-            if (t.depths[idx_k] != rb.depth) continue;
+          const TraceEventPersisted& e = td->events[rb.event_idx];
+          Str name = trace_data_get_string(td, e.name_ref);
+          Str cat = trace_data_get_string(td, e.cat_ref);
 
-            float ex1 =
-                (float)(tracks_canvas_pos.x +
-                        ((double)e.ts - tv->viewport.start_time) *
-                            inv_duration);
-            float ex2 = (float)(ex1 + (double)e.dur * inv_duration);
-            if (ex2 - ex1 < TRACK_MIN_EVENT_WIDTH)
-              ex2 = ex1 + TRACK_MIN_EVENT_WIDTH;
+          ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+                              ImVec2(10.0f, 10.0f));
+          ImGui::BeginTooltip();
+          ImGui::TextUnformatted(name.buf, name.buf + name.len);
+          if (cat.len > 0) {
+            ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
+                               "Category: %.*s", (int)cat.len, cat.buf);
+          }
+          ImGui::Separator();
 
-            if (mouse_pos.x >= ex1 && mouse_pos.x < ex2) {
-              Str name = trace_data_get_string(td, e.name_ref);
-              Str cat = trace_data_get_string(td, e.cat_ref);
+          char ts_buf[32];
+          format_duration(ts_buf, sizeof(ts_buf),
+                          (double)e.ts - (double)tv->viewport.min_ts);
+          ImGui::Text("Start: %s", ts_buf);
 
-              ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
-                                  ImVec2(10.0f, 10.0f));
-              ImGui::BeginTooltip();
-              ImGui::TextUnformatted(name.buf, name.buf + name.len);
-              if (cat.len > 0) {
-                ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f),
-                                   "Category: %.*s", (int)cat.len, cat.buf);
+          char dur_buf[32];
+          format_duration(dur_buf, sizeof(dur_buf), (double)e.dur);
+          ImGui::Text("Duration: %s", dur_buf);
+
+          if (e.args_count > 0) {
+            ImGui::Separator();
+            for (uint32_t arg_idx = 0; arg_idx < e.args_count;
+                 arg_idx++) {
+              const TraceArgPersisted& arg =
+                  td->args[e.args_offset + arg_idx];
+              Str key = trace_data_get_string(td, arg.key_ref);
+              if (arg.val_ref != 0) {
+                Str val = trace_data_get_string(td, arg.val_ref);
+                ImGui::Text("%.*s: %.*s", (int)key.len, key.buf,
+                            (int)val.len, val.buf);
+              } else {
+                ImGui::Text("%.*s: %g", (int)key.len, key.buf,
+                            arg.val_double);
               }
-              ImGui::Separator();
-
-              char ts_buf[32];
-              format_duration(ts_buf, sizeof(ts_buf),
-                              (double)e.ts - (double)tv->viewport.min_ts);
-              ImGui::Text("Start: %s", ts_buf);
-
-              char dur_buf[32];
-              format_duration(dur_buf, sizeof(dur_buf), (double)e.dur);
-              ImGui::Text("Duration: %s", dur_buf);
-
-              if (e.args_count > 0) {
-                ImGui::Separator();
-                for (uint32_t arg_idx = 0; arg_idx < e.args_count;
-                     arg_idx++) {
-                  const TraceArgPersisted& arg =
-                      td->args[e.args_offset + arg_idx];
-                  Str key = trace_data_get_string(td, arg.key_ref);
-                  if (arg.val_ref != 0) {
-                    Str val = trace_data_get_string(td, arg.val_ref);
-                    ImGui::Text("%.*s: %.*s", (int)key.len, key.buf,
-                                (int)val.len, val.buf);
-                  } else {
-                    ImGui::Text("%.*s: %g", (int)key.len, key.buf,
-                                arg.val_double);
-                  }
-                }
-              }
-              ImGui::EndTooltip();
-              ImGui::PopStyleVar();
-              break;
             }
           }
+          ImGui::EndTooltip();
+          ImGui::PopStyleVar();
         } else {
           ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
                               ImVec2(10.0f, 10.0f));
@@ -594,29 +572,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
         // Handle selection
         if (ImGui::IsMouseReleased(0) && !was_drag) {
-          size_t start_idx = track_find_visible_start_index(
-              &t, td, (int64_t)tv->viewport.start_time);
-          for (size_t idx_k = start_idx; idx_k < t.event_indices.size;
-               idx_k++) {
-            size_t event_idx = t.event_indices[idx_k];
-            const TraceEventPersisted& e = td->events[event_idx];
-            if (e.ts > (int64_t)tv->viewport.end_time) break;
-            if (t.depths[idx_k] != rb.depth) continue;
-
-            float ex1 =
-                (float)(tracks_canvas_pos.x +
-                        ((double)e.ts - tv->viewport.start_time) *
-                            inv_duration);
-            float ex2 = (float)(ex1 + (double)e.dur * inv_duration);
-            if (ex2 - ex1 < TRACK_MIN_EVENT_WIDTH)
-              ex2 = ex1 + TRACK_MIN_EVENT_WIDTH;
-
-            if (mouse_pos.x >= ex1 && mouse_pos.x < ex2) {
-              tv->selected_event_index = (int64_t)event_idx;
-              tv->show_details_panel = true;
-              break;
-            }
-          }
+          tv->selected_event_index = (int64_t)rb.event_idx;
+          tv->show_details_panel = true;
         }
       }
 

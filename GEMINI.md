@@ -110,6 +110,7 @@
         - **Bucket Limit**: Merged blocks are capped at a maximum width (typically 3.0 pixels) to preserve a reasonably accurate representation of event density.
     - **Selection & Hover**:
         - **Hit-Testing**: Hover detection perfectly aligns with the visual representation, including the minimum rendering width (3.0px). If an event is visible, it is interactive.
+        - **Block-Based Interaction**: Both highlighting and selection are driven by the same `TrackRenderBlock` data structure. Each block carries an `event_idx`, ensuring that the event highlighted by the mouse is always the one selected when clicking. This eliminates discrepancies between the visual feedback and the actual selection.
         - **Visual Priority & Z-Order**: When multiple events overlap in a lane (due to the "move up" rule) or are too small to distinguish, the UI prioritizes the event that was **drawn last** for both highlighting and tooltips.
         - **Tooltips**: Hovering over an event displays a rich tooltip with `10.0f` padding:
             - **Single Events**: Shows full name, category, relative start time (from trace start), duration, and all associated arguments.
