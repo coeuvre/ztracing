@@ -74,8 +74,8 @@
 - **Downwards Flame Graph**: Overlapping events within a thread track are organized into hierarchical lanes. An event is placed in a lower lane only if it is strictly contained within a parent event (Strict Containment Hierarchy). Non-strictly nested events move up to share the highest available lane, even if they temporally overlap. This creates a denser, containment-focused view similar to modern profilers.
 - **Counter Tracks**:
     - **Stacked Area Chart**: Renders multiple data series as a stacked area chart using a step-function approach.
-    - **Stable Time-Based Bucketing**: To prevent flickering during dragging, buckets are aligned to absolute timestamps (multiples of the time equivalent of 3 pixels).
-    - **Performance**: Complexity is $O(W \log N)$ via binary search jumping, where $W$ is the viewport width and $N$ is the event count, making rendering performance independent of total event count.
+    - **Peak-Preserving Bucketing**: To prevent hiding spikes when zoomed out, the renderer uses independent peak aggregation. For each 3-pixel bucket, it finds the maximum value reached by *each* series independently.
+    - **Performance**: Complexity is $O(N)$ via a single linear scan of visible events, where $N$ is the number of events in the viewport. Stable time-based bucketing and block merging ensure minimal draw calls and consistent visuals during panning.
     - **Coloring**: Each series is assigned a unique color from the theme's event palette based on the hash of its key.
 - **Proportions**:
     - **Lane Height**: Dynamically matches the menu bar height using `ImGui::GetFrameHeight()`.

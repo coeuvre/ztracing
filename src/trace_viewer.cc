@@ -146,33 +146,16 @@ static void trace_viewer_draw_counter_track(
   array_list_resize(&state->counter_values, allocator, t.counter_series.size);
 
   track_compute_counter_render_blocks(&t, td, viewport_start, viewport_end,
-                                      width, pos.x, &tv->counter_render_blocks,
-                                      allocator);
+                                      width, pos.x, &state->counter_peaks,
+                                      &tv->counter_render_blocks, allocator);
 
   for (size_t i = 0; i < tv->counter_render_blocks.size; i++) {
     const CounterRenderBlock& rb = tv->counter_render_blocks[i];
 
-    // Update values for this block
-    for (size_t val_idx = 0; val_idx < state->counter_values.size; val_idx++)
-      state->counter_values[val_idx] = 0.0;
-
-    if (rb.event_idx != (size_t)-1) {
-      const TraceEventPersisted& e = td->events[rb.event_idx];
-      for (uint32_t arg_k = 0; arg_k < e.args_count; arg_k++) {
-        const TraceArgPersisted& arg = td->args[e.args_offset + arg_k];
-        for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
-          if (t.counter_series[s_idx] == arg.key_ref) {
-            state->counter_values[s_idx] = arg.val_double;
-            break;
-          }
-        }
-      }
-    }
-
     // Draw stack
     double current_y_offset = 0.0;
     for (size_t s_idx = 0; s_idx < t.counter_series.size; s_idx++) {
-      double val = state->counter_values[s_idx];
+      double val = state->counter_peaks[i * t.counter_series.size + s_idx];
       if (val > 0) {
         float y_top = (float)(pos.y + height -
                               (current_y_offset + val) / max_total * height);
