@@ -90,7 +90,7 @@ void app_on_theme_changed(App* app);
 void app_begin_session(App* app, int session_id, const char* filename);
 
 // Processes a chunk of trace data.
-void app_handle_file_chunk(App* app, int session_id, const char* data,
+void app_handle_file_chunk(App* app, int session_id, char* data,
                            size_t size, bool is_eof);
 
 #endif  // ZTRACING_SRC_APP_H_

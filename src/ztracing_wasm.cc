@@ -131,7 +131,7 @@ EMSCRIPTEN_KEEPALIVE void ztracing_begin_session(int session_id,
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(int session_id,
-                                                     const char* data, int size,
+                                                     char* data, int size,
                                                      bool is_eof) {
   app_handle_file_chunk(&g_app, session_id, data, (size_t)size, is_eof);
 }

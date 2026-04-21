@@ -177,11 +177,11 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
 
 - **Streaming**: Trace files are read in chunks using the browser's `ReadableStream` API.
 - **Decompression**: `ztracing.js` handles Gzip decompression on-the-fly using the `DecompressionStream` API if the `Content-Type` is `application/gzip` or `application/x-gzip`.
-- **WASM Bridge**: `ztracing.js` handles both drag-and-drop and direct stream loading (via `ztracing_start` options).
-- **Direct Loading**: `shell.html` parses the `trace` URL parameter and fetches the trace file automatically if present.
+- **Zero-Copy Streaming**: Trace chunks are allocated on the WASM heap by the JS bridge and ownership is transferred directly to the application. This eliminates redundant copies and minimizes garbage collection pressure.
+- **Dynamic Memory Growth**: To safely handle heap growth (especially with `SharedArrayBuffer` in PThreads mode), the JS bridge utilizing a dedicated `setWasmMemory` helper that creates a fresh `Uint8Array` view of `wasmMemory.buffer` immediately before every write. This ensures the view length always matches the current buffer size.
 - **Responsiveness**: Parsing yields to the browser's event loop every 100ms during loading (via `setTimeout(0)` in JS). This prevents the microtask-based `ReadableStream` loop from starving the main thread, ensuring `requestAnimationFrame` can fire and keep the UI responsive.
-- **Progress Feedback**: Displays live parsing statistics (event count and MB loaded) and the filename within the `LoadingScreen` while `trace_parser_active` is true.
-- **WASM Exports**: `ztracing_malloc`, `ztracing_free`, `ztracing_begin_session`, and `ztracing_handle_file_chunk` are used for memory and data transfer.
+- **Progress Feedback**: Displays live parsing statistics (event count and MB processed) and the filename within the `LoadingScreen`. Progress is deferred until the worker thread actually processes the data, providing a more accurate representation of system state.
+- **WASM Exports**: `ztracing_malloc`, `ztracing_free`, `ztracing_begin_session`, and `ztracing_handle_file_chunk` are used for memory and data transfer. `wasmMemory` is explicitly exported to allow the JS bridge to maintain consistent memory views.
 - **Error Handling**: `ztracing_init` returns specific error codes (1 for WebGL context creation failure, 2 for renderer initialization failure). The `ztracing_start` JS bridge accepts an `onError(errorCode, errorMessage)` callback to display custom error pages in the DOM.
 
 ## Memory Management

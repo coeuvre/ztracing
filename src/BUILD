@@ -276,7 +276,7 @@ cc_binary(
         "-sINVOKE_RUN=0",
         "-sUSE_PTHREADS=1",
         "-sPTHREAD_POOL_SIZE=1",
-        "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8','HEAPF32','UTF8ToString']",
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8','HEAPF32','UTF8ToString','wasmMemory']",
         "-sEXPORTED_FUNCTIONS=['_ztracing_init','_ztracing_start','_ztracing_set_font_data','_ztracing_malloc','_ztracing_free','_ztracing_begin_session','_ztracing_handle_file_chunk','_ztracing_on_theme_changed']",
         "-sINITIAL_MEMORY=128MB",
         "-sMAXIMUM_MEMORY=4GB",

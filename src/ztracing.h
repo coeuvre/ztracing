@@ -29,7 +29,7 @@ EMSCRIPTEN_KEEPALIVE void ztracing_begin_session(int session_id,
 
 // Handles a chunk of file data from the JavaScript side.
 EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(int session_id,
-                                                     const char* data, int size,
+                                                     char* data, int size,
                                                      bool is_eof);
 
 // Notifies the application that the system theme has changed.

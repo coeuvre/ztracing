@@ -54,7 +54,6 @@ static void trace_loading_worker(TraceLoadingState* loading) {
 
     if (chunk.data) {
       trace_parser_feed(&loading->parser, chunk.data, chunk.size, chunk.is_eof);
-      allocator_free(loading->allocator, chunk.data, chunk.size);
     } else if (chunk.is_eof) {
       trace_parser_feed(&loading->parser, nullptr, 0, true);
     }
@@ -66,6 +65,12 @@ static void trace_loading_worker(TraceLoadingState* loading) {
       trace_data_add_event(loading->trace_data, loading->allocator,
                            loading->theme, &event);
     }
+
+    if (chunk.data) {
+      loading->total_bytes += chunk.size;
+      allocator_free(loading->allocator, chunk.data, chunk.size);
+    }
+
     loading->request_update = true;
 
     if (chunk.is_eof) {
@@ -293,20 +298,20 @@ void app_begin_session(App* app, int session_id, const char* filename) {
   app->loading.worker_thread = std::thread(trace_loading_worker, &app->loading);
 }
 
-void app_handle_file_chunk(App* app, int session_id, const char* data,
+void app_handle_file_chunk(App* app, int session_id, char* data,
                            size_t size, bool is_eof) {
   if (session_id != app->loading.session_id) {
+    // If this is an old session, free the data immediately.
+    if (data && size > 0) {
+      allocator_free(app->allocator, data, size);
+    }
     return;
   }
 
   TraceChunk chunk = {};
   chunk.size = size;
   chunk.is_eof = is_eof;
-  if (size > 0) {
-    app->loading.total_bytes += size;
-    chunk.data = (char*)allocator_alloc(app->allocator, size);
-    memcpy(chunk.data, data, size);
-  }
+  chunk.data = data;
 
   {
     std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);

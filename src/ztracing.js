@@ -1,15 +1,36 @@
 (function() {
 let currentSessionId = 0;
 
+function setWasmMemory(ptr, value) {
+  const size = value.length;
+  ptr = ptr >>> 0;
+  // Use wasmMemory.buffer directly as it's the source of truth.
+  // We create a fresh view to ensure we have the current length.
+  const buffer = Module.wasmMemory ? Module.wasmMemory.buffer : Module.HEAPU8.buffer;
+  const heap = new Uint8Array(buffer);
+
+  if (ptr + size > heap.length) {
+    console.error(`ztracing: Memory growth sync issue. ptr=${ptr} size=${size} heap.length=${heap.length} buffer.byteLength=${buffer.byteLength}`);
+    // Fallback: try to refresh Module properties if they exist
+    if (typeof lib_updateGlobalBufferViews !== 'undefined') lib_updateGlobalBufferViews();
+  }
+
+  heap.set(value, ptr);
+}
+
 async function loadFont(fontUrl) {
   try {
     const response = await fetch(fontUrl);
     if (response.ok) {
       const buffer = await response.arrayBuffer();
       const fontData = new Uint8Array(buffer);
+      const size = fontData.length;
+      const ptr = Module._ztracing_malloc(size);
+      setWasmMemory(ptr, fontData);
       Module.ccall(
-          'ztracing_set_font_data', null, ['array', 'number'],
-          [fontData, fontData.length]);
+          'ztracing_set_font_data', null, ['number', 'number'],
+          [ptr, size]);
+      Module._ztracing_free(ptr, size);
     } else {
       console.warn(
           `Font fetch failed: ${response.status} ${response.statusText}`);
@@ -57,9 +78,8 @@ async function loadFromStream(stream, name, sizeHint, contentType) {
 
       const size = value.length;
       const ptr = Module._ztracing_malloc(size);
-      Module.HEAPU8.set(value, ptr);
+      setWasmMemory(ptr, value);
       Module._ztracing_handle_file_chunk(sessionId, ptr, size, false);
-      Module._ztracing_free(ptr, size);
 
       const now = performance.now();
       if (now - lastYieldTime > 100) {
