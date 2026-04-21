@@ -50,6 +50,7 @@ static void trace_loading_worker(TraceLoadingState* loading) {
 
       chunk = loading->chunk_queue.queue.front();
       loading->chunk_queue.queue.pop();
+      loading->chunk_queue.queue_size_bytes -= chunk.size;
     }
 
     if (chunk.data) {
@@ -82,7 +83,6 @@ static void trace_loading_worker(TraceLoadingState* loading) {
               : 0.0;
       LOG_INFO("parsed %zu events (total) in %.3f ms (%.2f mb/s)",
                loading->event_count.load(), duration_ms, speed_mb_s);
-      trace_parser_deinit(&loading->parser);
       trace_loading_organize_tracks(loading);
       loading->active = false;
       loading->request_update = true;
@@ -101,6 +101,8 @@ static void app_apply_theme(App* app, const Theme* theme) {
     ImGui::StyleColorsLight();
   }
 
+  if (app->loading.active) return;
+
   // Re-compute all event colors when theme changes
   for (size_t i = 0; i < app->trace_data.events.size; i++) {
     trace_data_update_event_color(&app->trace_data, (uint32_t)i, app->theme);
@@ -118,6 +120,10 @@ static void app_stop_worker(App* app) {
       app->loading.chunk_queue.cv.notify_all();
     }
     app->loading.worker_thread.join();
+  }
+  if (app->loading.active) {
+    trace_parser_deinit(&app->loading.parser);
+    app->loading.active = false;
   }
 }
 
@@ -140,8 +146,8 @@ void app_init(App* app, Allocator allocator) {
   app->loading.filename = {};
   app->loading.worker_should_abort = false;
   app->loading.request_update = false;
-
-  app->loading.allocator = app->allocator;
+  app->loading.chunk_queue.queue_size_bytes = 0;
+  app->loading.chunk_queue.closed = false;
   app->loading.trace_data = &app->trace_data;
   app->loading.trace_viewer = &app->trace_viewer;
 
@@ -151,9 +157,6 @@ void app_init(App* app, Allocator allocator) {
 
 void app_deinit(App* app) {
   app_stop_worker(app);
-  if (app->loading.active) {
-    trace_parser_deinit(&app->loading.parser);
-  }
   trace_data_deinit(&app->trace_data, app->allocator);
   array_list_deinit(&app->loading.filename, app->allocator);
   trace_viewer_deinit(&app->trace_viewer, app->allocator);
@@ -247,7 +250,7 @@ void app_update(App* app) {
           app->loading.filename.size > 0 ? app->loading.filename.data : "";
       loading_screen_draw(filename, (size_t)app->loading.event_count,
                           (size_t)app->loading.total_bytes, app->theme);
-    } else if (app->trace_data.events.size > 0) {
+    } else if (app->trace_data.events.size > 0 && !app->loading.active) {
       trace_viewer_draw(&app->trace_viewer, &app->trace_data, app->allocator,
                         app->theme);
     } else {
@@ -275,6 +278,7 @@ void app_begin_session(App* app, int session_id, const char* filename) {
   app->loading.start_time = platform_get_now();
   app->loading.active = true;
   app->loading.session_id = session_id;
+  app->loading.allocator = app->allocator;
   app->loading.theme = app->theme;
   app->trace_viewer.selected_event_index = -1;
 
@@ -283,7 +287,10 @@ void app_begin_session(App* app, int session_id, const char* filename) {
     std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);
     while (!app->loading.chunk_queue.queue.empty()) {
       TraceChunk chunk = app->loading.chunk_queue.queue.front();
-      if (chunk.data) allocator_free(app->allocator, chunk.data, chunk.size);
+      if (chunk.data) {
+        allocator_free(app->allocator, chunk.data, chunk.size);
+      }
+      app->loading.chunk_queue.queue_size_bytes -= chunk.size;
       app->loading.chunk_queue.queue.pop();
     }
     app->loading.chunk_queue.closed = false;
@@ -298,14 +305,14 @@ void app_begin_session(App* app, int session_id, const char* filename) {
   app->loading.worker_thread = std::thread(trace_loading_worker, &app->loading);
 }
 
-void app_handle_file_chunk(App* app, int session_id, char* data,
+size_t app_handle_file_chunk(App* app, int session_id, char* data,
                            size_t size, bool is_eof) {
   if (session_id != app->loading.session_id) {
     // If this is an old session, free the data immediately.
     if (data && size > 0) {
       allocator_free(app->allocator, data, size);
     }
-    return;
+    return app->loading.chunk_queue.queue_size_bytes;
   }
 
   TraceChunk chunk = {};
@@ -316,7 +323,14 @@ void app_handle_file_chunk(App* app, int session_id, char* data,
   {
     std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);
     app->loading.chunk_queue.queue.push(chunk);
+    app->loading.chunk_queue.queue_size_bytes += size;
     if (is_eof) app->loading.chunk_queue.closed = true;
     app->loading.chunk_queue.cv.notify_one();
   }
+
+  return app->loading.chunk_queue.queue_size_bytes;
+}
+
+size_t app_get_queue_size(App* app) {
+  return app->loading.chunk_queue.queue_size_bytes;
 }

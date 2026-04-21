@@ -18,25 +18,18 @@ function setWasmMemory(ptr, value) {
   heap.set(value, ptr);
 }
 
-async function loadFont(fontUrl) {
+function setFontData(buffer) {
   try {
-    const response = await fetch(fontUrl);
-    if (response.ok) {
-      const buffer = await response.arrayBuffer();
-      const fontData = new Uint8Array(buffer);
-      const size = fontData.length;
-      const ptr = Module._ztracing_malloc(size);
-      setWasmMemory(ptr, fontData);
-      Module.ccall(
-          'ztracing_set_font_data', null, ['number', 'number'],
-          [ptr, size]);
-      Module._ztracing_free(ptr, size);
-    } else {
-      console.warn(
-          `Font fetch failed: ${response.status} ${response.statusText}`);
-    }
+    const fontData = new Uint8Array(buffer);
+    const size = fontData.length;
+    const ptr = Module._ztracing_malloc(size);
+    setWasmMemory(ptr, fontData);
+    Module.ccall(
+        'ztracing_set_font_data', null, ['number', 'number'],
+        [ptr, size]);
+    Module._ztracing_free(ptr, size);
   } catch (e) {
-    console.error('Font loading error:', e);
+    console.error('Font upload error:', e);
   }
 }
 
@@ -79,7 +72,17 @@ async function loadFromStream(stream, name, sizeHint, contentType) {
       const size = value.length;
       const ptr = Module._ztracing_malloc(size);
       setWasmMemory(ptr, value);
-      Module._ztracing_handle_file_chunk(sessionId, ptr, size, false);
+      let queueSize = Module._ztracing_handle_file_chunk(sessionId, ptr, size, false);
+
+      const MAX_QUEUE_SIZE = 32 * 1024 * 1024; // 32MB
+      if (queueSize > MAX_QUEUE_SIZE) {
+        while (queueSize > MAX_QUEUE_SIZE) {
+          // Wait for the worker to process some chunks.
+          await new Promise(resolve => setTimeout(resolve, 10));
+          queueSize = Module._ztracing_get_queue_size();
+        }
+        lastYieldTime = performance.now();
+      }
 
       const now = performance.now();
       if (now - lastYieldTime > 100) {
@@ -120,8 +123,17 @@ function setupDragDrop(canvasSelector) {
   }, false);
 }
 
+/**
+ * Starts the ztracing application.
+ *
+ * @param {Object} options - Configuration options.
+ * @param {string} options.canvasSelector - CSS selector for the target canvas.
+ * @param {Function} [options.getFont] - Async function returning an ArrayBuffer with font data.
+ * @param {Function} [options.getTrace] - Async function returning a trace object (stream, name, size, contentType).
+ * @param {Function} [options.onError] - Callback for handling initialization or loading errors.
+ */
 Module['ztracing_start'] = async function(options) {
-  const {canvasSelector, fontUrl, trace, onError} = options;
+  const {canvasSelector, getFont, getTrace, onError} = options;
   const result = Module.ccall('ztracing_init', 'number', ['string'], [canvasSelector]);
   if (result !== 0) {
     if (typeof onError === 'function') {
@@ -135,7 +147,40 @@ Module['ztracing_start'] = async function(options) {
     }
     return;
   }
-  await loadFont(fontUrl);
+
+  // 1. Start font fetch and trace fetch in parallel
+  const fontPromise = typeof getFont === 'function' ? getFont() : Promise.resolve(null);
+  
+  (async () => {
+    try {
+      if (typeof getTrace === 'function') {
+        const trace = await getTrace();
+        if (trace) {
+          await loadFromStream(trace.stream, trace.name, trace.size, trace.contentType);
+        } else {
+          setupDragDrop(canvasSelector);
+        }
+      } else {
+        setupDragDrop(canvasSelector);
+      }
+    } catch (e) {
+      if (typeof onError === 'function') {
+        onError(0, e.message);
+      } else {
+        console.error('Trace loading error:', e);
+      }
+    }
+  })();
+
+  // 2. WAIT for font as required before main loop
+  try {
+    const fontBuffer = await fontPromise;
+    if (fontBuffer) {
+      setFontData(fontBuffer);
+    }
+  } catch (e) {
+    console.error('Font loading error:', e);
+  }
 
   if (window.matchMedia) {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -144,12 +189,7 @@ Module['ztracing_start'] = async function(options) {
     });
   }
 
-  if (trace) {
-    loadFromStream(trace.stream, trace.name, trace.size, trace.contentType);
-  } else {
-    setupDragDrop(canvasSelector);
-  }
-
+  // 3. Enter main loop
   Module.ccall('ztracing_start', null, [], []);
 };
 })();

@@ -27,36 +27,30 @@
       }
 
       var Module = {
-        onRuntimeInitialized: async () => {
-          const urlParams = new URLSearchParams(window.location.search);
-          const traceUrl = urlParams.get('trace');
-          let trace = null;
-
-          if (traceUrl) {
-            try {
-              const response = await fetch(traceUrl);
-              if (response.ok) {
-                trace = {
-                  stream: response.body,
-                  name: traceUrl.split('/').pop() || 'trace.json',
-                  size: response.headers.get('content-length'),
-                  contentType: response.headers.get('content-type')
-                };
-              } else {
-                showError(`Failed to fetch trace from URL: ${traceUrl} (${response.status} ${response.statusText})`);
-                return;
-              }
-            } catch (e) {
-              showError(`Error fetching trace from URL: ${traceUrl}. ${e.message}`);
-              return;
-            }
-          }
-
+        onRuntimeInitialized: () => {
           Module.ztracing_start({
             canvasSelector: '#canvas',
-            // Noto Sans TTF URL extracted from Google Fonts CSS API.
-            fontUrl: 'https://fonts.gstatic.com/s/notosans/v42/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyD9A-9a6Vc.ttf',
-            trace: trace,
+            getFont: async () => {
+              const response = await fetch('https://fonts.gstatic.com/s/notosans/v42/o-0mIpQlx3QUlC5A4PNB6Ryti20_6n1iPHjcz6L1SoM-jCpoiyD9A-9a6Vc.ttf');
+              if (!response.ok) throw new Error(`Font fetch failed: ${response.status}`);
+              return await response.arrayBuffer();
+            },
+            getTrace: async () => {
+              const urlParams = new URLSearchParams(window.location.search);
+              const traceUrl = urlParams.get('trace');
+              if (!traceUrl) return null;
+
+              const response = await fetch(traceUrl);
+              if (!response.ok) {
+                throw new Error(`Failed to fetch trace: ${response.status} ${response.statusText}`);
+              }
+              return {
+                stream: response.body,
+                name: traceUrl.split('/').pop() || 'trace.json',
+                size: response.headers.get('content-length'),
+                contentType: response.headers.get('content-type')
+              };
+            },
             onError: showError
           });
         }

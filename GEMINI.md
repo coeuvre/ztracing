@@ -31,6 +31,7 @@
     - **Hash Caching**: Stores the precomputed hash in each entry to accelerate lookups by avoiding equality checks when hashes differ.
     - **Fast Resizing**: Uses cached hashes during table expansion to eliminate redundant recomputations.
     - **Stateful Functors**: Supports stateful functors for hashing and equality, enabling complex key types.
+    - **WASM Compatibility**: Functors are explicitly initialized in `hash_table_init` to prevent `RuntimeError: null function` errors in WebAssembly, which can occur if the compiler implements functor calls via `call_indirect` on zero-initialized memory.
 - `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments. Includes support for the `id` field and numeric argument pre-parsing.
 - `src/trace_data`: Persistent storage for parsed events. 
     - **String Table**: Uses a de-duplicated String Table with global hashing to minimize memory usage for repetitive trace data (e.g., event names, categories).
@@ -46,8 +47,9 @@
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
     - **Software Renderer Detection**: Automatically detects software rendering paths (SwiftShader, llvmpipe) via the `WEBGL_debug_renderer_info` extension.
     - **HiDPI Optimization**: Disables HiDPI scaling (forces 1.0x) when a software renderer is detected. This reduces the number of pixels processed by the CPU by 4x on 2x DPI displays, drastically lowering "Commit" latency.
-- `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
+- `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop. Handles the orchestration of font loading and trace data streaming.
 - `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer). Utilizes a background `TraceLoadingState` to handle multi-threaded file streaming and data parsing without blocking the UI.
+    - **Thread Safety**: Access to `TraceData` from the main thread (e.g., for theme updates) is strictly prohibited while `loading.active` is true to avoid data races with the background parser.
 - `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
 - `src/loading_screen`: Specialized scene for displaying parsing progress and filename during trace loading.
 - `src/welcome_screen`: Initial "drop file" landing scene.
@@ -70,11 +72,18 @@
 
 - **Background Parsing**: Trace parsing and track organization are offloaded to a background Web Worker (using Emscripten PThreads). This ensures the UI remains responsive (60 FPS) during heavy data ingestion.
 - **Communication**: Chunks are streamed from the main thread to the worker via a thread-safe `ChunkQueue`.
+- **Backpressure**: To prevent excessive memory usage, the JS bridge monitors the `ChunkQueue` size. If the total queued data exceeds **32MB**, the loader yields to the browser's event loop via `setTimeout(10)` until the worker thread has cleared enough space.
 - **Atomics**: Progress metrics (event count, bytes loaded) are updated using C++20 atomics to provide live feedback on the loading screen.
 - **COOP/COEP Headers**: To enable PThreads in the browser (via `SharedArrayBuffer`), the web server must provide the following security headers:
     - `Cross-Origin-Opener-Policy: same-origin`
     - `Cross-Origin-Embedder-Policy: require-corp`
 - **Local Development**: When using `python3 -m http.server`, these headers are NOT provided by default. For local development with PThreads enabled, use a custom server script (e.g., `tools/serve.py`) that includes these headers.
+
+## Startup Optimization
+
+- **Parallel Initialization**: The application parallelizes the fetching of the custom font and the trace data stream.
+- **Async Loading API**: The `ztracing_start` bridge accepts an async `getFont` function (returning an `ArrayBuffer`) and an async `getTrace` function (returning a stream object).
+- **Fast First Frame**: To minimize "Commit" latency (blank screen), the application begins fetching the trace data as soon as possible. The WASM main loop only awaits the `getFont` promise before starting, ensuring that the `LoadingScreen` appears instantly once the essential UI assets are ready.
 
 ## Software Rendering Optimizations
 

@@ -30,6 +30,7 @@ struct ChunkQueue {
   std::mutex mutex;
   std::condition_variable cv;
   std::queue<TraceChunk> queue;
+  std::atomic<size_t> queue_size_bytes{0};
   bool closed = false;
 };
 
@@ -89,8 +90,11 @@ void app_on_theme_changed(App* app);
 // Begins a new loading session.
 void app_begin_session(App* app, int session_id, const char* filename);
 
-// Processes a chunk of trace data.
-void app_handle_file_chunk(App* app, int session_id, char* data,
-                           size_t size, bool is_eof);
+// Processes a chunk of trace data. Returns the current total size of chunks in the queue.
+size_t app_handle_file_chunk(App* app, int session_id, char* data,
+                             size_t size, bool is_eof);
+
+// Returns the current total size of chunks in the queue.
+size_t app_get_queue_size(App* app);
 
 #endif  // ZTRACING_SRC_APP_H_

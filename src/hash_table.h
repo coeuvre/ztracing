@@ -61,6 +61,8 @@ void hash_table_init(HashTable<K, V, Hash, Eq>* ht, Allocator a,
   ht->size = 0;
   ht->capacity = cap;
   ht->capacity_mask = cap - 1;
+  ht->hash_fn = Hash();
+  ht->eq_fn = Eq();
 }
 
 template <typename K, typename V, typename Hash, typename Eq>

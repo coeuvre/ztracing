@@ -82,6 +82,7 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
 
   app_init(&g_app, allocator);
 
+  imgui_impl_wasm_request_update();
   LOG_DEBUG("ztracing initialized successfully.");
   return 0;
 }
@@ -130,10 +131,15 @@ EMSCRIPTEN_KEEPALIVE void ztracing_begin_session(int session_id,
   imgui_impl_wasm_request_update();
 }
 
-EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(int session_id,
+EMSCRIPTEN_KEEPALIVE int ztracing_handle_file_chunk(int session_id,
                                                      char* data, int size,
                                                      bool is_eof) {
-  app_handle_file_chunk(&g_app, session_id, data, (size_t)size, is_eof);
+  return (int)app_handle_file_chunk(&g_app, session_id, data, (size_t)size,
+                                    is_eof);
+}
+
+EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_size() {
+  return (int)app_get_queue_size(&g_app);
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed() {

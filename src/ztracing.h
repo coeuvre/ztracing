@@ -27,10 +27,13 @@ EMSCRIPTEN_KEEPALIVE void ztracing_start();
 EMSCRIPTEN_KEEPALIVE void ztracing_begin_session(int session_id,
                                                  const char* filename);
 
-// Handles a chunk of file data from the JavaScript side.
-EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(int session_id,
+// Handles a chunk of file data from the JavaScript side. Returns current queue size.
+EMSCRIPTEN_KEEPALIVE int ztracing_handle_file_chunk(int session_id,
                                                      char* data, int size,
                                                      bool is_eof);
+
+// Returns the current total size of chunks in the queue.
+EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_size();
 
 // Notifies the application that the system theme has changed.
 EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed();
