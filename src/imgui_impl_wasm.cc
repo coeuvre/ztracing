@@ -6,6 +6,44 @@
 #include <string.h>
 
 #include "src/allocator.h"
+#include "src/logging.h"
+
+EM_JS(bool, js_is_software_renderer, (), {
+  var canvas = document.createElement('canvas');
+  var gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+  if (!gl) return false;
+  var ext = gl.getExtension('WEBGL_debug_renderer_info');
+  if (ext) {
+    var renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+    if (renderer) {
+      return /software|swiftshader|llvmpipe/i.test(renderer);
+    }
+  }
+  return false;
+});
+
+struct BackendData {
+  Allocator allocator;
+  char* canvas_selector;
+  double last_time;
+  int frames_to_render;
+  bool software_renderer;
+};
+
+static BackendData* get_backend_data() {
+  return ImGui::GetCurrentContext()
+             ? (BackendData*)ImGui::GetIO().BackendPlatformUserData
+             : nullptr;
+}
+
+float imgui_impl_wasm_get_dpi_scale() {
+  if (BackendData* bd = get_backend_data()) {
+    if (bd->software_renderer) {
+      return 1.0f;
+    }
+  }
+  return (float)emscripten_get_device_pixel_ratio();
+}
 
 EM_JS(void, get_canvas_pos, (const char* selector, float* x, float* y), {
   var selectorStr = UTF8ToString(selector);
@@ -19,19 +57,6 @@ EM_JS(void, get_canvas_pos, (const char* selector, float* x, float* y), {
     window.Module.HEAPF32[y >> 2] = 0;
   }
 });
-
-struct BackendData {
-  Allocator allocator;
-  char* canvas_selector;
-  double last_time;
-  int frames_to_render;
-};
-
-static BackendData* get_backend_data() {
-  return ImGui::GetCurrentContext()
-             ? (BackendData*)ImGui::GetIO().BackendPlatformUserData
-             : nullptr;
-}
 
 void imgui_impl_wasm_request_update() {
   if (BackendData* bd = get_backend_data()) {
@@ -47,7 +72,7 @@ static void update_canvas_size(BackendData* bd) {
     width = 1280;
     height = 720;
   }
-  float dpi_scale = (float)emscripten_get_device_pixel_ratio();
+  float dpi_scale = imgui_impl_wasm_get_dpi_scale();
   io.DisplaySize = ImVec2((float)width, (float)height);
   io.DisplayFramebufferScale = ImVec2(dpi_scale, dpi_scale);
 
@@ -224,6 +249,11 @@ bool imgui_impl_wasm_init(const char* canvas_selector, Allocator allocator) {
   strcpy(bd->canvas_selector, canvas_selector);
   bd->last_time = 0.0;
   bd->frames_to_render = 20;
+  bd->software_renderer = js_is_software_renderer();
+
+  if (bd->software_renderer) {
+    LOG_INFO("software renderer detected, disabling hidpi");
+  }
 
   io.BackendPlatformUserData = (void*)bd;
   io.BackendPlatformName = "imgui_impl_wasm";

@@ -11,4 +11,6 @@ void imgui_impl_wasm_new_frame();
 void imgui_impl_wasm_request_update();
 bool imgui_impl_wasm_need_update();
 
-#endif  // ZTRACING_SRC_IMGUI_IMPL_WASM_H_
+float imgui_impl_wasm_get_dpi_scale();
+
+#endif  // IMGUI_IMPL_WASM_H_  // ZTRACING_SRC_IMGUI_IMPL_WASM_H_

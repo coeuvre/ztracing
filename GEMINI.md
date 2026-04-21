@@ -39,10 +39,13 @@
     - **Pre-parsed Numbers**: Numeric arguments are pre-parsed into `double` values during ingestion to eliminate conversion overhead during rendering.
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic.
     - **Single-Upload Strategy**: To minimize WASM-JS bridge overhead, all vertex and index data for a frame are concatenated on the CPU and uploaded in just two `glBufferData` calls.
-    - **Persistent VAO**: Reuses a single Vertex Array Object to capture and restore vertex attribute state, eliminating per-frame setup costs.
-    - **Index Adjustment**: Indices are adjusted on the CPU to be absolute, allowing for a single `glVertexAttribPointer` setup per frame.
+    - **Manual Attribute Binding**: Bypasses Vertex Array Objects (VAOs) in favor of manual `glVertexAttribPointer` calls each frame. This improves compatibility and performance on software-rendering paths (like SwiftShader) that may have slower VAO implementations.
+    - **Index Adjustment**: Indices are adjusted on the CPU to be absolute, allowing for a single attribute setup per frame.
     - **32-bit Indices**: Supports more than 65,535 vertices (required for large traces).
+    - **Optimized Blending**: Uses `glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)` to match Dear ImGui's requirements and avoid expensive alpha-normalization in compositors.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
+    - **Software Renderer Detection**: Automatically detects software rendering paths (SwiftShader, llvmpipe) via the `WEBGL_debug_renderer_info` extension.
+    - **HiDPI Optimization**: Disables HiDPI scaling (forces 1.0x) when a software renderer is detected. This reduces the number of pixels processed by the CPU by 4x on 2x DPI displays, drastically lowering "Commit" latency.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
 - `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer) and handles file streaming and data parsing.
 - `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
@@ -55,12 +58,22 @@
     - **Event Sorting**: Optimized for massive tracks using a cache-friendly temporary `SortKey` array to minimize cache misses during indirect data lookups.
 - `src/format`: Human-readable time formatting (s, ms, us) and tick interval calculation.
 - `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
+    - **Performance Attributes**: Configures WebGL context with `alpha: false`, `antialias: false`, `depth: false`, and `premultipliedAlpha: false` to minimize compositor workload.
 - `src/ztracing.h`: Clean C API for the WASM-to-JS bridge.
 - `src/platform`: Platform abstraction layer (e.g., high-resolution timestamps). Supports both WASM and native (for tests).
 - `src/logging`: Simple logging utility with WASM console and native stdout integration.
 - `src/track_renderer`: Standalone rendering module that implements performance optimizations like LOD and event coalescing. 
     - **Allocation-Free Rendering**: Uses a persistent `TrackRendererState` (Zero-Is-Initialization compatible) to host temporary buffers (`thread_bucket_states`, `counter_current_values`, etc.), eliminating per-frame heap allocations during rendering.
     - **Decoupling**: Separates rendering calculations from ImGui-specific logic to allow for comprehensive unit testing.
+
+## Software Rendering Optimizations
+
+To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g., Linux software paths), the following strategies are employed:
+- **DPI Capping**: HiDPI is automatically disabled for software renderers. On a 4K display with 2x scaling, this reduces the fragment shader workload from 8M pixels to 2M pixels per frame.
+- **Bridge Call Minimization**: Redundant WebGL state changes (like `glViewport`, `glUseProgram`, and projection matrix updates) are strictly avoided.
+- **Manual Attributes**: Using manual attribute pointers instead of VAOs avoids driver-level synchronization stalls common in software WebGL implementations.
+- **Precision Balancing**: Uses `highp` for the vertex shader to ensure coordinate stability during massive pans, but `mediump` for the fragment shader to maximize pixel fill-rate on the CPU.
+- **Opaque Canvas**: Disabling `alpha` and `premultipliedAlpha` at the context level allows the browser compositor to perform a fast opaque blit instead of expensive per-pixel blending.
 
 ## Main Viewport
 

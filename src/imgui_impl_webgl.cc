@@ -28,14 +28,16 @@ static BackendData* get_backend_data() {
 }
 
 static void setup_render_state(ImDrawData* draw_data, int fb_width,
-                               int fb_height, GLuint vertex_array_object) {
+                               int fb_height) {
   BackendData* bd = get_backend_data();
 
   glEnable(GL_BLEND);
   glBlendEquation(GL_FUNC_ADD);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE,
+                      GL_ONE_MINUS_SRC_ALPHA);
   glDisable(GL_CULL_FACE);
   glDisable(GL_DEPTH_TEST);
+  glDisable(GL_STENCIL_TEST);
   glEnable(GL_SCISSOR_TEST);
 
   glViewport(0, 0, (GLsizei)fb_width, (GLsizei)fb_height);
@@ -52,7 +54,21 @@ static void setup_render_state(ImDrawData* draw_data, int fb_width,
   glUseProgram(bd->shader_program);
   glUniformMatrix4fv(bd->attrib_location_proj_mtx, 1, GL_FALSE,
                      &ortho_projection[0][0]);
-  glBindVertexArray(vertex_array_object);
+
+  glBindBuffer(GL_ARRAY_BUFFER, bd->vbo);
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bd->ebo);
+
+  glEnableVertexAttribArray((GLuint)bd->attrib_location_pos);
+  glEnableVertexAttribArray((GLuint)bd->attrib_location_uv);
+  glEnableVertexAttribArray((GLuint)bd->attrib_location_color);
+
+  glVertexAttribPointer((GLuint)bd->attrib_location_pos, 2, GL_FLOAT, GL_FALSE,
+                        sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, pos));
+  glVertexAttribPointer((GLuint)bd->attrib_location_uv, 2, GL_FLOAT, GL_FALSE,
+                        sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, uv));
+  glVertexAttribPointer((GLuint)bd->attrib_location_color, 4, GL_UNSIGNED_BYTE,
+                        GL_TRUE, sizeof(ImDrawVert),
+                        (GLvoid*)offsetof(ImDrawVert, col));
 }
 
 void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
@@ -110,7 +126,7 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
                bd->idx_staging.data, GL_STREAM_DRAW);
 
   // 4. Setup state and render
-  setup_render_state(draw_data, fb_width, fb_height, bd->vao);
+  setup_render_state(draw_data, fb_width, fb_height);
 
   ImVec2 clip_off = draw_data->DisplayPos;
   ImVec2 clip_scale = draw_data->FramebufferScale;
@@ -168,7 +184,7 @@ bool imgui_impl_webgl_init(Allocator allocator) {
 
   const GLchar* fragment_shader =
       "#version 300 es\n"
-      "precision highp float;\n"
+      "precision mediump float;\n"
       "in vec2 Frag_UV;\n"
       "in vec4 Frag_Color;\n"
       "uniform sampler2D Texture;\n"
@@ -224,25 +240,8 @@ bool imgui_impl_webgl_init(Allocator allocator) {
 
   glGenBuffers(1, &bd->vbo);
   glGenBuffers(1, &bd->ebo);
-  glGenVertexArrays(1, &bd->vao);
 
-  glBindVertexArray(bd->vao);
-  glBindBuffer(GL_ARRAY_BUFFER, bd->vbo);
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bd->ebo);
-
-  glEnableVertexAttribArray((GLuint)bd->attrib_location_pos);
-  glEnableVertexAttribArray((GLuint)bd->attrib_location_uv);
-  glEnableVertexAttribArray((GLuint)bd->attrib_location_color);
-
-  glVertexAttribPointer((GLuint)bd->attrib_location_pos, 2, GL_FLOAT, GL_FALSE,
-                        sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, pos));
-  glVertexAttribPointer((GLuint)bd->attrib_location_uv, 2, GL_FLOAT, GL_FALSE,
-                        sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, uv));
-  glVertexAttribPointer((GLuint)bd->attrib_location_color, 4, GL_UNSIGNED_BYTE,
-                        GL_TRUE, sizeof(ImDrawVert),
-                        (GLvoid*)offsetof(ImDrawVert, col));
-
-  glBindVertexArray(0);
+  glActiveTexture(GL_TEXTURE0);
 
   if (!imgui_impl_webgl_create_fonts_texture()) return false;
 
@@ -281,7 +280,6 @@ void imgui_impl_webgl_shutdown() {
   BackendData* bd = get_backend_data();
   glDeleteBuffers(1, &bd->vbo);
   glDeleteBuffers(1, &bd->ebo);
-  glDeleteVertexArrays(1, &bd->vao);
   glDeleteProgram(bd->shader_program);
   imgui_impl_webgl_destroy_fonts_texture();
   Allocator allocator = bd->allocator;

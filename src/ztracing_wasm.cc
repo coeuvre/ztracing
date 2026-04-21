@@ -55,6 +55,12 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   emscripten_webgl_init_context_attributes(&attrs);
   attrs.majorVersion = 2;
   attrs.minorVersion = 0;
+  attrs.alpha = EM_FALSE;
+  attrs.antialias = EM_FALSE;
+  attrs.premultipliedAlpha = EM_FALSE;
+  attrs.depth = EM_FALSE;
+  attrs.stencil = EM_FALSE;
+  attrs.powerPreference = EM_WEBGL_POWER_PREFERENCE_HIGH_PERFORMANCE;
 
   EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx =
       emscripten_webgl_create_context(g_canvas_selector.data, &attrs);
@@ -87,7 +93,7 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
                     (size_t)font_size);
 
   ImGuiIO& io = ImGui::GetIO();
-  float dpi_scale = (float)emscripten_get_device_pixel_ratio();
+  float dpi_scale = imgui_impl_wasm_get_dpi_scale();
   io.Fonts->Clear();
   ImFontConfig font_cfg;
   font_cfg.FontDataOwnedByAtlas = false;
