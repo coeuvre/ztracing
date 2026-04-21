@@ -78,8 +78,16 @@ void track_compute_render_blocks(
         float x1 = (float)(tracks_canvas_pos_x +
                            ((double)e.ts - viewport_start) * inv_duration);
         float x2 = (float)(x1 + (double)e.dur * inv_duration);
-        TrackRenderBlock rb = {x1, x2, e.color, e.name_ref, depth, 1,
-                               is_selected, event_idx};
+        TrackRenderBlock rb = {
+            .x1 = x1,
+            .x2 = x2,
+            .color = e.color,
+            .name_ref = e.name_ref,
+            .depth = depth,
+            .count = 1,
+            .is_selected = is_selected,
+            .event_idx = event_idx,
+        };
         array_list_push_back(out_blocks, a, rb);
         state->thread_bucket_states[depth].blocked = true;
       } else if (!state->thread_bucket_states[depth].blocked) {
@@ -276,7 +284,11 @@ void track_compute_counter_render_blocks(
       if (can_merge) {
         (*out_blocks)[out_blocks->size - 1].x2 = x2;
       } else {
-        CounterRenderBlock rb = {x1, x2, last_event_idx_in_bucket};
+        CounterRenderBlock rb = {
+            .x1 = x1,
+            .x2 = x2,
+            .event_idx = last_event_idx_in_bucket,
+        };
         if (last_event_idx_in_bucket == (size_t)-1) {
           if (it != track->event_indices.data) {
             rb.event_idx = *(it - 1);

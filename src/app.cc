@@ -1,6 +1,7 @@
 #include "src/app.h"
 
 #include <math.h>
+#include <new>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -128,31 +129,13 @@ static void app_stop_worker(App* app) {
 }
 
 void app_init(App* app, Allocator allocator) {
+  new (app) App();
   app->allocator = allocator;
-  app->theme_mode = THEME_MODE_AUTO;
-  app->theme = nullptr;
-  app_apply_theme(
-      app, platform_is_dark_mode() ? theme_get_dark() : theme_get_light());
-  app->power_save_mode = true;
-  app->first_frame = true;
-  app->show_metrics_window = false;
-  app->show_about_window = false;
-
-  app->loading.event_count = 0;
-  app->loading.total_bytes = 0;
-  app->loading.start_time = 0;
-  app->loading.active = false;
-  app->loading.session_id = 0;
-  app->loading.filename = {};
-  app->loading.worker_should_abort = false;
-  app->loading.request_update = false;
-  app->loading.chunk_queue.queue_size_bytes = 0;
-  app->loading.chunk_queue.closed = false;
   app->loading.trace_data = &app->trace_data;
   app->loading.trace_viewer = &app->trace_viewer;
 
-  trace_data_init(&app->trace_data, app->allocator);
-  trace_viewer_init(&app->trace_viewer, app->allocator);
+  app_apply_theme(
+      app, platform_is_dark_mode() ? theme_get_dark() : theme_get_light());
 }
 
 void app_deinit(App* app) {

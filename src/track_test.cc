@@ -6,8 +6,7 @@
 
 TEST(TrackTest, SortEvents) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   TraceEvent ev1 = {};
   ev1.ts = 200;
@@ -32,8 +31,7 @@ TEST(TrackTest, SortEvents) {
 
 TEST(TrackTest, UpdateMaxDur) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   TraceEvent ev1 = {};
   ev1.dur = 100;
@@ -57,8 +55,7 @@ TEST(TrackTest, UpdateMaxDur) {
 
 TEST(TrackTest, FindVisibleStartIndex) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   // Event 0: [0, 100]
   TraceEvent ev0 = {};
@@ -116,8 +113,7 @@ TEST(TrackTest, FindVisibleStartIndex) {
 
 TEST(TrackTest, CalculateDepths) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   // [0, 100]
   TraceEvent ev0 = {};
@@ -187,8 +183,7 @@ TEST(TrackTest, CalculateDepths) {
 
 TEST(TrackTest, CalculateDepthsSiblings) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   // Parent [0, 100]
   TraceEvent ev0 = {};
@@ -226,8 +221,7 @@ TEST(TrackTest, CalculateDepthsSiblings) {
 
 TEST(TrackTest, CalculateDepthsDuplicates) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   // Two events with same ts and dur
   TraceEvent ev0 = {};
@@ -258,8 +252,7 @@ TEST(TrackTest, CalculateDepthsDuplicates) {
 
 TEST(TrackTest, CalculateDepthsNonStrict) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   // Parent [0, 100]
   TraceEvent ev0 = {};
@@ -299,8 +292,7 @@ TEST(TrackTest, CalculateDepthsNonStrict) {
 
 TEST(TrackTest, OrganizeTracksEmpty) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   ArrayList<Track> tracks = {};
   int64_t min_ts = -1, max_ts = -1;
@@ -317,8 +309,7 @@ TEST(TrackTest, OrganizeTracksEmpty) {
 
 TEST(TrackTest, OrganizeTracksSorting) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   auto add_event = [&](int32_t pid, int32_t tid, int64_t ts) {
     TraceEvent e = {};
@@ -382,8 +373,7 @@ TEST(TrackTest, OrganizeTracksSorting) {
 
 TEST(TrackTest, OrganizeTracksMetadataOnly) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   TraceEvent m = {};
   m.ph = "M";
@@ -413,8 +403,7 @@ TEST(TrackTest, OrganizeTracksMetadataOnly) {
 
 TEST(TrackTest, OrganizeTracksMixedOrder) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   // 1. Regular event
   TraceEvent e1 = {};
@@ -471,8 +460,7 @@ TEST(TrackTest, OrganizeTracksMixedOrder) {
 
 TEST(TrackTest, OrganizeTracksCounters) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   // 1. Regular thread event
   TraceEvent e1 = {};
@@ -535,8 +523,7 @@ TEST(TrackTest, OrganizeTracksCounters) {
 
 TEST(TrackTest, OrganizeTracksCountersSorting) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   // Add counter events in non-alphabetical order
   TraceEvent c1 = {}; c1.ph = "C"; c1.name = "zebra"; c1.pid = 1;
@@ -578,8 +565,7 @@ TEST(TrackTest, OrganizeTracksCountersSorting) {
 
 TEST(TrackTest, OrganizeTracksCountersSortingIgnoreCase) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   // Add counter events with mixed case names
   TraceEvent c1 = {}; c1.ph = "C"; c1.name = "zebra"; c1.pid = 1;

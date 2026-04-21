@@ -17,12 +17,6 @@
 const double TRACE_VIEWER_MAX_ZOOM_FACTOR = 1.2;
 const double TRACE_VIEWER_MIN_ZOOM_DURATION = 1000.0;  // 1ms = 1000us
 
-void trace_viewer_init(TraceViewer* tv, Allocator allocator) {
-  (void)allocator;
-  *tv = {};
-  tv->selected_event_index = -1;
-}
-
 void trace_viewer_deinit(TraceViewer* tv, Allocator allocator) {
   for (size_t i = 0; i < tv->tracks.size; i++) {
     track_deinit(&tv->tracks[i], allocator);

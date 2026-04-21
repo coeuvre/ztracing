@@ -37,13 +37,6 @@ bool TraceData::StringLookupEq::operator()(uint32_t a, uint32_t b) const {
   return sa == sb;
 }
 
-void trace_data_init(TraceData* td, Allocator a) {
-  *td = {};
-  hash_table_init(&td->string_lookup, a);
-  td->string_lookup.hash_fn.td = td;
-  td->string_lookup.eq_fn.td = td;
-}
-
 void trace_data_deinit(TraceData* td, Allocator a) {
   array_list_deinit(&td->string_buffer, a);
   array_list_deinit(&td->string_table, a);
@@ -62,6 +55,10 @@ void trace_data_clear(TraceData* td, Allocator /*a*/) {
 
 StringRef trace_data_push_string(TraceData* td, Allocator a, std::string_view s) {
   if (s.data() == nullptr) return 0;
+
+  // Ensure functors are pointing to us (ZII support)
+  td->string_lookup.hash_fn.td = td;
+  td->string_lookup.eq_fn.td = td;
 
   td->tmp.current_str = s;
   uint32_t h = compute_hash(s);

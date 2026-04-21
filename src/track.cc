@@ -220,8 +220,7 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
   int64_t max_ts = 0;
   bool first_event = true;
 
-  HashTable<TrackKey, size_t, TrackKeyHash, TrackKeyEq> track_map;
-  hash_table_init(&track_map, a);
+  HashTable<TrackKey, size_t, TrackKeyHash, TrackKeyEq> track_map = {};
 
   ArrayList<size_t> event_counts = {};
 
@@ -249,12 +248,13 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
     } else {
       size_t* track_idx_ptr = hash_table_get(&track_map, key);
       if (track_idx_ptr == nullptr) {
-        Track t = {};
-        t.type = is_counter ? TRACK_TYPE_COUNTER : TRACK_TYPE_THREAD;
-        t.pid = e.pid;
-        t.tid = is_counter ? -1 : e.tid;
-        t.name_ref = is_counter ? e.name_ref : 0;
-        t.id_ref = is_counter ? e.id_ref : 0;
+        Track t = {
+            .type = is_counter ? TRACK_TYPE_COUNTER : TRACK_TYPE_THREAD,
+            .pid = e.pid,
+            .tid = is_counter ? -1 : e.tid,
+            .name_ref = is_counter ? e.name_ref : (StringRef)0,
+            .id_ref = is_counter ? e.id_ref : (StringRef)0,
+        };
         array_list_push_back(out_tracks, a, t);
         track_idx = out_tracks->size - 1;
         hash_table_put(&track_map, a, key, track_idx);

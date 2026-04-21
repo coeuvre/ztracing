@@ -62,8 +62,8 @@ struct App {
   // UI & Config
   ThemeMode theme_mode;
   const Theme* theme;
-  bool power_save_mode;
-  bool first_frame;
+  bool power_save_mode = true;
+  bool first_frame = true;
   bool show_metrics_window;
   bool show_about_window;
 

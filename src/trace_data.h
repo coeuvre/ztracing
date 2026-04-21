@@ -66,7 +66,6 @@ struct TraceData {
 
 struct Theme;
 
-void trace_data_init(TraceData* td, Allocator a);
 void trace_data_deinit(TraceData* td, Allocator a);
 void trace_data_clear(TraceData* td, Allocator a);
 

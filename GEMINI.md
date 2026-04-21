@@ -7,6 +7,11 @@
 - **Style**: Google C++ Style (modified: snake_case for all functions, SCREAMING_CASE for constants).
 - **Include Guards**: Must follow the pattern `ZTRACING_SRC_<FILE>_H_`.
 - **Warnings**: Strict warnings are enabled for all local code (`-Wall -Wextra -Werror` etc.) via macros in `src/defs.bzl`.
+- **ZII & Initialization**: 
+    - **Pattern**: Prefer Zero-Is-Initialization (ZII) via `{}` or designated initializers (C++20).
+    - **No `memset(0)`**: Never use `memset(ptr, 0, sizeof(T))` for struct initialization.
+    - **Designated Initializers**: Use the concise `.field = value` pattern for "ZII + setting" operations. Redundant `= 0` or `= nullptr` initializers are omitted.
+    - **Non-Aggregates**: For types with `std::atomic` or `std::thread` (non-aggregates), use placement new (`new (ptr) T()`) to ensure correct value-initialization.
 - **UI Framework**: Dear ImGui (v1.92.7-docking).
 - **Backend**: Custom WebGL 2.0 (Rendering) and Custom Emscripten HTML5 (Platform).
 - **Build System**: Bazel with Bzlmod.
@@ -24,16 +29,17 @@
 
 ## Architecture
 
-- `src/allocator`: Custom C-style allocator with `allocator_alloc`, `allocator_realloc`, and `allocator_free` helpers.
+- `src/allocator`: Custom C-style allocator with `allocator_alloc`, `allocator_realloc`, and `allocator_free` helpers. Supports ZII via designated initializers.
 - `src/str`: (Removed) Migrated to `std::string_view`. String-to-number utilities have been moved to their respective usage locations (e.g., `src/trace_parser.cc`) and now utilize `std::from_chars` for improved performance.
-- `src/array_list`: Generic `ArrayList<T>` (vector) with explicit allocation and ZII.
+- `src/array_list`: Generic `ArrayList<T>` (vector) with explicit allocation and ZII support via `{}`.
 - `src/hash_table`: Generic `HashTable<K, V>` with open addressing and linear probing. 
+    - **ZII Support**: Fully Zero-Is-Initialization compatible. Internal storage is lazily allocated upon the first `put` operation.
     - **Hash Caching**: Stores the precomputed hash in each entry to accelerate lookups by avoiding equality checks when hashes differ.
     - **Fast Resizing**: Uses cached hashes during table expansion to eliminate redundant recomputations.
     - **Stateful Functors**: Supports stateful functors for hashing and equality, enabling complex key types.
-    - **WASM Compatibility**: Functors are explicitly initialized in `hash_table_init` to prevent `RuntimeError: null function` errors in WebAssembly, which can occur if the compiler implements functor calls via `call_indirect` on zero-initialized memory.
-- `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments. Includes support for the `id` field and numeric argument pre-parsing.
+- `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments. Includes support for the `id` field and numeric argument pre-parsing. Supports ZII via designated initializers.
 - `src/trace_data`: Persistent storage for parsed events. 
+    - **ZII Support**: Fully ZII compatible via `{}`. Internal functors are lazily linked to the current instance address during the first string push to avoid dangling pointers during moves/copies.
     - **String Table**: Uses a de-duplicated String Table with global hashing to minimize memory usage for repetitive trace data (e.g., event names, categories).
     - **Hash Caching**: Each `StringEntry` stores a persistent hash, computed once during insertion. This makes subsequent lookups for the same string (which occur frequently during trace ingestion) extremely efficient.
     - **StringRef**: Events and arguments store `StringRef` (indices) into the table rather than raw offsets, providing $O(1)$ access to both string data and length without `strlen` overhead.
@@ -49,12 +55,13 @@
     - **HiDPI Optimization**: Disables HiDPI scaling (forces 1.0x) when a software renderer is detected. This reduces the number of pixels processed by the CPU by 4x on 2x DPI displays, drastically lowering "Commit" latency.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop. Handles the orchestration of font loading and trace data streaming.
 - `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer). Utilizes a background `TraceLoadingState` to handle multi-threaded file streaming and data parsing without blocking the UI.
+    - **Initialization**: As `App` is a non-aggregate, it is initialized using placement new (`new (app) App()`) followed by member setup.
     - **Thread Safety**: Access to `TraceData` from the main thread (e.g., for theme updates) is strictly prohibited while `loading.active` is true to avoid data races with the background parser.
-- `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
+- `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments). Supports ZII.
 - `src/loading_screen`: Specialized scene for displaying parsing progress and filename during trace loading.
 - `src/welcome_screen`: Initial "drop file" landing scene.
 - `src/colors`: Theme management system. Defines a `Theme` struct and provides standard Dark and Light theme implementations.
-- `src/track`: Logic for organizing events into tracks, sorting, and depth calculation.
+- `src/track`: Logic for organizing events into tracks, sorting, and depth calculation. Supports ZII.
     - **Track Organization**: Implements a high-performance two-pass organization algorithm (`track_organize`) that uses a `HashTable` for $O(1)$ track discovery and a sequential cache for consecutive events. Decoupled from `App` for modularity and unit testing.
     - **Coloring**: Provides `track_update_colors` to update counter track colors based on the current theme. This is used both during initial organization and when switching themes dynamically.
     - **Event Sorting**: Optimized for massive tracks using a cache-friendly temporary `SortKey` array to minimize cache misses during indirect data lookups.

@@ -6,8 +6,7 @@
 
 TEST(TraceDataTest, Basic) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   TraceEvent ev = {};
   ev.name = "event1";
@@ -51,8 +50,7 @@ TEST(TraceDataTest, Basic) {
 
 TEST(TraceDataTest, DeDuplication) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   StringRef ref1 = trace_data_push_string(&td, a, "foo");
   StringRef ref2 = trace_data_push_string(&td, a, "bar");
@@ -70,8 +68,7 @@ TEST(TraceDataTest, DeDuplication) {
 
 TEST(TraceDataTest, Clear) {
   Allocator a = allocator_get_default();
-  TraceData td;
-  trace_data_init(&td, a);
+  TraceData td = {};
 
   trace_data_push_string(&td, a, "foo");
   TraceEvent ev = {};

@@ -9,7 +9,7 @@ class TrackRendererTest : public ::testing::Test {
  protected:
   void SetUp() override {
     allocator = allocator_get_default();
-    trace_data_init(&td, allocator);
+    td = {};
     state = {};
     blocks = {};
   }

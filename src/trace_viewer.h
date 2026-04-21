@@ -28,11 +28,10 @@ struct TraceViewer {
   ArrayList<TrackRenderBlock> render_blocks;
   ArrayList<CounterRenderBlock> counter_render_blocks;
   ArrayList<HoverMatch> hover_matches;
-  int64_t selected_event_index;
+  int64_t selected_event_index = -1;
   bool show_details_panel;
 };
 
-void trace_viewer_init(TraceViewer* tv, Allocator allocator);
 void trace_viewer_deinit(TraceViewer* tv, Allocator allocator);
 void trace_viewer_reset_view(TraceViewer* tv);
 void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,

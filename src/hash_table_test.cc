@@ -18,8 +18,7 @@ struct IntKeyEq {
 
 TEST(HashTableTest, Basic) {
   Allocator a = allocator_get_default();
-  HashTable<IntKey, int, IntKeyHash, IntKeyEq> ht;
-  hash_table_init(&ht, a);
+  HashTable<IntKey, int, IntKeyHash, IntKeyEq> ht = {};
 
   hash_table_put(&ht, a, {1}, 10);
   hash_table_put(&ht, a, {2}, 20);
@@ -41,9 +40,7 @@ TEST(HashTableTest, Basic) {
 
 TEST(HashTableTest, DefaultTypes) {
   Allocator a = allocator_get_default();
-  HashTable<int32_t, int>
-      ht;  // Uses DefaultHash<int32_t> and DefaultEq<int32_t>
-  hash_table_init(&ht, a);
+  HashTable<int32_t, int> ht = {};
 
   hash_table_put(&ht, a, 1, 10);
   hash_table_put(&ht, a, 2, 20);
@@ -57,8 +54,8 @@ TEST(HashTableTest, DefaultTypes) {
 
 TEST(HashTableTest, Growth) {
   Allocator a = allocator_get_default();
-  HashTable<int32_t, int> ht;
-  hash_table_init(&ht, a, 4);
+  HashTable<int32_t, int> ht = {};
+  hash_table_resize(&ht, a, 4);
 
   for (int i = 0; i < 100; i++) {
     hash_table_put(&ht, a, i, i * 10);
@@ -78,8 +75,8 @@ TEST(HashTableTest, Growth) {
 
 TEST(HashTableTest, Clear) {
   Allocator a = allocator_get_default();
-  HashTable<int32_t, int> ht;
-  hash_table_init(&ht, a);
+  HashTable<int32_t, int32_t> ht = {};
+
 
   hash_table_put(&ht, a, 1, 10);
   hash_table_clear(&ht);

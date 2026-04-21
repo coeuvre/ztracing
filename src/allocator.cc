@@ -48,8 +48,7 @@ static void* counting_alloc(void* ctx, void* ptr, size_t old_size,
 }
 
 void counting_allocator_init(CountingAllocator* ca, Allocator parent) {
-  ca->parent = parent;
-  ca->allocated_bytes = 0;
+  *ca = {.parent = parent};
 }
 
 Allocator counting_allocator_get_allocator(CountingAllocator* ca) {

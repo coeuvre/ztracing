@@ -146,8 +146,7 @@ static JsonToken json_reader_next(JsonReader* r) {
 }
 
 void trace_parser_init(TraceParser* p, Allocator a) {
-  memset(p, 0, sizeof(TraceParser));
-  p->a = a;
+  *p = {.a = a};
 }
 
 void trace_parser_deinit(TraceParser* p) {
