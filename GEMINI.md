@@ -18,8 +18,8 @@
 - **Build**: `bazel build //:ztracing`
 - **Output**: `bazel-bin/ztracing/` contains `index.html`, `ztracing.js`, and `ztracing.wasm`.
 - **Run**:
-  1. `cd bazel-bin/ztracing/`
-  2. `python3 -m http.server 8000`
+  1. `bazel build //:ztracing`
+  2. `./tools/serve.py`
   3. Open `http://localhost:8000/index.html` in a browser.
 
 ## Architecture
@@ -47,7 +47,7 @@
     - **Software Renderer Detection**: Automatically detects software rendering paths (SwiftShader, llvmpipe) via the `WEBGL_debug_renderer_info` extension.
     - **HiDPI Optimization**: Disables HiDPI scaling (forces 1.0x) when a software renderer is detected. This reduces the number of pixels processed by the CPU by 4x on 2x DPI displays, drastically lowering "Commit" latency.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop.
-- `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer) and handles file streaming and data parsing.
+- `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer). Utilizes a background `TraceLoadingState` to handle multi-threaded file streaming and data parsing without blocking the UI.
 - `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
 - `src/loading_screen`: Specialized scene for displaying parsing progress and filename during trace loading.
 - `src/welcome_screen`: Initial "drop file" landing scene.
@@ -65,6 +65,16 @@
 - `src/track_renderer`: Standalone rendering module that implements performance optimizations like LOD and event coalescing. 
     - **Allocation-Free Rendering**: Uses a persistent `TrackRendererState` (Zero-Is-Initialization compatible) to host temporary buffers (`thread_bucket_states`, `counter_current_values`, etc.), eliminating per-frame heap allocations during rendering.
     - **Decoupling**: Separates rendering calculations from ImGui-specific logic to allow for comprehensive unit testing.
+
+## Multi-threading & PThreads
+
+- **Background Parsing**: Trace parsing and track organization are offloaded to a background Web Worker (using Emscripten PThreads). This ensures the UI remains responsive (60 FPS) during heavy data ingestion.
+- **Communication**: Chunks are streamed from the main thread to the worker via a thread-safe `ChunkQueue`.
+- **Atomics**: Progress metrics (event count, bytes loaded) are updated using C++20 atomics to provide live feedback on the loading screen.
+- **COOP/COEP Headers**: To enable PThreads in the browser (via `SharedArrayBuffer`), the web server must provide the following security headers:
+    - `Cross-Origin-Opener-Policy: same-origin`
+    - `Cross-Origin-Embedder-Policy: require-corp`
+- **Local Development**: When using `python3 -m http.server`, these headers are NOT provided by default. For local development with PThreads enabled, use a custom server script (e.g., `tools/serve.py`) that includes these headers.
 
 ## Software Rendering Optimizations
 

@@ -17,6 +17,10 @@ static App g_app;
 static ArrayList<unsigned char> g_font_data;
 
 static void main_loop() {
+  if (g_app.loading.request_update.exchange(false)) {
+    imgui_impl_wasm_request_update();
+  }
+
   if (g_app.power_save_mode && !imgui_impl_wasm_need_update()) {
     return;
   }
@@ -130,7 +134,6 @@ EMSCRIPTEN_KEEPALIVE void ztracing_handle_file_chunk(int session_id,
                                                      const char* data, int size,
                                                      bool is_eof) {
   app_handle_file_chunk(&g_app, session_id, data, (size_t)size, is_eof);
-  imgui_impl_wasm_request_update();
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed() {

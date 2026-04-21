@@ -1,6 +1,12 @@
 #ifndef ZTRACING_SRC_APP_H_
 #define ZTRACING_SRC_APP_H_
 
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <queue>
+#include <thread>
+
 #include "src/allocator.h"
 #include "src/array_list.h"
 #include "src/colors.h"
@@ -14,8 +20,45 @@ enum ThemeMode {
   THEME_MODE_LIGHT = 2,
 };
 
+struct TraceChunk {
+  char* data;
+  size_t size;
+  bool is_eof;
+};
+
+struct ChunkQueue {
+  std::mutex mutex;
+  std::condition_variable cv;
+  std::queue<TraceChunk> queue;
+  bool closed = false;
+};
+
+struct TraceLoadingState {
+  std::atomic<size_t> event_count;
+  std::atomic<size_t> total_bytes;
+  double start_time;
+  std::atomic<bool> active;
+  int session_id;
+  ArrayList<char> filename;
+
+  std::thread worker_thread;
+  std::atomic<bool> worker_should_abort;
+  std::atomic<bool> request_update;
+  ChunkQueue chunk_queue;
+
+  TraceParser parser;
+
+  // Dependencies for background processing
+  Allocator allocator;
+  TraceData* trace_data;
+  const Theme* theme;
+  TraceViewer* trace_viewer;
+};
+
 struct App {
   Allocator allocator;
+
+  // UI & Config
   ThemeMode theme_mode;
   const Theme* theme;
   bool power_save_mode;
@@ -23,15 +66,11 @@ struct App {
   bool show_metrics_window;
   bool show_about_window;
 
-  TraceParser trace_parser;
-  TraceData trace_data;
-  size_t trace_event_count;
-  size_t trace_total_bytes;
-  double trace_start_time;
-  bool trace_parser_active;
-  int current_session_id;
-  ArrayList<char> trace_filename;
+  // Background Loading
+  TraceLoadingState loading;
 
+  // Data & Viewer
+  TraceData trace_data;
   TraceViewer trace_viewer;
 };
 

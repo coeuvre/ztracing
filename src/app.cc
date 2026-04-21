@@ -17,16 +17,74 @@
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"
 
-static void app_organize_tracks(App* app) {
-  track_organize(&app->trace_data, app->allocator, app->theme,
-                 &app->trace_viewer.tracks, &app->trace_viewer.viewport.min_ts,
-                 &app->trace_viewer.viewport.max_ts);
+static void trace_loading_organize_tracks(TraceLoadingState* loading) {
+  track_organize(loading->trace_data, loading->allocator, loading->theme,
+                 &loading->trace_viewer->tracks,
+                 &loading->trace_viewer->viewport.min_ts,
+                 &loading->trace_viewer->viewport.max_ts);
 
-  trace_viewer_reset_view(&app->trace_viewer);
+  trace_viewer_reset_view(loading->trace_viewer);
   LOG_INFO("organized %zu tracks, time range: [%lld, %lld]",
-           app->trace_viewer.tracks.size,
-           (long long)app->trace_viewer.viewport.min_ts,
-           (long long)app->trace_viewer.viewport.max_ts);
+           loading->trace_viewer->tracks.size,
+           (long long)loading->trace_viewer->viewport.min_ts,
+           (long long)loading->trace_viewer->viewport.max_ts);
+}
+
+static void trace_loading_worker(TraceLoadingState* loading) {
+  LOG_DEBUG("trace loading worker started");
+  while (!loading->worker_should_abort) {
+    TraceChunk chunk = {};
+    {
+      std::unique_lock<std::mutex> lock(loading->chunk_queue.mutex);
+      loading->chunk_queue.cv.wait(lock, [loading] {
+        return !loading->chunk_queue.queue.empty() ||
+               loading->chunk_queue.closed || loading->worker_should_abort;
+      });
+
+      if (loading->worker_should_abort) break;
+
+      if (loading->chunk_queue.queue.empty()) {
+        if (loading->chunk_queue.closed) break;
+        continue;
+      }
+
+      chunk = loading->chunk_queue.queue.front();
+      loading->chunk_queue.queue.pop();
+    }
+
+    if (chunk.data) {
+      trace_parser_feed(&loading->parser, chunk.data, chunk.size, chunk.is_eof);
+      allocator_free(loading->allocator, chunk.data, chunk.size);
+    } else if (chunk.is_eof) {
+      trace_parser_feed(&loading->parser, nullptr, 0, true);
+    }
+
+    TraceEvent event;
+    while (trace_parser_next(&loading->parser, &event)) {
+      if (loading->worker_should_abort) break;
+      loading->event_count++;
+      trace_data_add_event(loading->trace_data, loading->allocator,
+                           loading->theme, &event);
+    }
+    loading->request_update = true;
+
+    if (chunk.is_eof) {
+      double duration_ms = platform_get_now() - loading->start_time;
+      double duration_s = duration_ms / 1000.0;
+      double speed_mb_s =
+          duration_s > 0.0
+              ? ((double)loading->total_bytes / (1024.0 * 1024.0)) / duration_s
+              : 0.0;
+      LOG_INFO("parsed %zu events (total) in %.3f ms (%.2f mb/s)",
+               loading->event_count.load(), duration_ms, speed_mb_s);
+      trace_parser_deinit(&loading->parser);
+      trace_loading_organize_tracks(loading);
+      loading->active = false;
+      loading->request_update = true;
+      break;
+    }
+  }
+  LOG_DEBUG("trace loading worker finished");
 }
 
 static void app_apply_theme(App* app, const Theme* theme) {
@@ -47,10 +105,21 @@ static void app_apply_theme(App* app, const Theme* theme) {
   track_update_colors(&app->trace_viewer.tracks, &app->trace_data, app->theme);
 }
 
+static void app_stop_worker(App* app) {
+  if (app->loading.worker_thread.joinable()) {
+    app->loading.worker_should_abort = true;
+    {
+      std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);
+      app->loading.chunk_queue.cv.notify_all();
+    }
+    app->loading.worker_thread.join();
+  }
+}
+
 void app_init(App* app, Allocator allocator) {
-  *app = {};
   app->allocator = allocator;
   app->theme_mode = THEME_MODE_AUTO;
+  app->theme = nullptr;
   app_apply_theme(
       app, platform_is_dark_mode() ? theme_get_dark() : theme_get_light());
   app->power_save_mode = true;
@@ -58,16 +127,30 @@ void app_init(App* app, Allocator allocator) {
   app->show_metrics_window = false;
   app->show_about_window = false;
 
+  app->loading.event_count = 0;
+  app->loading.total_bytes = 0;
+  app->loading.start_time = 0;
+  app->loading.active = false;
+  app->loading.session_id = 0;
+  app->loading.filename = {};
+  app->loading.worker_should_abort = false;
+  app->loading.request_update = false;
+
+  app->loading.allocator = app->allocator;
+  app->loading.trace_data = &app->trace_data;
+  app->loading.trace_viewer = &app->trace_viewer;
+
   trace_data_init(&app->trace_data, app->allocator);
   trace_viewer_init(&app->trace_viewer, app->allocator);
 }
 
 void app_deinit(App* app) {
-  if (app->trace_parser_active) {
-    trace_parser_deinit(&app->trace_parser);
+  app_stop_worker(app);
+  if (app->loading.active) {
+    trace_parser_deinit(&app->loading.parser);
   }
   trace_data_deinit(&app->trace_data, app->allocator);
-  array_list_deinit(&app->trace_filename, app->allocator);
+  array_list_deinit(&app->loading.filename, app->allocator);
   trace_viewer_deinit(&app->trace_viewer, app->allocator);
 }
 
@@ -154,11 +237,11 @@ void app_update(App* app) {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
   if (ImGui::Begin("Main Viewport", nullptr, viewport_flags)) {
-    if (app->trace_parser_active) {
+    if (app->loading.active) {
       const char* filename =
-          app->trace_filename.size > 0 ? app->trace_filename.data : "";
-      loading_screen_draw(filename, app->trace_event_count, app->trace_total_bytes,
-                          app->theme);
+          app->loading.filename.size > 0 ? app->loading.filename.data : "";
+      loading_screen_draw(filename, (size_t)app->loading.event_count,
+                          (size_t)app->loading.total_bytes, app->theme);
     } else if (app->trace_data.events.size > 0) {
       trace_viewer_draw(&app->trace_viewer, &app->trace_data, app->allocator,
                         app->theme);
@@ -178,55 +261,57 @@ void app_on_theme_changed(App* app) {
 }
 
 void app_begin_session(App* app, int session_id, const char* filename) {
-  if (app->trace_parser_active) {
-    trace_parser_deinit(&app->trace_parser);
-  }
-  trace_parser_init(&app->trace_parser, app->allocator);
+  app_stop_worker(app);
+
+  trace_parser_init(&app->loading.parser, app->allocator);
   trace_data_clear(&app->trace_data, app->allocator);
-  app->trace_event_count = 0;
-  app->trace_total_bytes = 0;
-  app->trace_start_time = platform_get_now();
-  app->trace_parser_active = true;
-  app->current_session_id = session_id;
+  app->loading.event_count = 0;
+  app->loading.total_bytes = 0;
+  app->loading.start_time = platform_get_now();
+  app->loading.active = true;
+  app->loading.session_id = session_id;
+  app->loading.theme = app->theme;
   app->trace_viewer.selected_event_index = -1;
 
-  array_list_clear(&app->trace_filename);
+  app->loading.worker_should_abort = false;
+  {
+    std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);
+    while (!app->loading.chunk_queue.queue.empty()) {
+      TraceChunk chunk = app->loading.chunk_queue.queue.front();
+      if (chunk.data) allocator_free(app->allocator, chunk.data, chunk.size);
+      app->loading.chunk_queue.queue.pop();
+    }
+    app->loading.chunk_queue.closed = false;
+  }
+
+  array_list_clear(&app->loading.filename);
   if (filename) {
-    array_list_append(&app->trace_filename, app->allocator, filename,
+    array_list_append(&app->loading.filename, app->allocator, filename,
                       strlen(filename) + 1);
   }
+
+  app->loading.worker_thread = std::thread(trace_loading_worker, &app->loading);
 }
 
 void app_handle_file_chunk(App* app, int session_id, const char* data,
                            size_t size, bool is_eof) {
-  if (session_id != app->current_session_id) {
+  if (session_id != app->loading.session_id) {
     return;
   }
 
+  TraceChunk chunk = {};
+  chunk.size = size;
+  chunk.is_eof = is_eof;
   if (size > 0) {
-    app->trace_total_bytes += size;
-    trace_parser_feed(&app->trace_parser, data, size, is_eof);
-  } else if (is_eof) {
-    trace_parser_feed(&app->trace_parser, nullptr, 0, true);
+    app->loading.total_bytes += size;
+    chunk.data = (char*)allocator_alloc(app->allocator, size);
+    memcpy(chunk.data, data, size);
   }
 
-  TraceEvent event;
-  while (trace_parser_next(&app->trace_parser, &event)) {
-    app->trace_event_count++;
-    trace_data_add_event(&app->trace_data, app->allocator, app->theme, &event);
-  }
-
-  if (is_eof) {
-    double duration_ms = platform_get_now() - app->trace_start_time;
-    double duration_s = duration_ms / 1000.0;
-    double speed_mb_s =
-        duration_s > 0.0
-            ? ((double)app->trace_total_bytes / (1024.0 * 1024.0)) / duration_s
-            : 0.0;
-    LOG_INFO("parsed %zu events (total) in %.3f ms (%.2f mb/s)",
-             app->trace_event_count, duration_ms, speed_mb_s);
-    trace_parser_deinit(&app->trace_parser);
-    app_organize_tracks(app);
-    app->trace_parser_active = false;
+  {
+    std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);
+    app->loading.chunk_queue.queue.push(chunk);
+    if (is_eof) app->loading.chunk_queue.closed = true;
+    app->loading.chunk_queue.cv.notify_one();
   }
 }

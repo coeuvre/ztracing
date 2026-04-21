@@ -2,6 +2,7 @@ load("@rules_cc//cc:defs.bzl", _cc_binary = "cc_binary", _cc_library = "cc_libra
 
 COMMON_COPTS = [
     "-std=c++20",
+    "-pthread",
     "-Wall",
     "-Wextra",
     "-Werror",
