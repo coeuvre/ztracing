@@ -23,6 +23,12 @@ struct TraceViewer {
     double end_time;
   } viewport;
 
+  struct TimelineSelection {
+    bool active = false;
+    double start_time = 0;
+    double end_time = 0;
+  } timeline_selection;
+
   ArrayList<Track> tracks;
   TrackRendererState track_renderer_state;
   ArrayList<TrackRenderBlock> render_blocks;
@@ -30,6 +36,7 @@ struct TraceViewer {
   ArrayList<HoverMatch> hover_matches;
   int64_t selected_event_index = -1;
   bool show_details_panel;
+  float last_inner_width = 0;
 };
 
 void trace_viewer_deinit(TraceViewer* tv, Allocator allocator);

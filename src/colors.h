@@ -28,6 +28,11 @@ struct Theme {
   ImU32 track_header_bg;
   ImU32 track_separator;
 
+  // Timeline Selection
+  ImU32 timeline_selection_bg;
+  ImU32 timeline_selection_line;
+  ImU32 timeline_selection_text;
+
   // Status
   ImVec4 status_loading;
 

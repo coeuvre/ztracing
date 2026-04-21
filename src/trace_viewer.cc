@@ -14,6 +14,10 @@
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"
 
+static void trace_viewer_draw_selection_overlay(
+    TraceViewer* tv, ImDrawList* draw_list, ImVec2 pos, ImVec2 size,
+    const Theme& theme, bool draw_duration_text);
+
 const double TRACE_VIEWER_MAX_ZOOM_FACTOR = 1.2;
 const double TRACE_VIEWER_MIN_ZOOM_DURATION = 1000.0;  // 1ms = 1000us
 
@@ -63,6 +67,98 @@ static void trace_viewer_draw_time_ruler(TraceViewer* tv, ImDrawList* draw_list,
     format_duration(label, sizeof(label), t_rel, tick_interval);
 
     draw_list->AddText(ImVec2(x + 3, pos.y + 2), theme.ruler_text, label);
+  }
+
+  trace_viewer_draw_selection_overlay(tv, draw_list, pos, size, theme, false);
+}
+
+static void trace_viewer_draw_selection_overlay(
+    TraceViewer* tv, ImDrawList* draw_list, ImVec2 pos, ImVec2 size,
+    const Theme& theme, bool draw_duration_text) {
+  if (!tv->timeline_selection.active) return;
+
+  double t1 = tv->timeline_selection.start_time;
+  double t2 = tv->timeline_selection.end_time;
+  if (t1 > t2) std::swap(t1, t2);
+
+  double viewport_duration = tv->viewport.end_time - tv->viewport.start_time;
+  float x1 = (float)(pos.x + (t1 - tv->viewport.start_time) /
+                                 viewport_duration * size.x);
+  float x2 = (float)(pos.x + (t2 - tv->viewport.start_time) /
+                                 viewport_duration * size.x);
+
+  // Dim areas outside of the selection
+  float dim_x1_left = pos.x;
+  float dim_x2_left = std::max(pos.x, std::min(x1, pos.x + size.x));
+  float dim_x1_right = std::min(pos.x + size.x, std::max(x2, pos.x));
+  float dim_x2_right = pos.x + size.x;
+
+  if (dim_x1_left < dim_x2_left) {
+    draw_list->AddRectFilled(ImVec2(dim_x1_left, pos.y),
+                             ImVec2(dim_x2_left, pos.y + size.y),
+                             theme.timeline_selection_bg);
+  }
+  if (dim_x1_right < dim_x2_right) {
+    draw_list->AddRectFilled(ImVec2(dim_x1_right, pos.y),
+                             ImVec2(dim_x2_right, pos.y + size.y),
+                             theme.timeline_selection_bg);
+  }
+
+  // Draw vertical lines
+  if (x1 >= pos.x && x1 <= pos.x + size.x) {
+    draw_list->AddLine(ImVec2(x1, pos.y), ImVec2(x1, pos.y + size.y),
+                       theme.timeline_selection_line, 1.0f);
+  }
+  if (x2 >= pos.x && x2 <= pos.x + size.x) {
+    draw_list->AddLine(ImVec2(x2 - 1.0f, pos.y), ImVec2(x2 - 1.0f, pos.y + size.y),
+                       theme.timeline_selection_line, 1.0f);
+  }
+
+  if (draw_duration_text) {
+    char duration_label[64];
+    format_duration(duration_label, sizeof(duration_label), t2 - t1, t2 - t1);
+    ImVec2 text_size = ImGui::CalcTextSize(duration_label);
+    float text_x = (x1 + x2) * 0.5f - text_size.x * 0.5f;
+    float text_y = pos.y + (size.y - text_size.y) * 0.5f;
+
+    // Ensure text is visible even if partially off-screen
+    text_x = std::max(
+        pos.x + 5.0f, std::min(text_x, pos.x + size.x - text_size.x - 5.0f));
+
+    draw_list->AddText(ImVec2(text_x, text_y), theme.timeline_selection_text,
+                       duration_label);
+
+    // Draw arrow lines to both sides of the text
+    float line_y = text_y + text_size.y * 0.5f;
+    float arrow_size = 5.0f;
+    ImU32 line_col = theme.timeline_selection_line;
+
+    // Left line and arrow
+    float left_line_end_x = text_x - 5.0f;
+    if (left_line_end_x > x1) {
+      draw_list->AddLine(ImVec2(x1, line_y), ImVec2(left_line_end_x, line_y),
+                         line_col, 1.0f);
+      draw_list->AddLine(ImVec2(x1, line_y), ImVec2(x1 + arrow_size, line_y - arrow_size),
+                         line_col, 1.0f);
+      draw_list->AddLine(ImVec2(x1, line_y), ImVec2(x1 + arrow_size, line_y + arrow_size),
+                         line_col, 1.0f);
+    }
+
+    // Right line and arrow
+    float right_line_start_x = text_x + text_size.x + 5.0f;
+    float adjusted_x2 = x2 - 1.0f;
+    if (adjusted_x2 > right_line_start_x) {
+      draw_list->AddLine(ImVec2(right_line_start_x, line_y),
+                         ImVec2(adjusted_x2, line_y), line_col, 1.0f);
+      draw_list->AddLine(
+          ImVec2(adjusted_x2, line_y),
+          ImVec2(adjusted_x2 - arrow_size, line_y - arrow_size), line_col,
+          1.0f);
+      draw_list->AddLine(
+          ImVec2(adjusted_x2, line_y),
+          ImVec2(adjusted_x2 - arrow_size, line_y + arrow_size), line_col,
+          1.0f);
+    }
   }
 }
 
@@ -287,8 +383,38 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     if (duration <= 0) duration = 1.0;
 
     float ruler_height = ImGui::GetFrameHeight();
+    float ruler_width = tv->last_inner_width > 0 ? tv->last_inner_width : canvas_size.x;
+
+    // Ruler interaction for timeline selection
+    ImGui::SetCursorScreenPos(canvas_pos);
+    ImGui::InvisibleButton("##Ruler", ImVec2(ruler_width, ruler_height));
+    if (ImGui::IsItemActive()) {
+      if (ImGui::IsMouseDragging(0)) {
+        double mouse_x = (double)(ImGui::GetMousePos().x - canvas_pos.x);
+        double t = tv->viewport.start_time +
+                   (mouse_x / (double)ruler_width) *
+                       (tv->viewport.end_time - tv->viewport.start_time);
+
+        // Always start a new selection from the current click point when dragging
+        double start_mouse_x =
+            (double)(ImGui::GetIO().MouseClickedPos[0].x - canvas_pos.x);
+        tv->timeline_selection.start_time =
+            tv->viewport.start_time +
+            (start_mouse_x / (double)ruler_width) *
+                (tv->viewport.end_time - tv->viewport.start_time);
+        tv->timeline_selection.active = true;
+        tv->timeline_selection.end_time = t;
+      }
+    }
+    if (ImGui::IsItemDeactivated()) {
+      if (std::abs(ImGui::GetMouseDragDelta(0).x) <
+          ImGui::GetIO().MouseDragThreshold) {
+        tv->timeline_selection.active = false;
+      }
+    }
+
     trace_viewer_draw_time_ruler(tv, draw_list, canvas_pos,
-                                 ImVec2(canvas_size.x, ruler_height), theme);
+                                 ImVec2(ruler_width, ruler_height), theme);
 
     float lane_height = ImGui::GetFrameHeight();
     float counter_track_height = 3.0f * lane_height;
@@ -322,9 +448,25 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
       ImVec2 tracks_canvas_pos = ImGui::GetCursorScreenPos();
       float inner_width = ImGui::GetContentRegionAvail().x;
+      tv->last_inner_width = inner_width;
       ImVec2 mouse_pos = ImGui::GetMousePos();
+      bool mouse_in_selection = true;
+      if (tv->timeline_selection.active) {
+        double t1 = tv->timeline_selection.start_time;
+        double t2 = tv->timeline_selection.end_time;
+        if (t1 > t2) std::swap(t1, t2);
+
+        double mouse_ts =
+            tv->viewport.start_time +
+            (double)(mouse_pos.x - tracks_canvas_pos.x) / (double)inner_width *
+                (tv->viewport.end_time - tv->viewport.start_time);
+        if (mouse_ts < t1 || mouse_ts > t2) {
+          mouse_in_selection = false;
+        }
+      }
       bool track_list_hovered =
-          ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+          ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+          mouse_in_selection;
 
       ImVec2 drag_delta = ImGui::GetMouseDragDelta(0);
       float drag_threshold = ImGui::GetIO().MouseDragThreshold;
@@ -404,7 +546,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         ImVec2 text_size = ImGui::GetFont()->CalcTextSizeA(
             font_size, FLT_MAX, 0.0f, display_name,
             display_name + display_name_len);
-        if (ImGui::IsMouseHoveringRect(
+        if (mouse_in_selection && ImGui::IsMouseHoveringRect(
                 text_pos, ImVec2(text_pos.x + text_size.x,
                                  text_pos.y + text_size.y))) {
           ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
@@ -573,16 +715,36 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           ImGui::IsMouseReleased(0) && !was_drag) {
         tv->selected_event_index = -1;
       }
+
+      // Render timeline selection overlay for tracks area
+      trace_viewer_draw_selection_overlay(
+          tv, ImGui::GetWindowDrawList(),
+          ImVec2(tracks_canvas_pos.x, ImGui::GetWindowPos().y),
+          ImVec2(inner_width, ImGui::GetWindowSize().y), theme, true);
     }
     ImGui::EndChild();
 
-    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows)) {
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+        !ImGui::IsAnyItemActive()) {
       if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
         double dx = (double)ImGui::GetIO().MouseDelta.x;
-        double dt = (dx / (double)canvas_size.x) *
-                    (tv->viewport.end_time - tv->viewport.start_time);
+        double current_dur = tv->viewport.end_time - tv->viewport.start_time;
+        double dt = (dx / (double)canvas_size.x) * current_dur;
         tv->viewport.start_time -= dt;
-        tv->viewport.end_time -= dt;
+
+        // Clamp start_time to keep selection visible with gaps if active
+        if (tv->timeline_selection.active) {
+          double t1 = tv->timeline_selection.start_time;
+          double t2 = tv->timeline_selection.end_time;
+          if (t1 > t2) std::swap(t1, t2);
+          double gap = current_dur * 0.05;  // 5% gap
+          if (tv->viewport.start_time > t1 - gap)
+            tv->viewport.start_time = t1 - gap;
+          if (tv->viewport.start_time + current_dur < t2 + gap)
+            tv->viewport.start_time = t2 + gap - current_dur;
+        }
+
+        tv->viewport.end_time = tv->viewport.start_time + current_dur;
       }
 
       float wheel_v = ImGui::GetIO().MouseWheel;
@@ -604,22 +766,63 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
             (double)(tv->viewport.max_ts - tv->viewport.min_ts);
         double max_duration = trace_duration * TRACE_VIEWER_MAX_ZOOM_FACTOR;
         double min_duration = TRACE_VIEWER_MIN_ZOOM_DURATION;
+
+        if (tv->timeline_selection.active) {
+          double t1 = tv->timeline_selection.start_time;
+          double t2 = tv->timeline_selection.end_time;
+          if (t1 > t2) std::swap(t1, t2);
+          double sel_dur = t2 - t1;
+          if (sel_dur > 0) {
+            // To keep both lines visible, viewport duration must be at least the selection duration
+            if (sel_dur > min_duration) min_duration = sel_dur;
+
+            // Limit max duration to 10x selection as a reasonable upper bound
+            // if it's smaller than global max
+            double sel_max_dur = sel_dur * 10.0;
+            if (sel_max_dur < max_duration) max_duration = sel_max_dur;
+          }
+        }
+
         if (max_duration < min_duration) max_duration = min_duration;
 
         if (new_duration < min_duration) new_duration = min_duration;
         if (new_duration > max_duration) new_duration = max_duration;
 
         tv->viewport.start_time = mouse_ts - mouse_x_rel * new_duration;
+
+        // Clamp start_time to keep selection visible if active
+        if (tv->timeline_selection.active) {
+          double t1 = tv->timeline_selection.start_time;
+          double t2 = tv->timeline_selection.end_time;
+          if (t1 > t2) std::swap(t1, t2);
+          // start_time must be <= t1 and end_time (start_time + new_duration)
+          // must be >= t2
+          if (tv->viewport.start_time > t1) tv->viewport.start_time = t1;
+          if (tv->viewport.start_time + new_duration < t2)
+            tv->viewport.start_time = t2 - new_duration;
+        }
+
         tv->viewport.end_time = tv->viewport.start_time + new_duration;
       } else if (wheel_h != 0.0f ||
                  (wheel_v != 0.0f && ImGui::IsKeyDown(ImGuiMod_Shift))) {
         float delta = (wheel_h != 0.0f) ? wheel_h : wheel_v;
+        double current_dur = tv->viewport.end_time - tv->viewport.start_time;
         double dx =
             (double)delta * 100.0;  // 100 pixels per tick sensitivity
-        double dt = (dx / (double)canvas_size.x) *
-                    (tv->viewport.end_time - tv->viewport.start_time);
+        double dt = (dx / (double)canvas_size.x) * current_dur;
         tv->viewport.start_time -= dt;
-        tv->viewport.end_time -= dt;
+
+        // Clamp start_time to keep selection visible if active
+        if (tv->timeline_selection.active) {
+          double t1 = tv->timeline_selection.start_time;
+          double t2 = tv->timeline_selection.end_time;
+          if (t1 > t2) std::swap(t1, t2);
+          if (tv->viewport.start_time > t1) tv->viewport.start_time = t1;
+          if (tv->viewport.start_time + current_dur < t2)
+            tv->viewport.start_time = t2 - current_dur;
+        }
+
+        tv->viewport.end_time = tv->viewport.start_time + current_dur;
       }
     }
   }

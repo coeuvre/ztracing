@@ -141,6 +141,12 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Pan (Horizontal)**: `Shift + MouseWheel` or horizontal scroll wheel.
     - **Pan (Dual-Axis)**: Left-mouse drag within the track viewport allows for simultaneous horizontal and vertical panning.
     - **Initial View & Reset**: Upon loading a trace or selecting "Reset View", the viewport is centered and zoomed to the maximum zoom-out level (1.2x duration).
+- **Timeline Selection**:
+    - **Interaction**: Dragging on the timeline ruler creates a time range selection. Every new drag starts a fresh selection from the click point.
+    - **Visuals**: Displays two vertical lines marking the range boundaries, a semi-transparent dimmed overlay for areas outside the selection, and a duration label with horizontal arrows centered vertically in the tracks area.
+    - **Interaction Gating**: Hovering and clicking on events or tracks is disabled within the dimmed areas to focus on the selected range.
+    - **Zoom/Pan Constraints**: When a selection is active, the viewport is constrained to keep the selection visible.
+    - **Deselection**: A simple click on the timeline ruler clears the active selection.
 - **Rendering Optimization**:
     - **Visibility Culling (Horizontal)**: Events are grouped into tracks. Each track maintains a `max_dur` (maximum event duration) and sorted `event_indices`. Binary search is used to find the first potentially visible event at `viewport_start - max_dur`, ensuring partially visible events are correctly rendered.
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
