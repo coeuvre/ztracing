@@ -234,6 +234,15 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "trace_viewer_test",
+    srcs = ["trace_viewer_test.cc"],
+    deps = [
+        ":trace_viewer",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "loading_screen",
     srcs = ["loading_screen.cc"],

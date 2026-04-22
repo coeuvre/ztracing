@@ -57,7 +57,10 @@
 - `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer). Utilizes a background `TraceLoadingState` to handle multi-threaded file streaming and data parsing without blocking the UI.
     - **Initialization**: As `App` is a non-aggregate, it is initialized using placement new (`new (app) App()`) followed by member setup.
     - **Thread Safety**: Access to `TraceData` from the main thread (e.g., for theme updates) is strictly prohibited while `loading.active` is true to avoid data races with the background parser.
-- `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments). Supports ZII.
+- `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
+    - **Architecture**: Decouples interaction logic from ImGui rendering via a pure `trace_viewer_step` function and a `TraceViewerInput` struct. This mirrors the pattern used in `timeline_selection` and enables comprehensive unit testing of viewport navigation, hit-testing, and selection without an ImGui context.
+    - **Unit Tests**: Logic is verified in `src/trace_viewer_test.cc`, covering zoom-in, panning, and event hit-testing/selection.
+    - **ZII Support**: Fully Zero-Is-Initialization compatible.
 - `src/loading_screen`: Specialized scene for displaying parsing progress and filename during trace loading.
 - `src/welcome_screen`: Initial "drop file" landing scene.
 - `src/colors`: Theme management system. Defines a `Theme` struct and provides standard Dark and Light theme implementations.
