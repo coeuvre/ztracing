@@ -102,12 +102,14 @@ void trace_viewer_deinit(TraceViewer* tv, Allocator allocator) {
 
 static void trace_viewer_draw_time_ruler(TraceViewer* tv, ImDrawList* draw_list,
                                          ImVec2 pos, ImVec2 size,
+                                         float canvas_x, float canvas_width,
                                          const Theme& theme) {
   // Ruler background
-  draw_list->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
+  draw_list->AddRectFilled(ImVec2(canvas_x, pos.y),
+                           ImVec2(canvas_x + canvas_width, pos.y + size.y),
                            theme.ruler_bg);
-  draw_list->AddLine(ImVec2(pos.x, pos.y + size.y - 1),
-                     ImVec2(pos.x + size.x, pos.y + size.y - 1),
+  draw_list->AddLine(ImVec2(canvas_x, pos.y + size.y - 1),
+                     ImVec2(canvas_x + canvas_width, pos.y + size.y - 1),
                      theme.ruler_border);
 
   for (size_t i = 0; i < tv->ruler_ticks.size; i++) {
@@ -117,7 +119,9 @@ static void trace_viewer_draw_time_ruler(TraceViewer* tv, ImDrawList* draw_list,
     draw_list->AddText(ImVec2(tick.x + 3, pos.y + 2), theme.ruler_text, tick.label);
   }
 
-  trace_viewer_draw_selection_overlay(tv, draw_list, pos, size, theme, false);
+  trace_viewer_draw_selection_overlay(tv, draw_list, ImVec2(canvas_x, pos.y),
+                                      ImVec2(canvas_width, size.y), theme,
+                                      false);
 }
 
 static void trace_viewer_draw_selection_overlay(
@@ -127,20 +131,30 @@ static void trace_viewer_draw_selection_overlay(
   if (!lo.active) return;
 
   // Dim areas outside of the selection
-  if (lo.dim_l_x1 < lo.dim_l_x2) {
-    draw_list->AddRectFilled(ImVec2(lo.dim_l_x1, pos.y),
-                             ImVec2(lo.dim_l_x2, pos.y + size.y),
+  float dim_l_x1 = pos.x;
+  float dim_l_x2 = lo.x1;
+  if (dim_l_x2 < pos.x) dim_l_x2 = pos.x;
+  if (dim_l_x2 > pos.x + size.x) dim_l_x2 = pos.x + size.x;
+
+  float dim_r_x1 = lo.x2;
+  if (dim_r_x1 < pos.x) dim_r_x1 = pos.x;
+  if (dim_r_x1 > pos.x + size.x) dim_r_x1 = pos.x + size.x;
+  float dim_r_x2 = pos.x + size.x;
+
+  if (dim_l_x1 < dim_l_x2) {
+    draw_list->AddRectFilled(ImVec2(dim_l_x1, pos.y),
+                             ImVec2(dim_l_x2, pos.y + size.y),
                              theme.timeline_selection_bg);
   }
-  if (lo.dim_r_x1 < lo.dim_r_x2) {
-    draw_list->AddRectFilled(ImVec2(lo.dim_r_x1, pos.y),
-                             ImVec2(lo.dim_r_x2, pos.y + size.y),
+  if (dim_r_x1 < dim_r_x2) {
+    draw_list->AddRectFilled(ImVec2(dim_r_x1, pos.y),
+                             ImVec2(dim_r_x2, pos.y + size.y),
                              theme.timeline_selection_bg);
   }
 
   // Draw vertical lines
-  float draw_x1 = std::max(pos.x, std::min(lo.x1, pos.x + size.x - 1.0f));
-  float draw_x2 = std::max(pos.x, std::min(lo.x2, pos.x + size.x - 1.0f));
+  float draw_x1 = lo.x1;
+  float draw_x2 = lo.x2 - 1.0f;
 
   if (lo.x1 >= pos.x && lo.x1 <= pos.x + size.x) {
     draw_list->AddLine(ImVec2(draw_x1, pos.y), ImVec2(draw_x1, pos.y + size.y),
@@ -679,11 +693,6 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
     tv->selection_layout.x1 = (float)(tracks_origin_x + (t1 - tv->viewport.start_time) / current_duration * tracks_inner_width);
     tv->selection_layout.x2 = (float)(tracks_origin_x + (t2 - tv->viewport.start_time) / current_duration * tracks_inner_width);
-    
-    tv->selection_layout.dim_l_x1 = tracks_origin_x;
-    tv->selection_layout.dim_l_x2 = std::max(tracks_origin_x, std::min(tv->selection_layout.x1, tracks_origin_x + tracks_inner_width));
-    tv->selection_layout.dim_r_x1 = std::min(tracks_origin_x + tracks_inner_width, std::max(tv->selection_layout.x2, tracks_origin_x));
-    tv->selection_layout.dim_r_x2 = tracks_origin_x + tracks_inner_width;
 
     format_duration(tv->selection_layout.duration_label, sizeof(tv->selection_layout.duration_label), t2 - t1, t2 - t1);
   }
@@ -1011,7 +1020,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
     trace_viewer_draw_time_ruler(
         tv, draw_list, ImVec2(tracks_origin_x, canvas_pos.y),
-        ImVec2(tracks_inner_width, input.ruler_height), theme);
+        ImVec2(tracks_inner_width, input.ruler_height), canvas_pos.x,
+        canvas_size.x, theme);
   }
 
   // Details Panel

@@ -70,8 +70,6 @@ struct RulerTick {
 struct SelectionOverlayLayout {
   bool active;
   float x1, x2;
-  float dim_l_x1, dim_l_x2;
-  float dim_r_x1, dim_r_x2;
   char duration_label[64];
 };
 

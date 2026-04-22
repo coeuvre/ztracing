@@ -113,6 +113,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Help**: "About Dear ImGui" information.
 - **Layout**: The "Main Viewport" is docked in the central area. The "Details" panel is docked at the bottom by default and can be toggled via the View menu. The viewport window has no title bar or tabs, and docking other windows directly into it is disabled (though splitting the area is allowed).
 - **Time Ruler**: A persistent horizontal ruler at the top displays the current time range with adaptive units (s, ms, us) and nice tick intervals.
+    - **Full-Width Rendering**: The ruler background and border are rendered across the entire viewport width (including the area above the vertical scrollbar), ensuring a consistent visual appearance even when the track list is scrollable.
 - **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically. Individual tracks have variable heights based on their maximum nesting depth plus a dedicated header lane.
 - **Contiguous Tracks**: Tracks follow each other with no gaps (`track_spacing = 0`). This creates a denser, more professional "Performance" view similar to modern browser profilers.
 - **Track Headers**: 
@@ -150,7 +151,9 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Selection Threshold**: New selections in the ruler area require a **5-pixel drag** before becoming active. This ensures that a simple press or click on the ruler does not destroy or re-create the selection prematurely.
     - **Draggable Boundaries**: Vertical boundaries can be adjusted by dragging them within the tracks area. The mouse cursor changes to `ew-resize` when hovering over or dragging a boundary.
     - **Snapping**: Dragging selection boundaries (both in the ruler and tracks) snaps to the edges of visible thread event blocks within a **5-pixel threshold**.
-    - **Visuals**: Displays two vertical lines marking the range boundaries, a semi-transparent dimmed overlay for areas outside the selection, and a duration label with horizontal arrows centered vertically in the tracks area. Boundaries are clamped to be at least 1px inside the viewport edges to ensure they remain visible during panning.
+    - **Visuals**: Displays two vertical lines marking the range boundaries, a semi-transparent dimmed overlay for areas outside the selection, and a duration label with horizontal arrows centered vertically in the tracks area.
+    - **Edge Alignment**: Boundaries are perfectly aligned between the ruler and track areas. The right boundary line is always drawn with a **-1.0f offset** from its calculated position to prevent clipping at the viewport's right edge, ensuring it remains visible during panning.
+    - **Dimming Consistency**: The dimmed overlay in the ruler area spans the full viewport width, matching the ruler's background rendering.
     - **Snapping Highlight**: When a boundary is snapped during a drag, the specific edge of the event block is highlighted with a **3-pixel wide red vertical line**.
     - **Interaction Gating**:
         - Hovering and clicking on events or tracks is disabled within the dimmed areas (outside the selection).
@@ -158,7 +161,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
         - Panning (horizontal and vertical) is disabled while a boundary is being dragged.
     - **Zoom/Pan Constraints**: When a selection is active, the viewport is constrained to keep the selection visible. Panning is clamped so selection boundaries can reach but not exceed viewport edges.
     - **Deselection**: A simple click on the timeline ruler (without dragging) clears the active selection.
-    - **Refactored Interaction Logic**: Selection and snapping logic are consolidated directly into `TraceViewer`, with per-frame updates handled in `trace_viewer_step`.
+    - **Refactored Interaction Logic**: Selection and snapping logic are consolidated directly into `TraceViewer`, with per-frame updates handled in `trace_viewer_step`. Dimming areas are calculated locally during rendering to ensure perfect alignment with viewport bounds.
     - **Comprehensive Tests**: Logic is verified by multi-frame simulation tests in `src/trace_viewer_test.cc`, covering precise click starts, snapped dragging, interaction gating, and zoom clamping.
     - **Stationary Mapping**: All time-to-pixel conversions use a consistent stationary origin (`tv->last_tracks_x`) and width (`tv->last_inner_width`) to ensure perfect horizontal alignment between the ruler and tracks.
 - **Rendering Optimization**:
