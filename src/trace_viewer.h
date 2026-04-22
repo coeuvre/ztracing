@@ -34,6 +34,8 @@ struct TraceViewer {
   int64_t selected_event_index = -1;
   bool show_details_panel;
   float last_inner_width = 0;
+  float last_tracks_x = 0;
+  double last_best_snap_ts = 0;
 };
 
 void trace_viewer_deinit(TraceViewer* tv, Allocator allocator);

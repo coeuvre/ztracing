@@ -143,14 +143,20 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Initial View & Reset**: Upon loading a trace or selecting "Reset View", the viewport is centered and zoomed to the maximum zoom-out level (1.2x duration).
 - **Timeline Selection**:
     - **Interaction**: Dragging on the timeline ruler creates a time range selection. Every new drag on the ruler starts a fresh selection from the click point.
+    - **Selection Threshold**: New selections in the ruler area require a **5-pixel drag** before becoming active. This ensures that a simple press or click on the ruler does not destroy or re-create the selection prematurely.
     - **Draggable Boundaries**: Vertical boundaries can be adjusted by dragging them within the tracks area. The mouse cursor changes to `ew-resize` when hovering over or dragging a boundary.
+    - **Snapping**: Dragging selection boundaries (both in the ruler and tracks) snaps to the edges of visible thread event blocks within a **5-pixel threshold**.
     - **Visuals**: Displays two vertical lines marking the range boundaries, a semi-transparent dimmed overlay for areas outside the selection, and a duration label with horizontal arrows centered vertically in the tracks area.
+    - **Snapping Highlight**: When a boundary is snapped during a drag, the specific edge of the event block is highlighted with a **3-pixel wide red vertical line**.
     - **Interaction Gating**:
-        - Hovering and clicking on events or tracks is disabled within the dimmed areas.
+        - Hovering and clicking on events or tracks is disabled within the dimmed areas (outside the selection).
         - Hovering and clicking on events is disabled while dragging boundaries or when the mouse is over a boundary handle.
         - Panning (horizontal and vertical) is disabled while a boundary is being dragged.
     - **Zoom/Pan Constraints**: When a selection is active, the viewport is constrained to keep the selection visible.
-    - **Deselection**: A simple click on the timeline ruler clears the active selection.
+    - **Deselection**: A simple click on the timeline ruler (without dragging) clears the active selection.
+    - **Refactored Interaction Logic**: Interaction handling is decoupled from ImGui via a unified `timeline_selection_step` function and a `TimelineInteraction` struct. Viewport logic is consolidated into `viewport_step`.
+    - **Comprehensive Tests**: Logic is verified by multi-frame simulation tests in `src/timeline_selection_test.cc`, covering precise click starts, snapped dragging, pan isolation, and zoom clamping.
+    - **Stationary Mapping**: All time-to-pixel conversions use a consistent stationary origin (`tv->last_tracks_x`) and width (`tv->last_inner_width`) to ensure perfect horizontal alignment between the ruler and tracks.
 - **Rendering Optimization**:
     - **Visibility Culling (Horizontal)**: Events are grouped into tracks. Each track maintains a `max_dur` (maximum event duration) and sorted `event_indices`. Binary search is used to find the first potentially visible event at `viewport_start - max_dur`, ensuring partially visible events are correctly rendered.
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.

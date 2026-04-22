@@ -383,19 +383,40 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     if (duration <= 0) duration = 1.0;
 
     float ruler_height = ImGui::GetFrameHeight();
-    float ruler_width =
-        tv->last_inner_width > 0 ? tv->last_inner_width : canvas_size.x;
-
-    // Timeline selection interaction
     float threshold = 5.0f;
-    double mouse_ts_ruler =
-        tv->viewport.start_time +
-        ((double)(ImGui::GetMousePos().x - canvas_pos.x) / (double)ruler_width) *
-            duration;
 
-    double threshold_ts_ruler = (threshold / (double)ruler_width) * duration;
+    // Use stationary origins for both ruler and tracks to ensure perfect alignment.
+    // We use the results from the LAST frame to map the Ruler for THIS frame's interaction.
+    float tracks_origin_x = tv->last_tracks_x > 0 ? tv->last_tracks_x : canvas_pos.x;
+    float tracks_inner_width = tv->last_inner_width > 0 ? tv->last_inner_width : canvas_size.x;
+
+    TimelineViewportMapping mapping = {
+        tv->viewport.start_time, tv->viewport.end_time, tracks_origin_x,
+        tracks_inner_width};
+
+    // Ruler interaction - Capture state
+    ImGui::SetCursorScreenPos(ImVec2(tracks_origin_x, canvas_pos.y));
+    ImGui::InvisibleButton("##Ruler", ImVec2(tracks_inner_width, ruler_height));
+
+    TimelineInteraction interaction_r = {};
+    interaction_r.area = TimelineInteraction::AREA_RULER;
+    interaction_r.mouse_px = ImGui::GetMousePos().x;
+    interaction_r.click_px = ImGui::GetIO().MouseClickedPos[0].x;
+    interaction_r.mouse_wheel = ImGui::GetIO().MouseWheel;
+    interaction_r.mouse_wheel_h = ImGui::GetIO().MouseWheelH;
+    interaction_r.is_ctrl_down = ImGui::IsKeyDown(ImGuiMod_Ctrl);
+    interaction_r.is_shift_down = ImGui::IsKeyDown(ImGuiMod_Shift);
+    interaction_r.drag_delta_x = ImGui::GetMouseDragDelta(0).x;
+    interaction_r.drag_threshold = ImGui::GetIO().MouseDragThreshold;
+    interaction_r.ruler_active = ImGui::IsItemActive();
+    interaction_r.ruler_activated = ImGui::IsItemActivated();
+    interaction_r.ruler_deactivated = ImGui::IsItemDeactivated();
+
+    // Mapping for current frame's mouse (un-snapped)
+    double mouse_ts_ruler = timeline_mapping_px_to_ts(mapping, interaction_r.mouse_px);
+
     TimelineSelectionProximity proximity_r = timeline_selection_check_proximity(
-        tv->timeline_selection, mouse_ts_ruler, threshold_ts_ruler);
+        tv->timeline_selection, mouse_ts_ruler, (threshold / (double)tracks_inner_width) * duration);
 
     if (proximity_r.near_start || proximity_r.near_end ||
         tv->timeline_selection.drag_mode == TimelineDragMode::RULER_START ||
@@ -403,25 +424,20 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     }
 
-    // Ruler interaction
-    ImGui::SetCursorScreenPos(canvas_pos);
-    ImGui::InvisibleButton("##Ruler", ImVec2(ruler_width, ruler_height));
-
-    timeline_selection_handle_ruler_interaction(
-        &tv->timeline_selection, mouse_ts_ruler, ImGui::IsItemActive(),
-        ImGui::IsItemActivated(), ImGui::IsItemDeactivated(),
-        ImGui::GetMouseDragDelta(0).x, ImGui::GetIO().MouseDragThreshold,
-        proximity_r);
-
-    trace_viewer_draw_time_ruler(tv, draw_list, canvas_pos,
-                                 ImVec2(ruler_width, ruler_height), theme);
-
     float lane_height = ImGui::GetFrameHeight();
     float counter_track_height = 3.0f * lane_height;
+
+    // Snapping state for the frame
+    TimelineSnappingState snapping = {};
+    timeline_snapping_init(&snapping, mouse_ts_ruler, threshold);
 
     ImGuiWindowFlags child_flags = ImGuiWindowFlags_NoMove;
     if (ImGui::IsKeyDown(ImGuiMod_Ctrl))
       child_flags |= ImGuiWindowFlags_NoScrollWithMouse;
+
+    // Tracks interaction state to capture
+    TimelineInteraction interaction_t = interaction_r;
+    interaction_t.area = TimelineInteraction::AREA_TRACKS;
 
     ImGui::SetCursorScreenPos(
         ImVec2(canvas_pos.x, canvas_pos.y + ruler_height));
@@ -450,18 +466,33 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       ImVec2 tracks_canvas_pos = ImGui::GetCursorScreenPos();
       float inner_width = ImGui::GetContentRegionAvail().x;
       tv->last_inner_width = inner_width;
+      tv->last_tracks_x = tracks_canvas_pos.x;
 
-      // Timeline selection interaction (tracks area)
-      double threshold_ts_t = (threshold / (double)inner_width) * duration;
-      double mouse_ts_tracks =
-          tv->viewport.start_time +
-          ((double)(ImGui::GetMousePos().x - tracks_canvas_pos.x) /
-           (double)inner_width) *
-              duration;
+      // Update mapping for tracks area if it changed (e.g. scrollbar appeared)
+      mapping.origin_x = tracks_canvas_pos.x;
+      mapping.width = inner_width;
+
+      // Timeline selection interaction (tracks area) - Capture state
+      interaction_t.mouse_ts = timeline_mapping_px_to_ts(mapping, interaction_t.mouse_px);
+      interaction_t.tracks_hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+      
+      // Only capture click/down if the tracks area is hovered and ruler is NOT active
+      // to avoid conflicting with ruler and allow panning.
+      if (interaction_t.tracks_hovered && !interaction_r.ruler_active) {
+        interaction_t.is_mouse_clicked = ImGui::IsMouseClicked(0);
+        interaction_t.is_mouse_down = ImGui::IsMouseDown(0);
+        interaction_t.is_mouse_released = ImGui::IsMouseReleased(0);
+      }
+
+      // Refine snapping default for tracks area if relevant
+      if (interaction_t.tracks_hovered) {
+        snapping.best_snap_ts = interaction_t.mouse_ts;
+      }
 
       TimelineSelectionProximity proximity_t =
           timeline_selection_check_proximity(tv->timeline_selection,
-                                             mouse_ts_tracks, threshold_ts_t);
+                                             interaction_t.mouse_ts,
+                                             (threshold / (double)inner_width) * duration);
 
       if (proximity_t.near_start || proximity_t.near_end ||
           tv->timeline_selection.drag_mode == TimelineDragMode::TRACKS_START ||
@@ -469,27 +500,12 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
       }
 
-      timeline_selection_handle_tracks_interaction(
-          &tv->timeline_selection, mouse_ts_tracks, ImGui::IsMouseClicked(0),
-          ImGui::IsMouseDown(0), proximity_t);
-
       ImVec2 mouse_pos = ImGui::GetMousePos();
-      bool mouse_in_selection = true;
-      if (tv->timeline_selection.active) {
-        double t1 = tv->timeline_selection.start_time;
-        double t2 = tv->timeline_selection.end_time;
-        if (t1 > t2) std::swap(t1, t2);
+      bool mouse_in_selection = timeline_selection_is_mouse_inside(
+          tv->timeline_selection, interaction_t.mouse_ts);
 
-        double mouse_ts =
-            tv->viewport.start_time +
-            (double)(mouse_pos.x - tracks_canvas_pos.x) / (double)inner_width *
-                (tv->viewport.end_time - tv->viewport.start_time);
-        if (mouse_ts < t1 || mouse_ts > t2) {
-          mouse_in_selection = false;
-        }
-      }
       bool track_list_hovered =
-          ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+          interaction_t.tracks_hovered &&
           mouse_in_selection &&
           tv->timeline_selection.drag_mode == TimelineDragMode::NONE &&
           !proximity_t.near_start && !proximity_t.near_end;
@@ -598,6 +614,29 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
               &t, td, tv->viewport.start_time, tv->viewport.end_time,
               inner_width, tracks_canvas_pos.x, tv->selected_event_index,
               &tv->track_renderer_state, &tv->render_blocks, allocator);
+
+          // Snapping: check thread event boundaries
+          for (size_t k = 0; k < tv->render_blocks.size; k++) {
+            const TrackRenderBlock& rb = tv->render_blocks[k];
+
+            float y1 = track_pos.y + (float)(rb.depth + 1) * lane_height;
+            float y2 = y1 + lane_height - 1.0f;
+
+            // Snap to block start
+            double ts1 = tv->viewport.start_time +
+                         ((double)(rb.x1 - tracks_canvas_pos.x) /
+                          (double)inner_width) *
+                             duration;
+            timeline_snapping_suggest(&snapping, ts1, rb.x1, interaction_t.mouse_px,
+                                       y1, y2);
+            // Snap to block end
+            double ts2 = tv->viewport.start_time +
+                         ((double)(rb.x2 - tracks_canvas_pos.x) /
+                          (double)inner_width) *
+                             duration;
+            timeline_snapping_suggest(&snapping, ts2, rb.x2, interaction_t.mouse_px,
+                                       y1, y2);
+          }
 
           bool mouse_in_track_y = (mouse_pos.y >= track_pos.y + lane_height &&
                                    mouse_pos.y < track_pos.y + track_height);
@@ -742,116 +781,63 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         tv->selected_event_index = -1;
       }
 
-      // Render timeline selection overlay for tracks area
+      // Render timeline selection overlay for tracks area (clipped to this child window)
+      // Use tracks_canvas_pos.x and inner_width to stay aligned with tracks.
+      // Use GetWindowPos().y to keep it stationary during vertical scroll.
       trace_viewer_draw_selection_overlay(
-          tv, ImGui::GetWindowDrawList(),
-          ImVec2(tracks_canvas_pos.x, ImGui::GetWindowPos().y),
+          tv, track_draw_list, ImVec2(tracks_canvas_pos.x, ImGui::GetWindowPos().y),
           ImVec2(inner_width, ImGui::GetWindowSize().y), theme, true);
+
+      // Highlight the snapped edge if dragging
+      if (snapping.has_snap &&
+          tv->timeline_selection.drag_mode != TimelineDragMode::NONE) {
+        track_draw_list->AddLine(ImVec2(snapping.snap_px, snapping.snap_y1),
+                                 ImVec2(snapping.snap_px, snapping.snap_y2),
+                                 IM_COL32(255, 0, 0, 255), 3.0f);
+      }
     }
     ImGui::EndChild();
 
-    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
-        !ImGui::IsAnyItemActive()) {
-      if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
-          tv->timeline_selection.drag_mode == TimelineDragMode::NONE) {
-        double dx = (double)ImGui::GetIO().MouseDelta.x;
-        double current_dur = tv->viewport.end_time - tv->viewport.start_time;
-        double dt = (dx / (double)canvas_size.x) * current_dur;
-        tv->viewport.start_time -= dt;
+    // Process interaction logic consolidated here
+    timeline_selection_step(&tv->timeline_selection, interaction_r, mapping, snapping);
+    timeline_selection_step(&tv->timeline_selection, interaction_t, mapping, snapping);
 
-        // Clamp start_time to keep selection visible with gaps if active
-        if (tv->timeline_selection.active) {
-          double t1 = tv->timeline_selection.start_time;
-          double t2 = tv->timeline_selection.end_time;
-          if (t1 > t2) std::swap(t1, t2);
-          double gap = current_dur * 0.05;  // 5% gap
-          if (tv->viewport.start_time > t1 - gap)
-            tv->viewport.start_time = t1 - gap;
-          if (tv->viewport.start_time + current_dur < t2 + gap)
-            tv->viewport.start_time = t2 + gap - current_dur;
-        }
+    // Process viewport logic (panning/zooming)
+    ViewportState vs = {tv->viewport.start_time, tv->viewport.end_time,
+                        tv->viewport.min_ts, tv->viewport.max_ts};
+    viewport_step(&vs, interaction_t, mapping, tv->timeline_selection);
 
-        tv->viewport.end_time = tv->viewport.start_time + current_dur;
+    // Handle panning manually for now as it uses per-frame delta
+    if (interaction_t.tracks_hovered && !interaction_r.ruler_active &&
+        ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
+        tv->timeline_selection.drag_mode == TimelineDragMode::NONE) {
+      double dx = (double)ImGui::GetIO().MouseDelta.x;
+      double current_dur = vs.end_time - vs.start_time;
+      double dt = (dx / (double)canvas_size.x) * current_dur;
+      vs.start_time -= dt;
+
+      // Clamp start_time to keep selection visible with gaps if active
+      if (tv->timeline_selection.active) {
+        double t1 = tv->timeline_selection.start_time;
+        double t2 = tv->timeline_selection.end_time;
+        if (t1 > t2) std::swap(t1, t2);
+        double gap = current_dur * 0.05;  // 5% gap
+        if (vs.start_time > t1 - gap) vs.start_time = t1 - gap;
+        if (vs.start_time + current_dur < t2 + gap)
+          vs.start_time = t2 + gap - current_dur;
       }
-
-      float wheel_v = ImGui::GetIO().MouseWheel;
-      float wheel_h = ImGui::GetIO().MouseWheelH;
-
-      if (wheel_v != 0.0f && ImGui::IsKeyDown(ImGuiMod_Ctrl)) {
-        double mouse_x_rel =
-            (double)(ImGui::GetIO().MousePos.x - canvas_pos.x) /
-            (double)canvas_size.x;
-        double current_duration =
-            tv->viewport.end_time - tv->viewport.start_time;
-        double mouse_ts =
-            tv->viewport.start_time + mouse_x_rel * current_duration;
-        double zoom_factor = (wheel_v > 0.0f) ? 0.8 : TRACE_VIEWER_MAX_ZOOM_FACTOR;
-        double new_duration = current_duration * zoom_factor;
-
-        // Enforce zoom limits
-        double trace_duration =
-            (double)(tv->viewport.max_ts - tv->viewport.min_ts);
-        double max_duration = trace_duration * TRACE_VIEWER_MAX_ZOOM_FACTOR;
-        double min_duration = TRACE_VIEWER_MIN_ZOOM_DURATION;
-
-        if (tv->timeline_selection.active) {
-          double t1 = tv->timeline_selection.start_time;
-          double t2 = tv->timeline_selection.end_time;
-          if (t1 > t2) std::swap(t1, t2);
-          double sel_dur = t2 - t1;
-          if (sel_dur > 0) {
-            // To keep both lines visible, viewport duration must be at least the selection duration
-            if (sel_dur > min_duration) min_duration = sel_dur;
-
-            // Limit max duration to 10x selection as a reasonable upper bound
-            // if it's smaller than global max
-            double sel_max_dur = sel_dur * 10.0;
-            if (sel_max_dur < max_duration) max_duration = sel_max_dur;
-          }
-        }
-
-        if (max_duration < min_duration) max_duration = min_duration;
-
-        if (new_duration < min_duration) new_duration = min_duration;
-        if (new_duration > max_duration) new_duration = max_duration;
-
-        tv->viewport.start_time = mouse_ts - mouse_x_rel * new_duration;
-
-        // Clamp start_time to keep selection visible if active
-        if (tv->timeline_selection.active) {
-          double t1 = tv->timeline_selection.start_time;
-          double t2 = tv->timeline_selection.end_time;
-          if (t1 > t2) std::swap(t1, t2);
-          // start_time must be <= t1 and end_time (start_time + new_duration)
-          // must be >= t2
-          if (tv->viewport.start_time > t1) tv->viewport.start_time = t1;
-          if (tv->viewport.start_time + new_duration < t2)
-            tv->viewport.start_time = t2 - new_duration;
-        }
-
-        tv->viewport.end_time = tv->viewport.start_time + new_duration;
-      } else if (wheel_h != 0.0f ||
-                 (wheel_v != 0.0f && ImGui::IsKeyDown(ImGuiMod_Shift))) {
-        float delta = (wheel_h != 0.0f) ? wheel_h : wheel_v;
-        double current_dur = tv->viewport.end_time - tv->viewport.start_time;
-        double dx =
-            (double)delta * 100.0;  // 100 pixels per tick sensitivity
-        double dt = (dx / (double)canvas_size.x) * current_dur;
-        tv->viewport.start_time -= dt;
-
-        // Clamp start_time to keep selection visible if active
-        if (tv->timeline_selection.active) {
-          double t1 = tv->timeline_selection.start_time;
-          double t2 = tv->timeline_selection.end_time;
-          if (t1 > t2) std::swap(t1, t2);
-          if (tv->viewport.start_time > t1) tv->viewport.start_time = t1;
-          if (tv->viewport.start_time + current_dur < t2)
-            tv->viewport.start_time = t2 - current_dur;
-        }
-
-        tv->viewport.end_time = tv->viewport.start_time + current_dur;
-      }
+      vs.end_time = vs.start_time + current_dur;
     }
+
+    tv->viewport.start_time = vs.start_time;
+    tv->viewport.end_time = vs.end_time;
+
+    // Draw ruler on top of the tracks
+    trace_viewer_draw_time_ruler(
+        tv, draw_list, ImVec2(tracks_origin_x, canvas_pos.y),
+        ImVec2(tracks_inner_width, ruler_height), theme);
+
+    tv->last_best_snap_ts = snapping.best_snap_ts;
   }
 
   // Details Panel
