@@ -383,35 +383,35 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     if (duration <= 0) duration = 1.0;
 
     float ruler_height = ImGui::GetFrameHeight();
-    float ruler_width = tv->last_inner_width > 0 ? tv->last_inner_width : canvas_size.x;
+    float ruler_width =
+        tv->last_inner_width > 0 ? tv->last_inner_width : canvas_size.x;
 
-    // Ruler interaction for timeline selection
+    // Timeline selection interaction
+    float threshold = 5.0f;
+    double mouse_ts_ruler =
+        tv->viewport.start_time +
+        ((double)(ImGui::GetMousePos().x - canvas_pos.x) / (double)ruler_width) *
+            duration;
+
+    double threshold_ts_ruler = (threshold / (double)ruler_width) * duration;
+    TimelineSelectionProximity proximity_r = timeline_selection_check_proximity(
+        tv->timeline_selection, mouse_ts_ruler, threshold_ts_ruler);
+
+    if (proximity_r.near_start || proximity_r.near_end ||
+        tv->timeline_selection.drag_mode == TimelineDragMode::RULER_START ||
+        tv->timeline_selection.drag_mode == TimelineDragMode::RULER_END) {
+      ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+    }
+
+    // Ruler interaction
     ImGui::SetCursorScreenPos(canvas_pos);
     ImGui::InvisibleButton("##Ruler", ImVec2(ruler_width, ruler_height));
-    if (ImGui::IsItemActive()) {
-      if (ImGui::IsMouseDragging(0)) {
-        double mouse_x = (double)(ImGui::GetMousePos().x - canvas_pos.x);
-        double t = tv->viewport.start_time +
-                   (mouse_x / (double)ruler_width) *
-                       (tv->viewport.end_time - tv->viewport.start_time);
 
-        // Always start a new selection from the current click point when dragging
-        double start_mouse_x =
-            (double)(ImGui::GetIO().MouseClickedPos[0].x - canvas_pos.x);
-        tv->timeline_selection.start_time =
-            tv->viewport.start_time +
-            (start_mouse_x / (double)ruler_width) *
-                (tv->viewport.end_time - tv->viewport.start_time);
-        tv->timeline_selection.active = true;
-        tv->timeline_selection.end_time = t;
-      }
-    }
-    if (ImGui::IsItemDeactivated()) {
-      if (std::abs(ImGui::GetMouseDragDelta(0).x) <
-          ImGui::GetIO().MouseDragThreshold) {
-        tv->timeline_selection.active = false;
-      }
-    }
+    timeline_selection_handle_ruler_interaction(
+        &tv->timeline_selection, mouse_ts_ruler, ImGui::IsItemActive(),
+        ImGui::IsItemActivated(), ImGui::IsItemDeactivated(),
+        ImGui::GetMouseDragDelta(0).x, ImGui::GetIO().MouseDragThreshold,
+        proximity_r);
 
     trace_viewer_draw_time_ruler(tv, draw_list, canvas_pos,
                                  ImVec2(ruler_width, ruler_height), theme);
@@ -428,7 +428,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     if (ImGui::BeginChild("TrackList", ImVec2(0, canvas_size.y - ruler_height),
                           ImGuiChildFlags_None, child_flags)) {
       if (ImGui::IsWindowHovered() &&
-          ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+          ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
+          tv->timeline_selection.drag_mode == TimelineDragMode::NONE) {
         ImGui::SetScrollY(ImGui::GetScrollY() - ImGui::GetIO().MouseDelta.y);
       }
 
@@ -449,6 +450,29 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       ImVec2 tracks_canvas_pos = ImGui::GetCursorScreenPos();
       float inner_width = ImGui::GetContentRegionAvail().x;
       tv->last_inner_width = inner_width;
+
+      // Timeline selection interaction (tracks area)
+      double threshold_ts_t = (threshold / (double)inner_width) * duration;
+      double mouse_ts_tracks =
+          tv->viewport.start_time +
+          ((double)(ImGui::GetMousePos().x - tracks_canvas_pos.x) /
+           (double)inner_width) *
+              duration;
+
+      TimelineSelectionProximity proximity_t =
+          timeline_selection_check_proximity(tv->timeline_selection,
+                                             mouse_ts_tracks, threshold_ts_t);
+
+      if (proximity_t.near_start || proximity_t.near_end ||
+          tv->timeline_selection.drag_mode == TimelineDragMode::TRACKS_START ||
+          tv->timeline_selection.drag_mode == TimelineDragMode::TRACKS_END) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+      }
+
+      timeline_selection_handle_tracks_interaction(
+          &tv->timeline_selection, mouse_ts_tracks, ImGui::IsMouseClicked(0),
+          ImGui::IsMouseDown(0), proximity_t);
+
       ImVec2 mouse_pos = ImGui::GetMousePos();
       bool mouse_in_selection = true;
       if (tv->timeline_selection.active) {
@@ -466,7 +490,9 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       }
       bool track_list_hovered =
           ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
-          mouse_in_selection;
+          mouse_in_selection &&
+          tv->timeline_selection.drag_mode == TimelineDragMode::NONE &&
+          !proximity_t.near_start && !proximity_t.near_end;
 
       ImVec2 drag_delta = ImGui::GetMouseDragDelta(0);
       float drag_threshold = ImGui::GetIO().MouseDragThreshold;
@@ -726,7 +752,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
         !ImGui::IsAnyItemActive()) {
-      if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+      if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
+          tv->timeline_selection.drag_mode == TimelineDragMode::NONE) {
         double dx = (double)ImGui::GetIO().MouseDelta.x;
         double current_dur = tv->viewport.end_time - tv->viewport.start_time;
         double dt = (dx / (double)canvas_size.x) * current_dur;

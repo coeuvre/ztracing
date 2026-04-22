@@ -4,6 +4,7 @@
 #include "src/allocator.h"
 #include "src/array_list.h"
 #include "src/colors.h"
+#include "src/timeline_selection.h"
 #include "src/trace_data.h"
 #include "src/track.h"
 #include "src/track_renderer.h"
@@ -23,11 +24,7 @@ struct TraceViewer {
     double end_time;
   } viewport;
 
-  struct TimelineSelection {
-    bool active = false;
-    double start_time = 0;
-    double end_time = 0;
-  } timeline_selection;
+  TimelineSelectionState timeline_selection;
 
   ArrayList<Track> tracks;
   TrackRendererState track_renderer_state;

@@ -28,7 +28,17 @@ struct BackendData {
   double last_time;
   int frames_to_render;
   bool software_renderer;
+  ImGuiMouseCursor last_cursor;
 };
+
+EM_JS(void, js_set_cursor, (const char* selector, const char* cursor), {
+  var selectorStr = UTF8ToString(selector);
+  var cursorStr = UTF8ToString(cursor);
+  var el = document.querySelector(selectorStr);
+  if (el) {
+    el.style.cursor = cursorStr;
+  }
+});
 
 static BackendData* get_backend_data() {
   return ImGui::GetCurrentContext()
@@ -61,6 +71,32 @@ EM_JS(void, get_canvas_pos, (const char* selector, float* x, float* y), {
 void imgui_impl_wasm_request_update() {
   if (BackendData* bd = get_backend_data()) {
     bd->frames_to_render = 5;
+  }
+}
+
+static void imgui_impl_wasm_update_mouse_cursor() {
+  ImGuiIO& io = ImGui::GetIO();
+  if (io.ConfigFlags & ImGuiConfigFlags_NoMouseCursorChange) return;
+
+  BackendData* bd = get_backend_data();
+  ImGuiMouseCursor imgui_cursor = ImGui::GetMouseCursor();
+  if (bd->last_cursor == imgui_cursor) return;
+  bd->last_cursor = imgui_cursor;
+
+  if (imgui_cursor == ImGuiMouseCursor_None || io.MouseDrawCursor) {
+    js_set_cursor(bd->canvas_selector, "none");
+  } else {
+    switch (imgui_cursor) {
+      case ImGuiMouseCursor_Arrow: js_set_cursor(bd->canvas_selector, "default"); break;
+      case ImGuiMouseCursor_TextInput: js_set_cursor(bd->canvas_selector, "text"); break;
+      case ImGuiMouseCursor_ResizeAll: js_set_cursor(bd->canvas_selector, "move"); break;
+      case ImGuiMouseCursor_ResizeNS: js_set_cursor(bd->canvas_selector, "ns-resize"); break;
+      case ImGuiMouseCursor_ResizeEW: js_set_cursor(bd->canvas_selector, "ew-resize"); break;
+      case ImGuiMouseCursor_ResizeNESW: js_set_cursor(bd->canvas_selector, "nesw-resize"); break;
+      case ImGuiMouseCursor_ResizeNWSE: js_set_cursor(bd->canvas_selector, "nwse-resize"); break;
+      case ImGuiMouseCursor_Hand: js_set_cursor(bd->canvas_selector, "pointer"); break;
+      case ImGuiMouseCursor_NotAllowed: js_set_cursor(bd->canvas_selector, "not-allowed"); break;
+    }
   }
 }
 
@@ -250,6 +286,7 @@ bool imgui_impl_wasm_init(const char* canvas_selector, Allocator allocator) {
   bd->last_time = 0.0;
   bd->frames_to_render = 20;
   bd->software_renderer = js_is_software_renderer();
+  bd->last_cursor = ImGuiMouseCursor_COUNT; // Force update
 
   if (bd->software_renderer) {
     LOG_INFO("software renderer detected, disabling hidpi");
@@ -301,4 +338,6 @@ void imgui_impl_wasm_new_frame() {
   io.DeltaTime = bd->last_time > 0.0 ? (float)(current_time - bd->last_time)
                                      : (float)(1.0f / 60.0f);
   bd->last_time = current_time;
+
+  imgui_impl_wasm_update_mouse_cursor();
 }

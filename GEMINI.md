@@ -142,9 +142,13 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Pan (Dual-Axis)**: Left-mouse drag within the track viewport allows for simultaneous horizontal and vertical panning.
     - **Initial View & Reset**: Upon loading a trace or selecting "Reset View", the viewport is centered and zoomed to the maximum zoom-out level (1.2x duration).
 - **Timeline Selection**:
-    - **Interaction**: Dragging on the timeline ruler creates a time range selection. Every new drag starts a fresh selection from the click point.
+    - **Interaction**: Dragging on the timeline ruler creates a time range selection. Every new drag on the ruler starts a fresh selection from the click point.
+    - **Draggable Boundaries**: Vertical boundaries can be adjusted by dragging them within the tracks area. The mouse cursor changes to `ew-resize` when hovering over or dragging a boundary.
     - **Visuals**: Displays two vertical lines marking the range boundaries, a semi-transparent dimmed overlay for areas outside the selection, and a duration label with horizontal arrows centered vertically in the tracks area.
-    - **Interaction Gating**: Hovering and clicking on events or tracks is disabled within the dimmed areas to focus on the selected range.
+    - **Interaction Gating**:
+        - Hovering and clicking on events or tracks is disabled within the dimmed areas.
+        - Hovering and clicking on events is disabled while dragging boundaries or when the mouse is over a boundary handle.
+        - Panning (horizontal and vertical) is disabled while a boundary is being dragged.
     - **Zoom/Pan Constraints**: When a selection is active, the viewport is constrained to keep the selection visible.
     - **Deselection**: A simple click on the timeline ruler clears the active selection.
 - **Rendering Optimization**:
