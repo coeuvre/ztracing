@@ -150,7 +150,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Selection Threshold**: New selections in the ruler area require a **5-pixel drag** before becoming active. This ensures that a simple press or click on the ruler does not destroy or re-create the selection prematurely.
     - **Draggable Boundaries**: Vertical boundaries can be adjusted by dragging them within the tracks area. The mouse cursor changes to `ew-resize` when hovering over or dragging a boundary.
     - **Snapping**: Dragging selection boundaries (both in the ruler and tracks) snaps to the edges of visible thread event blocks within a **5-pixel threshold**.
-    - **Visuals**: Displays two vertical lines marking the range boundaries, a semi-transparent dimmed overlay for areas outside the selection, and a duration label with horizontal arrows centered vertically in the tracks area.
+    - **Visuals**: Displays two vertical lines marking the range boundaries, a semi-transparent dimmed overlay for areas outside the selection, and a duration label with horizontal arrows centered vertically in the tracks area. Boundaries are clamped to be at least 1px inside the viewport edges to ensure they remain visible during panning.
     - **Snapping Highlight**: When a boundary is snapped during a drag, the specific edge of the event block is highlighted with a **3-pixel wide red vertical line**.
     - **Interaction Gating**:
         - Hovering and clicking on events or tracks is disabled within the dimmed areas (outside the selection).

@@ -139,12 +139,15 @@ static void trace_viewer_draw_selection_overlay(
   }
 
   // Draw vertical lines
+  float draw_x1 = std::max(pos.x, std::min(lo.x1, pos.x + size.x - 1.0f));
+  float draw_x2 = std::max(pos.x, std::min(lo.x2, pos.x + size.x - 1.0f));
+
   if (lo.x1 >= pos.x && lo.x1 <= pos.x + size.x) {
-    draw_list->AddLine(ImVec2(lo.x1, pos.y), ImVec2(lo.x1, pos.y + size.y),
+    draw_list->AddLine(ImVec2(draw_x1, pos.y), ImVec2(draw_x1, pos.y + size.y),
                        theme.timeline_selection_line, 1.0f);
   }
   if (lo.x2 >= pos.x && lo.x2 <= pos.x + size.x) {
-    draw_list->AddLine(ImVec2(lo.x2, pos.y), ImVec2(lo.x2, pos.y + size.y),
+    draw_list->AddLine(ImVec2(draw_x2, pos.y), ImVec2(draw_x2, pos.y + size.y),
                        theme.timeline_selection_line, 1.0f);
   }
 
@@ -167,28 +170,24 @@ static void trace_viewer_draw_selection_overlay(
 
     // Left line and arrow
     float left_line_end_x = text_x - 5.0f;
-    if (left_line_end_x > lo.x1) {
-      draw_list->AddLine(ImVec2(lo.x1, line_y), ImVec2(left_line_end_x, line_y),
+    if (left_line_end_x > draw_x1) {
+      draw_list->AddLine(ImVec2(draw_x1, line_y), ImVec2(left_line_end_x, line_y),
                          line_col, 1.0f);
-      draw_list->AddLine(ImVec2(lo.x1, line_y), ImVec2(lo.x1 + arrow_size, line_y - arrow_size),
+      draw_list->AddLine(ImVec2(draw_x1, line_y), ImVec2(draw_x1 + arrow_size, line_y - arrow_size),
                          line_col, 1.0f);
-      draw_list->AddLine(ImVec2(lo.x1, line_y), ImVec2(lo.x1 + arrow_size, line_y + arrow_size),
+      draw_list->AddLine(ImVec2(draw_x1, line_y), ImVec2(draw_x1 + arrow_size, line_y + arrow_size),
                          line_col, 1.0f);
     }
 
     // Right line and arrow
     float right_line_start_x = text_x + text_size.x + 5.0f;
-    if (lo.x2 > right_line_start_x) {
-      draw_list->AddLine(ImVec2(right_line_start_x, line_y),
-                         ImVec2(lo.x2, line_y), line_col, 1.0f);
-      draw_list->AddLine(
-          ImVec2(lo.x2, line_y),
-          ImVec2(lo.x2 - arrow_size, line_y - arrow_size), line_col,
-          1.0f);
-      draw_list->AddLine(
-          ImVec2(lo.x2, line_y),
-          ImVec2(lo.x2 - arrow_size, line_y + arrow_size), line_col,
-          1.0f);
+    if (right_line_start_x < draw_x2) {
+      draw_list->AddLine(ImVec2(right_line_start_x, line_y), ImVec2(draw_x2, line_y),
+                         line_col, 1.0f);
+      draw_list->AddLine(ImVec2(draw_x2, line_y), ImVec2(draw_x2 - arrow_size, line_y - arrow_size),
+                         line_col, 1.0f);
+      draw_list->AddLine(ImVec2(draw_x2, line_y), ImVec2(draw_x2 - arrow_size, line_y + arrow_size),
+                         line_col, 1.0f);
     }
   }
 }
