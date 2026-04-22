@@ -58,44 +58,52 @@ TEST_F(TrackRendererTest, CoalesceSameColor) {
 
 TEST_F(TrackRendererTest, ThreadBucketingStability) {
   Track t = {};
-  // Tiny events at 100, 105, 110.
-  TraceEvent e1 = {}; e1.name = "e"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 1;
-  TraceEvent e2 = {}; e2.name = "e"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 105; e2.dur = 1;
-  TraceEvent e3 = {}; e3.name = "e"; e3.cat = "cat"; e3.ph = "B"; e3.ts = 110; e3.dur = 1;
+  // e0: ts=85, dur=20 (85 to 105). Ends after 90 (start of first bucket when panned to 95).
+  // e1, e2, e3: ts=100, 105, 110, dur=1. Tiny events.
+  TraceEvent e0 = {}; e0.name = "e0"; e0.ts = 85; e0.dur = 20;
+  TraceEvent e1 = {}; e1.name = "e1"; e1.ts = 100; e1.dur = 1;
+  TraceEvent e2 = {}; e2.name = "e2"; e2.ts = 105; e2.dur = 1;
+  TraceEvent e3 = {}; e3.name = "e3"; e3.ts = 110; e3.dur = 1;
 
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e0);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e3);
 
-  array_list_push_back(&t.event_indices, allocator, (size_t)0);
-  array_list_push_back(&t.event_indices, allocator, (size_t)1);
-  array_list_push_back(&t.event_indices, allocator, (size_t)2);
-
-  array_list_resize(&t.depths, allocator, 3);
-  t.depths[0] = 0; t.depths[1] = 0; t.depths[2] = 0;
+  for (size_t i = 0; i < 4; ++i) array_list_push_back(&t.event_indices, allocator, i);
+  array_list_resize(&t.depths, allocator, 4);
+  for (size_t i = 0; i < 4; ++i) t.depths[i] = 0;
   t.max_depth = 0;
+  t.max_dur = 20;
 
   // Viewport A: 0 to 10000. 1px = 10us. Bucket = 30us.
-  // First bucket start: floor(0/30)*30 = 0.
-  // Bucket containing events: [90, 120).
+  // Buckets: [0, 30), [30, 60), [60, 90), [90, 120)...
+  // e0 (85) in [60, 90).
+  // e1, e2, e3 (100, 105, 110) in [90, 120).
   track_compute_render_blocks(&t, &td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks, allocator);
-  EXPECT_EQ(blocks.size, 1u);
-  EXPECT_FLOAT_EQ(blocks[0].x1, 9.0f);
-  EXPECT_FLOAT_EQ(blocks[0].x2, 12.0f);
+  
+  uint32_t count_90_120 = 0;
+  for (size_t i = 0; i < blocks.size; ++i) {
+    if (blocks[i].x1 == 9.0f) count_90_120 = blocks[i].count;
+  }
+  EXPECT_EQ(count_90_120, 3u);
 
-  // Viewport B: 5 to 10005. Panned slightly.
-  // Bucket size still 30us.
-  // First bucket start: floor(5/30)*30 = 0.
-  // Bucket containing events still: [90, 120).
-  // x1 = (90 - 5) * 0.1 = 8.5
-  // x2 = (120 - 5) * 0.1 = 11.5
+  // Viewport B: 95 to 10095. Panned.
+  // Bucket size 30us.
+  // First bucket start: floor(95/30)*30 = 90.
+  // Bucket: [90, 120).
+  // Before fix, e0 (85) would be included in [90, 120) because it was the first bucket.
+  // After fix, e0 should be SKIPPED for [90, 120) because it starts before 90.
   array_list_clear(&blocks);
-  track_compute_render_blocks(&t, &td, 5, 10005, 1000.0f, 0.0f, -1, &state,
+  track_compute_render_blocks(&t, &td, 95, 10095, 1000.0f, 0.0f, -1, &state,
                               &blocks, allocator);
-  EXPECT_EQ(blocks.size, 1u);
-  EXPECT_FLOAT_EQ(blocks[0].x1, 8.5f);
-  EXPECT_FLOAT_EQ(blocks[0].x2, 11.5f);
+  
+  uint32_t count_90_120_panned = 0;
+  for (size_t i = 0; i < blocks.size; ++i) {
+    if (blocks[i].x1 == -0.5f) count_90_120_panned = blocks[i].count; // (90 - 95) * 0.1 = -0.5
+  }
+  EXPECT_EQ(count_90_120_panned, 3u);
 
   track_deinit(&t, allocator);
 }
@@ -811,5 +819,99 @@ TEST_F(TrackRendererTest, CounterDropStubFix) {
   EXPECT_TRUE(found_b4);
 
   array_list_deinit(&counter_blocks, allocator);
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, ThreadBucketingStabilityPanned) {
+  Track t = {};
+  // e0: ts=85, dur=20 (85 to 105)
+  // e1: ts=100, dur=1
+  // e2: ts=105, dur=1
+  // e3: ts=110, dur=1
+  TraceEvent e0 = {}; e0.name = "e0"; e0.ts = 85; e0.dur = 20;
+  TraceEvent e1 = {}; e1.name = "e1"; e1.ts = 100; e1.dur = 1;
+  TraceEvent e2 = {}; e2.name = "e2"; e2.ts = 105; e2.dur = 1;
+  TraceEvent e3 = {}; e3.name = "e3"; e3.ts = 110; e3.dur = 1;
+
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e0);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e3);
+
+  for (size_t i = 0; i < 4; ++i) array_list_push_back(&t.event_indices, allocator, i);
+  array_list_resize(&t.depths, allocator, 4);
+  for (size_t i = 0; i < 4; ++i) t.depths[i] = 0;
+  t.max_depth = 0;
+  t.max_dur = 20;
+
+  float width = 1000.0f; // 1px = 10us, Bucket = 30us
+  
+  // Viewport A: starts at 0.
+  // Buckets: [0, 30), [30, 60), [60, 90), [90, 120)...
+  // e0 (85) in [60, 90).
+  // e1, e2, e3 (100, 105, 110) in [90, 120).
+  track_compute_render_blocks(&t, &td, 0, 10000, width, 0.0f, -1, &state, &blocks, allocator);
+  
+  uint32_t count_90_120_A = 0;
+  for (size_t i = 0; i < blocks.size; ++i) {
+    if (std::abs(blocks[i].x1 - 9.0f) < 0.001f) count_90_120_A = blocks[i].count;
+  }
+  EXPECT_EQ(count_90_120_A, 3u);
+
+  // Viewport B: starts at 95.
+  // current_bucket_ts should align to ... 60, 90, 120 ...
+  // Bucket [90, 120) should still only contain e1, e2, e3.
+  array_list_clear(&blocks);
+  track_compute_render_blocks(&t, &td, 95, 10095, width, 0.0f, -1, &state, &blocks, allocator);
+  
+  uint32_t count_90_120_B = 0;
+  for (size_t i = 0; i < blocks.size; ++i) {
+    // (90 - 95) * 0.1 = -0.5
+    if (std::abs(blocks[i].x1 - (-0.5f)) < 0.001f) count_90_120_B = blocks[i].count;
+  }
+  EXPECT_EQ(count_90_120_B, 3u);
+
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, ThreadBucketingStabilityThreshold) {
+  Track t = {};
+  // Bucket size = 30us. e0 dur = 30us.
+  // At inv_duration = 0.1, e0 width = 3.0px.
+  TraceEvent e0 = {}; e0.name = "e0"; e0.ts = 100; e0.dur = 30;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e0);
+  
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+  array_list_resize(&t.depths, allocator, 1);
+  t.depths[0] = 0;
+  t.max_depth = 0;
+  t.max_dur = 30;
+
+  float width = 1000.0f;
+  
+  // Viewport A: duration 10000. inv_duration = 0.1. e0 width = 3.0.
+  // It should be 'large'.
+  track_compute_render_blocks(&t, &td, 0, 10000, width, 0.0f, -1, &state, &blocks, allocator);
+  ASSERT_EQ(blocks.size, 1u);
+  EXPECT_EQ(blocks[0].count, 1u);
+  EXPECT_TRUE(blocks[0].x2 - blocks[0].x1 >= 3.0f - 0.001f);
+
+  // Viewport B: slightly shifted duration due to jitter.
+  // inv_duration = 1000.0 / 10000.0000001 = 0.099999999999
+  // width = 30 * 0.0999... = 2.9999...
+  // Without epsilon, it might become 'tiny' and merged.
+  // Even if alone, if it was 'large' it uses its own TS for x1, x2.
+  // If it was 'tiny', it uses bucket boundaries for x1, x2.
+  // Bucket for 100: [90, 120).
+  // So x1 would jump from (100-0)*0.1 = 10.0 to (90-0)*0.1 = 9.0.
+  // THAT is the dancing!
+  array_list_clear(&blocks);
+  track_compute_render_blocks(&t, &td, 0, 10000.0001, width, 0.0f, -1, &state, &blocks, allocator);
+  
+  ASSERT_EQ(blocks.size, 1u);
+  // We check if x1 is still based on e.ts (10.0) or bucket start (9.0).
+  // With jitter, it should be near 10.0.
+  EXPECT_NEAR(blocks[0].x1, 10.0f, 0.01f) << "Event x1 should be based on its own TS (large), not bucket start (tiny)";
+
   track_deinit(&t, allocator);
 }

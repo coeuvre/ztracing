@@ -38,7 +38,11 @@ void track_compute_render_blocks(
   double inv_duration = (double)inner_width / duration;
 
   double bucket_dur = (double)TRACK_MIN_EVENT_WIDTH / inv_duration;
-  double current_bucket_ts = floor(viewport_start / bucket_dur) * bucket_dur;
+  // Align current_bucket_ts to a multiple of bucket_dur for stability during
+  // panning. We start far enough back to catch events starting up to max_dur
+  // before viewport_start.
+  double current_bucket_ts =
+      floor((viewport_start - (double)track->max_dur) / bucket_dur) * bucket_dur;
 
   size_t k = track_find_visible_start_index(track, trace_data,
                                             (int64_t)current_bucket_ts);
@@ -63,9 +67,19 @@ void track_compute_render_blocks(
       const TraceEventPersisted& e = trace_data->events[event_idx];
       if (e.ts >= (int64_t)next_bucket_ts) break;
 
+      // Ensure that an event only contributes to the bucket it starts in.
+      // This provides stability during panning and avoids duplicate rendering
+      // of large/selected events across multiple buckets.
+      if (e.ts < (int64_t)current_bucket_ts) {
+        k++;
+        continue;
+      }
+
       uint32_t depth = track->depths[k];
       bool is_selected = (selected_event_index == (int64_t)event_idx);
-      bool is_large = (double)e.dur * inv_duration >= TRACK_MIN_EVENT_WIDTH;
+      // Use a small epsilon to prevent floating point jitter from flipping an
+      // event between 'large' and 'tiny' during panning.
+      bool is_large = (double)e.dur * inv_duration >= TRACK_MIN_EVENT_WIDTH - 0.01f;
 
       if (is_selected || is_large) {
         // Flush pending bucket state for this depth

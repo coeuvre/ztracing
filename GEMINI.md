@@ -166,12 +166,13 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
     - **Level of Detail (LOD)**: To handle massive traces (10M+ events):
         - **Tiny Events**: Skips rendering of events < 1.0 pixel wide that fall into the same pixel range as a previously drawn block.
-        - **Event Borders**: Borders are only drawn for selected events or those wider than 5.0 pixels. For dense areas, this reduces the triangle count from 10 to 2 per event, significantly lowering GPU load.
+        - **Event Borders**: Borders are only drawn for selected events or those wider than `TRACK_MIN_EVENT_WIDTH`. A **0.01f epsilon** is applied to the threshold to prevent floating-point jitter from causing borders to flicker during panning.
     - **Event Coalescing & Bucketing**: To maintain performance and visual stability in dense areas:
-        - **Stable Bucketing**: Both thread and counter tracks utilize a stable bucketing system. Viewports are divided into buckets aligned to absolute timestamps (typically 3.0 pixels wide). This eliminates the "flickering" or "dancing" of block boundaries during horizontal panning.
+        - **Stable Bucketing**: Both thread and counter tracks utilize a stable bucketing system. Viewports are divided into buckets aligned to absolute timestamps (multiples of the time equivalent of 3.0 pixels).
+        - **Panning Stability**: For thread tracks, bucketing starts from a stable timestamp that covers all potentially visible events (accounting for `max_dur`). Each event is strictly processed only within the bucket iteration corresponding to its start time. This eliminates "dancing" or flickering of merged blocks during horizontal panning.
         - **Thread-Track Merging**: For thread tracks, sub-pixel events within a bucket are merged at each depth. The event with the longest duration is chosen as the "representative," providing the color, name, and tooltip for the merged block.
         - **Bucket Limit**: Merged blocks are capped at a maximum width (typically 3.0 pixels) to preserve a reasonably accurate representation of event density.
-        - **Large Event Bypass**: Events wider than a bucket or currently selected events bypass the bucketing logic and are rendered with full precision, ensuring critical detail is preserved.
+        - **Large Event Bypass**: Events wider than a bucket or currently selected events bypass the bucketing logic and are rendered with full precision. A **0.01f epsilon** is applied to the width threshold to prevent floating-point jitter from flipping events between 'large' and 'tiny' states during panning.
     - **Selection & Hover**:
         - **Hit-Testing**: Hover detection perfectly aligns with the visual representation, including the minimum rendering width (3.0px). If an event is visible, it is interactive.
         - **Block-Based Interaction**: Both highlighting and selection are driven by the same `TrackRenderBlock` data structure. Each block carries an `event_idx`, ensuring that the event highlighted by the mouse is always the one selected when clicking. This eliminates discrepancies between the visual feedback and the actual selection.

@@ -204,7 +204,9 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
 
   float border_thickness = is_selected ? 2.0f : 1.0f;
   float event_width = x2 - x1;
-  bool draw_border = (event_width > TRACK_MIN_EVENT_WIDTH);
+  // Use a small epsilon to prevent floating point jitter from flipping the
+  // border on/off during panning.
+  bool draw_border = (event_width > TRACK_MIN_EVENT_WIDTH + 0.01f);
 
   draw_list->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), col);
 
