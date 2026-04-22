@@ -40,12 +40,6 @@ cc_library(
 )
 
 cc_library(
-    name = "timeline_selection",
-    srcs = ["timeline_selection.cc"],
-    hdrs = ["timeline_selection.h"],
-)
-
-cc_library(
     name = "array_list",
     hdrs = ["array_list.h"],
     deps = [":allocator"],
@@ -65,15 +59,6 @@ cc_test(
     srcs = ["format_test.cc"],
     deps = [
         ":format",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "timeline_selection_test",
-    srcs = ["timeline_selection_test.cc"],
-    deps = [
-        ":timeline_selection",
         "@googletest//:gtest_main",
     ],
 )
@@ -225,7 +210,6 @@ cc_library(
         ":format",
         ":logging",
         ":platform",
-        ":timeline_selection",
         ":trace_data",
         ":trace_parser",
         ":track",
@@ -272,7 +256,6 @@ cc_library(
         ":array_list",
         ":colors",
         ":format",
-        ":imgui_impl_wasm",
         ":loading_screen",
         ":logging",
         ":platform",

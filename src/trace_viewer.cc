@@ -18,6 +18,72 @@ static void trace_viewer_draw_selection_overlay(
     TraceViewer* tv, ImDrawList* draw_list, ImVec2 pos, ImVec2 size,
     const Theme& theme, bool draw_duration_text);
 
+static double trace_viewer_px_to_ts(double start_time, double end_time,
+                                    float width, float origin_x, float px) {
+  double duration = end_time - start_time;
+  if (width <= 0) return start_time;
+  return start_time + ((double)(px - origin_x) / (double)width) * duration;
+}
+
+static void trace_viewer_snapping_init(TraceViewer* tv, double mouse_ts,
+                                       float threshold_px) {
+  tv->snap_best_ts = mouse_ts;
+  tv->snap_best_dist_px = threshold_px;
+  tv->snap_threshold_px = threshold_px;
+  tv->snap_has_snap = false;
+  tv->snap_px = 0.0f;
+  tv->snap_y1 = 0.0f;
+  tv->snap_y2 = 0.0f;
+}
+
+static void trace_viewer_snapping_suggest(TraceViewer* tv, double candidate_ts,
+                                          float candidate_px, float mouse_px,
+                                          float y1, float y2) {
+  float dist_px = std::abs(candidate_px - mouse_px);
+  if (dist_px < tv->snap_best_dist_px) {
+    tv->snap_best_dist_px = dist_px;
+    tv->snap_best_ts = candidate_ts;
+    tv->snap_has_snap = true;
+    tv->snap_px = candidate_px;
+    tv->snap_y1 = y1;
+    tv->snap_y2 = y2;
+  }
+}
+
+struct SelectionProximity {
+  bool near_start;
+  bool near_end;
+};
+
+static SelectionProximity trace_viewer_selection_check_proximity(
+    const TraceViewer* tv, double mouse_ts, double threshold_ts) {
+  SelectionProximity result = {false, false};
+  if (!tv->selection_active) return result;
+
+  double dist_start = std::abs(mouse_ts - tv->selection_start_time);
+  double dist_end = std::abs(mouse_ts - tv->selection_end_time);
+
+  if (dist_start < threshold_ts) result.near_start = true;
+  if (dist_end < threshold_ts) result.near_end = true;
+
+  if (result.near_start && result.near_end) {
+    if (dist_start < dist_end)
+      result.near_end = false;
+    else
+      result.near_start = false;
+  }
+  return result;
+}
+
+static bool trace_viewer_selection_is_mouse_inside(const TraceViewer* tv,
+                                                   double mouse_ts) {
+  if (!tv->selection_active) return true;
+  double t1 = tv->selection_start_time;
+  double t2 = tv->selection_end_time;
+  if (t1 > t2) std::swap(t1, t2);
+  return mouse_ts >= t1 && mouse_ts <= t2;
+}
+
 const double TRACE_VIEWER_MAX_ZOOM_FACTOR = 1.2;
 const double TRACE_VIEWER_MIN_ZOOM_DURATION = 1000.0;  // 1ms = 1000us
 
@@ -26,6 +92,8 @@ void trace_viewer_deinit(TraceViewer* tv, Allocator allocator) {
     track_deinit(&tv->tracks[i], allocator);
   }
   array_list_deinit(&tv->tracks, allocator);
+  array_list_deinit(&tv->track_infos, allocator);
+  array_list_deinit(&tv->ruler_ticks, allocator);
   track_renderer_state_deinit(&tv->track_renderer_state, allocator);
   array_list_deinit(&tv->render_blocks, allocator);
   array_list_deinit(&tv->counter_render_blocks, allocator);
@@ -35,11 +103,6 @@ void trace_viewer_deinit(TraceViewer* tv, Allocator allocator) {
 static void trace_viewer_draw_time_ruler(TraceViewer* tv, ImDrawList* draw_list,
                                          ImVec2 pos, ImVec2 size,
                                          const Theme& theme) {
-  double start_time = tv->viewport.start_time;
-  double end_time = tv->viewport.end_time;
-  double duration = end_time - start_time;
-  if (duration <= 0) return;
-
   // Ruler background
   draw_list->AddRectFilled(pos, ImVec2(pos.x + size.x, pos.y + size.y),
                            theme.ruler_bg);
@@ -47,26 +110,11 @@ static void trace_viewer_draw_time_ruler(TraceViewer* tv, ImDrawList* draw_list,
                      ImVec2(pos.x + size.x, pos.y + size.y - 1),
                      theme.ruler_border);
 
-  // Determine tick interval
-  double tick_interval = calculate_tick_interval(duration, size.x, 100.0);
-
-  double display_start = start_time - (double)tv->viewport.min_ts;
-  double display_end = end_time - (double)tv->viewport.min_ts;
-
-  double first_tick_rel = ceil(display_start / tick_interval) * tick_interval;
-  for (double t_rel = first_tick_rel; t_rel <= display_end;
-       t_rel += tick_interval) {
-    double t = t_rel + (double)tv->viewport.min_ts;
-    float x = (float)(pos.x + (t - start_time) / duration * size.x);
-    if (x < pos.x || x > pos.x + size.x) continue;
-
-    draw_list->AddLine(ImVec2(x, pos.y + size.y * 0.6f),
-                       ImVec2(x, pos.y + size.y - 1), theme.ruler_tick);
-
-    char label[32];
-    format_duration(label, sizeof(label), t_rel, tick_interval);
-
-    draw_list->AddText(ImVec2(x + 3, pos.y + 2), theme.ruler_text, label);
+  for (size_t i = 0; i < tv->ruler_ticks.size; i++) {
+    const RulerTick& tick = tv->ruler_ticks[i];
+    draw_list->AddLine(ImVec2(tick.x, pos.y + size.y * 0.6f),
+                       ImVec2(tick.x, pos.y + size.y - 1), theme.ruler_tick);
+    draw_list->AddText(ImVec2(tick.x + 3, pos.y + 2), theme.ruler_text, tick.label);
   }
 
   trace_viewer_draw_selection_overlay(tv, draw_list, pos, size, theme, false);
@@ -75,50 +123,34 @@ static void trace_viewer_draw_time_ruler(TraceViewer* tv, ImDrawList* draw_list,
 static void trace_viewer_draw_selection_overlay(
     TraceViewer* tv, ImDrawList* draw_list, ImVec2 pos, ImVec2 size,
     const Theme& theme, bool draw_duration_text) {
-  if (!tv->timeline_selection.active) return;
-
-  double t1 = tv->timeline_selection.start_time;
-  double t2 = tv->timeline_selection.end_time;
-  if (t1 > t2) std::swap(t1, t2);
-
-  double viewport_duration = tv->viewport.end_time - tv->viewport.start_time;
-  float x1 = (float)(pos.x + (t1 - tv->viewport.start_time) /
-                                 viewport_duration * size.x);
-  float x2 = (float)(pos.x + (t2 - tv->viewport.start_time) /
-                                 viewport_duration * size.x);
+  const SelectionOverlayLayout& lo = tv->selection_layout;
+  if (!lo.active) return;
 
   // Dim areas outside of the selection
-  float dim_x1_left = pos.x;
-  float dim_x2_left = std::max(pos.x, std::min(x1, pos.x + size.x));
-  float dim_x1_right = std::min(pos.x + size.x, std::max(x2, pos.x));
-  float dim_x2_right = pos.x + size.x;
-
-  if (dim_x1_left < dim_x2_left) {
-    draw_list->AddRectFilled(ImVec2(dim_x1_left, pos.y),
-                             ImVec2(dim_x2_left, pos.y + size.y),
+  if (lo.dim_l_x1 < lo.dim_l_x2) {
+    draw_list->AddRectFilled(ImVec2(lo.dim_l_x1, pos.y),
+                             ImVec2(lo.dim_l_x2, pos.y + size.y),
                              theme.timeline_selection_bg);
   }
-  if (dim_x1_right < dim_x2_right) {
-    draw_list->AddRectFilled(ImVec2(dim_x1_right, pos.y),
-                             ImVec2(dim_x2_right, pos.y + size.y),
+  if (lo.dim_r_x1 < lo.dim_r_x2) {
+    draw_list->AddRectFilled(ImVec2(lo.dim_r_x1, pos.y),
+                             ImVec2(lo.dim_r_x2, pos.y + size.y),
                              theme.timeline_selection_bg);
   }
 
   // Draw vertical lines
-  if (x1 >= pos.x && x1 <= pos.x + size.x) {
-    draw_list->AddLine(ImVec2(x1, pos.y), ImVec2(x1, pos.y + size.y),
+  if (lo.x1 >= pos.x && lo.x1 <= pos.x + size.x) {
+    draw_list->AddLine(ImVec2(lo.x1, pos.y), ImVec2(lo.x1, pos.y + size.y),
                        theme.timeline_selection_line, 1.0f);
   }
-  if (x2 >= pos.x && x2 <= pos.x + size.x) {
-    draw_list->AddLine(ImVec2(x2 - 1.0f, pos.y), ImVec2(x2 - 1.0f, pos.y + size.y),
+  if (lo.x2 >= pos.x && lo.x2 <= pos.x + size.x) {
+    draw_list->AddLine(ImVec2(lo.x2, pos.y), ImVec2(lo.x2, pos.y + size.y),
                        theme.timeline_selection_line, 1.0f);
   }
 
   if (draw_duration_text) {
-    char duration_label[64];
-    format_duration(duration_label, sizeof(duration_label), t2 - t1, t2 - t1);
-    ImVec2 text_size = ImGui::CalcTextSize(duration_label);
-    float text_x = (x1 + x2) * 0.5f - text_size.x * 0.5f;
+    ImVec2 text_size = ImGui::CalcTextSize(lo.duration_label);
+    float text_x = (lo.x1 + lo.x2) * 0.5f - text_size.x * 0.5f;
     float text_y = pos.y + (size.y - text_size.y) * 0.5f;
 
     // Ensure text is visible even if partially off-screen
@@ -126,7 +158,7 @@ static void trace_viewer_draw_selection_overlay(
         pos.x + 5.0f, std::min(text_x, pos.x + size.x - text_size.x - 5.0f));
 
     draw_list->AddText(ImVec2(text_x, text_y), theme.timeline_selection_text,
-                       duration_label);
+                       lo.duration_label);
 
     // Draw arrow lines to both sides of the text
     float line_y = text_y + text_size.y * 0.5f;
@@ -135,28 +167,27 @@ static void trace_viewer_draw_selection_overlay(
 
     // Left line and arrow
     float left_line_end_x = text_x - 5.0f;
-    if (left_line_end_x > x1) {
-      draw_list->AddLine(ImVec2(x1, line_y), ImVec2(left_line_end_x, line_y),
+    if (left_line_end_x > lo.x1) {
+      draw_list->AddLine(ImVec2(lo.x1, line_y), ImVec2(left_line_end_x, line_y),
                          line_col, 1.0f);
-      draw_list->AddLine(ImVec2(x1, line_y), ImVec2(x1 + arrow_size, line_y - arrow_size),
+      draw_list->AddLine(ImVec2(lo.x1, line_y), ImVec2(lo.x1 + arrow_size, line_y - arrow_size),
                          line_col, 1.0f);
-      draw_list->AddLine(ImVec2(x1, line_y), ImVec2(x1 + arrow_size, line_y + arrow_size),
+      draw_list->AddLine(ImVec2(lo.x1, line_y), ImVec2(lo.x1 + arrow_size, line_y + arrow_size),
                          line_col, 1.0f);
     }
 
     // Right line and arrow
     float right_line_start_x = text_x + text_size.x + 5.0f;
-    float adjusted_x2 = x2 - 1.0f;
-    if (adjusted_x2 > right_line_start_x) {
+    if (lo.x2 > right_line_start_x) {
       draw_list->AddLine(ImVec2(right_line_start_x, line_y),
-                         ImVec2(adjusted_x2, line_y), line_col, 1.0f);
+                         ImVec2(lo.x2, line_y), line_col, 1.0f);
       draw_list->AddLine(
-          ImVec2(adjusted_x2, line_y),
-          ImVec2(adjusted_x2 - arrow_size, line_y - arrow_size), line_col,
+          ImVec2(lo.x2, line_y),
+          ImVec2(lo.x2 - arrow_size, line_y - arrow_size), line_col,
           1.0f);
       draw_list->AddLine(
-          ImVec2(adjusted_x2, line_y),
-          ImVec2(adjusted_x2 - arrow_size, line_y + arrow_size), line_col,
+          ImVec2(lo.x2, line_y),
+          ImVec2(lo.x2 - arrow_size, line_y + arrow_size), line_col,
           1.0f);
     }
   }
@@ -362,184 +393,269 @@ static void trace_viewer_draw_counter_track(
 
 void trace_viewer_step(TraceViewer* tv, TraceData* td,
                        const TraceViewerInput& input, Allocator allocator) {
-  double duration = tv->viewport.end_time - tv->viewport.start_time;
-  if (duration <= 0) duration = 1.0;
+  double current_duration = tv->viewport.end_time - tv->viewport.start_time;
+  if (current_duration <= 0) current_duration = 1.0;
 
   float tracks_origin_x = tv->last_tracks_x > 0 ? tv->last_tracks_x : input.canvas_x;
   float tracks_inner_width = tv->last_inner_width > 0 ? tv->last_inner_width : input.canvas_width;
   if (tracks_inner_width <= 0) tracks_inner_width = 1.0f;
 
-  TimelineViewportMapping mapping = {
-      tv->viewport.start_time, tv->viewport.end_time, tracks_origin_x,
-      tracks_inner_width};
+  double mouse_ts = trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
+                                          tracks_inner_width, tracks_origin_x, input.mouse_x);
 
-  // 1. Prepare Interactions
-  TimelineInteraction interaction_r = {};
-  interaction_r.area = TimelineInteraction::AREA_RULER;
-  interaction_r.mouse_px = input.mouse_x;
-  interaction_r.click_px = input.click_x;
-  interaction_r.mouse_wheel = input.mouse_wheel;
-  interaction_r.mouse_wheel_h = input.mouse_wheel_h;
-  interaction_r.is_ctrl_down = input.is_ctrl_down;
-  interaction_r.is_shift_down = input.is_shift_down;
-  interaction_r.drag_delta_x = input.drag_delta_x;
-  interaction_r.drag_threshold = input.drag_threshold;
-  interaction_r.ruler_active = input.ruler_active;
-  interaction_r.ruler_activated = input.ruler_activated;
-  interaction_r.ruler_deactivated = input.ruler_deactivated;
+  // 1. Snapping Initialization
+  float snap_threshold_px = 5.0f;
+  trace_viewer_snapping_init(tv, mouse_ts, snap_threshold_px);
 
-  TimelineInteraction interaction_t = interaction_r;
-  interaction_t.area = TimelineInteraction::AREA_TRACKS;
-  interaction_t.tracks_hovered = input.tracks_hovered;
-  if (interaction_t.tracks_hovered && !interaction_r.ruler_active) {
-    interaction_t.is_mouse_clicked = input.is_mouse_clicked;
-    interaction_t.is_mouse_down = input.is_mouse_down;
-    interaction_t.is_mouse_released = input.is_mouse_released;
-  }
+  // 2. Interaction Logic - Pre-pass
+  double threshold_ts =
+      ((double)tv->snap_threshold_px / (double)tracks_inner_width) *
+      current_duration;
 
-  double mouse_ts_ruler = timeline_mapping_px_to_ts(mapping, interaction_r.mouse_px);
-  interaction_t.mouse_ts = timeline_mapping_px_to_ts(mapping, interaction_t.mouse_px);
+  SelectionProximity proximity =
+      trace_viewer_selection_check_proximity(tv, mouse_ts, threshold_ts);
 
-  // 2. Snapping
-  float threshold = 5.0f;
-  timeline_snapping_init(&tv->snapping, mouse_ts_ruler, threshold);
-  if (interaction_t.tracks_hovered) {
-    tv->snapping.best_snap_ts = interaction_t.mouse_ts;
-  }
-
-  // 3. Timeline Selection
-  timeline_selection_step(&tv->timeline_selection, interaction_r, mapping, tv->snapping);
-  timeline_selection_step(&tv->timeline_selection, interaction_t, mapping, tv->snapping);
-
-  // 4. Viewport
-  ViewportState vs = {tv->viewport.start_time, tv->viewport.end_time,
-                      tv->viewport.min_ts, tv->viewport.max_ts};
-  viewport_step(&vs, interaction_t, mapping, tv->timeline_selection);
-
-  // Custom panning
-  if (interaction_t.tracks_hovered && !interaction_r.ruler_active &&
-      input.is_mouse_down && !input.is_mouse_clicked &&
-      tv->timeline_selection.drag_mode == TimelineDragMode::NONE) {
-    double dx = (double)input.mouse_delta_x;
-    double current_dur = vs.end_time - vs.start_time;
-    double dt = (dx / (double)tracks_inner_width) * current_dur;
-    vs.start_time -= dt;
-
-    // Clamp start_time to keep selection visible with gaps if active
-    if (tv->timeline_selection.active) {
-      double t1 = tv->timeline_selection.start_time;
-      double t2 = tv->timeline_selection.end_time;
-      if (t1 > t2) std::swap(t1, t2);
-      double gap = current_dur * 0.05;  // 5% gap
-      if (vs.start_time > t1 - gap) vs.start_time = t1 - gap;
-      if (vs.start_time + current_dur < t2 + gap)
-        vs.start_time = t2 + gap - current_dur;
-    }
-    vs.end_time = vs.start_time + current_dur;
-  }
-
-  tv->viewport.start_time = vs.start_time;
-  tv->viewport.end_time = vs.end_time;
-
-  // 5. Track Iteration for hit-testing and snapping
-  array_list_clear(&tv->hover_matches);
-  float cumulative_y = 0.0f;
-  float counter_track_height = 3.0f * input.lane_height;
-
-  TimelineSelectionProximity proximity_t =
-      timeline_selection_check_proximity(tv->timeline_selection,
-                                         interaction_t.mouse_ts,
-                                         (threshold / (double)tracks_inner_width) * duration);
-
-  bool mouse_in_selection = timeline_selection_is_mouse_inside(
-      tv->timeline_selection, interaction_t.mouse_ts);
-
-  bool track_list_hovered =
-      interaction_t.tracks_hovered &&
-      mouse_in_selection &&
-      tv->timeline_selection.drag_mode == TimelineDragMode::NONE &&
-      !proximity_t.near_start && !proximity_t.near_end;
-
-  for (size_t i = 0; i < tv->tracks.size; i++) {
-    const Track& t = tv->tracks[i];
-    float track_height = (t.type == TRACK_TYPE_COUNTER)
-                             ? counter_track_height
-                             : (float)(t.max_depth + 2) * input.lane_height;
-    
-    float track_y = input.canvas_y + input.ruler_height + cumulative_y - input.tracks_scroll_y;
-
-    // Frustum culling (a bit wider for snapping)
-    if (track_y + track_height < input.canvas_y ||
-        track_y > input.canvas_y + input.canvas_height) {
-      cumulative_y += track_height;
-      continue;
+  // Ruler Interaction
+  if (input.ruler_active) {
+    if (input.ruler_activated) {
+      if (proximity.near_start) {
+        tv->selection_drag_mode = TimelineDragMode::RULER_START;
+      } else if (proximity.near_end) {
+        tv->selection_drag_mode = TimelineDragMode::RULER_END;
+      } else {
+        tv->selection_drag_mode = TimelineDragMode::RULER_NEW;
+      }
     }
 
-    if (t.type == TRACK_TYPE_THREAD) {
-      track_compute_render_blocks(
-          &t, td, tv->viewport.start_time, tv->viewport.end_time,
-          tracks_inner_width, tracks_origin_x, tv->selected_event_index,
-          &tv->track_renderer_state, &tv->render_blocks, allocator);
-
-      for (size_t k = 0; k < tv->render_blocks.size; k++) {
-        const TrackRenderBlock& rb = tv->render_blocks[k];
-        float y1 = track_y + (float)(rb.depth + 1) * input.lane_height;
-        float y2 = y1 + input.lane_height - 1.0f;
-
-        // Snapping
-        double ts1 = tv->viewport.start_time +
-                     ((double)(rb.x1 - tracks_origin_x) /
-                      (double)tracks_inner_width) *
-                         duration;
-        timeline_snapping_suggest(&tv->snapping, ts1, rb.x1, input.mouse_x, y1, y2);
-        double ts2 = tv->viewport.start_time +
-                     ((double)(rb.x2 - tracks_origin_x) /
-                      (double)tracks_inner_width) *
-                         duration;
-        timeline_snapping_suggest(&tv->snapping, ts2, rb.x2, input.mouse_x, y1, y2);
-
-        // Hit-testing
-        if (track_list_hovered && input.mouse_y >= y1 && input.mouse_y < y2 &&
-            input.mouse_x >= rb.x1 && input.mouse_x < rb.x2) {
-          HoverMatch hm = {i, k, y1, y2, rb};
-          array_list_push_back(&tv->hover_matches, allocator, hm);
+    if (tv->selection_drag_mode == TimelineDragMode::RULER_NEW) {
+      if (std::abs(input.drag_delta_x) >= input.drag_threshold) {
+        tv->selection_active = true;
+        tv->selection_start_time = trace_viewer_px_to_ts(
+            tv->viewport.start_time, tv->viewport.end_time, tracks_inner_width,
+            tracks_origin_x, input.click_x);
+      }
+    }
+  } else {
+    if (input.ruler_deactivated) {
+      if (std::abs(input.drag_delta_x) < input.drag_threshold) {
+        if (tv->selection_drag_mode == TimelineDragMode::RULER_NEW) {
+          tv->selection_active = false;
         }
       }
-    } else {
-      // Counter hit-testing
-      track_compute_counter_render_blocks(&t, td, tv->viewport.start_time,
-                                          tv->viewport.end_time, tracks_inner_width,
-                                          tracks_origin_x, &tv->track_renderer_state,
-                                          &tv->counter_render_blocks, allocator);
-      
-      float track_content_y = track_y + input.lane_height;
-      float track_content_h = track_height - input.lane_height;
+    }
 
-      if (track_list_hovered && input.mouse_y >= track_content_y &&
-          input.mouse_y < track_content_y + track_content_h) {
-        for (size_t k = 0; k < tv->counter_render_blocks.size; k++) {
-          const CounterRenderBlock& rb = tv->counter_render_blocks[k];
-          if (input.mouse_x >= rb.x1 && input.mouse_x < rb.x2) {
-             // For counters, we use a special HoverMatch or just handle it here.
-             // We can push a HoverMatch with a special flag if needed.
-             // But for now, let's just use block_idx for counter block.
-             HoverMatch hm = {i, k, track_content_y, track_content_y + track_content_h, {}};
-             hm.rb.event_idx = rb.event_idx;
-             hm.rb.count = (rb.event_idx != (size_t)-1) ? 1 : 0;
-             array_list_push_back(&tv->hover_matches, allocator, hm);
-             break;
+    if (tv->selection_drag_mode == TimelineDragMode::RULER_NEW ||
+        tv->selection_drag_mode == TimelineDragMode::RULER_START ||
+        tv->selection_drag_mode == TimelineDragMode::RULER_END) {
+      tv->selection_drag_mode = TimelineDragMode::NONE;
+    }
+  }
+
+  // Tracks Interaction
+  if (input.tracks_hovered && !input.ruler_active) {
+    if (tv->selection_drag_mode == TimelineDragMode::NONE) {
+      if (tv->selection_active && input.is_mouse_clicked &&
+          (proximity.near_start || proximity.near_end)) {
+        tv->selection_drag_mode = proximity.near_start ? TimelineDragMode::TRACKS_START
+                                                       : TimelineDragMode::TRACKS_END;
+      }
+    }
+
+    if (tv->selection_drag_mode == TimelineDragMode::TRACKS_START ||
+        tv->selection_drag_mode == TimelineDragMode::TRACKS_END) {
+      if (!input.is_mouse_down) {
+        tv->selection_drag_mode = TimelineDragMode::NONE;
+      }
+    }
+
+    // Zooming
+    if (input.mouse_wheel != 0.0f && input.is_ctrl_down) {
+      double mouse_x_rel = (double)(input.mouse_x - tracks_origin_x) / (double)tracks_inner_width;
+      double zoom_factor = (input.mouse_wheel > 0.0f) ? 0.8 : TRACE_VIEWER_MAX_ZOOM_FACTOR;
+      double new_duration = current_duration * zoom_factor;
+
+      double trace_duration = (double)(tv->viewport.max_ts - tv->viewport.min_ts);
+      double max_duration = trace_duration * TRACE_VIEWER_MAX_ZOOM_FACTOR;
+      double min_duration = TRACE_VIEWER_MIN_ZOOM_DURATION;
+
+      if (tv->selection_active) {
+        double t1 = tv->selection_start_time;
+        double t2 = tv->selection_end_time;
+        if (t1 > t2) std::swap(t1, t2);
+        double sel_dur = t2 - t1;
+        if (sel_dur > 0) {
+          if (sel_dur > min_duration) min_duration = sel_dur;
+          double sel_max_dur = sel_dur * 10.0;
+          if (sel_max_dur < max_duration) max_duration = sel_max_dur;
+        }
+      }
+
+      if (max_duration < min_duration) max_duration = min_duration;
+      if (new_duration < min_duration) new_duration = min_duration;
+      if (new_duration > max_duration) new_duration = max_duration;
+
+      tv->viewport.start_time = mouse_ts - mouse_x_rel * new_duration;
+
+      if (tv->selection_active) {
+        double t1 = tv->selection_start_time;
+        double t2 = tv->selection_end_time;
+        if (t1 > t2) std::swap(t1, t2);
+        if (tv->viewport.start_time > t1) tv->viewport.start_time = t1;
+        if (tv->viewport.start_time + new_duration < t2)
+          tv->viewport.start_time = t2 - new_duration;
+      }
+      tv->viewport.end_time = tv->viewport.start_time + new_duration;
+      current_duration = new_duration;
+    }
+
+    // Panning
+    if (input.is_mouse_down && !input.is_mouse_clicked &&
+        tv->selection_drag_mode == TimelineDragMode::NONE) {
+      double dx = (double)input.mouse_delta_x;
+      double dt = (dx / (double)tracks_inner_width) * current_duration;
+      tv->viewport.start_time -= dt;
+
+      if (tv->selection_active) {
+        double t1 = tv->selection_start_time;
+        double t2 = tv->selection_end_time;
+        if (t1 > t2) std::swap(t1, t2);
+        if (tv->viewport.start_time > t1) tv->viewport.start_time = t1;
+        if (tv->viewport.start_time + current_duration < t2)
+          tv->viewport.start_time = t2 - current_duration;
+      }
+      tv->viewport.end_time = tv->viewport.start_time + current_duration;
+    }
+  }
+
+  // 3. Track Layout and Pass 1: Culling, Naming, Snapping, Hit-testing
+  array_list_clear(&tv->hover_matches);
+  array_list_resize(&tv->track_infos, allocator, tv->tracks.size);
+  tv->total_tracks_height = 0.0f;
+  
+  float counter_track_height = 3.0f * input.lane_height;
+  bool mouse_in_selection = trace_viewer_selection_is_mouse_inside(tv, mouse_ts);
+  bool track_list_hovered =
+      input.tracks_hovered &&
+      mouse_in_selection &&
+      tv->selection_drag_mode == TimelineDragMode::NONE &&
+      !proximity.near_start && !proximity.near_end;
+
+  bool is_dragging = (tv->selection_drag_mode != TimelineDragMode::NONE);
+  bool was_drag = (std::abs(input.drag_delta_x) >= input.drag_threshold ||
+                   std::abs(input.drag_delta_y) >= input.drag_threshold);
+  bool should_snap = is_dragging && was_drag;
+
+  for (size_t i = 0; i < tv->tracks.size; i++) {
+    Track& t = tv->tracks[i];
+    TrackViewInfo& vi = tv->track_infos[i];
+
+    vi.height = (t.type == TRACK_TYPE_COUNTER)
+                             ? counter_track_height
+                             : (float)(t.max_depth + 2) * input.lane_height;
+    vi.y = input.canvas_y + input.ruler_height + tv->total_tracks_height - input.tracks_scroll_y;
+    tv->total_tracks_height += vi.height;
+    
+    // Frustum culling
+    vi.visible = (vi.y + vi.height >= input.canvas_y + input.ruler_height &&
+                  vi.y <= input.canvas_y + input.canvas_height);
+
+    // Format header name
+    std::string_view name_str = trace_data_get_string(td, t.name_ref);
+    std::string_view id_str = trace_data_get_string(td, t.id_ref);
+
+    if (name_str.size() == 0) {
+      if (t.type == TRACK_TYPE_THREAD) {
+        snprintf(vi.name, sizeof(vi.name), "Thread %d", t.tid);
+      } else {
+        snprintf(vi.name, sizeof(vi.name), "Counter");
+      }
+    } else if (id_str.size() > 0) {
+      snprintf(vi.name, sizeof(vi.name), "%.*s (%.*s)",
+               (int)name_str.size(), name_str.data(), (int)id_str.size(), id_str.data());
+    } else {
+      snprintf(vi.name, sizeof(vi.name), "%.*s", (int)name_str.size(), name_str.data());
+    }
+
+    if (vi.visible) {
+      if (t.type == TRACK_TYPE_THREAD) {
+        track_compute_render_blocks(
+            &t, td, tv->viewport.start_time, tv->viewport.end_time,
+            tracks_inner_width, tracks_origin_x, tv->selected_event_index,
+            &tv->track_renderer_state, &tv->render_blocks, allocator);
+
+        for (size_t k = 0; k < tv->render_blocks.size; k++) {
+          const TrackRenderBlock& rb = tv->render_blocks[k];
+          float y1 = vi.y + (float)(rb.depth + 1) * input.lane_height;
+          float y2 = y1 + input.lane_height - 1.0f;
+
+          // Snapping
+          if (should_snap) {
+            double ts1 = trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
+                                               tracks_inner_width, tracks_origin_x, rb.x1);
+            trace_viewer_snapping_suggest(tv, ts1, rb.x1, input.mouse_x, y1, y2);
+            double ts2 = trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
+                                               tracks_inner_width, tracks_origin_x, rb.x2);
+            trace_viewer_snapping_suggest(tv, ts2, rb.x2, input.mouse_x, y1, y2);
+          }
+
+          // Hit-testing
+          if (track_list_hovered && input.mouse_y >= y1 && input.mouse_y < y2 &&
+              input.mouse_x >= rb.x1 && input.mouse_x < rb.x2) {
+            HoverMatch hm = {i, k, y1, y2, rb};
+            array_list_push_back(&tv->hover_matches, allocator, hm);
+          }
+        }
+      } else {
+        // Counter hit-testing
+        track_compute_counter_render_blocks(&t, td, tv->viewport.start_time,
+                                            tv->viewport.end_time, tracks_inner_width,
+                                            tracks_origin_x, &tv->track_renderer_state,
+                                            &tv->counter_render_blocks, allocator);
+        
+        float track_content_y = vi.y + input.lane_height;
+        float track_content_h = vi.height - input.lane_height;
+
+        if (track_list_hovered && input.mouse_y >= track_content_y &&
+            input.mouse_y < track_content_y + track_content_h) {
+          for (size_t k = 0; k < tv->counter_render_blocks.size; k++) {
+            const CounterRenderBlock& rb = tv->counter_render_blocks[k];
+            if (input.mouse_x >= rb.x1 && input.mouse_x < rb.x2) {
+               HoverMatch hm = {i, k, track_content_y, track_content_y + track_content_h, {}};
+               hm.rb.event_idx = rb.event_idx;
+               hm.rb.count = (rb.event_idx != (size_t)-1) ? 1 : 0;
+               array_list_push_back(&tv->hover_matches, allocator, hm);
+               break;
+            }
           }
         }
       }
     }
-
-    cumulative_y += track_height;
   }
 
-  // 6. Selection
-  bool was_drag = (std::abs(input.drag_delta_x) >= input.drag_threshold ||
-                   std::abs(input.drag_delta_y) >= input.drag_threshold);
+  // 4. Boundary Updates (using pre-calculated snap_best_ts from THIS frame)
+  if (input.ruler_active) {
+    if (tv->selection_drag_mode == TimelineDragMode::RULER_NEW) {
+      if (was_drag) {
+        tv->selection_end_time = tv->snap_best_ts;
+      }
+    } else if (tv->selection_drag_mode == TimelineDragMode::RULER_START) {
+      tv->selection_start_time = tv->snap_best_ts;
+    } else if (tv->selection_drag_mode == TimelineDragMode::RULER_END) {
+      tv->selection_end_time = tv->snap_best_ts;
+    }
+  } else if (input.tracks_hovered) {
+    if (tv->selection_drag_mode == TimelineDragMode::TRACKS_START ||
+        tv->selection_drag_mode == TimelineDragMode::TRACKS_END) {
+        double ts = (input.is_mouse_clicked) ? mouse_ts : tv->snap_best_ts;
+        if (tv->selection_drag_mode == TimelineDragMode::TRACKS_START) {
+          tv->selection_start_time = ts;
+        } else {
+          tv->selection_end_time = ts;
+        }
+    }
+  }
 
+  // 5. Selection (Click to select event)
   if (input.is_mouse_released && !was_drag) {
     if (tv->hover_matches.size > 0) {
       const HoverMatch& hm = tv->hover_matches[tv->hover_matches.size - 1];
@@ -547,12 +663,49 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
         tv->selected_event_index = (int64_t)hm.rb.event_idx;
         tv->show_details_panel = true;
       }
-    } else if (interaction_t.tracks_hovered && !proximity_t.near_start && !proximity_t.near_end) {
+    } else if (input.tracks_hovered && mouse_in_selection && !proximity.near_start && !proximity.near_end) {
       tv->selected_event_index = -1;
     }
   }
 
-  tv->last_best_snap_ts = tv->snapping.best_snap_ts;
+  // 6. Compute Layout for Drawing
+  // Selection Layout
+  tv->selection_layout.active = tv->selection_active;
+  if (tv->selection_active) {
+    double t1 = tv->selection_start_time;
+    double t2 = tv->selection_end_time;
+    if (t1 > t2) std::swap(t1, t2);
+
+    tv->selection_layout.x1 = (float)(tracks_origin_x + (t1 - tv->viewport.start_time) / current_duration * tracks_inner_width);
+    tv->selection_layout.x2 = (float)(tracks_origin_x + (t2 - tv->viewport.start_time) / current_duration * tracks_inner_width);
+    
+    tv->selection_layout.dim_l_x1 = tracks_origin_x;
+    tv->selection_layout.dim_l_x2 = std::max(tracks_origin_x, std::min(tv->selection_layout.x1, tracks_origin_x + tracks_inner_width));
+    tv->selection_layout.dim_r_x1 = std::min(tracks_origin_x + tracks_inner_width, std::max(tv->selection_layout.x2, tracks_origin_x));
+    tv->selection_layout.dim_r_x2 = tracks_origin_x + tracks_inner_width;
+
+    format_duration(tv->selection_layout.duration_label, sizeof(tv->selection_layout.duration_label), t2 - t1, t2 - t1);
+  }
+
+  // Ruler Ticks
+  array_list_clear(&tv->ruler_ticks);
+  double tick_interval = calculate_tick_interval(current_duration, tracks_inner_width, 100.0);
+  double display_start = tv->viewport.start_time - (double)tv->viewport.min_ts;
+  double display_end = tv->viewport.end_time - (double)tv->viewport.min_ts;
+  double first_tick_rel = ceil(display_start / tick_interval) * tick_interval;
+  for (double t_rel = first_tick_rel; t_rel <= display_end; t_rel += tick_interval) {
+    double t = t_rel + (double)tv->viewport.min_ts;
+    float x = (float)(tracks_origin_x + (t - tv->viewport.start_time) / current_duration * tracks_inner_width);
+    if (x < tracks_origin_x || x > tracks_origin_x + tracks_inner_width) continue;
+
+    RulerTick tick;
+    tick.x = x;
+    tick.ts_rel = t_rel;
+    format_duration(tick.label, sizeof(tick.label), t_rel, tick_interval);
+    array_list_push_back(&tv->ruler_ticks, allocator, tick);
+  }
+
+  tv->last_best_snap_ts = tv->snap_best_ts;
 }
 
 void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
@@ -620,23 +773,16 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         ImVec2(canvas_pos.x + canvas_size.x, canvas_pos.y + canvas_size.y),
         theme.viewport_bg);
 
-    if (tv->timeline_selection.drag_mode != TimelineDragMode::NONE ||
-        timeline_selection_check_proximity(
-            tv->timeline_selection,
-            timeline_mapping_px_to_ts({tv->viewport.start_time, tv->viewport.end_time,
-                                       tracks_origin_x, tracks_inner_width},
-                                      input.mouse_x),
-            (5.0f / tracks_inner_width) *
-                (tv->viewport.end_time - tv->viewport.start_time))
-            .near_start ||
-        timeline_selection_check_proximity(
-            tv->timeline_selection,
-            timeline_mapping_px_to_ts({tv->viewport.start_time, tv->viewport.end_time,
-                                       tracks_origin_x, tracks_inner_width},
-                                      input.mouse_x),
-            (5.0f / tracks_inner_width) *
-                (tv->viewport.end_time - tv->viewport.start_time))
-            .near_end) {
+    double current_mouse_ts = trace_viewer_px_to_ts(
+        tv->viewport.start_time, tv->viewport.end_time, tracks_inner_width,
+        tracks_origin_x, input.mouse_x);
+    SelectionProximity proximity = trace_viewer_selection_check_proximity(
+        tv, current_mouse_ts, (5.0f / tracks_inner_width) *
+                                  (tv->viewport.end_time - tv->viewport.start_time));
+
+    if ((tv->selection_drag_mode != TimelineDragMode::NONE &&
+         tv->selection_drag_mode != TimelineDragMode::RULER_NEW) ||
+        proximity.near_start || proximity.near_end) {
       ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     }
 
@@ -646,23 +792,13 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       // Handle vertical scroll if dragging tracks
       if (ImGui::IsWindowHovered() &&
           ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
-          tv->timeline_selection.drag_mode == TimelineDragMode::NONE) {
+          tv->selection_drag_mode == TimelineDragMode::NONE) {
         ImGui::SetScrollY(ImGui::GetScrollY() - ImGui::GetIO().MouseDelta.y);
       }
 
       ImDrawList* track_draw_list = ImGui::GetWindowDrawList();
 
-      float total_height = 0.0f;
-      float counter_track_height = 3.0f * input.lane_height;
-      for (size_t i = 0; i < tv->tracks.size; i++) {
-        const Track& t = tv->tracks[i];
-        if (t.type == TRACK_TYPE_COUNTER) {
-          total_height += counter_track_height;
-        } else {
-          total_height += (float)(t.max_depth + 2) * input.lane_height;
-        }
-      }
-      ImGui::Dummy(ImVec2(0.0f, total_height));
+      ImGui::Dummy(ImVec2(0.0f, tv->total_tracks_height));
       ImGui::SetCursorPos(ImVec2(0, 0));
 
       ImVec2 tracks_canvas_pos = ImGui::GetCursorScreenPos();
@@ -670,7 +806,6 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       tv->last_inner_width = inner_width;
       tv->last_tracks_x = tracks_canvas_pos.x;
 
-      float cumulative_y = 0.0f;
       bool sel_found = false;
       float sel_x1 = 0, sel_x2 = 0, sel_y1 = 0, sel_y2 = 0;
       ImU32 sel_col = 0;
@@ -678,22 +813,15 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
       for (size_t i = 0; i < tv->tracks.size; i++) {
         const Track& t = tv->tracks[i];
-        float track_height = (t.type == TRACK_TYPE_COUNTER)
-                                 ? counter_track_height
-                                 : (float)(t.max_depth + 2) * input.lane_height;
-        ImVec2 track_pos =
-            ImVec2(tracks_canvas_pos.x, tracks_canvas_pos.y + cumulative_y);
+        const TrackViewInfo& vi = tv->track_infos[i];
 
-        // Frustum culling: skip tracks that are not visible
-        if (track_pos.y + track_height < canvas_pos.y + input.ruler_height ||
-            track_pos.y > canvas_pos.y + canvas_size.y) {
-          cumulative_y += track_height;
-          continue;
-        }
+        if (!vi.visible) continue;
+
+        ImVec2 track_pos(tracks_canvas_pos.x, vi.y);
 
         track_draw_list->AddRectFilled(
             track_pos,
-            ImVec2(track_pos.x + inner_width, track_pos.y + track_height),
+            ImVec2(track_pos.x + inner_width, track_pos.y + vi.height),
             theme.track_bg);
 
         // Render track header
@@ -708,44 +836,23 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
         // Sticky header text
         float sticky_x = std::max(track_pos.x, tracks_canvas_pos.x);
-
-        char default_name[128];
-        std::string_view name_str = trace_data_get_string(td, t.name_ref);
-        std::string_view id_str = trace_data_get_string(td, t.id_ref);
-        const char* display_name = name_str.data();
-        size_t display_name_len = name_str.size();
-
-        if (display_name_len == 0) {
-          if (t.type == TRACK_TYPE_THREAD) {
-            snprintf(default_name, sizeof(default_name), "Thread %d", t.tid);
-          } else {
-            snprintf(default_name, sizeof(default_name), "Counter");
-          }
-          display_name = default_name;
-          display_name_len = strlen(default_name);
-        } else if (id_str.size() > 0) {
-          snprintf(default_name, sizeof(default_name), "%.*s (%.*s)",
-                   (int)name_str.size(), name_str.data(), (int)id_str.size(), id_str.data());
-          display_name = default_name;
-          display_name_len = strlen(default_name);
-        }
-
         float font_size = ImGui::GetFontSize();
         ImVec2 text_pos = ImVec2(
             sticky_x + 5, track_pos.y + (input.lane_height - font_size) * 0.5f);
+        
+        size_t display_name_len = strlen(vi.name);
         track_draw_list->AddText(ImGui::GetFont(), font_size, text_pos,
-                                 theme.track_text, display_name,
-                                 display_name + display_name_len);
+                                 theme.track_text, vi.name,
+                                 vi.name + display_name_len);
 
         ImVec2 text_size = ImGui::GetFont()->CalcTextSizeA(
-            font_size, FLT_MAX, 0.0f, display_name,
-            display_name + display_name_len);
+            font_size, FLT_MAX, 0.0f, vi.name,
+            vi.name + display_name_len);
         
         // Tooltip for header
-        if (timeline_selection_is_mouse_inside(tv->timeline_selection, 
-                timeline_mapping_px_to_ts({tv->viewport.start_time, tv->viewport.end_time,
-                                           tracks_canvas_pos.x, inner_width},
-                                          input.mouse_x)) &&
+        if (trace_viewer_selection_is_mouse_inside(tv, 
+                trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
+                                      inner_width, tracks_canvas_pos.x, input.mouse_x)) &&
             ImGui::IsMouseHoveringRect(
                 text_pos, ImVec2(text_pos.x + text_size.x,
                                  text_pos.y + text_size.y))) {
@@ -756,6 +863,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           if (t.type == TRACK_TYPE_THREAD) {
             ImGui::Text("TID: %d", t.tid);
           }
+          std::string_view name_str = trace_data_get_string(td, t.name_ref);
+          std::string_view id_str = trace_data_get_string(td, t.id_ref);
           if (name_str.size() > 0) {
             ImGui::Separator();
             ImGui::Text("Name: %.*s", (int)name_str.size(), name_str.data());
@@ -794,15 +903,17 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
             }
           }
         } else {
+          bool mouse_in_sel = trace_viewer_selection_is_mouse_inside(
+              tv, trace_viewer_px_to_ts(tv->viewport.start_time,
+                                        tv->viewport.end_time, inner_width,
+                                        tracks_canvas_pos.x, input.mouse_x));
           trace_viewer_draw_counter_track(
               tv, td, track_draw_list, t,
               ImVec2(track_pos.x, track_pos.y + input.lane_height), inner_width,
-              track_height - input.lane_height, tv->viewport.start_time,
+              vi.height - input.lane_height, tv->viewport.start_time,
               tv->viewport.end_time, (double)tv->viewport.min_ts, theme,
-              ImVec2(input.mouse_x, input.mouse_y), true, allocator);
+              ImVec2(input.mouse_x, input.mouse_y), mouse_in_sel, allocator);
         }
-
-        cumulative_y += track_height;
       }
 
       // Handle hover highlighting and tooltip
@@ -888,10 +999,10 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           tv, track_draw_list, ImVec2(tracks_canvas_pos.x, ImGui::GetWindowPos().y),
           ImVec2(inner_width, ImGui::GetWindowSize().y), theme, true);
 
-      if (tv->snapping.has_snap &&
-          tv->timeline_selection.drag_mode != TimelineDragMode::NONE) {
-        track_draw_list->AddLine(ImVec2(tv->snapping.snap_px, tv->snapping.snap_y1),
-                                 ImVec2(tv->snapping.snap_px, tv->snapping.snap_y2),
+      if (tv->snap_has_snap &&
+          tv->selection_drag_mode != TimelineDragMode::NONE) {
+        track_draw_list->AddLine(ImVec2(tv->snap_px, tv->snap_y1),
+                                 ImVec2(tv->snap_px, tv->snap_y2),
                                  IM_COL32(255, 0, 0, 255), 3.0f);
       }
     }

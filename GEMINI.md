@@ -58,8 +58,9 @@
     - **Initialization**: As `App` is a non-aggregate, it is initialized using placement new (`new (app) App()`) followed by member setup.
     - **Thread Safety**: Access to `TraceData` from the main thread (e.g., for theme updates) is strictly prohibited while `loading.active` is true to avoid data races with the background parser.
 - `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
-    - **Architecture**: Decouples interaction logic from ImGui rendering via a pure `trace_viewer_step` function and a `TraceViewerInput` struct. This mirrors the pattern used in `timeline_selection` and enables comprehensive unit testing of viewport navigation, hit-testing, and selection without an ImGui context.
-    - **Unit Tests**: Logic is verified in `src/trace_viewer_test.cc`, covering zoom-in, panning, and event hit-testing/selection.
+    - **Architecture**: Decouples interaction and layout logic from ImGui rendering via a pure `trace_viewer_step` function and a `TraceViewerInput` struct. This enables comprehensive unit testing of viewport navigation, hit-testing, selection, and layout without an ImGui context.
+    - **Layout Pre-computation**: `trace_viewer_step` computes all layout-dependent state (track Y-offsets, heights, visibility, header names, ruler ticks, and selection overlay dimensions) into dedicated layout structures (`TrackViewInfo`, `RulerTick`, `SelectionOverlayLayout`). This ensures the drawing phase is "dumb" and strictly consumes pre-computed values.
+    - **Unit Tests**: Logic is extensively verified in `src/trace_viewer_test.cc`, covering zoom/pan, event hit-testing/selection, timeline selection/snapping, and layout calculations (including culling and naming).
     - **ZII Support**: Fully Zero-Is-Initialization compatible.
 - `src/loading_screen`: Specialized scene for displaying parsing progress and filename during trace loading.
 - `src/welcome_screen`: Initial "drop file" landing scene.
@@ -155,10 +156,10 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
         - Hovering and clicking on events or tracks is disabled within the dimmed areas (outside the selection).
         - Hovering and clicking on events is disabled while dragging boundaries or when the mouse is over a boundary handle.
         - Panning (horizontal and vertical) is disabled while a boundary is being dragged.
-    - **Zoom/Pan Constraints**: When a selection is active, the viewport is constrained to keep the selection visible.
+    - **Zoom/Pan Constraints**: When a selection is active, the viewport is constrained to keep the selection visible. Panning is clamped so selection boundaries can reach but not exceed viewport edges.
     - **Deselection**: A simple click on the timeline ruler (without dragging) clears the active selection.
-    - **Refactored Interaction Logic**: Interaction handling is decoupled from ImGui via a unified `timeline_selection_step` function and a `TimelineInteraction` struct. Viewport logic is consolidated into `viewport_step`.
-    - **Comprehensive Tests**: Logic is verified by multi-frame simulation tests in `src/timeline_selection_test.cc`, covering precise click starts, snapped dragging, pan isolation, and zoom clamping.
+    - **Refactored Interaction Logic**: Selection and snapping logic are consolidated directly into `TraceViewer`, with per-frame updates handled in `trace_viewer_step`.
+    - **Comprehensive Tests**: Logic is verified by multi-frame simulation tests in `src/trace_viewer_test.cc`, covering precise click starts, snapped dragging, interaction gating, and zoom clamping.
     - **Stationary Mapping**: All time-to-pixel conversions use a consistent stationary origin (`tv->last_tracks_x`) and width (`tv->last_inner_width`) to ensure perfect horizontal alignment between the ruler and tracks.
 - **Rendering Optimization**:
     - **Visibility Culling (Horizontal)**: Events are grouped into tracks. Each track maintains a `max_dur` (maximum event duration) and sorted `event_indices`. Binary search is used to find the first potentially visible event at `viewport_start - max_dur`, ensuring partially visible events are correctly rendered.

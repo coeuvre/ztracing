@@ -4,10 +4,18 @@
 #include "src/allocator.h"
 #include "src/array_list.h"
 #include "src/colors.h"
-#include "src/timeline_selection.h"
 #include "src/trace_data.h"
 #include "src/track.h"
 #include "src/track_renderer.h"
+
+enum class TimelineDragMode {
+  NONE,
+  RULER_NEW,
+  RULER_START,
+  RULER_END,
+  TRACKS_START,
+  TRACKS_END
+};
 
 struct HoverMatch {
   size_t track_idx;
@@ -41,6 +49,30 @@ struct TraceViewerInput {
   bool ruler_activated;
   bool ruler_deactivated;
   bool tracks_hovered;
+
+  // Derived interaction info
+  double mouse_ts;
+};
+
+struct TrackViewInfo {
+  float y;
+  float height;
+  bool visible;
+  char name[128];
+};
+
+struct RulerTick {
+  float x;
+  double ts_rel;
+  char label[32];
+};
+
+struct SelectionOverlayLayout {
+  bool active;
+  float x1, x2;
+  float dim_l_x1, dim_l_x2;
+  float dim_r_x1, dim_r_x2;
+  char duration_label[64];
 };
 
 struct TraceViewer {
@@ -51,14 +83,31 @@ struct TraceViewer {
     double end_time;
   } viewport;
 
-  TimelineSelectionState timeline_selection;
+  // Timeline selection state
+  bool selection_active;
+  double selection_start_time;
+  double selection_end_time;
+  TimelineDragMode selection_drag_mode;
+
+  // Snapping state
+  double snap_best_ts;
+  float snap_best_dist_px;
+  float snap_threshold_px;
+  bool snap_has_snap;
+  float snap_px;
+  float snap_y1;
+  float snap_y2;
 
   ArrayList<Track> tracks;
+  ArrayList<TrackViewInfo> track_infos;
+  ArrayList<RulerTick> ruler_ticks;
+  SelectionOverlayLayout selection_layout;
+  float total_tracks_height;
+
   TrackRendererState track_renderer_state;
   ArrayList<TrackRenderBlock> render_blocks;
   ArrayList<CounterRenderBlock> counter_render_blocks;
   ArrayList<HoverMatch> hover_matches;
-  TimelineSnappingState snapping;
   int64_t selected_event_index = -1;
   bool show_details_panel;
   float last_inner_width = 0;
