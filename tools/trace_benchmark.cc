@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
   CountingAllocator ca = counting_allocator_init(allocator_get_default());
   Allocator a = counting_allocator_get_allocator(&ca);
 
-  TraceParser p = trace_parser_init(a);
+  TraceParser p = {};
 
   char buf[65536];
   size_t event_count = 0;
@@ -36,9 +36,9 @@ int main(int argc, char** argv) {
   while (true) {
     size_t n = fread(buf, 1, sizeof(buf), f);
     bool is_eof = n < sizeof(buf);
-    trace_parser_feed(&p, buf, n, is_eof);
+    trace_parser_feed(&p, a, buf, n, is_eof);
 
-    while (trace_parser_next(&p, &event)) {
+    while (trace_parser_next(&p, a, &event)) {
       event_count++;
     }
 
@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
   printf("consumed memory: %.2f MB (%zu bytes)\n",
          (double)consumed_mem / (1024.0 * 1024.0), consumed_mem);
 
-  trace_parser_deinit(&p);
+  trace_parser_deinit(&p, a);
   fclose(f);
 
   return 0;

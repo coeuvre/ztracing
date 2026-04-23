@@ -17,6 +17,8 @@ static void trace_loading_worker(TraceLoadingState* loading) {
   LOG_DEBUG("trace_loading_worker started (session_id: %d)",
             loading->session_id);
 
+  size_t total_discarded_bytes = 0;
+
   while (true) {
     TraceChunk chunk = {};
     {
@@ -33,7 +35,9 @@ static void trace_loading_worker(TraceLoadingState* loading) {
     }
 
     if (chunk.data) {
-      trace_parser_feed(&loading->parser, chunk.data, chunk.size, chunk.is_eof);
+      total_discarded_bytes += trace_parser_feed(
+          &loading->parser, loading->allocator, chunk.data, chunk.size,
+          chunk.is_eof);
       allocator_free(loading->allocator, chunk.data, chunk.size);
 
       {
@@ -43,13 +47,15 @@ static void trace_loading_worker(TraceLoadingState* loading) {
     }
 
     TraceEvent event;
-    while (trace_parser_next(&loading->parser, &event)) {
+    while (trace_parser_next(&loading->parser, loading->allocator, &event)) {
       trace_data_add_event(loading->trace_data, loading->allocator,
                            loading->theme, &event);
       loading->event_count.fetch_add(1, std::memory_order_relaxed);
-      loading->total_bytes.store(loading->parser.pos,
+      loading->total_bytes.store(total_discarded_bytes + loading->parser.pos,
                                  std::memory_order_relaxed);
     }
+
+    loading->request_update.store(true, std::memory_order_relaxed);
 
     if (chunk.is_eof) break;
   }
@@ -110,7 +116,7 @@ static void app_stop_worker(App* app) {
     if (app->loading.worker_thread.joinable()) {
       app->loading.worker_thread.join();
     }
-    trace_parser_deinit(&app->loading.parser);
+    trace_parser_deinit(&app->loading.parser, app->allocator);
     app->loading.active = false;
   }
 }
@@ -254,7 +260,7 @@ void app_begin_session(App* app, int session_id, const char* filename) {
   app->loading.trace_data = &app->trace_data;
   app->loading.trace_viewer = &app->trace_viewer;
 
-  app->loading.parser = trace_parser_init(app->allocator);
+  app->loading.parser = {};
   trace_data_clear(&app->trace_data, app->allocator);
   app->loading.event_count = 0;
   app->loading.total_bytes = 0;

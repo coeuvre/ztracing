@@ -40,8 +40,9 @@
     - **Fast Resizing**: Uses cached hashes during table expansion to eliminate redundant recomputations.
     - **Stateful Functors**: Supports stateful functors for hashing and equality, enabling complex key types.
 - `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments. Includes support for the `id` field and numeric argument pre-parsing.
-    - **Precision Optimization**: To ensure consistent formatting during rendering, the parser only stores raw JSON strings for non-numeric argument types. For numbers, the string is left empty, forcing the renderer to utilize the `val_double` field with the standard application-wide precision.
-    - **ZII Support**: Supports Zero-Is-Initialization via designated initializers.
+    - **ZII Support**: Fully Zero-Is-Initialization compatible. Initialization is performed via `{}`.
+    - **Explicit Allocation**: The stored `Allocator` has been removed. All parser functions (`trace_parser_deinit`, `trace_parser_feed`, `trace_parser_next`) now accept an `Allocator` as an explicit argument.
+    - **Progress Tracking**: `trace_parser_feed` returns the number of discarded bytes when shifting the internal buffer, allowing callers to accurately track cumulative parsing progress across multiple chunks.
 - `src/trace_data`: Persistent storage for parsed events. 
     - **ZII Support**: Fully ZII compatible via `{}`. Internal functors are lazily linked to the current instance address during the first string push to avoid dangling pointers during moves/copies.
     - **String Table**: Uses a de-duplicated String Table with global hashing to minimize memory usage for repetitive trace data (e.g., event names, categories).

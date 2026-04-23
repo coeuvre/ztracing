@@ -39,7 +39,6 @@ enum TraceParserState {
 };
 
 struct TraceParser {
-  Allocator a;
   ArrayList<char> buffer;
   ArrayList<TraceArg> args_buffer;
   TraceParserState state;
@@ -48,14 +47,14 @@ struct TraceParser {
   bool is_array_format;
 };
 
-TraceParser trace_parser_init(Allocator a);
-void trace_parser_deinit(TraceParser* p);
+void trace_parser_deinit(TraceParser* p, Allocator a);
 
-// Feed data to the parser.
-void trace_parser_feed(TraceParser* p, const char* buf, size_t len,
-                       bool is_eof);
+// Feed data to the parser. Returns the number of bytes discarded from the internal
+// buffer.
+size_t trace_parser_feed(TraceParser* p, Allocator a, const char* buf, size_t len,
+                         bool is_eof);
 
 // Pull the next event.
-bool trace_parser_next(TraceParser* p, TraceEvent* event);
+bool trace_parser_next(TraceParser* p, Allocator a, TraceEvent* event);
 
 #endif  // ZTRACING_SRC_TRACE_PARSER_H_

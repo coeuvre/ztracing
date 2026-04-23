@@ -145,26 +145,25 @@ static JsonToken json_reader_next(JsonReader* r) {
   return {JSON_TOKEN_ERROR, {}};
 }
 
-TraceParser trace_parser_init(Allocator a) {
-  return TraceParser{.a = a};
+void trace_parser_deinit(TraceParser* p, Allocator a) {
+  array_list_deinit(&p->buffer, a);
+  array_list_deinit(&p->args_buffer, a);
 }
 
-void trace_parser_deinit(TraceParser* p) {
-  array_list_deinit(&p->buffer, p->a);
-  array_list_deinit(&p->args_buffer, p->a);
-}
-
-void trace_parser_feed(TraceParser* p, const char* buf, size_t len,
-                       bool is_eof) {
+size_t trace_parser_feed(TraceParser* p, Allocator a, const char* buf, size_t len,
+                         bool is_eof) {
+  size_t discarded = 0;
   if (p->pos > 0 && p->pos > p->buffer.size / 2) {
     if (p->pos < p->buffer.size) {
       memmove(p->buffer.data, p->buffer.data + p->pos, p->buffer.size - p->pos);
     }
+    discarded = p->pos;
     p->buffer.size -= p->pos;
     p->pos = 0;
   }
-  array_list_append(&p->buffer, p->a, buf, len);
+  array_list_append(&p->buffer, a, buf, len);
   p->is_eof = is_eof;
+  return discarded;
 }
 
 static int64_t to_int64(std::string_view s) {
@@ -187,7 +186,7 @@ static double to_double(std::string_view s) {
   return atof(tmp);
 }
 
-static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
+static bool parse_event(JsonReader* r, TraceParser* p, Allocator a, TraceEvent* event) {
   JsonToken tok = json_reader_next(r);
   if (tok.type != JSON_TOKEN_OBJECT_START) return false;
 
@@ -284,7 +283,7 @@ static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
         } else {
           return false;
         }
-        array_list_push_back(&p->args_buffer, p->a, arg);
+        array_list_push_back(&p->args_buffer, a, arg);
 
         tok = json_reader_next(r);
         if (tok.type == JSON_TOKEN_COMMA) continue;
@@ -320,7 +319,7 @@ static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
   return true;
 }
 
-bool trace_parser_next(TraceParser* p, TraceEvent* event) {
+bool trace_parser_next(TraceParser* p, Allocator a, TraceEvent* event) {
   JsonReader r = {p->buffer.data, p->buffer.size, p->pos};
 
   while (!json_reader_done(&r)) {
@@ -399,7 +398,7 @@ bool trace_parser_next(TraceParser* p, TraceEvent* event) {
         }
 
         size_t start_pos = r.pos;
-        if (parse_event(&r, p, event)) {
+        if (parse_event(&r, p, a, event)) {
           p->pos = r.pos;
           return true;
         } else {
