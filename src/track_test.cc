@@ -45,7 +45,7 @@ TEST(TrackTest, UpdateMaxDur) {
   array_list_push_back(&t.event_indices, a, (size_t)0);
   array_list_push_back(&t.event_indices, a, (size_t)1);
 
-  track_update_max_dur(&t, &td);
+  track_update_max_dur(&t, &td, a);
 
   EXPECT_EQ(t.max_dur, 500);
 
@@ -87,7 +87,7 @@ TEST(TrackTest, FindVisibleStartIndex) {
   }
 
   track_sort_events(&t, &td, a);
-  track_update_max_dur(&t, &td);  // max_dur should be 600
+  track_update_max_dur(&t, &td, a);  // max_dur should be 600
 
   // Case 1: Viewport starts at 50. Event 0 starts at 0, dur 100.
   // It should be visible.

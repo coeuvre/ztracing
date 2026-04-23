@@ -12,6 +12,8 @@ enum TrackType {
   TRACK_TYPE_THREAD,
 };
 
+#define TRACK_BLOCK_SIZE 1024
+
 struct Track {
   TrackType type;
   int32_t pid;
@@ -23,6 +25,7 @@ struct Track {
   ArrayList<uint32_t> depths;
   ArrayList<StringRef> counter_series;
   ArrayList<uint32_t> counter_colors;
+  ArrayList<int64_t> block_max_durs;
   double counter_max_total;
   int64_t max_dur;
   uint32_t max_depth;
@@ -30,7 +33,7 @@ struct Track {
 
 void track_deinit(Track* t, Allocator a);
 void track_sort_events(Track* t, const TraceData* td, Allocator a);
-void track_update_max_dur(Track* t, const TraceData* td);
+void track_update_max_dur(Track* t, const TraceData* td, Allocator a);
 void track_calculate_depths(Track* t, const TraceData* td, Allocator a);
 size_t track_find_visible_start_index(const Track* t, const TraceData* td,
                                       int64_t viewport_start_ts);

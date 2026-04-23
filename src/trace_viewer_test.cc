@@ -75,7 +75,7 @@ TEST_F(TraceViewerTest, HitTestingThreadEvent) {
     Track t = {};
     t.type = TRACK_TYPE_THREAD;
     array_list_push_back(&t.event_indices, allocator, (size_t)0);
-    track_update_max_dur(&t, &td);
+    track_update_max_dur(&t, &td, allocator);
     track_calculate_depths(&t, &td, allocator);
     array_list_push_back(&tv.tracks, allocator, t);
 
@@ -115,7 +115,7 @@ TEST_F(TraceViewerTest, SelectionOnClick) {
     Track t = {};
     t.type = TRACK_TYPE_THREAD;
     array_list_push_back(&t.event_indices, allocator, (size_t)0);
-    track_update_max_dur(&t, &td);
+    track_update_max_dur(&t, &td, allocator);
     track_calculate_depths(&t, &td, allocator);
     array_list_push_back(&tv.tracks, allocator, t);
 
@@ -267,7 +267,7 @@ TEST_F(TraceViewerTest, TimelineSnapping) {
     Track t = {};
     t.type = TRACK_TYPE_THREAD;
     array_list_push_back(&t.event_indices, allocator, (size_t)0);
-    track_update_max_dur(&t, &td);
+    track_update_max_dur(&t, &td, allocator);
     track_calculate_depths(&t, &td, allocator);
     array_list_push_back(&tv.tracks, allocator, t);
 
@@ -326,7 +326,7 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
     Track t = {};
     t.type = TRACK_TYPE_THREAD;
     array_list_push_back(&t.event_indices, allocator, (size_t)0);
-    track_update_max_dur(&t, &td);
+    track_update_max_dur(&t, &td, allocator);
     track_calculate_depths(&t, &td, allocator);
     array_list_push_back(&tv.tracks, allocator, t);
 
@@ -384,7 +384,7 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
     array_list_push_back(&t.event_indices, allocator, (size_t)1);
     array_list_push_back(&t.counter_series, allocator, (StringRef)1);
     t.counter_max_total = 1.0;
-    track_update_max_dur(&t, &td);
+    track_update_max_dur(&t, &td, allocator);
     array_list_push_back(&tv.tracks, allocator, t);
 
     TraceViewerInput input = {};
@@ -440,7 +440,7 @@ TEST_F(TraceViewerTest, CounterInteractionInsideSelectionWorks) {
     array_list_push_back(&t.event_indices, allocator, (size_t)1);
     array_list_push_back(&t.counter_series, allocator, (StringRef)1);
     t.counter_max_total = 1.0;
-    track_update_max_dur(&t, &td);
+    track_update_max_dur(&t, &td, allocator);
     array_list_push_back(&tv.tracks, allocator, t);
 
     TraceViewerInput input = {};
@@ -476,7 +476,7 @@ TEST_F(TraceViewerTest, SnappingOnlyInVisibleTracks) {
     Track t = {};
     t.type = TRACK_TYPE_THREAD;
     array_list_push_back(&t.event_indices, allocator, (size_t)0);
-    track_update_max_dur(&t, &td);
+    track_update_max_dur(&t, &td, allocator);
     track_calculate_depths(&t, &td, allocator);
     array_list_push_back(&tv.tracks, allocator, t);
 
@@ -529,7 +529,7 @@ TEST_F(TraceViewerTest, SnappingDisabledWhenNotDragging) {
     Track t = {};
     t.type = TRACK_TYPE_THREAD;
     array_list_push_back(&t.event_indices, allocator, (size_t)0);
-    track_update_max_dur(&t, &td);
+    track_update_max_dur(&t, &td, allocator);
     track_calculate_depths(&t, &td, allocator);
     array_list_push_back(&tv.tracks, allocator, t);
 
@@ -675,7 +675,7 @@ TEST_F(TraceViewerTest, TimelineSnappedBoundaryDragTracks) {
     Track t = {};
     t.type = TRACK_TYPE_THREAD;
     array_list_push_back(&t.event_indices, allocator, (size_t)0);
-    track_update_max_dur(&t, &td);
+    track_update_max_dur(&t, &td, allocator);
     track_calculate_depths(&t, &td, allocator);
     array_list_push_back(&tv.tracks, allocator, t);
 

@@ -44,6 +44,7 @@ struct ThreadBucketState {
 
 struct TrackRendererState {
   ArrayList<ThreadBucketState> thread_bucket_states;
+  ArrayList<int64_t> thread_depth_blocked_until;
   ArrayList<double> counter_current_values;
   ArrayList<double> counter_bucket_max_values;
   ArrayList<uint8_t> counter_series_updated;
@@ -54,6 +55,7 @@ struct TrackRendererState {
 inline void track_renderer_state_deinit(TrackRendererState* state,
                                         Allocator a) {
   array_list_deinit(&state->thread_bucket_states, a);
+  array_list_deinit(&state->thread_depth_blocked_until, a);
   array_list_deinit(&state->counter_current_values, a);
   array_list_deinit(&state->counter_bucket_max_values, a);
   array_list_deinit(&state->counter_series_updated, a);
@@ -63,6 +65,7 @@ inline void track_renderer_state_deinit(TrackRendererState* state,
 
 inline void track_renderer_state_clear(TrackRendererState* state) {
   array_list_clear(&state->thread_bucket_states);
+  array_list_clear(&state->thread_depth_blocked_until);
   array_list_clear(&state->counter_current_values);
   array_list_clear(&state->counter_bucket_max_values);
   array_list_clear(&state->counter_series_updated);

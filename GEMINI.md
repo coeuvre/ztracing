@@ -78,6 +78,7 @@
     - **Track Organization**: Implements a high-performance two-pass organization algorithm (`track_organize`) that uses a `HashTable` for $O(1)$ track discovery and a sequential cache for consecutive events. Decoupled from `App` for modularity and unit testing.
     - **Coloring**: Provides `track_update_colors` to update counter track colors based on the current theme. This is used both during initial organization and when switching themes dynamically.
     - **Event Sorting**: Optimized for massive tracks using a cache-friendly temporary `SortKey` array to minimize cache misses during indirect data lookups.
+    - **Block Summaries**: Computes `block_max_durs` for each track, storing the maximum event duration for every 1024 events. This enables efficient skipping of invisible events during rendering.
 - `src/format`: Human-readable time formatting (s, ms, us) and tick interval calculation.
 - `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
     - **Performance Attributes**: Configures WebGL context with `alpha: false`, `antialias: false`, `depth: false`, and `premultipliedAlpha: false` to minimize compositor workload.
@@ -86,6 +87,7 @@
 - `src/logging`: Simple logging utility with WASM console and native stdout integration.
 - `src/track_renderer`: Standalone rendering module that implements performance optimizations like LOD and event coalescing. 
     - **Allocation-Free Rendering**: Uses a persistent `TrackRendererState` (Zero-Is-Initialization compatible) to host temporary buffers (`thread_bucket_states`, `counter_current_values`, etc.), eliminating per-frame heap allocations during rendering.
+    - **Block-Based Optimization**: Utilizes `block_max_durs` to achieve $O(\text{Blocks} + \text{VisibleEvents})$ rendering complexity. This ensures high performance even when zoomed into microsecond-level details on massive traces by instantly skipping irrelevant event blocks and identifying spanning events without a full trace scan.
     - **Decoupling**: Separates rendering calculations from ImGui-specific logic to allow for comprehensive unit testing.
 
 ## Multi-threading & PThreads

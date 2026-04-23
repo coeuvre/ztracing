@@ -915,3 +915,123 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityThreshold) {
 
   track_deinit(&t, allocator);
 }
+
+TEST_F(TrackRendererTest, ZoomedInSpanningEvent) {
+  Track t = {};
+  // 1,000,000 events.
+  // Event 0: starts at 0, dur 60s (60,000,000us).
+  // Other 999,999 events: 10us each, starting at 60s+.
+  TraceEvent e_monster = {};
+  e_monster.name = "monster";
+  e_monster.ts = 0;
+  e_monster.dur = 60000000;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e_monster);
+
+  for (int i = 0; i < 999999; i++) {
+    TraceEvent e = {};
+    e.name = "tiny";
+    e.ts = 60000000 + i * 20;
+    e.dur = 10;
+    trace_data_add_event(&td, allocator, theme_get_dark(), &e);
+  }
+
+  for (size_t i = 0; i < 1000000; i++) {
+    array_list_push_back(&t.event_indices, allocator, i);
+  }
+
+  array_list_resize(&t.depths, allocator, 1000000);
+  for (size_t i = 0; i < 1000000; i++) t.depths[i] = 0;
+  t.max_depth = 0;
+
+  // This will calculate block_max_durs.
+  track_update_max_dur(&t, &td, allocator);
+
+  // Viewport zoomed into 100ms at the end of the monster event.
+  double viewport_start = 59900000; // 59.9s
+  double viewport_end = 60000000;   // 60.0s
+  float width = 1000.0f;
+
+  // Measure time.
+  auto start_time = std::chrono::high_resolution_clock::now();
+  track_compute_render_blocks(&t, &td, viewport_start, viewport_end, width, 0.0f,
+                              -1, &state, &blocks, allocator);
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        end_time - start_time)
+                        .count();
+
+  // Without optimization, this could take >100ms or even seconds due to 
+  // millions of buckets. With optimization, it should be <1ms.
+  // We'll be conservative and expect <10ms for CI environments.
+  EXPECT_LT(elapsed_ms, 10);
+  
+  // Verify monster event is rendered.
+  bool found_monster = false;
+  for (size_t i = 0; i < blocks.size; i++) {
+    if (blocks[i].event_idx == 0) {
+      found_monster = true;
+      // It should span from before viewport to the end of viewport (in this case).
+      EXPECT_LE(blocks[i].x1, 0.0f);
+      EXPECT_GE(blocks[i].x2, width);
+    }
+  }
+  EXPECT_TRUE(found_monster);
+
+  track_deinit(&t, allocator);
+}
+
+TEST_F(TrackRendererTest, CorrectnessSpanningAndCoalesced) {
+  Track t = {};
+  // Block size is 1024.
+  // Block 0:
+  // Event 0: 0 to 2000. (Spanning)
+  // Events 1-1023: 0 to 10. (Invisible)
+  TraceEvent e_spanning = {};
+  e_spanning.name = "spanning"; e_spanning.ts = 0; e_spanning.dur = 2000;
+  trace_data_add_event(&td, allocator, theme_get_dark(), &e_spanning);
+  array_list_push_back(&t.event_indices, allocator, (size_t)0);
+
+  for (int i = 1; i < 1024; i++) {
+    TraceEvent e = {}; e.name = "tiny_invis"; e.ts = 0; e.dur = 10;
+    trace_data_add_event(&td, allocator, theme_get_dark(), &e);
+    array_list_push_back(&t.event_indices, allocator, (size_t)i);
+  }
+
+  // Block 1:
+  // Events 1024-2047: starting at 1000, 1us duration, spaced by 1us.
+  for (int i = 0; i < 1024; i++) {
+    TraceEvent e = {}; e.name = "tiny_vis"; e.ts = 1000 + i * 2; e.dur = 1;
+    trace_data_add_event(&td, allocator, theme_get_dark(), &e);
+    array_list_push_back(&t.event_indices, allocator, (size_t)(1024 + i));
+  }
+
+  array_list_resize(&t.depths, allocator, 2048);
+  for (size_t i = 0; i < 1024; i++) t.depths[i] = 0; // Spanning is depth 0
+  for (size_t i = 1024; i < 2048; i++) t.depths[i] = 1; // Tiny vis are depth 1
+  t.max_depth = 1;
+
+  track_update_max_dur(&t, &td, allocator);
+
+  // Viewport: 1000 to 1100. (100us)
+  // Width: 1000px. 1px = 1us. Bucket = 3us.
+  track_compute_render_blocks(&t, &td, 1000, 1100, 1000.0f, 0.0f, -1, &state,
+                              &blocks, allocator);
+
+  // Should have:
+  // 1. Spanning event at depth 0.
+  // 2. Coalesced blocks at depth 1.
+  bool found_spanning = false;
+  int depth1_blocks = 0;
+  for (size_t i = 0; i < blocks.size; i++) {
+    if (blocks[i].depth == 0) {
+      EXPECT_EQ(blocks[i].event_idx, 0u);
+      found_spanning = true;
+    } else if (blocks[i].depth == 1) {
+      depth1_blocks++;
+    }
+  }
+  EXPECT_TRUE(found_spanning);
+  EXPECT_GT(depth1_blocks, 0);
+
+  track_deinit(&t, allocator);
+}

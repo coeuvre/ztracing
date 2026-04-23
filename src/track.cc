@@ -34,16 +34,27 @@ void track_deinit(Track* t, Allocator a) {
   array_list_deinit(&t->depths, a);
   array_list_deinit(&t->counter_series, a);
   array_list_deinit(&t->counter_colors, a);
+  array_list_deinit(&t->block_max_durs, a);
 }
 
 void track_sort_events(Track* t, const TraceData* td);
 
-void track_update_max_dur(Track* t, const TraceData* td) {
+void track_update_max_dur(Track* t, const TraceData* td, Allocator a) {
   int64_t max_dur = 0;
-  for (size_t i = 0; i < t->event_indices.size; i++) {
-    size_t event_idx = t->event_indices[i];
-    int64_t dur = td->events[event_idx].dur;
-    if (dur > max_dur) max_dur = dur;
+  size_t num_blocks = (t->event_indices.size + TRACK_BLOCK_SIZE - 1) / TRACK_BLOCK_SIZE;
+  array_list_resize(&t->block_max_durs, a, num_blocks);
+
+  for (size_t b = 0; b < num_blocks; b++) {
+    int64_t block_max_dur = 0;
+    size_t start = b * TRACK_BLOCK_SIZE;
+    size_t end = std::min(start + TRACK_BLOCK_SIZE, t->event_indices.size);
+    for (size_t i = start; i < end; i++) {
+      size_t event_idx = t->event_indices[i];
+      int64_t dur = td->events[event_idx].dur;
+      if (dur > block_max_dur) block_max_dur = dur;
+    }
+    t->block_max_durs[b] = block_max_dur;
+    if (block_max_dur > max_dur) max_dur = block_max_dur;
   }
   t->max_dur = max_dur;
 }
@@ -98,18 +109,41 @@ size_t track_find_visible_start_index(const Track* t, const TraceData* td,
   if (t->event_indices.size == 0) return 0;
 
   // We want to find the first event that COULD be visible.
-  // An event is visible if e.ts + e.dur > viewport_start_ts (and e.ts <
-  // viewport_end_ts). Since we know e.dur <= track.max_dur, if e.ts +
-  // track.max_dur <= viewport_start_ts, then e.ts + e.dur <= viewport_start_ts,
-  // so it's definitely not visible. Thus we only need to look at events where
-  // e.ts > viewport_start_ts - track.max_dur.
+  // An event is visible if e.ts + e.dur > viewport_start_ts.
+  // We use block_max_durs to quickly skip blocks where no event overlaps.
+  size_t num_blocks = t->block_max_durs.size;
+  size_t first_block = 0;
 
-  int64_t search_ts = viewport_start_ts - t->max_dur;
+  for (size_t b = 0; b < num_blocks; b++) {
+    size_t start_idx = b * TRACK_BLOCK_SIZE;
+    size_t end_idx = std::min(start_idx + TRACK_BLOCK_SIZE, t->event_indices.size);
+    int64_t block_last_ts = td->events[t->event_indices[end_idx - 1]].ts;
+
+    // If even the last event in the block, plus the maximum duration in this
+    // block, doesn't reach viewport_start_ts, then no event in this block
+    // (or any previous block, since they are sorted by ts) can be visible.
+    if (block_last_ts + t->block_max_durs[b] < viewport_start_ts) {
+      first_block = b + 1;
+    } else {
+      // This block MIGHT contain a visible event.
+      break;
+    }
+  }
+
+  size_t start_search_idx = std::min(first_block * TRACK_BLOCK_SIZE, t->event_indices.size);
 
   auto it = std::lower_bound(
-      t->event_indices.data, t->event_indices.data + t->event_indices.size,
-      search_ts,
-      [&](size_t idx, int64_t val) { return td->events[idx].ts < val; });
+      t->event_indices.data + start_search_idx,
+      t->event_indices.data + t->event_indices.size, viewport_start_ts,
+      [&](size_t idx, int64_t val) {
+        // We need to find the first event e where e.ts + e.dur > viewport_start_ts.
+        // However, lower_bound only works on a sorted property.
+        // The property "e.ts + e.dur > val" is NOT strictly sorted.
+        // But we know e.ts is sorted.
+        // The best we can do with binary search on ts is to find the first event
+        // that starts after (val - max_dur).
+        return td->events[idx].ts < val - t->max_dur;
+      });
 
   return (size_t)(it - t->event_indices.data);
 }
@@ -300,7 +334,6 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
         if (e.ts + e.dur > max_ts) max_ts = e.ts + e.dur;
       }
       event_counts[track_idx]++;
-      if (e.dur > t.max_dur) t.max_dur = e.dur;
     }
   }
 
@@ -343,6 +376,7 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
   for (size_t i = 0; i < out_tracks->size; i++) {
     Track& t = (*out_tracks)[i];
     track_sort_events(&t, td, a);
+    track_update_max_dur(&t, td, a);
     if (t.type == TRACK_TYPE_THREAD) {
       track_calculate_depths(&t, td, a);
     } else {

@@ -39,13 +39,72 @@ void track_compute_render_blocks(
 
   double bucket_dur = (double)TRACK_MIN_EVENT_WIDTH / inv_duration;
   // Align current_bucket_ts to a multiple of bucket_dur for stability during
-  // panning. We start far enough back to catch events starting up to max_dur
-  // before viewport_start.
-  double current_bucket_ts =
-      floor((viewport_start - (double)track->max_dur) / bucket_dur) * bucket_dur;
+  // panning.
+  double current_bucket_ts = floor(viewport_start / bucket_dur) * bucket_dur;
 
-  size_t k = track_find_visible_start_index(track, trace_data,
-                                            (int64_t)current_bucket_ts);
+  array_list_resize(&state->thread_depth_blocked_until, a, track->max_depth + 1);
+  for (size_t d = 0; d < state->thread_depth_blocked_until.size; d++) {
+    state->thread_depth_blocked_until[d] = -1;
+  }
+
+  // Pass 1: Handle spanning events (events that start before the viewport but
+  // overlap it). We use block_max_durs to quickly find them.
+  size_t num_blocks = track->block_max_durs.size;
+  for (size_t b = 0; b < num_blocks; b++) {
+    size_t start_idx = b * TRACK_BLOCK_SIZE;
+    size_t end_idx = std::min(start_idx + TRACK_BLOCK_SIZE, track->event_indices.size);
+    int64_t block_last_ts = trace_data->events[track->event_indices[end_idx - 1]].ts;
+
+    // If the first event in the block starts after the viewport, we can stop
+    // looking for spanning events.
+    if (trace_data->events[track->event_indices[start_idx]].ts >= (int64_t)current_bucket_ts) {
+      break;
+    }
+
+    // Skip block if no event in it can reach viewport_start.
+    if (block_last_ts + track->block_max_durs[b] <= (int64_t)viewport_start) {
+      continue;
+    }
+
+    // Scan block for spanning events.
+    for (size_t i = start_idx; i < end_idx; i++) {
+      size_t event_idx = track->event_indices[i];
+      const TraceEventPersisted& e = trace_data->events[event_idx];
+      if (e.ts >= (int64_t)current_bucket_ts) break;
+
+      if (e.ts + e.dur > (int64_t)viewport_start) {
+        uint32_t depth = track->depths[i];
+        bool is_selected = (selected_event_index == (int64_t)event_idx);
+
+        float x1 = (float)(tracks_canvas_pos_x +
+                           ((double)e.ts - viewport_start) * inv_duration);
+        float x2 = (float)(x1 + (double)e.dur * inv_duration);
+        TrackRenderBlock rb = {
+            .x1 = x1,
+            .x2 = x2,
+            .color = e.color,
+            .name_ref = e.name_ref,
+            .depth = depth,
+            .count = 1,
+            .is_selected = is_selected,
+            .event_idx = event_idx,
+        };
+        array_list_push_back(out_blocks, a, rb);
+        if (e.ts + e.dur > state->thread_depth_blocked_until[depth]) {
+          state->thread_depth_blocked_until[depth] = e.ts + e.dur;
+        }
+      }
+    }
+  }
+
+  // Pass 2: Handle events starting within the viewport using bucketing.
+  auto it_start = std::lower_bound(
+      track->event_indices.data,
+      track->event_indices.data + track->event_indices.size,
+      (int64_t)current_bucket_ts,
+      [&](size_t idx, int64_t val) { return trace_data->events[idx].ts < val; });
+
+  size_t k = (size_t)(it_start - track->event_indices.data);
 
   array_list_resize(&state->thread_bucket_states, a, track->max_depth + 1);
   for (size_t d = 0; d < state->thread_bucket_states.size; d++) {
@@ -59,21 +118,14 @@ void track_compute_render_blocks(
     double next_bucket_ts = current_bucket_ts + bucket_dur;
 
     for (size_t d = 0; d < state->thread_bucket_states.size; d++) {
-      state->thread_bucket_states[d].blocked = false;
+      state->thread_bucket_states[d].blocked =
+          (state->thread_depth_blocked_until[d] >= (int64_t)next_bucket_ts);
     }
 
     while (k < track->event_indices.size) {
       size_t event_idx = track->event_indices[k];
       const TraceEventPersisted& e = trace_data->events[event_idx];
       if (e.ts >= (int64_t)next_bucket_ts) break;
-
-      // Ensure that an event only contributes to the bucket it starts in.
-      // This provides stability during panning and avoids duplicate rendering
-      // of large/selected events across multiple buckets.
-      if (e.ts < (int64_t)current_bucket_ts) {
-        k++;
-        continue;
-      }
 
       uint32_t depth = track->depths[k];
       bool is_selected = (selected_event_index == (int64_t)event_idx);
@@ -104,6 +156,9 @@ void track_compute_render_blocks(
         };
         array_list_push_back(out_blocks, a, rb);
         state->thread_bucket_states[depth].blocked = true;
+        if (e.ts + e.dur > state->thread_depth_blocked_until[depth]) {
+          state->thread_depth_blocked_until[depth] = e.ts + e.dur;
+        }
       } else if (!state->thread_bucket_states[depth].blocked) {
         ThreadBucketState& s = state->thread_bucket_states[depth];
         if (e.dur > s.max_dur) {
