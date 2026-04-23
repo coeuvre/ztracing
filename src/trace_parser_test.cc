@@ -101,7 +101,8 @@ TEST(TraceParserTest, Args) {
   EXPECT_EQ(ev.args[0].key, "url");
   EXPECT_EQ(ev.args[0].val, "http://foo");
   EXPECT_EQ(ev.args[1].key, "id");
-  EXPECT_EQ(ev.args[1].val, "123");
+  EXPECT_EQ(ev.args[1].val, "");
+  EXPECT_DOUBLE_EQ(ev.args[1].val_double, 123.0);
   EXPECT_EQ(ev.args[2].key, "obj");
   EXPECT_EQ(ev.args[2].val, "{\"x\":1}");
 

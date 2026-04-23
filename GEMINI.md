@@ -37,7 +37,9 @@
     - **Hash Caching**: Stores the precomputed hash in each entry to accelerate lookups by avoiding equality checks when hashes differ.
     - **Fast Resizing**: Uses cached hashes during table expansion to eliminate redundant recomputations.
     - **Stateful Functors**: Supports stateful functors for hashing and equality, enabling complex key types.
-- `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments. Includes support for the `id` field and numeric argument pre-parsing. Supports ZII via designated initializers.
+- `src/trace_parser`: C-style streaming parser for the Chrome Trace Event Format. Parses names, categories, phases, timestamps, durations, and arguments. Includes support for the `id` field and numeric argument pre-parsing.
+    - **Precision Optimization**: To ensure consistent formatting during rendering, the parser only stores raw JSON strings for non-numeric argument types. For numbers, the string is left empty, forcing the renderer to utilize the `val_double` field with the standard application-wide precision.
+    - **ZII Support**: Supports Zero-Is-Initialization via designated initializers.
 - `src/trace_data`: Persistent storage for parsed events. 
     - **ZII Support**: Fully ZII compatible via `{}`. Internal functors are lazily linked to the current instance address during the first string push to avoid dangling pointers during moves/copies.
     - **String Table**: Uses a de-duplicated String Table with global hashing to minimize memory usage for repetitive trace data (e.g., event names, categories).
@@ -59,6 +61,10 @@
     - **Thread Safety**: Access to `TraceData` from the main thread (e.g., for theme updates) is strictly prohibited while `loading.active` is true to avoid data races with the background parser.
 - `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
     - **Architecture**: Decouples interaction and layout logic from ImGui rendering via a pure `trace_viewer_step` function and a `TraceViewerInput` struct. This enables comprehensive unit testing of viewport navigation, hit-testing, selection, and layout without an ImGui context.
+    - **Unified Inspection UI**: Centralizes argument and property rendering into modular helper functions (`trace_viewer_draw_args_table`, `trace_viewer_draw_tooltip`). This ensures a consistent, professional, and zero-redundancy experience across all interactive elements.
+    - **Table-Based Layout**: Utilizes structured ImGui tables for all multi-key data (Counter series, Event arguments), providing perfect vertical alignment and high legibility.
+    - **Zero-Redundancy Logic**: Automatically filters and hides redundant fields (e.g., hiding track names in tooltips, hiding internal PH codes, hiding duration for instant events) to maintain a high signal-to-noise ratio.
+    - **Precision & Formatting**: Consistently applies 2-decimal precision (`%.2f`) to all numeric data and utilizes relative, human-readable timestamps (e.g., "Start: 1.2s") for temporal analysis.
     - **Layout Pre-computation**: `trace_viewer_step` computes all layout-dependent state (track Y-offsets, heights, visibility, header names, ruler ticks, and selection overlay dimensions) into dedicated layout structures (`TrackViewInfo`, `RulerTick`, `SelectionOverlayLayout`). This ensures the drawing phase is "dumb" and strictly consumes pre-computed values.
     - **Unit Tests**: Logic is extensively verified in `src/trace_viewer_test.cc`, covering zoom/pan, event hit-testing/selection, timeline selection/snapping, and layout calculations (including culling and naming).
     - **ZII Support**: Fully Zero-Is-Initialization compatible.

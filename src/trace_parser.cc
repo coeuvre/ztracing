@@ -260,9 +260,11 @@ static bool parse_event(JsonReader* r, TraceParser* p, TraceEvent* event) {
         arg.val_double = 0.0;
         if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER ||
             tok.type == JSON_TOKEN_BOOLEAN || tok.type == JSON_TOKEN_NULL_VAL) {
-          arg.val = tok.str;
           if (tok.type == JSON_TOKEN_NUMBER) {
             arg.val_double = to_double(tok.str);
+            arg.val = {};
+          } else {
+            arg.val = tok.str;
           }
         } else if (tok.type == JSON_TOKEN_OBJECT_START ||
                    tok.type == JSON_TOKEN_ARRAY_START) {
