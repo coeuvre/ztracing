@@ -1,6 +1,7 @@
 #ifndef ZTRACING_SRC_ALLOCATOR_H_
 #define ZTRACING_SRC_ALLOCATOR_H_
 
+#include <atomic>
 #include <stddef.h>
 
 // AllocFn defines a generic allocation function signature:
@@ -34,7 +35,7 @@ Allocator allocator_get_default();
 
 struct CountingAllocator {
   Allocator parent;
-  size_t allocated_bytes;
+  std::atomic<size_t> allocated_bytes;
 };
 
 // Initializes a counting allocator that wraps a parent allocator.

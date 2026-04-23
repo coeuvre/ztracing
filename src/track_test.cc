@@ -20,7 +20,7 @@ TEST(TrackTest, SortEvents) {
   array_list_push_back(&t.event_indices, a, (size_t)0);
   array_list_push_back(&t.event_indices, a, (size_t)1);
 
-  track_sort_events(&t, &td);
+  track_sort_events(&t, &td, a);
 
   EXPECT_EQ(t.event_indices[0], 1u);
   EXPECT_EQ(t.event_indices[1], 0u);
@@ -86,7 +86,7 @@ TEST(TrackTest, FindVisibleStartIndex) {
     array_list_push_back(&t.event_indices, a, i);
   }
 
-  track_sort_events(&t, &td);
+  track_sort_events(&t, &td, a);
   track_update_max_dur(&t, &td);  // max_dur should be 600
 
   // Case 1: Viewport starts at 50. Event 0 starts at 0, dur 100.
@@ -158,7 +158,7 @@ TEST(TrackTest, CalculateDepths) {
   array_list_push_back(&t.event_indices, a, (size_t)3);
   array_list_push_back(&t.event_indices, a, (size_t)1);
 
-  track_sort_events(&t, &td);
+  track_sort_events(&t, &td, a);
   track_calculate_depths(&t, &td, a);
 
   // Sorted order should be ev0, ev1, ev2, ev3, ev4 because of our new sorting
@@ -208,7 +208,7 @@ TEST(TrackTest, CalculateDepthsSiblings) {
     array_list_push_back(&t.event_indices, a, i);
   }
 
-  track_sort_events(&t, &td);
+  track_sort_events(&t, &td, a);
   track_calculate_depths(&t, &td, a);
 
   EXPECT_EQ(t.depths[0], 0u);  // ev0
@@ -239,7 +239,7 @@ TEST(TrackTest, CalculateDepthsDuplicates) {
     array_list_push_back(&t.event_indices, a, i);
   }
 
-  track_sort_events(&t, &td);
+  track_sort_events(&t, &td, a);
   track_calculate_depths(&t, &td, a);
 
   // Since they are identical, one will be a child of another.
@@ -277,7 +277,7 @@ TEST(TrackTest, CalculateDepthsNonStrict) {
     array_list_push_back(&t.event_indices, a, i);
   }
 
-  track_sort_events(&t, &td);
+  track_sort_events(&t, &td, a);
   track_calculate_depths(&t, &td, a);
 
   EXPECT_EQ(t.depths[0], 0u);  // ev0

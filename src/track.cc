@@ -146,13 +146,12 @@ struct SortKey {
   size_t idx;
 };
 
-void track_sort_events(Track* t, const TraceData* td) {
+void track_sort_events(Track* t, const TraceData* td, Allocator a) {
   if (t->event_indices.size <= 1) return;
 
   // For large tracks, use a temporary SortKey array to avoid cache misses
   // during indirect lookups into td->events.
   if (t->event_indices.size > 1024) {
-    Allocator a = allocator_get_default();
     SortKey* keys =
         (SortKey*)allocator_alloc(a, t->event_indices.size * sizeof(SortKey));
 
@@ -343,7 +342,7 @@ void track_organize(const TraceData* td, Allocator a, const Theme* theme,
   // Sort events, calculate depths
   for (size_t i = 0; i < out_tracks->size; i++) {
     Track& t = (*out_tracks)[i];
-    track_sort_events(&t, td);
+    track_sort_events(&t, td, a);
     if (t.type == TRACK_TYPE_THREAD) {
       track_calculate_depths(&t, td, a);
     } else {

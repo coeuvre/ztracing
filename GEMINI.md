@@ -30,6 +30,8 @@
 ## Architecture
 
 - `src/allocator`: Custom C-style allocator with `allocator_alloc`, `allocator_realloc`, and `allocator_free` helpers. Supports ZII via designated initializers.
+    - **CountingAllocator**: A thread-safe decorator that tracks total allocated bytes using `std::atomic<size_t>`. It utilizes `memory_order_relaxed` for high-performance counter updates across the main UI thread and background parser threads.
+    - **ImGui Integration**: Dear ImGui is configured to use the `CountingAllocator` for all internal allocations. A specialized wrapper handles the size-tracking requirement by prepending a 16-byte header to every ImGui-requested block, ensuring accurate memory reporting in the UI.
 - `src/str`: (Removed) Migrated to `std::string_view`. String-to-number utilities have been moved to their respective usage locations (e.g., `src/trace_parser.cc`) and now utilize `std::from_chars` for improved performance.
 - `src/array_list`: Generic `ArrayList<T>` (vector) with explicit allocation and ZII support via `{}`.
 - `src/hash_table`: Generic `HashTable<K, V>` with open addressing and linear probing. 

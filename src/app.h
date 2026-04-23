@@ -57,6 +57,7 @@ struct TraceLoadingState {
 };
 
 struct App {
+  CountingAllocator counting_allocator;
   Allocator allocator;
 
   // UI & Config

@@ -16,6 +16,24 @@ static ArrayList<char> g_canvas_selector;
 static App g_app;
 static ArrayList<unsigned char> g_font_data;
 
+static void* imgui_alloc(size_t sz, void* user_data) {
+  Allocator* a = (Allocator*)user_data;
+  size_t header_size = 16;  // Ensure 16-byte alignment
+  size_t total_size = sz + header_size;
+  void* ptr = allocator_alloc(*a, total_size);
+  if (!ptr) return nullptr;
+  *(size_t*)ptr = total_size;
+  return (char*)ptr + header_size;
+}
+
+static void imgui_free(void* ptr, void* user_data) {
+  if (!ptr) return;
+  Allocator* a = (Allocator*)user_data;
+  size_t header_size = 16;
+  void* real_ptr = (char*)ptr - header_size;
+  allocator_free(*a, real_ptr, *(size_t*)real_ptr);
+}
+
 static void main_loop() {
   if (g_app.loading.request_update.exchange(false)) {
     imgui_impl_wasm_request_update();
@@ -44,16 +62,20 @@ static void main_loop() {
 
 extern "C" {
 EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
-  Allocator allocator = allocator_get_default();
-  array_list_clear(&g_canvas_selector);
-  array_list_append(&g_canvas_selector, allocator, canvas_selector,
-                    strlen(canvas_selector) + 1);
+  app_init(&g_app, allocator_get_default());
+  ImGui::SetAllocatorFunctions(imgui_alloc, imgui_free, &g_app.allocator);
 
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGuiIO& io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+  Allocator allocator = g_app.allocator;
+
+  array_list_clear(&g_canvas_selector);
+  array_list_append(&g_canvas_selector, allocator, canvas_selector,
+                    strlen(canvas_selector) + 1);
 
   EmscriptenWebGLContextAttributes attrs;
   emscripten_webgl_init_context_attributes(&attrs);
@@ -80,8 +102,7 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
     return 2;
   }
 
-  app_init(&g_app, allocator);
-
+  app_on_theme_changed(&g_app);
   imgui_impl_wasm_request_update();
   LOG_DEBUG("ztracing initialized successfully.");
   return 0;

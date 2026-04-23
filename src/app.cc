@@ -128,14 +128,12 @@ static void app_stop_worker(App* app) {
   }
 }
 
-void app_init(App* app, Allocator allocator) {
+void app_init(App* app, Allocator parent) {
   new (app) App();
-  app->allocator = allocator;
+  counting_allocator_init(&app->counting_allocator, parent);
+  app->allocator = counting_allocator_get_allocator(&app->counting_allocator);
   app->loading.trace_data = &app->trace_data;
   app->loading.trace_viewer = &app->trace_viewer;
-
-  app_apply_theme(
-      app, platform_is_dark_mode() ? theme_get_dark() : theme_get_light());
 }
 
 void app_deinit(App* app) {
@@ -183,6 +181,18 @@ void app_update(App* app) {
       ImGui::MenuItem("About Dear ImGui", nullptr, &app->show_about_window);
       ImGui::EndMenu();
     }
+
+    // Right-aligned memory usage
+    size_t allocated =
+        counting_allocator_get_allocated_bytes(&app->counting_allocator);
+    char mem_buf[64];
+    snprintf(mem_buf, sizeof(mem_buf), "%.1f MB",
+             (double)allocated / (1024.0 * 1024.0));
+    float text_width = ImGui::CalcTextSize(mem_buf).x;
+    ImGui::SameLine(ImGui::GetWindowWidth() - text_width -
+                    ImGui::GetStyle().ItemSpacing.x * 2.0f);
+    ImGui::TextDisabled("%s", mem_buf);
+
     ImGui::EndMainMenuBar();
   }
 
