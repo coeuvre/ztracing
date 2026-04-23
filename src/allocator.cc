@@ -47,9 +47,8 @@ static void* counting_alloc(void* ctx, void* ptr, size_t old_size,
   return new_ptr;
 }
 
-void counting_allocator_init(CountingAllocator* ca, Allocator parent) {
-  ca->parent = parent;
-  ca->allocated_bytes.store(0, std::memory_order_relaxed);
+CountingAllocator counting_allocator_init(Allocator parent) {
+  return CountingAllocator{.parent = parent, .allocated_bytes = {0}};
 }
 
 Allocator counting_allocator_get_allocator(CountingAllocator* ca) {

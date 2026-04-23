@@ -70,8 +70,7 @@ TEST(ArrayListTest, Clear) {
 }
 
 TEST(ArrayListTest, MemoryLeak) {
-  CountingAllocator ca;
-  counting_allocator_init(&ca, allocator_get_default());
+  CountingAllocator ca = counting_allocator_init(allocator_get_default());
   Allocator a = counting_allocator_get_allocator(&ca);
 
   {

@@ -145,8 +145,8 @@ static JsonToken json_reader_next(JsonReader* r) {
   return {JSON_TOKEN_ERROR, {}};
 }
 
-void trace_parser_init(TraceParser* p, Allocator a) {
-  *p = {.a = a};
+TraceParser trace_parser_init(Allocator a) {
+  return TraceParser{.a = a};
 }
 
 void trace_parser_deinit(TraceParser* p) {

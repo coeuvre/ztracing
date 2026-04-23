@@ -13,7 +13,7 @@
 #include "third_party/imgui/imgui.h"
 
 static ArrayList<char> g_canvas_selector;
-static App g_app;
+static App* g_app = nullptr;
 static ArrayList<unsigned char> g_font_data;
 
 static void* imgui_alloc(size_t sz, void* user_data) {
@@ -35,11 +35,11 @@ static void imgui_free(void* ptr, void* user_data) {
 }
 
 static void main_loop() {
-  if (g_app.loading.request_update.exchange(false)) {
+  if (g_app->loading.request_update.exchange(false)) {
     imgui_impl_wasm_request_update();
   }
 
-  if (g_app.power_save_mode && !imgui_impl_wasm_need_update()) {
+  if (g_app->power_save_mode && !imgui_impl_wasm_need_update()) {
     return;
   }
 
@@ -48,7 +48,7 @@ static void main_loop() {
   ImGui::NewFrame();
 
   ImGuiIO& io = ImGui::GetIO();
-  app_update(&g_app);
+  app_update(g_app);
 
   ImGui::Render();
 
@@ -62,8 +62,12 @@ static void main_loop() {
 
 extern "C" {
 EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
-  app_init(&g_app, allocator_get_default());
-  ImGui::SetAllocatorFunctions(imgui_alloc, imgui_free, &g_app.allocator);
+  Allocator default_allocator = allocator_get_default();
+  g_app = (App*)allocator_alloc(default_allocator, sizeof(App));
+  new (g_app) App(app_init(default_allocator));
+  g_app->allocator = counting_allocator_get_allocator(&g_app->counting_allocator);
+
+  ImGui::SetAllocatorFunctions(imgui_alloc, imgui_free, &g_app->allocator);
 
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
@@ -71,7 +75,7 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-  Allocator allocator = g_app.allocator;
+  Allocator allocator = g_app->allocator;
 
   array_list_clear(&g_canvas_selector);
   array_list_append(&g_canvas_selector, allocator, canvas_selector,
@@ -102,7 +106,7 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
     return 2;
   }
 
-  app_on_theme_changed(&g_app);
+  app_on_theme_changed(g_app);
   imgui_impl_wasm_request_update();
   LOG_DEBUG("ztracing initialized successfully.");
   return 0;
@@ -115,7 +119,7 @@ EMSCRIPTEN_KEEPALIVE void ztracing_start() {
 EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
                                                  int font_size) {
   array_list_clear(&g_font_data);
-  array_list_append(&g_font_data, g_app.allocator, font_data,
+  array_list_append(&g_font_data, g_app->allocator, font_data,
                     (size_t)font_size);
 
   ImGuiIO& io = ImGui::GetIO();
@@ -136,35 +140,35 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
 EMSCRIPTEN_KEEPALIVE void* ztracing_malloc(int size) {
   // Use default allocator if app is not initialized yet.
   Allocator a =
-      g_app.allocator.alloc ? g_app.allocator : allocator_get_default();
+      (g_app && g_app->allocator.alloc) ? g_app->allocator : allocator_get_default();
   return allocator_alloc(a, (size_t)size);
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_free(void* ptr, int size) {
   Allocator a =
-      g_app.allocator.alloc ? g_app.allocator : allocator_get_default();
+      (g_app && g_app->allocator.alloc) ? g_app->allocator : allocator_get_default();
   allocator_free(a, ptr, (size_t)size);
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_begin_session(int session_id,
                                                  const char* filename) {
-  app_begin_session(&g_app, session_id, filename);
+  app_begin_session(g_app, session_id, filename);
   imgui_impl_wasm_request_update();
 }
 
 EMSCRIPTEN_KEEPALIVE int ztracing_handle_file_chunk(int session_id,
                                                      char* data, int size,
                                                      bool is_eof) {
-  return (int)app_handle_file_chunk(&g_app, session_id, data, (size_t)size,
+  return (int)app_handle_file_chunk(g_app, session_id, data, (size_t)size,
                                     is_eof);
 }
 
 EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_size() {
-  return (int)app_get_queue_size(&g_app);
+  return (int)app_get_queue_size(g_app);
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed() {
-  app_on_theme_changed(&g_app);
+  app_on_theme_changed(g_app);
   imgui_impl_wasm_request_update();
 }
 }

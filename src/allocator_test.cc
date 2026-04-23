@@ -10,8 +10,7 @@ TEST(AllocatorTest, DefaultAllocator) {
 }
 
 TEST(AllocatorTest, CountingAllocator) {
-  CountingAllocator ca;
-  counting_allocator_init(&ca, allocator_get_default());
+  CountingAllocator ca = counting_allocator_init(allocator_get_default());
   Allocator a = counting_allocator_get_allocator(&ca);
 
   EXPECT_EQ(counting_allocator_get_allocated_bytes(&ca), 0u);
@@ -45,9 +44,8 @@ static void* fail_alloc(void* ctx, void* ptr, size_t old_size,
 }
 
 TEST(AllocatorTest, CountingAllocatorFailure) {
-  CountingAllocator ca;
   Allocator parent = {fail_alloc, nullptr};
-  counting_allocator_init(&ca, parent);
+  CountingAllocator ca = counting_allocator_init(parent);
   Allocator a = counting_allocator_get_allocator(&ca);
 
   void* p = allocator_alloc(a, 100);

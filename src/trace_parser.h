@@ -48,7 +48,7 @@ struct TraceParser {
   bool is_array_format;
 };
 
-void trace_parser_init(TraceParser* p, Allocator a);
+TraceParser trace_parser_init(Allocator a);
 void trace_parser_deinit(TraceParser* p);
 
 // Feed data to the parser.

@@ -22,12 +22,10 @@ int main(int argc, char** argv) {
   size_t file_size = (size_t)ftell(f);
   fseek(f, 0, SEEK_SET);
 
-  CountingAllocator ca;
-  counting_allocator_init(&ca, allocator_get_default());
+  CountingAllocator ca = counting_allocator_init(allocator_get_default());
   Allocator a = counting_allocator_get_allocator(&ca);
 
-  TraceParser p;
-  trace_parser_init(&p, a);
+  TraceParser p = trace_parser_init(a);
 
   char buf[65536];
   size_t event_count = 0;

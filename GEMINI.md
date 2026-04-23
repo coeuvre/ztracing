@@ -59,7 +59,7 @@
     - **HiDPI Optimization**: Disables HiDPI scaling (forces 1.0x) when a software renderer is detected. This reduces the number of pixels processed by the CPU by 4x on 2x DPI displays, drastically lowering "Commit" latency.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop. Handles the orchestration of font loading and trace data streaming.
 - `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer). Utilizes a background `TraceLoadingState` to handle multi-threaded file streaming and data parsing without blocking the UI.
-    - **Initialization**: As `App` is a non-aggregate, it is initialized using placement new (`new (app) App()`) followed by member setup.
+    - **Initialization**: Initialized by `app_init` returning an `App` by value. Self-referencing pointers (e.g., wiring `loading.trace_data`) are established post-construction in `app_begin_session` or the platform entry point.
     - **Thread Safety**: Access to `TraceData` from the main thread (e.g., for theme updates) is strictly prohibited while `loading.active` is true to avoid data races with the background parser.
 - `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
     - **Architecture**: Decouples interaction and layout logic from ImGui rendering via a pure `trace_viewer_step` function and a `TraceViewerInput` struct. This enables comprehensive unit testing of viewport navigation, hit-testing, selection, and layout without an ImGui context.
@@ -263,4 +263,8 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
 - **Defaults**:
     - Release builds (`-c opt`): `LOG_LEVEL_INFO` (hides `LOG_DEBUG`).
     - Debug builds: `LOG_LEVEL_DEBUG` (shows all).
+- **Override**: Use `--copt="-DLOG_LEVEL=<LEVEL>"` (e.g., `--copt="-DLOG_LEVEL=LOG_LEVEL_WARN"`) to set the minimum log level at compile-time.
+_DEBUG` (shows all).
+- **Override**: Use `--copt="-DLOG_LEVEL=<LEVEL>"` (e.g., `--copt="-DLOG_LEVEL=LOG_LEVEL_WARN"`) to set the minimum log level at compile-time.
+LEVEL_DEBUG` (shows all).
 - **Override**: Use `--copt="-DLOG_LEVEL=<LEVEL>"` (e.g., `--copt="-DLOG_LEVEL=LOG_LEVEL_WARN"`) to set the minimum log level at compile-time.

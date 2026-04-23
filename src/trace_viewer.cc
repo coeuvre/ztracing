@@ -25,7 +25,7 @@ static double trace_viewer_px_to_ts(double start_time, double end_time,
   return start_time + ((double)(px - origin_x) / (double)width) * duration;
 }
 
-static void trace_viewer_snapping_init(TraceViewer* tv, double mouse_ts,
+static void trace_viewer_snapping_reset(TraceViewer* tv, double mouse_ts,
                                        float threshold_px) {
   tv->snap_best_ts = mouse_ts;
   tv->snap_best_dist_px = threshold_px;
@@ -610,7 +610,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
   // 1. Snapping Initialization
   float snap_threshold_px = 5.0f;
-  trace_viewer_snapping_init(tv, mouse_ts, snap_threshold_px);
+  trace_viewer_snapping_reset(tv, mouse_ts, snap_threshold_px);
 
   // 2. Interaction Logic - Pre-pass
   double threshold_ts =

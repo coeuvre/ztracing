@@ -38,8 +38,8 @@ struct CountingAllocator {
   std::atomic<size_t> allocated_bytes;
 };
 
-// Initializes a counting allocator that wraps a parent allocator.
-void counting_allocator_init(CountingAllocator* ca, Allocator parent);
+// Returns an initialized counting allocator that wraps a parent allocator.
+CountingAllocator counting_allocator_init(Allocator parent);
 
 // Returns the Allocator interface for the given counting allocator.
 Allocator counting_allocator_get_allocator(CountingAllocator* ca);

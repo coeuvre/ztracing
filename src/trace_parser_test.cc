@@ -3,8 +3,7 @@
 #include <gtest/gtest.h>
 
 TEST(TraceParserTest, BasicArray) {
-  TraceParser p;
-  trace_parser_init(&p, allocator_get_default());
+  TraceParser p = trace_parser_init(allocator_get_default());
 
   const char* json =
       "[{\"name\":\"foo\",\"cat\":\"bar\",\"ph\":\"B\",\"ts\":123,\"pid\":1,"
@@ -26,8 +25,7 @@ TEST(TraceParserTest, BasicArray) {
 }
 
 TEST(TraceParserTest, BasicObject) {
-  TraceParser p;
-  trace_parser_init(&p, allocator_get_default());
+  TraceParser p = trace_parser_init(allocator_get_default());
 
   const char* json = "{\"traceEvents\":[{\"name\":\"foo\"}],\"other\":123}";
   trace_parser_feed(&p, json, strlen(json), true);
@@ -42,8 +40,7 @@ TEST(TraceParserTest, BasicObject) {
 }
 
 TEST(TraceParserTest, Streaming) {
-  TraceParser p;
-  trace_parser_init(&p, allocator_get_default());
+  TraceParser p = trace_parser_init(allocator_get_default());
 
   const char* chunk1 = "[{\"name\":\"fo";
   const char* chunk2 = "o\"},{\"name\":\"bar\"}]";
@@ -65,8 +62,7 @@ TEST(TraceParserTest, Streaming) {
 }
 
 TEST(TraceParserTest, StreamingMiddleOfSecondEvent) {
-  TraceParser p;
-  trace_parser_init(&p, allocator_get_default());
+  TraceParser p = trace_parser_init(allocator_get_default());
 
   const char* chunk1 = "[{\"name\":\"foo\"},{\"name\":\"ba";
   const char* chunk2 = "r\"}]";
@@ -87,8 +83,7 @@ TEST(TraceParserTest, StreamingMiddleOfSecondEvent) {
 }
 
 TEST(TraceParserTest, Args) {
-  TraceParser p;
-  trace_parser_init(&p, allocator_get_default());
+  TraceParser p = trace_parser_init(allocator_get_default());
 
   const char* json =
       "[{\"name\":\"a\",\"args\":{\"url\":\"http://"
@@ -111,8 +106,7 @@ TEST(TraceParserTest, Args) {
 
 TEST(TraceParserTest, Empty) {
   {
-    TraceParser p;
-    trace_parser_init(&p, allocator_get_default());
+    TraceParser p = trace_parser_init(allocator_get_default());
     const char* json = "[]";
     trace_parser_feed(&p, json, strlen(json), true);
     TraceEvent ev;
@@ -120,8 +114,7 @@ TEST(TraceParserTest, Empty) {
     trace_parser_deinit(&p);
   }
   {
-    TraceParser p;
-    trace_parser_init(&p, allocator_get_default());
+    TraceParser p = trace_parser_init(allocator_get_default());
     const char* json = "{\"traceEvents\":[]}";
     trace_parser_feed(&p, json, strlen(json), true);
     TraceEvent ev;
@@ -131,13 +124,11 @@ TEST(TraceParserTest, Empty) {
 }
 
 TEST(TraceParserTest, MemoryLeak) {
-  CountingAllocator ca;
-  counting_allocator_init(&ca, allocator_get_default());
+  CountingAllocator ca = counting_allocator_init(allocator_get_default());
   Allocator a = counting_allocator_get_allocator(&ca);
 
   {
-    TraceParser p;
-    trace_parser_init(&p, a);
+    TraceParser p = trace_parser_init(a);
 
     const char* json =
         "[{\"name\":\"foo\",\"args\":{\"x\":1}},{\"name\":\"bar\"}]";

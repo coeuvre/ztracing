@@ -63,8 +63,8 @@ struct App {
   // UI & Config
   ThemeMode theme_mode;
   const Theme* theme;
-  bool power_save_mode = true;
-  bool first_frame = true;
+  bool power_save_mode;
+  bool first_frame;
   bool show_metrics_window;
   bool show_about_window;
 
@@ -76,8 +76,8 @@ struct App {
   TraceViewer trace_viewer;
 };
 
-// Initializes the application state.
-void app_init(App* app, Allocator allocator);
+// Returns an initialized application state.
+App app_init(Allocator allocator);
 
 // Deinitializes the application state and releases resources.
 void app_deinit(App* app);
