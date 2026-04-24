@@ -291,7 +291,7 @@ static void trace_viewer_draw_args_table(const TraceData* td,
   ImGui::Separator();
   if (ImGui::BeginTable("##args", 2, ImGuiTableFlags_SizingFixedFit)) {
     ImGui::TableSetupColumn("Key");
-    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Value");
 
     for (uint32_t k = 0; k < e.args_count; k++) {
       const TraceArgPersisted& arg = td->args[e.args_offset + k];
@@ -1365,39 +1365,49 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         ImGui::Separator();
 
         if (ImGui::BeginTable("##multi_select", 4,
-                             ImGuiTableFlags_SizingFixedFit |
+                             ImGuiTableFlags_Resizable |
                                  ImGuiTableFlags_ScrollY |
-                                 ImGuiTableFlags_Resizable)) {
+                                 ImGuiTableFlags_ScrollX |
+                                 ImGuiTableFlags_RowBg |
+                                 ImGuiTableFlags_Borders |
+                                 ImGuiTableFlags_SizingFixedFit |
+                                 ImGuiTableFlags_NoSavedSettings,
+                             ImGui::GetContentRegionAvail())) {
           ImGui::TableSetupColumn("Name");
           ImGui::TableSetupColumn("Category");
           ImGui::TableSetupColumn("Start");
           ImGui::TableSetupColumn("Duration");
+          ImGui::TableSetupScrollFreeze(0, 1);
           ImGui::TableHeadersRow();
 
-          for (size_t i = 0; i < tv->selected_event_indices.size; i++) {
-            const TraceEventPersisted& e =
-                td->events[(size_t)tv->selected_event_indices[i]];
-            std::string_view name = trace_data_get_string(td, e.name_ref);
-            std::string_view cat = trace_data_get_string(td, e.cat_ref);
+          ImGuiListClipper clipper;
+          clipper.Begin((int)tv->selected_event_indices.size);
+          while (clipper.Step()) {
+            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
+              const TraceEventPersisted& e =
+                  td->events[(size_t)tv->selected_event_indices[(size_t)i]];
+              std::string_view name = trace_data_get_string(td, e.name_ref);
+              std::string_view cat = trace_data_get_string(td, e.cat_ref);
 
-            ImGui::TableNextRow();
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(name.data(), name.data() + name.size());
+              ImGui::TableNextRow();
+              ImGui::TableNextColumn();
+              ImGui::TextUnformatted(name.data(), name.data() + name.size());
 
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(cat.data(), cat.data() + cat.size());
+              ImGui::TableNextColumn();
+              ImGui::TextUnformatted(cat.data(), cat.data() + cat.size());
 
-            ImGui::TableNextColumn();
-            char ts_buf[32];
-            format_duration(ts_buf, sizeof(ts_buf),
-                            (double)e.ts - (double)tv->viewport.min_ts);
-            ImGui::TextUnformatted(ts_buf);
+              ImGui::TableNextColumn();
+              char ts_buf[32];
+              format_duration(ts_buf, sizeof(ts_buf),
+                              (double)e.ts - (double)tv->viewport.min_ts);
+              ImGui::TextUnformatted(ts_buf);
 
-            ImGui::TableNextColumn();
-            if (e.dur > 0) {
-              char dur_buf[32];
-              format_duration(dur_buf, sizeof(dur_buf), (double)e.dur);
-              ImGui::TextUnformatted(dur_buf);
+              ImGui::TableNextColumn();
+              if (e.dur > 0) {
+                char dur_buf[32];
+                format_duration(dur_buf, sizeof(dur_buf), (double)e.dur);
+                ImGui::TextUnformatted(dur_buf);
+              }
             }
           }
           ImGui::EndTable();

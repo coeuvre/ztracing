@@ -232,7 +232,10 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Focus Management**: When automatically opened, it does not steal focus (`ImGuiWindowFlags_NoFocusOnAppearing`), ensuring the user can continue navigating the viewport uninterrupted.
     - **Content**: 
         - **Single Selection**: Displays detailed information for the selected event (Name, Category, PH, Timestamp, Duration, PID, TID, and all Arguments).
-        - **Multi-Selection**: Displays a summary (count) and a scrollable table listing each event's Name, Category, Start time, and Duration.
+        - **Multi-Selection**: Displays a summary (count) and a high-performance, scrollable table listing each event's Name, Category, Start time, and Duration.
+            - **Performance**: Utilizes `ImGuiListClipper` to achieve $O(\text{VisibleRows})$ rendering and formatting complexity, ensuring smooth scrolling even with hundreds of thousands of selected events.
+            - **Sticky Headers**: Implements a sticky header row via `ImGuiTableFlags_ScrollY` and `ImGui::TableSetupScrollFreeze(0, 1)`.
+            - **Alignment & Legibility**: All data is left-aligned using `ImGuiTableFlags_SizingFixedFit`. Row backgrounds and borders are enabled to improve row tracking.
     - **Arguments**: Supports both string and numeric arguments (`val_double`), ensuring counter values are correctly displayed.
     - **Selection Prompt**: Displays a "Select an event to see details" prompt when no event is selected.
     - **Padding**: Uses `10.0f` window padding for better legibility.
