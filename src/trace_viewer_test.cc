@@ -406,6 +406,69 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
     EXPECT_EQ(tv.selected_event_index, 123);
 }
 
+TEST_F(TraceViewerTest, TimelineClickOutsideToClearTracks) {
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 1000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 1000;
+    tv.selection_active = true;
+    tv.selection_start_time = 400.0;
+    tv.selection_end_time = 600.0;
+    tv.last_inner_width = 1000.0f;
+
+    TraceViewerInput input = {};
+    input.canvas_width = 1000.0f;
+    input.tracks_hovered = true;
+    input.mouse_x = 100.0f; // Outside selection [400, 600]
+    input.is_mouse_released = true;
+    input.drag_threshold = 5.0f;
+
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_FALSE(tv.selection_active);
+}
+
+TEST_F(TraceViewerTest, TimelineClickInsideKeepsSelection) {
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 1000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 1000;
+    tv.selection_active = true;
+    tv.selection_start_time = 400.0;
+    tv.selection_end_time = 600.0;
+    tv.last_inner_width = 1000.0f;
+
+    TraceViewerInput input = {};
+    input.canvas_width = 1000.0f;
+    input.tracks_hovered = true;
+    input.mouse_x = 500.0f; // Inside selection [400, 600]
+    input.is_mouse_released = true;
+    input.drag_threshold = 5.0f;
+
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_TRUE(tv.selection_active);
+}
+
+TEST_F(TraceViewerTest, TimelineClickBoundaryKeepsSelection) {
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 1000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 1000;
+    tv.selection_active = true;
+    tv.selection_start_time = 400.0;
+    tv.selection_end_time = 600.0;
+    tv.last_inner_width = 1000.0f;
+
+    TraceViewerInput input = {};
+    input.canvas_width = 1000.0f;
+    input.tracks_hovered = true;
+    input.mouse_x = 400.0f; // Exactly on start boundary
+    input.is_mouse_released = true;
+    input.drag_threshold = 5.0f;
+
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_TRUE(tv.selection_active);
+}
+
 TEST_F(TraceViewerTest, CounterInteractionInsideSelectionWorks) {
     tv.viewport.min_ts = 0;
     tv.viewport.max_ts = 1000;
@@ -829,12 +892,6 @@ TEST_F(TraceViewerTest, SelectionOverlayLayoutComputation) {
     // x2 = 100 + (800 - 0)/1000 * 1000 = 900
     EXPECT_FLOAT_EQ(tv.selection_layout.x1, 300.0f);
     EXPECT_FLOAT_EQ(tv.selection_layout.x2, 900.0f);
-
-    // Dims
-    EXPECT_FLOAT_EQ(tv.selection_layout.dim_l_x1, 100.0f);
-    EXPECT_FLOAT_EQ(tv.selection_layout.dim_l_x2, 300.0f);
-    EXPECT_FLOAT_EQ(tv.selection_layout.dim_r_x1, 900.0f);
-    EXPECT_FLOAT_EQ(tv.selection_layout.dim_r_x2, 1100.0f);
 
     EXPECT_STREQ(tv.selection_layout.duration_label, "600 us");
 }

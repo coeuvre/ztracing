@@ -171,7 +171,9 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
         - Hovering and clicking on events is disabled while dragging boundaries or when the mouse is over a boundary handle.
         - Panning (horizontal and vertical) is disabled while a boundary is being dragged.
     - **Zoom/Pan Constraints**: When a selection is active, the viewport is constrained to keep the selection visible. Panning is clamped so selection boundaries can reach but not exceed viewport edges.
-    - **Deselection**: A simple click on the timeline ruler (without dragging) clears the active selection.
+    - **Deselection**:
+        - A simple click on the timeline ruler (without dragging) clears the active selection.
+        - Clicking on an empty area of the track viewport (outside the selection range and not on a boundary) clears the active timeline selection.
     - **Refactored Interaction Logic**: Selection and snapping logic are consolidated directly into `TraceViewer`, with per-frame updates handled in `trace_viewer_step`. Dimming areas are calculated locally during rendering to ensure perfect alignment with viewport bounds.
     - **Comprehensive Tests**: Logic is verified by multi-frame simulation tests in `src/trace_viewer_test.cc`, covering precise click starts, snapped dragging, interaction gating, and zoom clamping.
     - **Stationary Mapping**: All time-to-pixel conversions use a consistent stationary origin (`tv->last_tracks_x`) and width (`tv->last_inner_width`) to ensure perfect horizontal alignment between the ruler and tracks.

@@ -868,8 +868,12 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
         tv->selected_event_index = (int64_t)hm.rb.event_idx;
         tv->show_details_panel = true;
       }
-    } else if (input.tracks_hovered && mouse_in_selection && !proximity.near_start && !proximity.near_end) {
-      tv->selected_event_index = -1;
+    } else if (input.tracks_hovered) {
+      if (mouse_in_selection && !proximity.near_start && !proximity.near_end) {
+        tv->selected_event_index = -1;
+      } else if (tv->selection_active && !mouse_in_selection) {
+        tv->selection_active = false;
+      }
     }
   }
 
