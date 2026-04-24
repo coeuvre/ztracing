@@ -1,5 +1,9 @@
 # Enable Bzlmod
 common --enable_bzlmod
 
+# Native Test Configuration
+test --test_tag_filters=-wasm
+test --build_tag_filters=-wasm
+
 # WASM Configuration
 build --incompatible_enable_cc_toolchain_resolution

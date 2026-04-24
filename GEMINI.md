@@ -212,7 +212,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **cname Support**: Standard Chrome Trace `cname` values are mapped to specific theme-appropriate colors.
     - **Name Hashing**: Consistent fallback coloring using FNV-1a hash of the event name to select from a balanced palette.
     - **Caching**: Colors are pre-computed and cached in `TraceEventPersisted` during parsing to maximize rendering performance.
-- **32-bit Indices**: ImGui is patched via `MODULE.bazel` to use `unsigned int` for `ImDrawIdx`, allowing for more than 65,535 vertices (required for large traces).
+- **32-bit Indices**: ImGui is patched via `MODULE.bazel` to use `unsigned int` for `ImDrawIdx` (via `third_party/imgui/imgui.BUILD`), allowing for more than 65,535 vertices (required for large traces).
 
 ## Details Panel
 

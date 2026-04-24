@@ -7,7 +7,7 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 
 http_archive(
     name = "imgui",
-    build_file = "//third_party/imgui:BUILD",
+    build_file = "//:third_party/imgui/imgui.BUILD",
     patch_cmds = ["echo '#define ImDrawIdx unsigned int' >> imconfig.h"],
     strip_prefix = "imgui-1.92.7-docking",
     urls = ["https://github.com/ocornut/imgui/archive/refs/tags/v1.92.7-docking.tar.gz"],

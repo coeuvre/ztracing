@@ -95,6 +95,7 @@ cc_library(
     name = "imgui_impl_wasm",
     srcs = ["imgui_impl_wasm.cc"],
     hdrs = ["imgui_impl_wasm.h"],
+    tags = ["wasm"],
     deps = [
         ":allocator",
         ":logging",
@@ -106,6 +107,7 @@ cc_library(
     name = "imgui_impl_webgl",
     srcs = ["imgui_impl_webgl.cc"],
     hdrs = ["imgui_impl_webgl.h"],
+    tags = ["wasm"],
     deps = [
         ":allocator",
         ":array_list",
@@ -274,6 +276,7 @@ cc_binary(
         "ztracing.h",
         "ztracing_wasm.cc",
     ],
+    tags = ["wasm"],
     additional_linker_inputs = [
         "ztracing.js",
     ],
@@ -307,6 +310,7 @@ cc_binary(
 wasm_cc_binary(
     name = "ztracing_wasm",
     cc_target = ":ztracing",
+    tags = ["wasm"],
 )
 
 exports_files(["shell.html"])
