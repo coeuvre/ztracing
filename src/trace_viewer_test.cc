@@ -415,11 +415,17 @@ TEST_F(TraceViewerTest, TimelineClickOutsideToClearTracks) {
     tv.selection_start_time = 400.0;
     tv.selection_end_time = 600.0;
     tv.last_inner_width = 1000.0f;
+    tv.last_inner_height = 1000.0f;
+    tv.last_tracks_x = 0.0f;
+    tv.last_tracks_y = 0.0f;
 
     TraceViewerInput input = {};
     input.canvas_width = 1000.0f;
+    input.canvas_height = 1000.0f;
+    input.ruler_height = 0.0f;
     input.tracks_hovered = true;
     input.mouse_x = 100.0f; // Outside selection [400, 600]
+    input.mouse_y = 500.0f; 
     input.is_mouse_released = true;
     input.drag_threshold = 5.0f;
 
@@ -916,5 +922,179 @@ TEST_F(TraceViewerTest, RulerTickGeneration) {
 
     EXPECT_FLOAT_EQ(tv.ruler_ticks[1].x, 100.0f);
     EXPECT_STREQ(tv.ruler_ticks[1].label, "100 us");
+}
+
+TEST_F(TraceViewerTest, DoubleClickToZoomEdgeStability) {
+    const Theme* theme = theme_get_dark();
+    
+    // Add an event at the very beginning
+    TraceEvent ev = {.name = "event1", .ph = "X", .ts = 0, .dur = 1000, .pid = 1, .tid = 1};
+    trace_data_add_event(&td, allocator, theme, &ev);
+    
+    Track t = {.tid = 1, .pid = 1, .type = TRACK_TYPE_THREAD};
+    array_list_push_back(&t.event_indices, allocator, (size_t)0);
+    track_update_max_dur(&t, &td, allocator);
+    track_calculate_depths(&t, &td, allocator);
+    array_list_push_back(&tv.tracks, allocator, t);
+
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 100000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 100000;
+    tv.last_inner_width = 1000.0f;
+    tv.last_inner_height = 500.0f;
+    tv.last_tracks_x = 0.0f;
+    tv.last_tracks_y = 40.0f;
+
+    TraceViewerInput input = {};
+    input.canvas_x = 0.0f;
+    input.canvas_y = 0.0f;
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 500.0f;
+    input.lane_height = 20.0f;
+    input.ruler_height = 20.0f;
+    input.tracks_hovered = true;
+    
+    // Position mouse over the event at the start (x=0)
+    input.mouse_x = 5.0f; 
+    input.mouse_y = 50.0f; 
+    input.is_mouse_double_clicked = true;
+    input.is_mouse_clicked = true;
+
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    // After zoom, the event (0-1000) is centered with 5% padding (50us).
+    // Start time: 0 - 50 = -50.
+    // End time: 1000 + 50 = 1050.
+    EXPECT_DOUBLE_EQ(tv.viewport.start_time, -50.0);
+    EXPECT_DOUBLE_EQ(tv.viewport.end_time, 1050.0);
+    EXPECT_TRUE(tv.selection_active);
+    EXPECT_TRUE(tv.ignore_next_release);
+
+    // Simulate next frame: mouse is still at x=5, but viewport has shifted.
+    // mouse_ts at x=5 with viewport [-50, 1050] and width 1000 is:
+    // -50 + (5/1000) * 1100 = -50 + 5.5 = -44.5.
+    // This is OUTSIDE the selection [0, 1000].
+    
+    TraceViewerInput input2 = {};
+    input2.canvas_width = 1000.0f;
+    input2.canvas_height = 500.0f;
+    input2.lane_height = 20.0f;
+    input2.ruler_height = 20.0f;
+    input2.tracks_hovered = true;
+    input2.mouse_x = 5.0f;
+    input2.mouse_y = 50.0f;
+    input2.is_mouse_released = true;
+
+    trace_viewer_step(&tv, &td, input2, allocator);
+
+    // Selection should STILL be active because of ignore_next_release
+    EXPECT_TRUE(tv.selection_active);
+    EXPECT_FALSE(tv.ignore_next_release);
+}
+
+TEST_F(TraceViewerTest, DoubleClickToZoomSameFrameRelease) {
+    const Theme* theme = theme_get_dark();
+    
+    // Add an event
+    TraceEvent ev = {.name = "event1", .ph = "X", .ts = 5000, .dur = 1000, .pid = 1, .tid = 1};
+    trace_data_add_event(&td, allocator, theme, &ev);
+    
+    Track t = {.tid = 1, .pid = 1, .type = TRACK_TYPE_THREAD};
+    array_list_push_back(&t.event_indices, allocator, (size_t)0);
+    track_update_max_dur(&t, &td, allocator);
+    track_calculate_depths(&t, &td, allocator);
+    array_list_push_back(&tv.tracks, allocator, t);
+
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 10000;
+    tv.last_inner_width = 1000.0f;
+    tv.last_inner_height = 500.0f;
+    tv.last_tracks_x = 0.0f;
+    tv.last_tracks_y = 40.0f;
+
+    TraceViewerInput input = {};
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 500.0f;
+    input.lane_height = 20.0f;
+    input.ruler_height = 20.0f;
+    input.tracks_hovered = true;
+    input.mouse_x = 550.0f; 
+    input.mouse_y = 50.0f; 
+    input.is_mouse_double_clicked = true;
+    input.is_mouse_released = true; // Release in same frame!
+
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    EXPECT_TRUE(tv.selection_active);
+    EXPECT_TRUE(tv.ignore_next_release); // Should still be true for the NEXT frame!
+
+    // Next frame, no release
+    TraceViewerInput input2 = {};
+    input2.tracks_hovered = true;
+    trace_viewer_step(&tv, &td, input2, allocator);
+    EXPECT_TRUE(tv.selection_active);
+    EXPECT_TRUE(tv.ignore_next_release);
+
+    // Next frame, release
+    TraceViewerInput input3 = {};
+    input3.tracks_hovered = true;
+    input3.is_mouse_released = true;
+    trace_viewer_step(&tv, &td, input3, allocator);
+    EXPECT_TRUE(tv.selection_active);
+    EXPECT_FALSE(tv.ignore_next_release);
+}
+
+TEST_F(TraceViewerTest, DoubleClickEventOutsideCurrentSelection) {
+    const Theme* theme = theme_get_dark();
+    
+    // Add two events
+    TraceEvent ev1 = {.name = "event1", .ph = "X", .ts = 1000, .dur = 1000, .pid = 1, .tid = 1};
+    TraceEvent ev2 = {.name = "event2", .ph = "X", .ts = 8000, .dur = 1000, .pid = 1, .tid = 1};
+    trace_data_add_event(&td, allocator, theme, &ev1);
+    trace_data_add_event(&td, allocator, theme, &ev2);
+    
+    Track t = {.tid = 1, .pid = 1, .type = TRACK_TYPE_THREAD};
+    array_list_push_back(&t.event_indices, allocator, (size_t)0);
+    array_list_push_back(&t.event_indices, allocator, (size_t)1);
+    track_update_max_dur(&t, &td, allocator);
+    track_calculate_depths(&t, &td, allocator);
+    array_list_push_back(&tv.tracks, allocator, t);
+
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 10000;
+    tv.last_inner_width = 1000.0f;
+    tv.last_inner_height = 500.0f;
+    tv.last_tracks_x = 0.0f;
+    tv.last_tracks_y = 40.0f;
+
+    // 1. Create a selection around event1
+    tv.selection_active = true;
+    tv.selection_start_time = 1000.0;
+    tv.selection_end_time = 2000.0;
+
+    // 2. Double click on event2 (at ts 8000, which is x=800)
+    TraceViewerInput input = {};
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 500.0f;
+    input.lane_height = 20.0f;
+    input.ruler_height = 20.0f;
+    input.tracks_hovered = true;
+    input.mouse_x = 850.0f; 
+    input.mouse_y = 50.0f; 
+    input.is_mouse_double_clicked = true;
+
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    // Should have zoomed to event2 (8000-9000)
+    // Padding: 1000 * 0.05 = 50
+    EXPECT_DOUBLE_EQ(tv.viewport.start_time, 7950.0);
+    EXPECT_DOUBLE_EQ(tv.viewport.end_time, 9050.0);
+    
+    // Selection should now be exactly event2
+    EXPECT_TRUE(tv.selection_active);
+    EXPECT_DOUBLE_EQ(tv.selection_start_time, 8000.0);
+    EXPECT_DOUBLE_EQ(tv.selection_end_time, 9000.0);
+    EXPECT_EQ(tv.selected_event_index, 1);
 }
 

@@ -602,11 +602,21 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
   if (current_duration <= 0) current_duration = 1.0;
 
   float tracks_origin_x = tv->last_tracks_x > 0 ? tv->last_tracks_x : input.canvas_x;
+  float tracks_origin_y = tv->last_tracks_y > 0 ? tv->last_tracks_y : input.canvas_y + input.ruler_height;
   float tracks_inner_width = tv->last_inner_width > 0 ? tv->last_inner_width : input.canvas_width;
+  float tracks_inner_height = tv->last_inner_height > 0 ? tv->last_inner_height : input.canvas_height - input.ruler_height;
   if (tracks_inner_width <= 0) tracks_inner_width = 1.0f;
 
   double mouse_ts = trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
                                           tracks_inner_width, tracks_origin_x, input.mouse_x);
+
+  bool mouse_in_tracks_content =
+      input.mouse_x >= tracks_origin_x &&
+      input.mouse_x < tracks_origin_x + tracks_inner_width &&
+      input.mouse_y >= tracks_origin_y &&
+      input.mouse_y < tracks_origin_y + tracks_inner_height;
+
+  bool interaction_ignored = tv->ignore_next_release;
 
   // 1. Snapping Initialization
   float snap_threshold_px = 5.0f;
@@ -622,7 +632,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
   // Ruler Interaction
   if (input.ruler_active) {
-    if (input.ruler_activated) {
+    if (!interaction_ignored && input.ruler_activated) {
       if (proximity.near_start) {
         tv->selection_drag_mode = TimelineDragMode::RULER_START;
       } else if (proximity.near_end) {
@@ -641,7 +651,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
       }
     }
   } else {
-    if (input.ruler_deactivated) {
+    if (!interaction_ignored && input.ruler_deactivated) {
       if (std::abs(input.drag_delta_x) < input.drag_threshold) {
         if (tv->selection_drag_mode == TimelineDragMode::RULER_NEW) {
           tv->selection_active = false;
@@ -658,7 +668,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
   // Tracks Interaction
   if (input.tracks_hovered && !input.ruler_active) {
-    if (tv->selection_drag_mode == TimelineDragMode::NONE) {
+    if (!interaction_ignored && tv->selection_drag_mode == TimelineDragMode::NONE) {
       if (tv->selection_active && input.is_mouse_clicked &&
           (proximity.near_start || proximity.near_end)) {
         tv->selection_drag_mode = proximity.near_start ? TimelineDragMode::TRACKS_START
@@ -741,7 +751,8 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
   bool mouse_in_selection = trace_viewer_selection_is_mouse_inside(tv, mouse_ts);
   bool track_list_hovered =
       input.tracks_hovered &&
-      mouse_in_selection &&
+      mouse_in_tracks_content &&
+      (mouse_in_selection || input.is_mouse_double_clicked) &&
       tv->selection_drag_mode == TimelineDragMode::NONE &&
       !proximity.near_start && !proximity.near_end;
 
@@ -838,42 +849,83 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
   }
 
   // 4. Boundary Updates (using pre-calculated snap_best_ts from THIS frame)
-  if (input.ruler_active) {
-    if (tv->selection_drag_mode == TimelineDragMode::RULER_NEW) {
-      if (was_drag) {
+  if (!interaction_ignored) {
+    if (input.ruler_active) {
+      if (tv->selection_drag_mode == TimelineDragMode::RULER_NEW) {
+        if (was_drag) {
+          tv->selection_end_time = tv->snap_best_ts;
+        }
+      } else if (tv->selection_drag_mode == TimelineDragMode::RULER_START) {
+        tv->selection_start_time = tv->snap_best_ts;
+      } else if (tv->selection_drag_mode == TimelineDragMode::RULER_END) {
         tv->selection_end_time = tv->snap_best_ts;
       }
-    } else if (tv->selection_drag_mode == TimelineDragMode::RULER_START) {
-      tv->selection_start_time = tv->snap_best_ts;
-    } else if (tv->selection_drag_mode == TimelineDragMode::RULER_END) {
-      tv->selection_end_time = tv->snap_best_ts;
-    }
-  } else if (input.tracks_hovered) {
-    if (tv->selection_drag_mode == TimelineDragMode::TRACKS_START ||
-        tv->selection_drag_mode == TimelineDragMode::TRACKS_END) {
-        double ts = (input.is_mouse_clicked) ? mouse_ts : tv->snap_best_ts;
-        if (tv->selection_drag_mode == TimelineDragMode::TRACKS_START) {
-          tv->selection_start_time = ts;
-        } else {
-          tv->selection_end_time = ts;
-        }
+    } else if (input.tracks_hovered) {
+      if (tv->selection_drag_mode == TimelineDragMode::TRACKS_START ||
+          tv->selection_drag_mode == TimelineDragMode::TRACKS_END) {
+          double ts = (input.is_mouse_clicked) ? mouse_ts : tv->snap_best_ts;
+          if (tv->selection_drag_mode == TimelineDragMode::TRACKS_START) {
+            tv->selection_start_time = ts;
+          } else {
+            tv->selection_end_time = ts;
+          }
+      }
     }
   }
 
-  // 5. Selection (Click to select event)
-  if (input.is_mouse_released && !was_drag) {
+  // 5. Selection (Click to select event, Double-click to zoom)
+  if (input.is_mouse_double_clicked) {
+    if (tv->hover_matches.size > 0) {
+      const HoverMatch& hm = tv->hover_matches[tv->hover_matches.size - 1];
+      const Track& t = tv->tracks[hm.track_idx];
+      if (t.type == TRACK_TYPE_THREAD && hm.rb.event_idx != (size_t)-1) {
+        const TraceEventPersisted& e = td->events[hm.rb.event_idx];
+        tv->selected_event_index = (int64_t)hm.rb.event_idx;
+        tv->show_details_panel = true;
+        tv->ignore_next_release = true;
+
+        // Zoom to event with 5% padding
+        double event_start = (double)e.ts;
+        double event_end = (double)(e.ts + e.dur);
+        double event_dur = event_end - event_start;
+        if (event_dur < 0) event_dur = 0;
+
+        double padding = event_dur * 0.05;
+        double target_dur = event_dur + padding * 2.0;
+        if (target_dur < TRACE_VIEWER_MIN_ZOOM_DURATION) {
+          target_dur = TRACE_VIEWER_MIN_ZOOM_DURATION;
+          padding = (target_dur - event_dur) * 0.5;
+        }
+
+        tv->viewport.start_time = event_start - padding;
+        tv->viewport.end_time = event_start - padding + target_dur;
+
+        // Selection
+        tv->selection_active = true;
+        tv->selection_start_time = event_start;
+        tv->selection_end_time = event_end;
+        tv->selection_drag_mode = TimelineDragMode::NONE;
+      }
+    }
+  } else if (!interaction_ignored && input.is_mouse_released && !was_drag) {
     if (tv->hover_matches.size > 0) {
       const HoverMatch& hm = tv->hover_matches[tv->hover_matches.size - 1];
       if (hm.rb.event_idx != (size_t)-1) {
         tv->selected_event_index = (int64_t)hm.rb.event_idx;
         tv->show_details_panel = true;
       }
-    } else if (input.tracks_hovered) {
+    } else if (input.tracks_hovered && mouse_in_tracks_content) {
       if (mouse_in_selection && !proximity.near_start && !proximity.near_end) {
         tv->selected_event_index = -1;
       } else if (tv->selection_active && !mouse_in_selection) {
         tv->selection_active = false;
       }
+    }
+  }
+
+  if (input.is_mouse_released) {
+    if (interaction_ignored) {
+      tv->ignore_next_release = false;
     }
   }
 
@@ -936,6 +988,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     input.click_y = ImGui::GetIO().MouseClickedPos[0].y;
     input.is_mouse_down = ImGui::IsMouseDown(0);
     input.is_mouse_clicked = ImGui::IsMouseClicked(0);
+    input.is_mouse_double_clicked = ImGui::IsMouseDoubleClicked(0);
     input.is_mouse_released = ImGui::IsMouseReleased(0);
     input.mouse_delta_x = ImGui::GetIO().MouseDelta.x;
     input.mouse_delta_y = ImGui::GetIO().MouseDelta.y;
@@ -1007,9 +1060,11 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
       ImVec2 tracks_canvas_pos = ImGui::GetCursorScreenPos();
       float inner_width = ImGui::GetContentRegionAvail().x;
+      float inner_height = ImGui::GetContentRegionAvail().y;
       tv->last_inner_width = inner_width;
+      tv->last_inner_height = inner_height;
       tv->last_tracks_x = tracks_canvas_pos.x;
-
+      tv->last_tracks_y = tracks_canvas_pos.y;
       bool sel_found = false;
       float sel_x1 = 0, sel_x2 = 0, sel_y1 = 0, sel_y2 = 0;
       ImU32 sel_col = 0;

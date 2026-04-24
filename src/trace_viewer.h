@@ -38,6 +38,7 @@ struct TraceViewerInput {
   float click_x, click_y;
   bool is_mouse_down;
   bool is_mouse_clicked;
+  bool is_mouse_double_clicked;
   bool is_mouse_released;
   float mouse_delta_x, mouse_delta_y;
   float drag_delta_x, drag_delta_y;
@@ -108,8 +109,11 @@ struct TraceViewer {
   ArrayList<HoverMatch> hover_matches;
   int64_t selected_event_index = -1;
   bool show_details_panel;
+  bool ignore_next_release = false;
   float last_inner_width = 0;
+  float last_inner_height = 0;
   float last_tracks_x = 0;
+  float last_tracks_y = 0;
   double last_best_snap_ts = 0;
 };
 

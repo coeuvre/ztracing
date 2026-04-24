@@ -79,6 +79,7 @@ void track_compute_render_blocks(
         float x1 = (float)(tracks_canvas_pos_x +
                            ((double)e.ts - viewport_start) * inv_duration);
         float x2 = (float)(x1 + (double)e.dur * inv_duration);
+        if (x2 < x1 + TRACK_MIN_EVENT_WIDTH) x2 = x1 + TRACK_MIN_EVENT_WIDTH;
         TrackRenderBlock rb = {
             .x1 = x1,
             .x2 = x2,
@@ -144,6 +145,7 @@ void track_compute_render_blocks(
         float x1 = (float)(tracks_canvas_pos_x +
                            ((double)e.ts - viewport_start) * inv_duration);
         float x2 = (float)(x1 + (double)e.dur * inv_duration);
+        if (x2 < x1 + TRACK_MIN_EVENT_WIDTH) x2 = x1 + TRACK_MIN_EVENT_WIDTH;
         TrackRenderBlock rb = {
             .x1 = x1,
             .x2 = x2,

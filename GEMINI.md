@@ -157,6 +157,11 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Pan (Horizontal)**: `Shift + MouseWheel` or horizontal scroll wheel.
     - **Pan (Dual-Axis)**: Left-mouse drag within the track viewport allows for simultaneous horizontal and vertical panning.
     - **Initial View & Reset**: Upon loading a trace or selecting "Reset View", the viewport is centered and zoomed to the maximum zoom-out level (1.2x duration).
+- **Double-click to Zoom**: Double-clicking (LMB) any thread event instantly focuses the viewport on that event.
+    - **Context Padding**: Adds a **5% padding** to both sides of the event duration to provide temporal context.
+    - **Automatic Selection**: Automatically creates a **timeline selection** for the event's exact range and opens the **Details** panel.
+    - **Selection Override**: Works even if the event is outside a currently active timeline selection area.
+    - **Stability Shield**: Employs a frame-aware release shield (`ignore_next_release`) to prevent viewport shifts from causing accidental deselection during the trailing mouse-up event of a double-click.
 - **Timeline Selection**:
     - **Interaction**: Dragging on the timeline ruler creates a time range selection. Every new drag on the ruler starts a fresh selection from the click point.
     - **Selection Threshold**: New selections in the ruler area require a **5-pixel drag** before becoming active. This ensures that a simple press or click on the ruler does not destroy or re-create the selection prematurely.
