@@ -13,12 +13,11 @@ const Theme* theme_get_dark() {
       IM_COL32(200, 200, 200, 255),  // ruler_text
 
       // Events
-      IM_COL32(255, 255, 255, 50),   // event_border
+      IM_COL32(255, 255, 255, 80),   // event_border
       IM_COL32(255, 255, 255, 255),  // event_border_selected
       IM_COL32(255, 255, 255, 255),  // event_text
       IM_COL32(255, 255, 255, 255),  // event_text_selected
-      IM_COL32(180, 160, 0,
-               255),  // event_selected (Muted gold instead of bright yellow)
+      IM_COL32(220, 180, 0, 255),    // event_selected (Balanced amber/gold)
 
       // Tracks
       IM_COL32(255, 255, 255, 255),  // track_text
@@ -33,16 +32,16 @@ const Theme* theme_get_dark() {
       // Status
       ImVec4(1, 1, 0, 1),  // status_loading
 
-      // Event Palette (0xAABBGGRR) - Darker and more muted
+      // Event Palette (0xAABBGGRR) - Refined Vibrant (30% darker than previous)
       {
-          0xFF3D324A,  // Muted Purple
-          0xFF4A3D32,  // Muted Blue/Grey
-          0xFF324A3D,  // Muted Green
-          0xFF4A4A32,  // Muted Olive
-          0xFF32324A,  // Muted Red/Brown
-          0xFF404040,  // Dark Grey
-          0xFF2D3E4A,  // Muted Teal
-          0xFF4A2D3E,  // Muted Maroon
+          0xFF966D3C,  // Refined Blue
+          0xFF7B8D37,  // Refined Green
+          0xFF546590,  // Refined Salmon
+          0xFF865E8A,  // Refined Purple
+          0xFFB29A6D,  // Refined Light Blue
+          0xFF3232AB,  // Refined Red
+          0xFF779A9A,  // Refined Yellow
+          0xFF5A5A5A,  // Refined Grey
       }};
   return &dark_theme;
 }

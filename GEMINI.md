@@ -202,7 +202,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Event Names**: Names are centered both vertically and horizontally within event blocks if they fit. If the name is larger than the available area, it starts rendering from the beginning of the block (with padding). Horizontal padding (`6.0f`) is applied to both sides. "Sticky" positioning for names is disabled to prioritize centering.
 - **Theming**:
     - **Theme Struct**: A centralized `Theme` struct in `src/colors.h` holds all UI colors, including backgrounds, ruler elements, and event palettes.
-    - **Dark Theme**: Muted, professional palette with dark grey tracks and solid black background (rendered within the canvas).
+    - **Dark Theme**: Professional, high-contrast palette with vibrant but refined event colors and a solid black background (rendered within the canvas).
     - **Light Theme**: Based on "MRS. L'S CLASSROOM" palette with brightened green/teal for optimal legibility of black text.
     - **Dynamic Switching**: Themes can be toggled via the global menu bar, automatically updating both application-specific colors and ImGui's built-in styles.
     - **Color Updates**: Switching themes triggers a full re-computation of both event colors (`trace_data_update_event_color`) and counter track series colors (`track_update_colors`) to maintain visual consistency.
