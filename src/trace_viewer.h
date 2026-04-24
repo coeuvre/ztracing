@@ -8,13 +8,14 @@
 #include "src/track.h"
 #include "src/track_renderer.h"
 
-enum class TimelineDragMode {
+enum class InteractionDragMode {
   NONE,
   RULER_NEW,
   RULER_START,
   RULER_END,
   TRACKS_START,
-  TRACKS_END
+  TRACKS_END,
+  BOX_SELECT
 };
 
 struct HoverMatch {
@@ -86,7 +87,11 @@ struct TraceViewer {
   bool selection_active;
   double selection_start_time;
   double selection_end_time;
-  TimelineDragMode selection_drag_mode;
+  InteractionDragMode selection_drag_mode;
+
+  // Box selection state
+  ImVec2 box_select_start;
+  ImVec2 box_select_end;
 
   // Snapping state
   double snap_best_ts;
@@ -107,13 +112,14 @@ struct TraceViewer {
   ArrayList<TrackRenderBlock> render_blocks;
   ArrayList<CounterRenderBlock> counter_render_blocks;
   ArrayList<HoverMatch> hover_matches;
-  int64_t selected_event_index = -1;
+  ArrayList<int64_t> selected_event_indices;
   bool show_details_panel;
   bool ignore_next_release = false;
   float last_inner_width = 0;
   float last_inner_height = 0;
   float last_tracks_x = 0;
   float last_tracks_y = 0;
+  float last_lane_height = 0;
   double last_best_snap_ts = 0;
 };
 

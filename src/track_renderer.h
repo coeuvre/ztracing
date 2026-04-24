@@ -23,6 +23,7 @@ struct TrackRenderBlock {
 struct CounterRenderBlock {
   float x1;
   float x2;
+  bool is_selected;
   size_t event_idx;
 };
 
@@ -76,12 +77,14 @@ inline void track_renderer_state_clear(TrackRendererState* state) {
 void track_compute_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
     double viewport_end, float inner_width, float tracks_canvas_pos_x,
-    int64_t selected_event_index, TrackRendererState* state,
-    ArrayList<TrackRenderBlock>* out_blocks, Allocator a);
+    const ArrayList<int64_t>& selected_event_indices,
+    TrackRendererState* state, ArrayList<TrackRenderBlock>* out_blocks,
+    Allocator a);
 
 void track_compute_counter_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
-    double viewport_end, float width, float tracks_canvas_pos_x,
+    double viewport_end, float inner_width, float tracks_canvas_pos_x,
+    const ArrayList<int64_t>& selected_event_indices,
     TrackRendererState* state, ArrayList<CounterRenderBlock>* out_blocks,
     Allocator a);
 

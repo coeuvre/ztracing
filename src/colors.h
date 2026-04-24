@@ -21,7 +21,6 @@ struct Theme {
   ImU32 event_border_selected;
   ImU32 event_text;
   ImU32 event_text_selected;
-  ImU32 event_selected;
 
   // Tracks
   ImU32 track_text;
@@ -32,6 +31,10 @@ struct Theme {
   ImU32 timeline_selection_bg;
   ImU32 timeline_selection_line;
   ImU32 timeline_selection_text;
+
+  // Box Selection
+  ImU32 box_selection_bg;
+  ImU32 box_selection_border;
 
   // Status
   ImVec4 status_loading;

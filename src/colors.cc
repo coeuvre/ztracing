@@ -17,7 +17,6 @@ const Theme* theme_get_dark() {
       IM_COL32(255, 255, 255, 255),  // event_border_selected
       IM_COL32(255, 255, 255, 255),  // event_text
       IM_COL32(255, 255, 255, 255),  // event_text_selected
-      IM_COL32(220, 180, 0, 255),    // event_selected (Balanced amber/gold)
 
       // Tracks
       IM_COL32(255, 255, 255, 255),  // track_text
@@ -28,6 +27,10 @@ const Theme* theme_get_dark() {
       IM_COL32(0, 0, 0, 100),        // timeline_selection_bg
       IM_COL32(255, 255, 0, 255),     // timeline_selection_line
       IM_COL32(255, 255, 255, 255),  // timeline_selection_text
+
+      // Box Selection
+      IM_COL32(0, 120, 215, 50),   // box_selection_bg
+      IM_COL32(0, 120, 215, 255),  // box_selection_border
 
       // Status
       ImVec4(1, 1, 0, 1),  // status_loading
@@ -60,10 +63,9 @@ const Theme* theme_get_light() {
 
       // Events
       IM_COL32(0, 0, 0, 60),         // event_border
-      IM_COL32(0, 0, 0, 255),        // event_border_selected
+      IM_COL32(0, 0, 0, 255),        // event_border_selected (Solid Black)
       IM_COL32(0, 0, 0, 220),        // event_text (slightly soft black)
-      IM_COL32(255, 255, 255, 255),  // event_text_selected
-      IM_COL32(0, 120, 215, 255),    // event_selected (Modern Blue)
+      IM_COL32(0, 0, 0, 220),        // event_text_selected (Stay black)
 
       // Tracks
       IM_COL32(50, 50, 50, 255),     // track_text
@@ -74,6 +76,10 @@ const Theme* theme_get_light() {
       IM_COL32(0, 0, 0, 100),         // timeline_selection_bg
       IM_COL32(0, 120, 215, 255),     // timeline_selection_line
       IM_COL32(0, 0, 0, 255),         // timeline_selection_text
+
+      // Box Selection
+      IM_COL32(0, 120, 215, 50),   // box_selection_bg
+      IM_COL32(0, 120, 215, 255),  // box_selection_border
 
       // Status
       ImVec4(0.8f, 0.4f, 0.0f, 1.0f),  // status_loading (Dark Orange)

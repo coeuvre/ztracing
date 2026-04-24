@@ -269,7 +269,7 @@ void app_begin_session(App* app, int session_id, const char* filename) {
   app->loading.session_id = session_id;
   app->loading.allocator = app->allocator;
   app->loading.theme = app->theme;
-  app->trace_viewer.selected_event_index = -1;
+  array_list_clear(&app->trace_viewer.selected_event_indices);
 
   app->loading.worker_should_abort = false;
   {

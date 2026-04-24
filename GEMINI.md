@@ -164,11 +164,12 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Stability Shield**: Employs a frame-aware release shield (`ignore_next_release`) to prevent viewport shifts from causing accidental deselection during the trailing mouse-up event of a double-click.
 - **Timeline Selection**:
     - **Interaction**: Dragging on the timeline ruler creates a time range selection. Every new drag on the ruler starts a fresh selection from the click point.
+    - **Rectangle Selection**: Holding **Shift** and dragging with the **Left Mouse Button** in the tracks area creates a spatial rectangle selection.
     - **Selection Threshold**: New selections in the ruler area require a **5-pixel drag** before becoming active. This ensures that a simple press or click on the ruler does not destroy or re-create the selection prematurely.
-    - **Draggable Boundaries**: Vertical boundaries can be adjusted by dragging them within the tracks area. The mouse cursor changes to `ew-resize` when hovering over or dragging a boundary.
-    - **Snapping**: Dragging selection boundaries (both in the ruler and tracks) snaps to the edges of visible thread event blocks within a **5-pixel threshold**.
+    - **Draggable Boundaries**: Vertical boundaries can be adjusted by dragging them within the tracks area. The mouse cursor changes to `ew-resize` when hovering over or dragging a boundary (unless in `BOX_SELECT` mode).
+    - **Snapping**: Dragging selection boundaries (both in the ruler and tracks) snaps to the edges of visible thread event blocks within a **5-pixel threshold**. Snapping is disabled during rectangle selection (`BOX_SELECT`).
     - **Visuals**: Displays two vertical lines marking the range boundaries, a semi-transparent dimmed overlay for areas outside the selection, and a duration label with horizontal arrows centered vertically in the tracks area.
-    - **Edge Alignment**: Boundaries are perfectly aligned between the ruler and track areas. The right boundary line is always drawn with a **-1.0f offset** from its calculated position to prevent clipping at the viewport's right edge, ensuring it remains visible during panning.
+    - **Edge Alignment**: Boundaries are perfectly aligned between the ruler and track areas. The right boundary line is always drawn with a **-10f offset** from its calculated position to prevent clipping at the viewport's right edge, ensuring it remains visible during panning.
     - **Dimming Consistency**: The dimmed overlay in the ruler area spans the full viewport width, matching the ruler's background rendering.
     - **Snapping Highlight**: When a boundary is snapped during a drag, the specific edge of the event block is highlighted with a **3-pixel wide red vertical line**.
     - **Interaction Gating**:
@@ -178,15 +179,17 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Zoom/Pan Constraints**: When a selection is active, the viewport is constrained to keep the selection visible. Panning is clamped so selection boundaries can reach but not exceed viewport edges.
     - **Deselection**:
         - A simple click on the timeline ruler (without dragging) clears the active selection.
-        - Clicking on an empty area of the track viewport (outside the selection range and not on a boundary) clears the active timeline selection.
+        - Clicking on an empty area of the track viewport (outside the selection range and not on a boundary) clears both the active timeline selection and event selections.
     - **Refactored Interaction Logic**: Selection and snapping logic are consolidated directly into `TraceViewer`, with per-frame updates handled in `trace_viewer_step`. Dimming areas are calculated locally during rendering to ensure perfect alignment with viewport bounds.
-    - **Comprehensive Tests**: Logic is verified by multi-frame simulation tests in `src/trace_viewer_test.cc`, covering precise click starts, snapped dragging, interaction gating, and zoom clamping.
+    - **Multi-Selection Storage**: `TraceViewer` maintains an `ArrayList<int64_t> selected_event_indices` to support multiple simultaneous selections. The list is sorted for efficient $O(\log N)$ rendering checks.
+    - **Spatial Hit-Testing**: Rectangle selection performs spatial intersection tests against all visible events. It utilizes track `max_dur` to correctly identify long events that start before the selection box and ignores counter track headers to prevent accidental selections.
+    - **Comprehensive Tests**: Logic is verified by multi-frame simulation tests in `src/trace_viewer_test.cc`, covering precise click starts, snapped dragging, interaction gating, zoom clamping, and rectangle selection (including long events and counter gating).
     - **Stationary Mapping**: All time-to-pixel conversions use a consistent stationary origin (`tv->last_tracks_x`) and width (`tv->last_inner_width`) to ensure perfect horizontal alignment between the ruler and tracks.
 - **Rendering Optimization**:
     - **Visibility Culling (Horizontal)**: Events are grouped into tracks. Each track maintains a `max_dur` (maximum event duration) and sorted `event_indices`. Binary search is used to find the first potentially visible event at `viewport_start - max_dur`, ensuring partially visible events are correctly rendered.
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
     - **Level of Detail (LOD)**: To handle massive traces (10M+ events):
-        - **Tiny Events**: Skips rendering of events < 1.0 pixel wide that fall into the same pixel range as a previously drawn block.
+        - **Tiny Events**: Skips rendering of events < 1.0 pixel wide that fall into the same pixel range as a previously drawn block. Selected events always bypass this optimization.
         - **Event Borders**: Borders are only drawn for selected events or those wider than `TRACK_MIN_EVENT_WIDTH`. A **0.01f epsilon** is applied to the threshold to prevent floating-point jitter from causing borders to flicker during panning.
     - **Event Coalescing & Bucketing**: To maintain performance and visual stability in dense areas:
         - **Stable Bucketing**: Both thread and counter tracks utilize a stable bucketing system. Viewports are divided into buckets aligned to absolute timestamps (multiples of the time equivalent of 3.0 pixels).
@@ -201,16 +204,17 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
         - **Tooltips**: Hovering over an event displays a rich tooltip with `10.0f` padding:
             - **Single Events**: Shows full name, category, relative start time (from trace start), duration, and all associated arguments.
             - **Merged Blocks**: Shows the exact number of coalesced events (e.g., "5 merged events").
-        - **Deselection**: Clicking on an empty area of the track viewport deselects the current event.
+        - **Selection Indicators**: Selection is indicated by a 1px high-contrast border (`event_border_selected`). Original event colors are preserved to maintain category visibility.
+        - **Deselection**: Clicking on an empty area of the track viewport deselects the current event(s).
         - **Drag Protection**: Selection and deselection only trigger on a clean click (mouse release without exceeding the `MouseDragThreshold`), preventing accidental changes while panning.
     - **Text Rendering**: Optimized via CPU-side clipping using the `ImDrawList::AddText` overload with a `cpu_fine_clip_rect`. This avoids draw call splits from `PushClipRect` and is only applied when text actually exceeds the available area.
     - **Event Names**: Names are centered both vertically and horizontally within event blocks if they fit. If the name is larger than the available area, it starts rendering from the beginning of the block (with padding). Horizontal padding (`6.0f`) is applied to both sides. "Sticky" positioning for names is disabled to prioritize centering.
 - **Theming**:
     - **Theme Struct**: A centralized `Theme` struct in `src/colors.h` holds all UI colors, including backgrounds, ruler elements, and event palettes.
-    - **Dark Theme**: Professional, high-contrast palette with vibrant but refined event colors and a solid black background (rendered within the canvas).
-    - **Light Theme**: Based on "MRS. L'S CLASSROOM" palette with brightened green/teal for optimal legibility of black text.
+    - **Dark Theme**: Muted, professional palette with dark grey tracks and solid black background (rendered within the canvas). White 1px selection borders.
+    - **Light Theme**: Based on "MRS. L'S CLASSROOM" palette with brightened green/teal for optimal legibility of black text. Black 1px selection borders.
     - **Dynamic Switching**: Themes can be toggled via the global menu bar, automatically updating both application-specific colors and ImGui's built-in styles.
-    - **Color Updates**: Switching themes triggers a full re-computation of both event colors (`trace_data_update_event_color`) and counter track series colors (`track_update_colors`) to maintain visual consistency.
+    - **Color Updates**: Switching themes triggers a full re-computation of counter track series colors (`track_update_colors`) to maintain visual consistency.
     - **Auto Mode (Default)**: Tracks the system's preferred color scheme.
     - **Event-Driven Updates**: Uses `matchMedia.addEventListener` in `ztracing.js` to notify the application of system theme changes via the `ztracing_on_theme_changed` WASM export, avoiding unnecessary polling.
 - **Event Coloring**:
@@ -224,9 +228,11 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
 - **Visibility**: Can be toggled via the "View" menu. Docked at the bottom by default.
 - **Behavior**:
     - **Closed by Default**: The panel is initially closed to maximize the viewport area.
-    - **Auto-Open**: Automatically opens when an event is selected in either the thread track or counter track. 
+    - **Auto-Open**: Automatically opens when one or more events are selected.
     - **Focus Management**: When automatically opened, it does not steal focus (`ImGuiWindowFlags_NoFocusOnAppearing`), ensuring the user can continue navigating the viewport uninterrupted.
-    - **Content**: Displays detailed information for the currently selected event (Name, Category, PH, Timestamp, Duration, PID, TID, and all Arguments).
+    - **Content**: 
+        - **Single Selection**: Displays detailed information for the selected event (Name, Category, PH, Timestamp, Duration, PID, TID, and all Arguments).
+        - **Multi-Selection**: Displays a summary (count) and a scrollable table listing each event's Name, Category, Start time, and Duration.
     - **Arguments**: Supports both string and numeric arguments (`val_double`), ensuring counter values are correctly displayed.
     - **Selection Prompt**: Displays a "Select an event to see details" prompt when no event is selected.
     - **Padding**: Uses `10.0f` window padding for better legibility.

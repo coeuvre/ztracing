@@ -28,7 +28,7 @@ void track_flush_bucket_depth(ArrayList<TrackRenderBlock>* out_blocks,
 void track_compute_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
     double viewport_end, float inner_width, float tracks_canvas_pos_x,
-    int64_t selected_event_index, TrackRendererState* state,
+    const ArrayList<int64_t>& selected_event_indices, TrackRendererState* state,
     ArrayList<TrackRenderBlock>* out_blocks, Allocator a) {
   array_list_clear(out_blocks);
   if (track->event_indices.size == 0) return;
@@ -74,7 +74,10 @@ void track_compute_render_blocks(
 
       if (e.ts + e.dur > (int64_t)viewport_start) {
         uint32_t depth = track->depths[i];
-        bool is_selected = (selected_event_index == (int64_t)event_idx);
+        bool is_selected = std::binary_search(
+            selected_event_indices.data,
+            selected_event_indices.data + selected_event_indices.size,
+            (int64_t)event_idx);
 
         float x1 = (float)(tracks_canvas_pos_x +
                            ((double)e.ts - viewport_start) * inv_duration);
@@ -129,7 +132,10 @@ void track_compute_render_blocks(
       if (e.ts >= (int64_t)next_bucket_ts) break;
 
       uint32_t depth = track->depths[k];
-      bool is_selected = (selected_event_index == (int64_t)event_idx);
+      bool is_selected = std::binary_search(
+          selected_event_indices.data,
+          selected_event_indices.data + selected_event_indices.size,
+          (int64_t)event_idx);
       // Use a small epsilon to prevent floating point jitter from flipping an
       // event between 'large' and 'tiny' during panning.
       bool is_large = (double)e.dur * inv_duration >= TRACK_MIN_EVENT_WIDTH - 0.01f;
@@ -208,8 +214,8 @@ void track_compute_render_blocks(
 void track_compute_counter_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
     double viewport_end, float width, float tracks_canvas_pos_x,
-    TrackRendererState* state, ArrayList<CounterRenderBlock>* out_blocks,
-    Allocator a) {
+    const ArrayList<int64_t>& selected_event_indices, TrackRendererState* state,
+    ArrayList<CounterRenderBlock>* out_blocks, Allocator a) {
   array_list_clear(out_blocks);
   array_list_clear(&state->counter_peaks);
   if (track->event_indices.size == 0) return;
@@ -241,7 +247,8 @@ void track_compute_counter_render_blocks(
 
   // Find the initial state (values from the last event before the viewport
   // starts)
-  array_list_resize(&state->counter_current_values, a, track->counter_series.size);
+  array_list_resize(&state->counter_current_values, a,
+                    track->counter_series.size);
   for (size_t i = 0; i < state->counter_current_values.size; i++)
     state->counter_current_values[i] = 0.0;
 
@@ -268,8 +275,10 @@ void track_compute_counter_render_blocks(
   const size_t* search_end =
       track->event_indices.data + track->event_indices.size;
 
-  array_list_resize(&state->counter_bucket_max_values, a, track->counter_series.size);
-  array_list_resize(&state->counter_series_updated, a, track->counter_series.size);
+  array_list_resize(&state->counter_bucket_max_values, a,
+                    track->counter_series.size);
+  array_list_resize(&state->counter_series_updated, a,
+                    track->counter_series.size);
 
   while (current_bucket_ts < viewport_end) {
     double next_bucket_ts = current_bucket_ts + bucket_dur;
@@ -282,11 +291,20 @@ void track_compute_counter_render_blocks(
     }
 
     size_t last_event_idx_in_bucket = (size_t)-1;
+    bool is_selected = false;
 
     // Consume all events in this bucket
-    while (it < search_end && trace_data->events[*it].ts < (int64_t)next_bucket_ts) {
+    while (it < search_end &&
+           trace_data->events[*it].ts < (int64_t)next_bucket_ts) {
       const TraceEventPersisted& e = trace_data->events[*it];
       last_event_idx_in_bucket = *it;
+
+      if (!is_selected) {
+        is_selected = std::binary_search(
+            selected_event_indices.data,
+            selected_event_indices.data + selected_event_indices.size,
+            (int64_t)*it);
+      }
 
       // In Chrome Trace, a counter event usually updates all its series or sets
       // them. We assume missing series in an event means 0 (or unchanged?
@@ -337,7 +355,8 @@ void track_compute_counter_render_blocks(
       bool can_merge = false;
       if (out_blocks->size > 0) {
         const CounterRenderBlock& last_rb = (*out_blocks)[out_blocks->size - 1];
-        if (last_rb.event_idx == last_event_idx_in_bucket) {
+        if (last_rb.event_idx == last_event_idx_in_bucket &&
+            last_rb.is_selected == is_selected) {
           // Check if peaks match
           can_merge = true;
           size_t series_count = track->counter_series.size;
@@ -358,6 +377,7 @@ void track_compute_counter_render_blocks(
         CounterRenderBlock rb = {
             .x1 = x1,
             .x2 = x2,
+            .is_selected = is_selected,
             .event_idx = last_event_idx_in_bucket,
         };
         if (last_event_idx_in_bucket == (size_t)-1) {

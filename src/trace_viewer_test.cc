@@ -138,7 +138,8 @@ TEST_F(TraceViewerTest, SelectionOnClick) {
 
     trace_viewer_step(&tv, &td, input, allocator);
 
-    EXPECT_EQ(tv.selected_event_index, 0);
+    EXPECT_EQ(tv.selected_event_indices.size, 1u);
+    EXPECT_EQ(tv.selected_event_indices[0], 0);
     EXPECT_TRUE(tv.show_details_panel);
 }
 
@@ -150,7 +151,7 @@ TEST_F(TraceViewerTest, TimelineClickToClearRuler) {
     tv.selection_active = true;
     tv.selection_start_time = 100.0;
     tv.selection_end_time = 200.0;
-    tv.selection_drag_mode = TimelineDragMode::NONE;
+    tv.selection_drag_mode = InteractionDragMode::NONE;
     tv.last_inner_width = 1000.0f;
 
     // Frame 1: Mouse down on ruler (not near boundaries)
@@ -165,7 +166,7 @@ TEST_F(TraceViewerTest, TimelineClickToClearRuler) {
 
     trace_viewer_step(&tv, &td, i1, allocator);
     EXPECT_TRUE(tv.selection_active);
-    EXPECT_EQ(tv.selection_drag_mode, TimelineDragMode::RULER_NEW);
+    EXPECT_EQ(tv.selection_drag_mode, InteractionDragMode::RULER_NEW);
 
     // Frame 2: Mouse release without exceeding drag threshold
     TraceViewerInput i2 = i1;
@@ -176,7 +177,7 @@ TEST_F(TraceViewerTest, TimelineClickToClearRuler) {
 
     trace_viewer_step(&tv, &td, i2, allocator);
     EXPECT_FALSE(tv.selection_active);
-    EXPECT_EQ(tv.selection_drag_mode, TimelineDragMode::NONE);
+    EXPECT_EQ(tv.selection_drag_mode, InteractionDragMode::NONE);
 }
 
 TEST_F(TraceViewerTest, TimelineKeepExistingSelectionOnPress) {
@@ -187,7 +188,7 @@ TEST_F(TraceViewerTest, TimelineKeepExistingSelectionOnPress) {
     tv.selection_active = true;
     tv.selection_start_time = 100.0;
     tv.selection_end_time = 200.0;
-    tv.selection_drag_mode = TimelineDragMode::NONE;
+    tv.selection_drag_mode = InteractionDragMode::NONE;
     tv.last_inner_width = 1000.0f;
 
     // Frame 1: Mouse down on ruler
@@ -202,7 +203,7 @@ TEST_F(TraceViewerTest, TimelineKeepExistingSelectionOnPress) {
 
     trace_viewer_step(&tv, &td, i1, allocator);
     EXPECT_TRUE(tv.selection_active);
-    EXPECT_EQ(tv.selection_drag_mode, TimelineDragMode::RULER_NEW);
+    EXPECT_EQ(tv.selection_drag_mode, InteractionDragMode::RULER_NEW);
     EXPECT_DOUBLE_EQ(tv.selection_start_time, 100.0);
     EXPECT_DOUBLE_EQ(tv.selection_end_time, 200.0);
 
@@ -315,7 +316,8 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
     tv.selection_start_time = 400.0;
     tv.selection_end_time = 600.0;
     tv.last_inner_width = 1000.0f;
-    tv.selected_event_index = 123; // Pre-selected
+    array_list_push_back(&tv.selected_event_indices, allocator, (int64_t)123);
+    std::sort(tv.selected_event_indices.data, tv.selected_event_indices.data + tv.selected_event_indices.size);
 
     // Add an event outside selection (at ts=100)
     TraceEventPersisted e = {};
@@ -346,7 +348,8 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
     // Hover matches should be empty because it's outside selection
     EXPECT_EQ(tv.hover_matches.size, 0u);
     // Selection should remain 123, not changed to 0 and not deselected to -1
-    EXPECT_EQ(tv.selected_event_index, 123);
+    EXPECT_EQ(tv.selected_event_indices.size, 1u);
+    EXPECT_EQ(tv.selected_event_indices[0], 123);
 }
 
 TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
@@ -358,7 +361,8 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
     tv.selection_start_time = 400.0;
     tv.selection_end_time = 600.0;
     tv.last_inner_width = 1000.0f;
-    tv.selected_event_index = 123; // Pre-selected
+    array_list_push_back(&tv.selected_event_indices, allocator, (int64_t)123);
+    std::sort(tv.selected_event_indices.data, tv.selected_event_indices.data + tv.selected_event_indices.size);
 
     // Add counter events
     TraceArgPersisted arg = {};
@@ -403,7 +407,8 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
     // Should be 0 because gating is currently ENABLED (wait, I removed it in my mental model but maybe it failed to apply?)
     // Let's see what the current file state is.
     EXPECT_EQ(tv.hover_matches.size, 0u);
-    EXPECT_EQ(tv.selected_event_index, 123);
+    EXPECT_EQ(tv.selected_event_indices.size, 1u);
+    EXPECT_EQ(tv.selected_event_indices[0], 123);
 }
 
 TEST_F(TraceViewerTest, TimelineClickOutsideToClearTracks) {
@@ -526,7 +531,8 @@ TEST_F(TraceViewerTest, CounterInteractionInsideSelectionWorks) {
     trace_viewer_step(&tv, &td, input, allocator);
 
     EXPECT_EQ(tv.hover_matches.size, 1u);
-    EXPECT_EQ(tv.selected_event_index, 0);
+    EXPECT_EQ(tv.selected_event_indices.size, 1u);
+    EXPECT_EQ(tv.selected_event_indices[0], 0);
 }
 
 TEST_F(TraceViewerTest, SnappingOnlyInVisibleTracks) {
@@ -629,7 +635,7 @@ TEST_F(TraceViewerTest, SnappingDisabledWhenNotDragging) {
     input.is_mouse_down = true;
     input.drag_delta_x = 10.0f;
     trace_viewer_step(&tv, &td, input, allocator);
-    EXPECT_EQ(tv.selection_drag_mode, TimelineDragMode::TRACKS_START);
+    EXPECT_EQ(tv.selection_drag_mode, InteractionDragMode::TRACKS_START);
     EXPECT_TRUE(tv.snap_has_snap);
     EXPECT_DOUBLE_EQ(tv.snap_best_ts, 102.0);
 }
@@ -691,13 +697,13 @@ TEST_F(TraceViewerTest, TimelineProximityCheck) {
     input.is_mouse_down = true;
     input.tracks_hovered = true;
     trace_viewer_step(&tv, &td, input, allocator);
-    EXPECT_EQ(tv.selection_drag_mode, TimelineDragMode::TRACKS_START);
+    EXPECT_EQ(tv.selection_drag_mode, InteractionDragMode::TRACKS_START);
 
     // Mouse near end
-    tv.selection_drag_mode = TimelineDragMode::NONE;
+    tv.selection_drag_mode = InteractionDragMode::NONE;
     input.mouse_x = 198.0f;
     trace_viewer_step(&tv, &td, input, allocator);
-    EXPECT_EQ(tv.selection_drag_mode, TimelineDragMode::TRACKS_END);
+    EXPECT_EQ(tv.selection_drag_mode, InteractionDragMode::TRACKS_END);
 }
 
 TEST_F(TraceViewerTest, TimelineNoZeroWidthSelectionOnPress) {
@@ -761,7 +767,7 @@ TEST_F(TraceViewerTest, TimelineSnappedBoundaryDragTracks) {
     input.is_mouse_clicked = true;
     input.is_mouse_down = true;
     trace_viewer_step(&tv, &td, input, allocator);
-    EXPECT_EQ(tv.selection_drag_mode, TimelineDragMode::TRACKS_START);
+    EXPECT_EQ(tv.selection_drag_mode, InteractionDragMode::TRACKS_START);
 
     // Drag towards 50, should snap to 50
     input.is_mouse_clicked = false;
@@ -786,7 +792,216 @@ TEST_F(TraceViewerTest, TimelineAreaIsolation) {
     input.is_mouse_down = true;
 
     EXPECT_FALSE(tv.selection_active);
-    EXPECT_EQ(tv.selection_drag_mode, TimelineDragMode::NONE);
+    EXPECT_EQ(tv.selection_drag_mode, InteractionDragMode::NONE);
+}
+
+TEST_F(TraceViewerTest, BoxSelectEvents) {
+    // Track 1: Thread with 2 events
+    {
+        TraceEventPersisted e1 = {}; e1.ts = 100; e1.dur = 50;
+        TraceEventPersisted e2 = {}; e2.ts = 200; e2.dur = 50;
+        array_list_push_back(&td.events, allocator, e1);
+        array_list_push_back(&td.events, allocator, e2);
+        Track t = {};
+        t.type = TRACK_TYPE_THREAD;
+        array_list_push_back(&t.event_indices, allocator, (size_t)0);
+        array_list_push_back(&t.event_indices, allocator, (size_t)1);
+        array_list_resize(&t.depths, allocator, 2);
+        t.depths[0] = 0; t.depths[1] = 0;
+        track_update_max_dur(&t, &td, allocator);
+        array_list_push_back(&tv.tracks, allocator, t);
+    }
+    // Track 2: Thread with 1 event in depth 1
+    {
+        TraceEventPersisted e3 = {}; e3.ts = 150; e3.dur = 100;
+        array_list_push_back(&td.events, allocator, e3);
+        Track t = {};
+        t.type = TRACK_TYPE_THREAD;
+        array_list_push_back(&t.event_indices, allocator, (size_t)2);
+        array_list_resize(&t.depths, allocator, 1);
+        t.depths[0] = 1;
+        track_update_max_dur(&t, &td, allocator);
+        t.max_depth = 1;
+        array_list_push_back(&tv.tracks, allocator, t);
+    }
+
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 1000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 1000;
+    tv.last_inner_width = 1000.0f;
+    tv.last_tracks_x = 0;
+    tv.last_tracks_y = 20.0f;
+    tv.last_lane_height = 20.0f;
+
+    // First frame: Start box select
+    // Box covers TS [120, 180] and Y [30, 70]
+    // Track 1: vi.y = 20, vi.height = 40 (lane 0: [40, 60], header: [20, 40])
+    // Track 2: vi.y = 60, vi.height = 60 (lane 0: [80, 100], lane 1: [100, 120], header: [60, 80])
+    // Wait, track height = (max_depth + 2) * lane_height
+    // Track 1: max_depth=0, height=40. y=20. Header=[20,40], Lane0=[40,60].
+    // Track 2: max_depth=1, height=60. y=60. Header=[60,80], Lane0=[80,100], Lane1=[100,120].
+
+    TraceViewerInput input = {};
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 1000.0f;
+    input.ruler_height = 20.0f;
+    input.lane_height = 20.0f;
+    input.is_shift_down = true;
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    input.mouse_x = 120.0f;
+    input.mouse_y = 30.0f;
+    input.tracks_hovered = true;
+
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_EQ(tv.selection_drag_mode, InteractionDragMode::BOX_SELECT);
+    EXPECT_FALSE(tv.snap_has_snap); // Snapping should be disabled
+    EXPECT_FLOAT_EQ(tv.box_select_start.x, 120.0f);
+
+    // Second frame: End box select at [180, 110]
+    // Box area: X=[120, 180], Y=[30, 110]
+    // TS area: [120, 180]
+    // Y area: [30, 110]
+    // Overlapping events:
+    // e1: ts=[100, 150], lane0=[40, 60]. Overlaps X and Y.
+    // e2: ts=[200, 250], lane0=[40, 60]. X doesn't overlap.
+    // e3: ts=[150, 250], lane1=[100, 120]. Overlaps X and Y.
+    
+    input.is_mouse_clicked = false;
+    input.is_mouse_down = false;
+    input.is_mouse_released = true;
+    input.mouse_x = 180.0f;
+    input.mouse_y = 110.0f;
+    
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_EQ(tv.selection_drag_mode, InteractionDragMode::NONE);
+    EXPECT_EQ(tv.selected_event_indices.size, 2u);
+    EXPECT_EQ(tv.selected_event_indices[0], 0); // e1
+    EXPECT_EQ(tv.selected_event_indices[1], 2); // e3
+}
+
+TEST_F(TraceViewerTest, BoxSelectLongEvent) {
+    // Event that starts at 0 and ends at 1000
+    TraceEventPersisted e = {}; e.ts = 0; e.dur = 1000;
+    array_list_push_back(&td.events, allocator, e);
+    Track t = {};
+    t.type = TRACK_TYPE_THREAD;
+    array_list_push_back(&t.event_indices, allocator, (size_t)0);
+    array_list_resize(&t.depths, allocator, 1);
+    t.depths[0] = 0;
+    track_update_max_dur(&t, &td, allocator);
+    array_list_push_back(&tv.tracks, allocator, t);
+
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 1000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 1000;
+    tv.last_inner_width = 1000.0f;
+    tv.last_tracks_x = 0;
+    tv.last_tracks_y = 20.0f;
+    tv.last_lane_height = 20.0f;
+
+    // Box from TS [500, 600], Y [40, 60] (Lane 0)
+    TraceViewerInput input = {};
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 1000.0f;
+    input.ruler_height = 20.0f;
+    input.lane_height = 20.0f;
+    input.is_shift_down = true;
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    input.mouse_x = 500.0f;
+    input.mouse_y = 45.0f;
+    input.tracks_hovered = true;
+
+    trace_viewer_step(&tv, &td, input, allocator);
+    
+    input.is_mouse_clicked = false;
+    input.is_mouse_down = false;
+    input.is_mouse_released = true;
+    input.mouse_x = 600.0f;
+    input.mouse_y = 55.0f;
+    
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_EQ(tv.selected_event_indices.size, 1u);
+    EXPECT_EQ(tv.selected_event_indices[0], 0);
+}
+
+TEST_F(TraceViewerTest, BoxSelectCounterHeaderIgnored) {
+    // Add counter events
+    TraceArgPersisted arg = {};
+    arg.key_ref = 1;
+    arg.val_double = 1.0;
+    array_list_push_back(&td.args, allocator, arg);
+
+    TraceEventPersisted e1 = {}; e1.ts = 100; e1.args_offset = 0; e1.args_count = 1;
+    array_list_push_back(&td.events, allocator, e1);
+
+    Track t = {};
+    t.type = TRACK_TYPE_COUNTER;
+    array_list_push_back(&t.event_indices, allocator, (size_t)0);
+    array_list_push_back(&t.counter_series, allocator, (StringRef)1);
+    t.counter_max_total = 1.0;
+    track_update_max_dur(&t, &td, allocator);
+    array_list_push_back(&tv.tracks, allocator, t);
+
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 1000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 1000;
+    tv.last_inner_width = 1000.0f;
+    tv.last_tracks_x = 0;
+    tv.last_tracks_y = 20.0f;
+    tv.last_lane_height = 20.0f;
+
+    // Track 0 starts at Y=20.
+    // Header is [20, 40], Chart is [40, 100] (counter height = 3 * lane_height + header_lane = 80)
+    // Wait, counter_track_height = 3.0f * input.lane_height = 60.
+    // Total height = 60 + header_lane (20) = 80.
+    // Header: [20, 40]. Chart: [40, 80].
+
+    TraceViewerInput input = {};
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 1000.0f;
+    input.ruler_height = 20.0f;
+    input.lane_height = 20.0f;
+    input.is_shift_down = true;
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    input.tracks_hovered = true;
+
+    // Case 1: Box overlaps ONLY the header [25, 35]
+    input.mouse_x = 50.0f;
+    input.mouse_y = 25.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+    
+    input.is_mouse_clicked = false;
+    input.is_mouse_down = false;
+    input.is_mouse_released = true;
+    input.mouse_x = 150.0f;
+    input.mouse_y = 35.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+    
+    EXPECT_EQ(tv.selected_event_indices.size, 0u);
+
+    // Case 2: Box overlaps the chart area [45, 55]
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    input.is_mouse_released = false;
+    input.mouse_x = 50.0f;
+    input.mouse_y = 45.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    input.is_mouse_clicked = false;
+    input.is_mouse_down = false;
+    input.is_mouse_released = true;
+    input.mouse_x = 150.0f;
+    input.mouse_y = 55.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+    
+    EXPECT_EQ(tv.selected_event_indices.size, 1u);
+    EXPECT_EQ(tv.selected_event_indices[0], 0);
 }
 
 TEST_F(TraceViewerTest, TrackHeaderNameFormatting) {
@@ -1095,6 +1310,7 @@ TEST_F(TraceViewerTest, DoubleClickEventOutsideCurrentSelection) {
     EXPECT_TRUE(tv.selection_active);
     EXPECT_DOUBLE_EQ(tv.selection_start_time, 8000.0);
     EXPECT_DOUBLE_EQ(tv.selection_end_time, 9000.0);
-    EXPECT_EQ(tv.selected_event_index, 1);
+    EXPECT_EQ(tv.selected_event_indices.size, 1u);
+    EXPECT_EQ(tv.selected_event_indices[0], 1);
 }
 
