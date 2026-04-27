@@ -17,8 +17,17 @@ void track_flush_bucket_depth(ArrayList<TrackRenderBlock>* out_blocks,
                      (next_bucket_ts - viewport_start) * inv_duration);
 
   const TraceEventPersisted& rep_e = trace_data->events[s->rep_event_idx];
-  TrackRenderBlock rb = {x1, x2, rep_e.color, rep_e.name_ref, depth, s->count,
-                         false, s->rep_event_idx};
+  TrackRenderBlock rb = {
+      .x1 = x1,
+      .x2 = x2,
+      .color = rep_e.color,
+      .name_ref = rep_e.name_ref,
+      .depth = depth,
+      .count = s->count,
+      .is_selected = false,
+      .is_focused = false,
+      .event_idx = s->rep_event_idx,
+  };
   array_list_push_back(out_blocks, a, rb);
   s->count = 0;
   s->max_dur = -1;
@@ -28,8 +37,9 @@ void track_flush_bucket_depth(ArrayList<TrackRenderBlock>* out_blocks,
 void track_compute_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
     double viewport_end, float inner_width, float tracks_canvas_pos_x,
-    const ArrayList<int64_t>& selected_event_indices, TrackRendererState* state,
-    ArrayList<TrackRenderBlock>* out_blocks, Allocator a) {
+    int64_t focused_event_idx, const ArrayList<int64_t>& selected_event_indices,
+    TrackRendererState* state, ArrayList<TrackRenderBlock>* out_blocks,
+    Allocator a) {
   array_list_clear(out_blocks);
   if (track->event_indices.size == 0) return;
 
@@ -78,6 +88,7 @@ void track_compute_render_blocks(
             selected_event_indices.data,
             selected_event_indices.data + selected_event_indices.size,
             (int64_t)event_idx);
+        bool is_focused = (event_idx == (size_t)focused_event_idx);
 
         float x1 = (float)(tracks_canvas_pos_x +
                            ((double)e.ts - viewport_start) * inv_duration);
@@ -91,6 +102,7 @@ void track_compute_render_blocks(
             .depth = depth,
             .count = 1,
             .is_selected = is_selected,
+            .is_focused = is_focused,
             .event_idx = event_idx,
         };
         array_list_push_back(out_blocks, a, rb);
@@ -136,11 +148,12 @@ void track_compute_render_blocks(
           selected_event_indices.data,
           selected_event_indices.data + selected_event_indices.size,
           (int64_t)event_idx);
+      bool is_focused = (event_idx == (size_t)focused_event_idx);
       // Use a small epsilon to prevent floating point jitter from flipping an
       // event between 'large' and 'tiny' during panning.
       bool is_large = (double)e.dur * inv_duration >= TRACK_MIN_EVENT_WIDTH - 0.01f;
 
-      if (is_selected || is_large) {
+      if (is_selected || is_focused || is_large) {
         // Flush pending bucket state for this depth
         track_flush_bucket_depth(out_blocks, viewport_start, inv_duration,
                                  tracks_canvas_pos_x, current_bucket_ts,
@@ -160,6 +173,7 @@ void track_compute_render_blocks(
             .depth = depth,
             .count = 1,
             .is_selected = is_selected,
+            .is_focused = is_focused,
             .event_idx = event_idx,
         };
         array_list_push_back(out_blocks, a, rb);
@@ -197,7 +211,8 @@ void track_compute_render_blocks(
       TrackRenderBlock& current = (*out_blocks)[write_idx];
       TrackRenderBlock& next = (*out_blocks)[read_idx];
 
-      if (!current.is_selected && !next.is_selected &&
+      if (!current.is_selected && !current.is_focused &&
+          !next.is_selected && !next.is_focused &&
           current.depth == next.depth &&
           current.event_idx == next.event_idx) {
         current.x2 = next.x2;
@@ -214,8 +229,9 @@ void track_compute_render_blocks(
 void track_compute_counter_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
     double viewport_end, float width, float tracks_canvas_pos_x,
-    const ArrayList<int64_t>& selected_event_indices, TrackRendererState* state,
-    ArrayList<CounterRenderBlock>* out_blocks, Allocator a) {
+    int64_t focused_event_idx, const ArrayList<int64_t>& selected_event_indices,
+    TrackRendererState* state, ArrayList<CounterRenderBlock>* out_blocks,
+    Allocator a) {
   array_list_clear(out_blocks);
   array_list_clear(&state->counter_peaks);
   if (track->event_indices.size == 0) return;
@@ -292,6 +308,7 @@ void track_compute_counter_render_blocks(
 
     size_t last_event_idx_in_bucket = (size_t)-1;
     bool is_selected = false;
+    bool is_focused = false;
 
     // Consume all events in this bucket
     while (it < search_end &&
@@ -304,6 +321,9 @@ void track_compute_counter_render_blocks(
             selected_event_indices.data,
             selected_event_indices.data + selected_event_indices.size,
             (int64_t)*it);
+      }
+      if (!is_focused) {
+        is_focused = (*it == (size_t)focused_event_idx);
       }
 
       // In Chrome Trace, a counter event usually updates all its series or sets
@@ -356,7 +376,8 @@ void track_compute_counter_render_blocks(
       if (out_blocks->size > 0) {
         const CounterRenderBlock& last_rb = (*out_blocks)[out_blocks->size - 1];
         if (last_rb.event_idx == last_event_idx_in_bucket &&
-            last_rb.is_selected == is_selected) {
+            last_rb.is_selected == is_selected &&
+            last_rb.is_focused == is_focused) {
           // Check if peaks match
           can_merge = true;
           size_t series_count = track->counter_series.size;
@@ -378,6 +399,7 @@ void track_compute_counter_render_blocks(
             .x1 = x1,
             .x2 = x2,
             .is_selected = is_selected,
+            .is_focused = is_focused,
             .event_idx = last_event_idx_in_bucket,
         };
         if (last_event_idx_in_bucket == (size_t)-1) {

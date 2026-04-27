@@ -15,8 +15,11 @@ const Theme* theme_get_dark() {
       // Events
       IM_COL32(255, 255, 255, 80),   // event_border
       IM_COL32(255, 255, 255, 255),  // event_border_selected
+      IM_COL32(0, 255, 255, 255),    // event_border_focused (Electric Cyan)
+      IM_COL32(0, 255, 255, 40),     // event_focused_bg
       IM_COL32(255, 255, 255, 255),  // event_text
       IM_COL32(255, 255, 255, 255),  // event_text_selected
+      IM_COL32(255, 255, 255, 255),  // event_text_focused
 
       // Tracks
       IM_COL32(255, 255, 255, 255),  // track_text
@@ -64,8 +67,11 @@ const Theme* theme_get_light() {
       // Events
       IM_COL32(0, 0, 0, 60),         // event_border
       IM_COL32(0, 0, 0, 255),        // event_border_selected (Solid Black)
+      IM_COL32(0, 0, 128, 255),      // event_border_focused (Deep Navy Blue)
+      IM_COL32(0, 0, 128, 30),       // event_focused_bg
       IM_COL32(0, 0, 0, 220),        // event_text (slightly soft black)
       IM_COL32(0, 0, 0, 220),        // event_text_selected (Stay black)
+      IM_COL32(0, 0, 0, 220),        // event_text_focused
 
       // Tracks
       IM_COL32(50, 50, 50, 255),     // track_text

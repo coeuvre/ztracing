@@ -64,6 +64,7 @@
     - **Thread Safety**: Access to `TraceData` from the main thread (e.g., for theme updates) is strictly prohibited while `loading.active` is true to avoid data races with the background parser.
 - `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
     - **Architecture**: Decouples interaction and layout logic from ImGui rendering via a pure `trace_viewer_step` function and a `TraceViewerInput` struct. This enables comprehensive unit testing of viewport navigation, hit-testing, selection, and layout without an ImGui context.
+    - **Independent States**: Maintains a single `focused_event_idx` (for single clicks) and an `ArrayList<int64_t> selected_event_indices` (for multi-selection) as independent states, allowing a focused event to exist within or outside of a box selection.
     - **Unified Inspection UI**: Centralizes argument and property rendering into modular helper functions (`trace_viewer_draw_args_table`, `trace_viewer_draw_tooltip`). This ensures a consistent, professional, and zero-redundancy experience across all interactive elements.
     - **Table-Based Layout**: Utilizes structured ImGui tables for all multi-key data (Counter series, Event arguments), providing perfect vertical alignment and high legibility.
     - **Zero-Redundancy Logic**: Automatically filters and hides redundant fields (e.g., hiding track names in tooltips, hiding internal PH codes, hiding duration for instant events) to maintain a high signal-to-noise ratio.
@@ -143,7 +144,8 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Data Clamping**: Rendering is strictly limited to the range between the first and last events in the track. "Gap" blocks before the first event or after the last event are not generated, providing a cleaner view.
     - **Performance**: Complexity is $O(W \log N)$ via binary search jumping, where $W$ is the viewport width and $N$ is the event count. Internal calculations use pre-calculated visual offsets ($O(W \cdot S)$) to minimize per-frame overhead.
     - **Hover Highlighting**: Hovering over a counter track highlights the active bucket/block with a semi-transparent overlay.
-    - **Selection Highlighting**: Selecting a counter event highlights all horizontal step lines in the active bucket with the theme's selection color and increased thickness. Vertical connection lines remain neutral.
+    - **Selection Highlighting**: Selecting a counter event highlights all horizontal step lines in the active bucket with the theme's selection color and increased thickness.
+    - **Focus Highlighting**: Clicking a counter event applies a **3px thick** border in the theme's focus color (Electric Cyan/Deep Navy) and a distinct semi-transparent vertical overlay (`event_focused_bg`) to the entire bucket. Vertical connection lines remain neutral.
     - **Interactive Tooltip**: Displays values for all series at the hovered bucket's timestamp, including a cumulative total for multi-series counters. Supports both string and numeric arguments.
     - **Coloring**: Each series is assigned a unique color from the theme's event palette based on the hash of its key.
 - **Proportions**:
@@ -159,7 +161,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Initial View & Reset**: Upon loading a trace or selecting "Reset View", the viewport is centered and zoomed to the maximum zoom-out level (1.2x duration).
 - **Double-click to Zoom**: Double-clicking (LMB) any thread event instantly focuses the viewport on that event.
     - **Context Padding**: Adds a **5% padding** to both sides of the event duration to provide temporal context.
-    - **Automatic Selection**: Automatically creates a **timeline selection** for the event's exact range and opens the **Details** panel.
+    - **Automatic Focus**: Automatically sets the event as **focused** (3px vibrant border), creates a **timeline selection** for the event's exact range, and opens the **Details** panel.
     - **Selection Override**: Works even if the event is outside a currently active timeline selection area.
     - **Stability Shield**: Employs a frame-aware release shield (`ignore_next_release`) to prevent viewport shifts from causing accidental deselection during the trailing mouse-up event of a double-click.
 - **Timeline Selection**:
@@ -178,8 +180,11 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
         - Panning (horizontal and vertical) is disabled while a boundary is being dragged.
     - **Zoom/Pan Constraints**: When a selection is active, the viewport is constrained to keep the selection visible. Panning is clamped so selection boundaries can reach but not exceed viewport edges.
     - **Deselection**:
-        - A simple click on the timeline ruler (without dragging) clears the active selection.
-        - Clicking on an empty area of the track viewport (outside the selection range and not on a boundary) clears both the active timeline selection and event selections.
+        - **Ruler Click**: A simple click on the timeline ruler (without dragging) clears the active timeline selection.
+        - **Tiered Clearing**: Clicking on an empty area of the track viewport employs a **click consumption** model:
+            - **Inside Range**: If a timeline selection is active and the click is inside, it clears the **focused event** and **box selection** but preserves the timeline range.
+            - **Outside Range**: If a timeline selection is active and the click is outside, it clears the **timeline range** only, preserving event selections.
+            - **No Range**: If no timeline range is active, it clears all remaining selections (focus and box).
     - **Refactored Interaction Logic**: Selection and snapping logic are consolidated directly into `TraceViewer`, with per-frame updates handled in `trace_viewer_step`. Dimming areas are calculated locally during rendering to ensure perfect alignment with viewport bounds.
     - **Multi-Selection Storage**: `TraceViewer` maintains an `ArrayList<int64_t> selected_event_indices` to support multiple simultaneous selections. The list is sorted for efficient $O(\log N)$ rendering checks.
     - **Spatial Hit-Testing**: Rectangle selection performs spatial intersection tests against all visible events. It utilizes track `max_dur` to correctly identify long events that start before the selection box and ignores counter track headers to prevent accidental selections.
@@ -189,14 +194,14 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Visibility Culling (Horizontal)**: Events are grouped into tracks. Each track maintains a `max_dur` (maximum event duration) and sorted `event_indices`. Binary search is used to find the first potentially visible event at `viewport_start - max_dur`, ensuring partially visible events are correctly rendered.
     - **Visibility Culling (Vertical)**: Tracks outside the vertical scroll area are skipped entirely.
     - **Level of Detail (LOD)**: To handle massive traces (10M+ events):
-        - **Tiny Events**: Skips rendering of events < 1.0 pixel wide that fall into the same pixel range as a previously drawn block. Selected events always bypass this optimization.
-        - **Event Borders**: Borders are only drawn for selected events or those wider than `TRACK_MIN_EVENT_WIDTH`. A **0.01f epsilon** is applied to the threshold to prevent floating-point jitter from causing borders to flicker during panning.
+        - **Tiny Events**: Skips rendering of events < 1.0 pixel wide that fall into the same pixel range as a previously drawn block. **Focused events** always bypass this optimization.
+        - **Event Borders**: Borders are only drawn for focused/selected events or those wider than `TRACK_MIN_EVENT_WIDTH`. A **0.01f epsilon** is applied to the threshold to prevent floating-point jitter from causing borders to flicker during panning.
     - **Event Coalescing & Bucketing**: To maintain performance and visual stability in dense areas:
         - **Stable Bucketing**: Both thread and counter tracks utilize a stable bucketing system. Viewports are divided into buckets aligned to absolute timestamps (multiples of the time equivalent of 3.0 pixels).
         - **Panning Stability**: For thread tracks, bucketing starts from a stable timestamp that covers all potentially visible events (accounting for `max_dur`). Each event is strictly processed only within the bucket iteration corresponding to its start time. This eliminates "dancing" or flickering of merged blocks during horizontal panning.
         - **Thread-Track Merging**: For thread tracks, sub-pixel events within a bucket are merged at each depth. The event with the longest duration is chosen as the "representative," providing the color, name, and tooltip for the merged block.
         - **Bucket Limit**: Merged blocks are capped at a maximum width (typically 3.0 pixels) to preserve a reasonably accurate representation of event density.
-        - **Large Event Bypass**: Events wider than a bucket or currently selected events bypass the bucketing logic and are rendered with full precision. A **0.01f epsilon** is applied to the width threshold to prevent floating-point jitter from flipping events between 'large' and 'tiny' states during panning.
+        - **High-Priority Bypass**: Events wider than a bucket, **focused events**, or currently selected events bypass the bucketing logic and are rendered with full precision. A **0.01f epsilon** is applied to the width threshold to prevent floating-point jitter from flipping events between 'large' and 'tiny' states during panning.
     - **Selection & Hover**:
         - **Hit-Testing**: Hover detection perfectly aligns with the visual representation, including the minimum rendering width (3.0px). If an event is visible, it is interactive.
         - **Block-Based Interaction**: Both highlighting and selection are driven by the same `TrackRenderBlock` data structure. Each block carries an `event_idx`, ensuring that the event highlighted by the mouse is always the one selected when clicking. This eliminates discrepancies between the visual feedback and the actual selection.
@@ -204,8 +209,9 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
         - **Tooltips**: Hovering over an event displays a rich tooltip with `10.0f` padding:
             - **Single Events**: Shows full name, category, relative start time (from trace start), duration, and all associated arguments.
             - **Merged Blocks**: Shows the exact number of coalesced events (e.g., "5 merged events").
-        - **Selection Indicators**: Selection is indicated by a 1px high-contrast border (`event_border_selected`). Original event colors are preserved to maintain category visibility.
-        - **Deselection**: Clicking on an empty area of the track viewport deselects the current event(s).
+        - **Selection Indicators**: Selection is indicated by a 1px high-contrast border (`event_border_selected`).
+        - **Focus Indicators**: Focused event is indicated by a **3px thick** vibrant border (`event_border_focused`) and uses the same original event colors to maintain category visibility.
+        - **Deselection**: Clicking on an empty area of the track viewport deselects the current event(s) or clears the timeline range based on the tiered clearing model.
         - **Drag Protection**: Selection and deselection only trigger on a clean click (mouse release without exceeding the `MouseDragThreshold`), preventing accidental changes while panning.
     - **Text Rendering**: Optimized via CPU-side clipping using the `ImDrawList::AddText` overload with a `cpu_fine_clip_rect`. This avoids draw call splits from `PushClipRect` and is only applied when text actually exceeds the available area.
     - **Event Names**: Names are centered both vertically and horizontally within event blocks if they fit. If the name is larger than the available area, it starts rendering from the beginning of the block (with padding). Horizontal padding (`6.0f`) is applied to both sides. "Sticky" positioning for names is disabled to prioritize centering.
@@ -231,9 +237,10 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Auto-Open**: Automatically opens when one or more events are selected.
     - **Focus Management**: When automatically opened, it does not steal focus (`ImGuiWindowFlags_NoFocusOnAppearing`), ensuring the user can continue navigating the viewport uninterrupted.
     - **Content**: 
-        - **Single Selection**: Displays detailed information for the selected event (Name, Category, PH, Timestamp, Duration, PID, TID, and all Arguments).
-        - **Multi-Selection**: Displays a summary (count) and a high-performance, scrollable table listing each event's Name, Category, Start time, and Duration.
-            - **Performance**: Utilizes `ImGuiListClipper` to achieve $O(\text{VisibleRows})$ rendering and formatting complexity, ensuring smooth scrolling even with hundreds of thousands of selected events.
+        - **Focused Event**: Displays detailed information for the focused event (Name, Category, PH, Timestamp, Duration, PID, TID, and all Arguments).
+        - **Selection**: Displays a summary (count) and a high-performance, scrollable table listing each selected event's Name, Category, Start time, and Duration.
+        - **Concurrent Display**: If both a focused event and a multi-selection exist, both sections are displayed simultaneously, separated by a visual divider, with the focused event details prioritized at the top.
+            - **Performance**: Utilizes `ImGuiListClipper` for the selection table to achieve $O(\text{VisibleRows})$ rendering and formatting complexity.
             - **Sticky Headers**: Implements a sticky header row via `ImGuiTableFlags_ScrollY` and `ImGui::TableSetupScrollFreeze(0, 1)`.
             - **Alignment & Legibility**: All data is left-aligned using `ImGuiTableFlags_SizingFixedFit`. Row backgrounds and borders are enabled to improve row tracking.
     - **Arguments**: Supports both string and numeric arguments (`val_double`), ensuring counter values are correctly displayed.

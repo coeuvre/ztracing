@@ -112,6 +112,7 @@ struct TraceViewer {
   ArrayList<TrackRenderBlock> render_blocks;
   ArrayList<CounterRenderBlock> counter_render_blocks;
   ArrayList<HoverMatch> hover_matches;
+  int64_t focused_event_idx = -1;
   ArrayList<int64_t> selected_event_indices;
   bool show_details_panel;
   bool ignore_next_release = false;

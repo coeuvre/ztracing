@@ -19,8 +19,11 @@ struct Theme {
   // Events
   ImU32 event_border;
   ImU32 event_border_selected;
+  ImU32 event_border_focused;
+  ImU32 event_focused_bg;
   ImU32 event_text;
   ImU32 event_text_selected;
+  ImU32 event_text_focused;
 
   // Tracks
   ImU32 track_text;

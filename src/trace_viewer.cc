@@ -210,8 +210,8 @@ static void trace_viewer_draw_selection_overlay(
 static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
                                     ImDrawList* draw_list, float x1, float x2,
                                     float y1, float y2, ImU32 col,
-                                    bool is_selected, StringRef name_ref,
-                                    float inner_width,
+                                    bool is_selected, bool is_focused,
+                                    StringRef name_ref, float inner_width,
                                     float tracks_canvas_pos_x,
                                     const Theme& theme) {
   (void)tv;
@@ -225,9 +225,15 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
 
   draw_list->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), col);
 
-  if (is_selected || draw_border) {
-    ImU32 border_col =
-        is_selected ? theme.event_border_selected : theme.event_border;
+  if (is_focused || is_selected || draw_border) {
+    ImU32 border_col = theme.event_border;
+    if (is_focused) {
+      border_col = theme.event_border_focused;
+      border_thickness = 3.0f;
+    } else if (is_selected) {
+      border_col = theme.event_border_selected;
+    }
+
     draw_list->AddRect(ImVec2(x1, y1), ImVec2(x2, y2), border_col, 0.0f, 0,
                        border_thickness);
   }
@@ -244,8 +250,12 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
       if (visible_x2 > visible_x1) {
         std::string_view name = trace_data_get_string(td, name_ref);
         if (name.size() > 0) {
-          ImU32 text_col =
-              is_selected ? theme.event_text_selected : theme.event_text;
+          ImU32 text_col = theme.event_text;
+          if (is_focused) {
+            text_col = theme.event_text_focused;
+          } else if (is_selected) {
+            text_col = theme.event_text_selected;
+          }
           float event_font_size = ImGui::GetFontSize();
           float text_y = y1 + (lane_height - event_font_size) * 0.5f;
 
@@ -497,8 +507,8 @@ static void trace_viewer_draw_counter_track(
     TraceViewer* tv, TraceData* td, ImDrawList* draw_list, const Track& t,
     ImVec2 pos, float width, float height, double viewport_start,
     double viewport_end, const Theme& theme, ImVec2 mouse_pos,
-    bool track_list_hovered, const ArrayList<int64_t>& selected_event_indices,
-    Allocator allocator) {
+    bool track_list_hovered, int64_t focused_event_idx,
+    const ArrayList<int64_t>& selected_event_indices, Allocator allocator) {
   if (t.event_indices.size == 0) return;
 
   double duration = viewport_end - viewport_start;
@@ -512,7 +522,7 @@ static void trace_viewer_draw_counter_track(
                     t.counter_series.size);
 
   track_compute_counter_render_blocks(
-      &t, td, viewport_start, viewport_end, width, pos.x,
+      &t, td, viewport_start, viewport_end, width, pos.x, focused_event_idx,
       selected_event_indices, state, &tv->counter_render_blocks, allocator);
 
   if (tv->counter_render_blocks.size == 0) return;
@@ -560,6 +570,12 @@ static void trace_viewer_draw_counter_track(
                                ImVec2(rb.x2, pos.y + height),
                                IM_COL32(255, 255, 255, 30));
     }
+
+    if (rb.is_focused) {
+      draw_list->AddRectFilled(ImVec2(rb.x1, pos.y),
+                               ImVec2(rb.x2, pos.y + height),
+                               theme.event_focused_bg);
+    }
   }
 
   // Pass 2: Step lines (no anti-aliasing for sharp lines)
@@ -570,14 +586,16 @@ static void trace_viewer_draw_counter_track(
     float prev_y_top = -1.0f;
     for (size_t i = 0; i < n_blocks; i++) {
       const CounterRenderBlock& rb = tv->counter_render_blocks[i];
-      bool event_selected = rb.is_selected;
 
       float off_top = state->counter_visual_offsets[i * (n_series + 1) + s_idx + 1];
       float y_top = pos.y + height - off_top;
 
       ImU32 line_col = theme.event_border;
       float thickness = 1.0f;
-      if (event_selected) {
+      if (rb.is_focused) {
+        line_col = theme.event_border_focused;
+        thickness = 3.0f;
+      } else if (rb.is_selected) {
         line_col = theme.event_border_selected;
       }
 
@@ -702,8 +720,6 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
       input.mouse_y >= tracks_origin_y &&
       input.mouse_y < tracks_origin_y + tracks_inner_height;
 
-  bool interaction_ignored = tv->ignore_next_release;
-
   // 1. Snapping Initialization
   float snap_threshold_px = 5.0f;
   trace_viewer_snapping_reset(tv, mouse_ts, snap_threshold_px);
@@ -715,6 +731,9 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
   SelectionProximity proximity =
       trace_viewer_selection_check_proximity(tv, mouse_ts, threshold_ts);
+
+  bool mouse_in_selection = trace_viewer_selection_is_mouse_inside(tv, mouse_ts);
+  bool interaction_ignored = tv->ignore_next_release;
 
   // Ruler Interaction
   if (input.ruler_active) {
@@ -845,11 +864,11 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
   // 3. Track Layout and Pass 1: Culling, Naming, Snapping, Hit-testing
   array_list_clear(&tv->hover_matches);
+
   array_list_resize(&tv->track_infos, allocator, tv->tracks.size);
   tv->total_tracks_height = 0.0f;
   
   float counter_track_height = 3.0f * input.lane_height;
-  bool mouse_in_selection = trace_viewer_selection_is_mouse_inside(tv, mouse_ts);
   bool track_list_hovered =
       input.tracks_hovered &&
       mouse_in_tracks_content &&
@@ -898,8 +917,9 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
       if (t.type == TRACK_TYPE_THREAD) {
         track_compute_render_blocks(
             &t, td, tv->viewport.start_time, tv->viewport.end_time,
-            tracks_inner_width, tracks_origin_x, tv->selected_event_indices,
-            &tv->track_renderer_state, &tv->render_blocks, allocator);
+            tracks_inner_width, tracks_origin_x, tv->focused_event_idx,
+            tv->selected_event_indices, &tv->track_renderer_state,
+            &tv->render_blocks, allocator);
 
         for (size_t k = 0; k < tv->render_blocks.size; k++) {
           const TrackRenderBlock& rb = tv->render_blocks[k];
@@ -927,8 +947,9 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
         // Counter hit-testing
         track_compute_counter_render_blocks(
             &t, td, tv->viewport.start_time, tv->viewport.end_time,
-            tracks_inner_width, tracks_origin_x, tv->selected_event_indices,
-            &tv->track_renderer_state, &tv->counter_render_blocks, allocator);
+            tracks_inner_width, tracks_origin_x, tv->focused_event_idx,
+            tv->selected_event_indices, &tv->track_renderer_state,
+            &tv->counter_render_blocks, allocator);
         
         float track_content_y = vi.y + input.lane_height;
         float track_content_h = vi.height - input.lane_height;
@@ -982,9 +1003,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
       const Track& t = tv->tracks[hm.track_idx];
       if (t.type == TRACK_TYPE_THREAD && hm.rb.event_idx != (size_t)-1) {
         const TraceEventPersisted& e = td->events[hm.rb.event_idx];
-        array_list_clear(&tv->selected_event_indices);
-        array_list_push_back(&tv->selected_event_indices, allocator,
-                             (int64_t)hm.rb.event_idx);
+        tv->focused_event_idx = (int64_t)hm.rb.event_idx;
         tv->show_details_panel = true;
         tv->ignore_next_release = true;
 
@@ -1015,16 +1034,21 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
     if (tv->hover_matches.size > 0) {
       const HoverMatch& hm = tv->hover_matches[tv->hover_matches.size - 1];
       if (hm.rb.event_idx != (size_t)-1) {
-        array_list_clear(&tv->selected_event_indices);
-        array_list_push_back(&tv->selected_event_indices, allocator,
-                             (int64_t)hm.rb.event_idx);
+        tv->focused_event_idx = (int64_t)hm.rb.event_idx;
         tv->show_details_panel = true;
       }
     } else if (input.tracks_hovered && mouse_in_tracks_content) {
-      if (mouse_in_selection && !proximity.near_start && !proximity.near_end) {
+      if (tv->selection_active && mouse_in_selection && !proximity.near_start && !proximity.near_end) {
+        // Click inside selection: clear events, keep timeline range.
+        tv->focused_event_idx = -1;
         array_list_clear(&tv->selected_event_indices);
       } else if (tv->selection_active && !mouse_in_selection) {
+        // Click outside selection: clear timeline range, keep events (click consumed).
         tv->selection_active = false;
+      } else {
+        // No selection active, or click on background: clear everything.
+        tv->focused_event_idx = -1;
+        array_list_clear(&tv->selected_event_indices);
       }
     }
   }
@@ -1244,8 +1268,9 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         if (t.type == TRACK_TYPE_THREAD) {
           track_compute_render_blocks(
               &t, td, tv->viewport.start_time, tv->viewport.end_time,
-              inner_width, tracks_canvas_pos.x, tv->selected_event_indices,
-              &tv->track_renderer_state, &tv->render_blocks, allocator);
+              inner_width, tracks_canvas_pos.x, tv->focused_event_idx,
+              tv->selected_event_indices, &tv->track_renderer_state,
+              &tv->render_blocks, allocator);
 
           for (size_t k = 0; k < tv->render_blocks.size; k++) {
             const TrackRenderBlock& rb = tv->render_blocks[k];
@@ -1253,8 +1278,9 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
             float y2 = y1 + input.lane_height - 1.0f;
 
             trace_viewer_draw_event(tv, td, track_draw_list, rb.x1, rb.x2, y1,
-                                    y2, rb.color, rb.is_selected, rb.name_ref,
-                                    inner_width, tracks_canvas_pos.x, theme);
+                                    y2, rb.color, rb.is_selected, rb.is_focused,
+                                    rb.name_ref, inner_width,
+                                    tracks_canvas_pos.x, theme);
           }
         } else {
           bool mouse_in_sel = trace_viewer_selection_is_mouse_inside(
@@ -1267,7 +1293,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
               vi.height - input.lane_height, tv->viewport.start_time,
               tv->viewport.end_time, theme,
               ImVec2(input.mouse_x, input.mouse_y), mouse_in_sel,
-              tv->selected_event_indices, allocator);
+              tv->focused_event_idx, tv->selected_event_indices, allocator);
         }
       }
 
@@ -1289,7 +1315,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
              trace_viewer_draw_event(tv, td, track_draw_list, rb.x1, rb.x2,
                                      best_hm->y1, best_hm->y2, col, false,
-                                     rb.name_ref, inner_width,
+                                     rb.is_focused, rb.name_ref, inner_width,
                                      tracks_canvas_pos.x, theme);
            }
         }
@@ -1329,14 +1355,18 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
     if (ImGui::Begin("Details", &tv->show_details_panel,
                      ImGuiWindowFlags_NoFocusOnAppearing)) {
-      if (tv->selected_event_indices.size == 1) {
+      bool has_focus = (tv->focused_event_idx != -1);
+      bool has_selection = (tv->selected_event_indices.size > 0);
+
+      if (has_focus) {
         const TraceEventPersisted& e =
-            td->events[(size_t)tv->selected_event_indices[0]];
+            td->events[(size_t)tv->focused_event_idx];
         std::string_view name = trace_data_get_string(td, e.name_ref);
         std::string_view cat = trace_data_get_string(td, e.cat_ref);
         std::string_view ph = trace_data_get_string(td, e.ph_ref);
         std::string_view id = trace_data_get_string(td, e.id_ref);
 
+        ImGui::TextDisabled("Focused Event");
         if (ph != "C") {
           ImGui::Text("Name: %.*s", (int)name.size(), name.data());
         }
@@ -1360,10 +1390,14 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         ImGui::Text("PID: %d, TID: %d", e.pid, e.tid);
 
         trace_viewer_draw_args_table(td, e, nullptr, 0);
-      } else if (tv->selected_event_indices.size > 1) {
-        ImGui::Text("%zu events selected", tv->selected_event_indices.size);
-        ImGui::Separator();
+      }
 
+      if (has_focus && has_selection) {
+        ImGui::Separator();
+      }
+
+      if (has_selection) {
+        ImGui::TextDisabled("Selection (%zu events)", tv->selected_event_indices.size);
         if (ImGui::BeginTable("##multi_select", 4,
                              ImGuiTableFlags_Resizable |
                                  ImGuiTableFlags_ScrollY |
@@ -1412,7 +1446,9 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           }
           ImGui::EndTable();
         }
-      } else {
+      }
+
+      if (!has_focus && !has_selection) {
         ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
                            "Select an event to see details.");
       }

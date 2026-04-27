@@ -138,8 +138,7 @@ TEST_F(TraceViewerTest, SelectionOnClick) {
 
     trace_viewer_step(&tv, &td, input, allocator);
 
-    EXPECT_EQ(tv.selected_event_indices.size, 1u);
-    EXPECT_EQ(tv.selected_event_indices[0], 0);
+    EXPECT_EQ(tv.focused_event_idx, 0);
     EXPECT_TRUE(tv.show_details_panel);
 }
 
@@ -347,7 +346,8 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
 
     // Hover matches should be empty because it's outside selection
     EXPECT_EQ(tv.hover_matches.size, 0u);
-    // Selection should remain 123, not changed to 0 and not deselected to -1
+    // Range is cleared, but events are kept because click was consumed by range clearing
+    EXPECT_FALSE(tv.selection_active);
     EXPECT_EQ(tv.selected_event_indices.size, 1u);
     EXPECT_EQ(tv.selected_event_indices[0], 123);
 }
@@ -404,9 +404,10 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
 
     trace_viewer_step(&tv, &td, input, allocator);
 
-    // Should be 0 because gating is currently ENABLED (wait, I removed it in my mental model but maybe it failed to apply?)
-    // Let's see what the current file state is.
+    // Should be 0 because gating is currently ENABLED
     EXPECT_EQ(tv.hover_matches.size, 0u);
+    // Range is cleared, but events are kept because click was consumed by range clearing
+    EXPECT_FALSE(tv.selection_active);
     EXPECT_EQ(tv.selected_event_indices.size, 1u);
     EXPECT_EQ(tv.selected_event_indices[0], 123);
 }
@@ -423,6 +424,9 @@ TEST_F(TraceViewerTest, TimelineClickOutsideToClearTracks) {
     tv.last_inner_height = 1000.0f;
     tv.last_tracks_x = 0.0f;
     tv.last_tracks_y = 0.0f;
+    
+    // Add a dummy box selection
+    array_list_push_back(&tv.selected_event_indices, allocator, (int64_t)123);
 
     TraceViewerInput input = {};
     input.canvas_width = 1000.0f;
@@ -436,6 +440,8 @@ TEST_F(TraceViewerTest, TimelineClickOutsideToClearTracks) {
 
     trace_viewer_step(&tv, &td, input, allocator);
     EXPECT_FALSE(tv.selection_active);
+    // Events are kept because click was consumed by range clearing
+    EXPECT_EQ(tv.selected_event_indices.size, 1u);
 }
 
 TEST_F(TraceViewerTest, TimelineClickInsideKeepsSelection) {
@@ -531,8 +537,7 @@ TEST_F(TraceViewerTest, CounterInteractionInsideSelectionWorks) {
     trace_viewer_step(&tv, &td, input, allocator);
 
     EXPECT_EQ(tv.hover_matches.size, 1u);
-    EXPECT_EQ(tv.selected_event_indices.size, 1u);
-    EXPECT_EQ(tv.selected_event_indices[0], 0);
+    EXPECT_EQ(tv.focused_event_idx, 0);
 }
 
 TEST_F(TraceViewerTest, SnappingOnlyInVisibleTracks) {
@@ -1310,7 +1315,136 @@ TEST_F(TraceViewerTest, DoubleClickEventOutsideCurrentSelection) {
     EXPECT_TRUE(tv.selection_active);
     EXPECT_DOUBLE_EQ(tv.selection_start_time, 8000.0);
     EXPECT_DOUBLE_EQ(tv.selection_end_time, 9000.0);
+    EXPECT_EQ(tv.focused_event_idx, 1);
+}
+
+TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
+    // Add two events
+    TraceEventPersisted e1 = {}; e1.ts = 100; e1.dur = 50;
+    TraceEventPersisted e2 = {}; e2.ts = 500; e2.dur = 50;
+    array_list_push_back(&td.events, allocator, e1);
+    array_list_push_back(&td.events, allocator, e2);
+    
+    Track t = {};
+    t.type = TRACK_TYPE_THREAD;
+    array_list_push_back(&t.event_indices, allocator, (size_t)0);
+    array_list_push_back(&t.event_indices, allocator, (size_t)1);
+    array_list_resize(&t.depths, allocator, 2);
+    t.depths[0] = 0; t.depths[1] = 0;
+    track_update_max_dur(&t, &td, allocator);
+    array_list_push_back(&tv.tracks, allocator, t);
+
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 1000;
+    tv.last_inner_width = 1000.0f;
+    tv.last_tracks_x = 0;
+    tv.last_tracks_y = 20.0f;
+    tv.last_lane_height = 20.0f;
+
+    // 1. Box select e1
+    TraceViewerInput input = {};
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 1000.0f;
+    input.ruler_height = 20.0f;
+    input.lane_height = 20.0f;
+    input.is_shift_down = true;
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    input.mouse_x = 120.0f;
+    input.mouse_y = 45.0f;
+    input.tracks_hovered = true;
+    input.drag_threshold = 5.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    input.is_mouse_clicked = false;
+    input.is_mouse_down = false;
+    input.is_mouse_released = true;
+    input.mouse_x = 160.0f;
+    input.mouse_y = 55.0f;
+    input.drag_delta_x = 40.0f; // Simulate drag
+    trace_viewer_step(&tv, &td, input, allocator);
+
     EXPECT_EQ(tv.selected_event_indices.size, 1u);
-    EXPECT_EQ(tv.selected_event_indices[0], 1);
+    EXPECT_EQ(tv.selected_event_indices[0], 0);
+    EXPECT_EQ(tv.focused_event_idx, -1);
+
+    // 2. Click e2 to focus it
+    input.is_shift_down = false;
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    input.is_mouse_released = false;
+    input.mouse_x = 525.0f;
+    input.mouse_y = 50.0f;
+    input.drag_delta_x = 0.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    input.is_mouse_clicked = false;
+    input.is_mouse_down = false;
+    input.is_mouse_released = true;
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    EXPECT_EQ(tv.focused_event_idx, 1);
+    EXPECT_EQ(tv.selected_event_indices.size, 1u);
+    EXPECT_EQ(tv.selected_event_indices[0], 0);
+
+    // 3. Click empty area to clear both
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    input.is_mouse_released = false;
+    input.mouse_x = 800.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    input.is_mouse_clicked = false;
+    input.is_mouse_down = false;
+    input.is_mouse_released = true;
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    EXPECT_EQ(tv.focused_event_idx, -1);
+    EXPECT_EQ(tv.selected_event_indices.size, 0u);
+}
+
+TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
+    // Add an event
+    TraceEventPersisted e1 = {}; e1.ts = 100; e1.dur = 50;
+    array_list_push_back(&td.events, allocator, e1);
+    
+    Track t = {};
+    t.type = TRACK_TYPE_THREAD;
+    array_list_push_back(&t.event_indices, allocator, (size_t)0);
+    array_list_resize(&t.depths, allocator, 1);
+    t.depths[0] = 0;
+    track_update_max_dur(&t, &td, allocator);
+    array_list_push_back(&tv.tracks, allocator, t);
+
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 1000;
+    tv.last_inner_width = 1000.0f;
+    tv.last_tracks_x = 0;
+    tv.last_tracks_y = 20.0f;
+    tv.last_lane_height = 20.0f;
+
+    // 1. Create a timeline selection [400, 600]
+    tv.selection_active = true;
+    tv.selection_start_time = 400.0;
+    tv.selection_end_time = 600.0;
+
+    // 2. Add an event to box selection manually
+    array_list_push_back(&tv.selected_event_indices, allocator, (int64_t)0);
+
+    // 3. Click empty space inside timeline selection [500]
+    TraceViewerInput input = {};
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 1000.0f;
+    input.tracks_hovered = true;
+    input.mouse_x = 500.0f;
+    input.mouse_y = 50.0f;
+    input.is_mouse_released = true;
+    input.drag_threshold = 5.0f;
+    
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    EXPECT_TRUE(tv.selection_active); // Timeline range kept
+    EXPECT_EQ(tv.selected_event_indices.size, 0u); // Box selection cleared
+    EXPECT_EQ(tv.focused_event_idx, -1);
 }
 
