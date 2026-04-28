@@ -170,7 +170,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Selection Threshold**: New selections in the ruler area require a **5-pixel drag** before becoming active. This ensures that a simple press or click on the ruler does not destroy or re-create the selection prematurely.
     - **Draggable Boundaries**: Vertical boundaries can be adjusted by dragging them within the tracks area. The mouse cursor changes to `ew-resize` when hovering over or dragging a boundary (unless in `BOX_SELECT` mode).
     - **Snapping**: Dragging selection boundaries (both in the ruler and tracks) snaps to the edges of visible thread event blocks within a **5-pixel threshold**. Snapping is disabled during rectangle selection (`BOX_SELECT`).
-    - **Visuals**: Displays two vertical lines marking the range boundaries, a semi-transparent dimmed overlay for areas outside the selection, and a duration label with horizontal arrows centered vertically in the tracks area.
+    - **Visuals**: Displays two vertical lines marking the range boundaries, a semi-transparent dimmed overlay for areas outside the selection, and a duration label with horizontal arrows positioned **1/3 from the top** of the tracks area. The label features a themed background and a 1px border matching the selection color for improved legibility.
     - **Edge Alignment**: Boundaries are perfectly aligned between the ruler and track areas. The right boundary line is always drawn with a **-10f offset** from its calculated position to prevent clipping at the viewport's right edge, ensuring it remains visible during panning.
     - **Dimming Consistency**: The dimmed overlay in the ruler area spans the full viewport width, matching the ruler's background rendering.
     - **Snapping Highlight**: When a boundary is snapped during a drag, the specific edge of the event block is highlighted with a **3-pixel wide red vertical line**.
@@ -181,10 +181,8 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Zoom/Pan Constraints**: When a selection is active, the viewport is constrained to keep the selection visible. Panning is clamped so selection boundaries can reach but not exceed viewport edges.
     - **Deselection**:
         - **Ruler Click**: A simple click on the timeline ruler (without dragging) clears the active timeline selection.
-        - **Tiered Clearing**: Clicking on an empty area of the track viewport employs a **click consumption** model:
-            - **Inside Range**: If a timeline selection is active and the click is inside, it clears the **focused event** and **box selection** but preserves the timeline range.
-            - **Outside Range**: If a timeline selection is active and the click is outside, it clears the **timeline range** only, preserving event selections.
-            - **No Range**: If no timeline range is active, it clears all remaining selections (focus and box).
+        - **Viewport Click**: Clicking on an empty area of the track viewport clears the currently **focused event** but **preserves** the multi-event selection.
+        - **Manual Clear**: The multi-event selection can be explicitly cleared using the **"Clear"** button in the Details panel.
     - **Refactored Interaction Logic**: Selection and snapping logic are consolidated directly into `TraceViewer`, with per-frame updates handled in `trace_viewer_step`. Dimming areas are calculated locally during rendering to ensure perfect alignment with viewport bounds.
     - **Multi-Selection Storage**: `TraceViewer` maintains an `ArrayList<int64_t> selected_event_indices` to support multiple simultaneous selections. The list is sorted for efficient $O(\log N)$ rendering checks.
     - **Spatial Hit-Testing**: Rectangle selection performs spatial intersection tests against all visible events. It utilizes track `max_dur` to correctly identify long events that start before the selection box and ignores counter track headers to prevent accidental selections.
@@ -211,7 +209,9 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
             - **Merged Blocks**: Shows the exact number of coalesced events (e.g., "5 merged events").
         - **Selection Indicators**: Selection is indicated by a 1px high-contrast border (`event_border_selected`).
         - **Focus Indicators**: Focused event is indicated by a **3px thick** vibrant border (`event_border_focused`) and uses the same original event colors to maintain category visibility.
-        - **Deselection**: Clicking on an empty area of the track viewport deselects the current event(s) or clears the timeline range based on the tiered clearing model.
+        - **Deselection**:
+            - Clicking on an empty area of the track viewport clears the currently focused event but **preserves** the multi-event selection.
+            - The multi-event selection can be explicitly cleared using the **"Clear"** button in the Details panel.
         - **Drag Protection**: Selection and deselection only trigger on a clean click (mouse release without exceeding the `MouseDragThreshold`), preventing accidental changes while panning.
     - **Text Rendering**: Optimized via CPU-side clipping using the `ImDrawList::AddText` overload with a `cpu_fine_clip_rect`. This avoids draw call splits from `PushClipRect` and is only applied when text actually exceeds the available area.
     - **Event Names**: Names are centered both vertically and horizontally within event blocks if they fit. If the name is larger than the available area, it starts rendering from the beginning of the block (with padding). Horizontal padding (`6.0f`) is applied to both sides. "Sticky" positioning for names is disabled to prioritize centering.
@@ -240,6 +240,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
         - **Focused Event**: Displays detailed information for the focused event (Name, Category, PH, Timestamp, Duration, PID, TID, and all Arguments).
         - **Selection**: Displays a summary (count) and a high-performance, scrollable table listing each selected event's Name, Category, Start time, and Duration.
         - **Concurrent Display**: If both a focused event and a multi-selection exist, both sections are displayed simultaneously, separated by a visual divider, with the focused event details prioritized at the top.
+            - **Click to Focus**: Clicking a row in the table instantly focuses, zooms, and scrolls to the corresponding event in the track viewport. The track is automatically centered vertically.
             - **Performance**: Utilizes `ImGuiListClipper` for the selection table to achieve $O(\text{VisibleRows})$ rendering and formatting complexity.
             - **Sticky Headers**: Implements a sticky header row via `ImGuiTableFlags_ScrollY` and `ImGui::TableSetupScrollFreeze(0, 1)`.
             - **Alignment & Legibility**: All data is left-aligned using `ImGuiTableFlags_SizingFixedFit`. Row backgrounds and borders are enabled to improve row tracking.

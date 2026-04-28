@@ -30,6 +30,7 @@ const Theme* theme_get_dark() {
       IM_COL32(0, 0, 0, 100),        // timeline_selection_bg
       IM_COL32(255, 255, 0, 255),     // timeline_selection_line
       IM_COL32(255, 255, 255, 255),  // timeline_selection_text
+      IM_COL32(30, 30, 30, 230),     // timeline_selection_text_bg
 
       // Box Selection
       IM_COL32(0, 120, 215, 50),   // box_selection_bg
@@ -82,6 +83,7 @@ const Theme* theme_get_light() {
       IM_COL32(0, 0, 0, 100),         // timeline_selection_bg
       IM_COL32(0, 120, 215, 255),     // timeline_selection_line
       IM_COL32(0, 0, 0, 255),         // timeline_selection_text
+      IM_COL32(255, 255, 255, 230),   // timeline_selection_text_bg
 
       // Box Selection
       IM_COL32(0, 120, 215, 50),   // box_selection_bg

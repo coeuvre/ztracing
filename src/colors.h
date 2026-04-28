@@ -34,6 +34,7 @@ struct Theme {
   ImU32 timeline_selection_bg;
   ImU32 timeline_selection_line;
   ImU32 timeline_selection_text;
+  ImU32 timeline_selection_text_bg;
 
   // Box Selection
   ImU32 box_selection_bg;

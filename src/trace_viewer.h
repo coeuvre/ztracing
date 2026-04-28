@@ -114,6 +114,8 @@ struct TraceViewer {
   ArrayList<HoverMatch> hover_matches;
   int64_t focused_event_idx = -1;
   ArrayList<int64_t> selected_event_indices;
+  int64_t target_focused_event_idx = -1;
+  float target_scroll_y = -1.0f;
   bool show_details_panel;
   bool ignore_next_release = false;
   float last_inner_width = 0;

@@ -169,11 +169,20 @@ static void trace_viewer_draw_selection_overlay(
   if (draw_duration_text) {
     ImVec2 text_size = ImGui::CalcTextSize(lo.duration_label);
     float text_x = (lo.x1 + lo.x2) * 0.5f - text_size.x * 0.5f;
-    float text_y = pos.y + (size.y - text_size.y) * 0.5f;
+    float text_y = pos.y + size.y / 3.0f - text_size.y * 0.5f;
 
     // Ensure text is visible even if partially off-screen
     text_x = std::max(
         pos.x + 5.0f, std::min(text_x, pos.x + size.x - text_size.x - 5.0f));
+
+    // Draw background and border for the text
+    float padding_x = 4.0f;
+    float padding_y = 2.0f;
+    ImVec2 bg_min(text_x - padding_x, text_y - padding_y);
+    ImVec2 bg_max(text_x + text_size.x + padding_x, text_y + text_size.y + padding_y);
+    
+    draw_list->AddRectFilled(bg_min, bg_max, theme.timeline_selection_text_bg, 4.0f);
+    draw_list->AddRect(bg_min, bg_max, theme.timeline_selection_line, 4.0f, 0, 1.0f);
 
     draw_list->AddText(ImVec2(text_x, text_y), theme.timeline_selection_text,
                        lo.duration_label);
@@ -695,8 +704,46 @@ static void trace_viewer_box_select_update(TraceViewer* tv, TraceData* td, Alloc
   }
 }
 
+static void trace_viewer_zoom_to_event(TraceViewer* tv,
+                                        const TraceEventPersisted& e) {
+  // Zoom to event with 5% padding
+  double event_start = (double)e.ts;
+  double event_end = (double)(e.ts + e.dur);
+  double event_dur = event_end - event_start;
+  if (event_dur < 0) event_dur = 0;
+
+  double padding = event_dur * 0.05;
+  double target_dur = event_dur + padding * 2.0;
+  if (target_dur < TRACE_VIEWER_MIN_ZOOM_DURATION) {
+    target_dur = TRACE_VIEWER_MIN_ZOOM_DURATION;
+    padding = (target_dur - event_dur) * 0.5;
+  }
+
+  tv->viewport.start_time = event_start - padding;
+  tv->viewport.end_time = event_start - padding + target_dur;
+
+  // Selection
+  tv->selection_active = true;
+  tv->selection_start_time = event_start;
+  tv->selection_end_time = event_end;
+  tv->selection_drag_mode = InteractionDragMode::NONE;
+}
+
 void trace_viewer_step(TraceViewer* tv, TraceData* td,
                        const TraceViewerInput& input, Allocator allocator) {
+  // 0. Handle focus requests
+  if (tv->target_focused_event_idx != -1) {
+    size_t event_idx = (size_t)tv->target_focused_event_idx;
+    if (event_idx < td->events.size) {
+      const TraceEventPersisted& e = td->events[event_idx];
+      tv->focused_event_idx = (int64_t)event_idx;
+      tv->show_details_panel = true;
+      trace_viewer_zoom_to_event(tv, e);
+      tv->target_scroll_y = -2.0f;  // Request scroll calculation
+    }
+    tv->target_focused_event_idx = -1;
+  }
+
   double current_duration = tv->viewport.end_time - tv->viewport.start_time;
   if (current_duration <= 0) current_duration = 1.0;
 
@@ -890,6 +937,18 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
                              ? counter_track_height
                              : (float)(t.max_depth + 2) * input.lane_height;
     vi.y = input.canvas_y + input.ruler_height + tv->total_tracks_height - input.tracks_scroll_y;
+
+    if (tv->target_scroll_y == -2.0f) {
+      for (size_t j = 0; j < t.event_indices.size; j++) {
+        if (t.event_indices[j] == (size_t)tv->focused_event_idx) {
+          float track_top = tv->total_tracks_height;
+          float viewport_height = input.canvas_height - input.ruler_height;
+          tv->target_scroll_y = track_top - (viewport_height - vi.height) * 0.5f;
+          break;
+        }
+      }
+    }
+
     tv->total_tracks_height += vi.height;
     
     // Frustum culling
@@ -1007,27 +1066,8 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
         tv->show_details_panel = true;
         tv->ignore_next_release = true;
 
-        // Zoom to event with 5% padding
-        double event_start = (double)e.ts;
-        double event_end = (double)(e.ts + e.dur);
-        double event_dur = event_end - event_start;
-        if (event_dur < 0) event_dur = 0;
-
-        double padding = event_dur * 0.05;
-        double target_dur = event_dur + padding * 2.0;
-        if (target_dur < TRACE_VIEWER_MIN_ZOOM_DURATION) {
-          target_dur = TRACE_VIEWER_MIN_ZOOM_DURATION;
-          padding = (target_dur - event_dur) * 0.5;
-        }
-
-        tv->viewport.start_time = event_start - padding;
-        tv->viewport.end_time = event_start - padding + target_dur;
-
-        // Selection
-        tv->selection_active = true;
-        tv->selection_start_time = event_start;
-        tv->selection_end_time = event_end;
-        tv->selection_drag_mode = InteractionDragMode::NONE;
+        trace_viewer_zoom_to_event(tv, e);
+        tv->target_scroll_y = -2.0f;  // Request scroll calculation
       }
     }
   } else if (!interaction_ignored && input.is_mouse_released && !was_drag) {
@@ -1039,16 +1079,15 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
       }
     } else if (input.tracks_hovered && mouse_in_tracks_content) {
       if (tv->selection_active && mouse_in_selection && !proximity.near_start && !proximity.near_end) {
-        // Click inside selection: clear events, keep timeline range.
+        // Click inside selection: clear focused event, keep timeline range and selection.
         tv->focused_event_idx = -1;
-        array_list_clear(&tv->selected_event_indices);
       } else if (tv->selection_active && !mouse_in_selection) {
-        // Click outside selection: clear timeline range, keep events (click consumed).
+        // Click outside selection: clear timeline range and focused event, keep selection.
         tv->selection_active = false;
-      } else {
-        // No selection active, or click on background: clear everything.
         tv->focused_event_idx = -1;
-        array_list_clear(&tv->selected_event_indices);
+      } else {
+        // No selection active, or click on background: clear focused event.
+        tv->focused_event_idx = -1;
       }
     }
   }
@@ -1187,6 +1226,11 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     ImGui::SetCursorScreenPos(ImVec2(canvas_pos.x, canvas_pos.y + input.ruler_height));
     if (ImGui::BeginChild("TrackList", ImVec2(0, canvas_size.y - input.ruler_height),
                           ImGuiChildFlags_None, child_flags)) {
+      if (tv->target_scroll_y >= 0.0f) {
+        ImGui::SetScrollY(tv->target_scroll_y);
+        tv->target_scroll_y = -1.0f;
+      }
+
       // Handle vertical scroll if dragging tracks
       if (ImGui::IsWindowHovered() &&
           ImGui::IsMouseDragging(ImGuiMouseButton_Left) &&
@@ -1397,54 +1441,74 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       }
 
       if (has_selection) {
-        ImGui::TextDisabled("Selection (%zu events)", tv->selected_event_indices.size);
-        if (ImGui::BeginTable("##multi_select", 4,
-                             ImGuiTableFlags_Resizable |
-                                 ImGuiTableFlags_ScrollY |
-                                 ImGuiTableFlags_ScrollX |
-                                 ImGuiTableFlags_RowBg |
-                                 ImGuiTableFlags_Borders |
-                                 ImGuiTableFlags_SizingFixedFit |
-                                 ImGuiTableFlags_NoSavedSettings,
-                             ImGui::GetContentRegionAvail())) {
-          ImGui::TableSetupColumn("Name");
-          ImGui::TableSetupColumn("Category");
-          ImGui::TableSetupColumn("Start");
-          ImGui::TableSetupColumn("Duration");
-          ImGui::TableSetupScrollFreeze(0, 1);
-          ImGui::TableHeadersRow();
+        ImGui::TextDisabled("Selection (%zu events)",
+                            tv->selected_event_indices.size);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Clear")) {
+          array_list_clear(&tv->selected_event_indices);
+          if (tv->focused_event_idx == -1) {
+            tv->show_details_panel = false;
+          }
+        }
+        if (tv->selected_event_indices.size > 0) {
+          if (ImGui::BeginTable("##multi_select", 4,
+                               ImGuiTableFlags_Resizable |
+                                   ImGuiTableFlags_ScrollY |
+                                   ImGuiTableFlags_ScrollX |
+                                   ImGuiTableFlags_RowBg |
+                                   ImGuiTableFlags_Borders |
+                                   ImGuiTableFlags_SizingFixedFit |
+                                   ImGuiTableFlags_NoSavedSettings,
+                               ImGui::GetContentRegionAvail())) {
+            ImGui::TableSetupColumn("Name");
+            ImGui::TableSetupColumn("Category");
+            ImGui::TableSetupColumn("Start");
+            ImGui::TableSetupColumn("Duration");
+            ImGui::TableSetupScrollFreeze(0, 1);
+            ImGui::TableHeadersRow();
 
-          ImGuiListClipper clipper;
-          clipper.Begin((int)tv->selected_event_indices.size);
-          while (clipper.Step()) {
-            for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
-              const TraceEventPersisted& e =
-                  td->events[(size_t)tv->selected_event_indices[(size_t)i]];
-              std::string_view name = trace_data_get_string(td, e.name_ref);
-              std::string_view cat = trace_data_get_string(td, e.cat_ref);
+            ImGuiListClipper clipper;
+            clipper.Begin((int)tv->selected_event_indices.size);
+            while (clipper.Step()) {
+              for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
+                size_t event_idx =
+                    (size_t)tv->selected_event_indices[(size_t)i];
+                const TraceEventPersisted& e = td->events[event_idx];
+                std::string_view name = trace_data_get_string(td, e.name_ref);
+                std::string_view cat = trace_data_get_string(td, e.cat_ref);
 
-              ImGui::TableNextRow();
-              ImGui::TableNextColumn();
-              ImGui::TextUnformatted(name.data(), name.data() + name.size());
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
 
-              ImGui::TableNextColumn();
-              ImGui::TextUnformatted(cat.data(), cat.data() + cat.size());
+                bool is_focused = (tv->focused_event_idx == (int64_t)event_idx);
+                char label[256];
+                snprintf(label, sizeof(label), "%.*s##%zu", (int)name.size(),
+                         name.data(), event_idx);
+                if (ImGui::Selectable(label, is_focused,
+                                      ImGuiSelectableFlags_SpanAllColumns |
+                                          ImGuiSelectableFlags_AllowOverlap)) {
+                  tv->target_focused_event_idx = (int64_t)event_idx;
+                }
 
-              ImGui::TableNextColumn();
-              char ts_buf[32];
-              format_duration(ts_buf, sizeof(ts_buf),
-                              (double)e.ts - (double)tv->viewport.min_ts);
-              ImGui::TextUnformatted(ts_buf);
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(cat.data(), cat.data() + cat.size());
 
-              ImGui::TableNextColumn();
-              if (e.dur > 0) {
-                char dur_buf[32];
-                format_duration(dur_buf, sizeof(dur_buf), (double)e.dur);
-                ImGui::TextUnformatted(dur_buf);
+                ImGui::TableNextColumn();
+                char ts_buf[32];
+                format_duration(ts_buf, sizeof(ts_buf),
+                                (double)e.ts - (double)tv->viewport.min_ts);
+                ImGui::TextUnformatted(ts_buf);
+
+                ImGui::TableNextColumn();
+                if (e.dur > 0) {
+                  char dur_buf[32];
+                  format_duration(dur_buf, sizeof(dur_buf), (double)e.dur);
+                  ImGui::TextUnformatted(dur_buf);
+                }
               }
             }
+            ImGui::EndTable();
           }
-          ImGui::EndTable();
         }
       }
 

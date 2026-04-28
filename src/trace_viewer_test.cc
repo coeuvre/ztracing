@@ -105,6 +105,63 @@ TEST_F(TraceViewerTest, HitTestingThreadEvent) {
     EXPECT_EQ(tv.hover_matches[0].rb.event_idx, 0u);
 }
 
+TEST_F(TraceViewerTest, ClickToFocusAndCenter) {
+    // Add two tracks to test vertical scrolling
+    for (int i = 0; i < 2; i++) {
+        TraceEventPersisted e = {};
+        e.ts = 5000;
+        e.dur = 1000;
+        e.tid = i;
+        size_t event_idx = td.events.size;
+        array_list_push_back(&td.events, allocator, e);
+
+        Track t = {};
+        t.type = TRACK_TYPE_THREAD;
+        t.tid = i;
+        array_list_push_back(&t.event_indices, allocator, event_idx);
+        track_update_max_dur(&t, &td, allocator);
+        track_calculate_depths(&t, &td, allocator);
+        array_list_push_back(&tv.tracks, allocator, t);
+    }
+
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 10000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 10000;
+
+    TraceViewerInput input = {};
+    input.canvas_x = 0;
+    input.canvas_y = 0;
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 200.0f; // Viewport height
+    input.ruler_height = 20.0f;
+    input.lane_height = 20.0f;
+
+    // Focus on event in the second track (index 1)
+    tv.target_focused_event_idx = 1;
+
+    // First step: Handles focus request, zooms, and calculates scroll to center
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    EXPECT_EQ(tv.focused_event_idx, 1);
+    EXPECT_TRUE(tv.selection_active);
+    EXPECT_EQ(tv.selection_start_time, 5000.0);
+    EXPECT_EQ(tv.selection_end_time, 6000.0);
+    
+    // Viewport should be zoomed to [5000, 6000] with some padding
+    EXPECT_LT(tv.viewport.start_time, 5000.0);
+    EXPECT_GT(tv.viewport.end_time, 6000.0);
+    
+    // Track 0 height = (0 + 2) * 20 = 40
+    // Track 1 height = (0 + 2) * 20 = 40
+    // Viewport content height = 200 - 20 (ruler) = 180
+    // Track 1 top = 40
+    // Center scroll = track_top - (viewport_height - track_height) * 0.5
+    //               = 40 - (180 - 40) * 0.5
+    //               = 40 - 70 = -30
+    EXPECT_NEAR(tv.target_scroll_y, -30.0f, 0.1f);
+}
+
 TEST_F(TraceViewerTest, SelectionOnClick) {
     // Add a dummy event
     TraceEventPersisted e = {};
