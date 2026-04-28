@@ -27,6 +27,23 @@ static BackendData* get_backend_data() {
              : nullptr;
 }
 
+static void setup_vertex_attributes(size_t vtx_offset) {
+  BackendData* bd = get_backend_data();
+
+  glVertexAttribPointer((GLuint)bd->attrib_location_pos, 2, GL_FLOAT, GL_FALSE,
+                        sizeof(ImDrawVert),
+                        (GLvoid*)(vtx_offset * sizeof(ImDrawVert) +
+                                  offsetof(ImDrawVert, pos)));
+  glVertexAttribPointer((GLuint)bd->attrib_location_uv, 2, GL_FLOAT, GL_FALSE,
+                        sizeof(ImDrawVert),
+                        (GLvoid*)(vtx_offset * sizeof(ImDrawVert) +
+                                  offsetof(ImDrawVert, uv)));
+  glVertexAttribPointer((GLuint)bd->attrib_location_color, 4, GL_UNSIGNED_BYTE,
+                        GL_TRUE, sizeof(ImDrawVert),
+                        (GLvoid*)(vtx_offset * sizeof(ImDrawVert) +
+                                  offsetof(ImDrawVert, col)));
+}
+
 static void setup_render_state(ImDrawData* draw_data, int fb_width,
                                int fb_height) {
   BackendData* bd = get_backend_data();
@@ -61,14 +78,6 @@ static void setup_render_state(ImDrawData* draw_data, int fb_width,
   glEnableVertexAttribArray((GLuint)bd->attrib_location_pos);
   glEnableVertexAttribArray((GLuint)bd->attrib_location_uv);
   glEnableVertexAttribArray((GLuint)bd->attrib_location_color);
-
-  glVertexAttribPointer((GLuint)bd->attrib_location_pos, 2, GL_FLOAT, GL_FALSE,
-                        sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, pos));
-  glVertexAttribPointer((GLuint)bd->attrib_location_uv, 2, GL_FLOAT, GL_FALSE,
-                        sizeof(ImDrawVert), (GLvoid*)offsetof(ImDrawVert, uv));
-  glVertexAttribPointer((GLuint)bd->attrib_location_color, 4, GL_UNSIGNED_BYTE,
-                        GL_TRUE, sizeof(ImDrawVert),
-                        (GLvoid*)offsetof(ImDrawVert, col));
 }
 
 void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
@@ -93,7 +102,7 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
   array_list_resize(&bd->vtx_staging, allocator, total_vtx_count);
   array_list_resize(&bd->idx_staging, allocator, total_idx_count);
 
-  // 2. Concatenate and adjust indices
+  // 2. Concatenate data
   size_t vtx_dst_offset = 0;
   size_t idx_dst_offset = 0;
   for (int n = 0; n < draw_data->CmdListsCount; n++) {
@@ -103,14 +112,8 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
 
     memcpy(bd->vtx_staging.data + vtx_dst_offset, cmd_list->VtxBuffer.Data,
            vtx_count * sizeof(ImDrawVert));
-
-    const ImDrawIdx* idx_src = cmd_list->IdxBuffer.Data;
-    ImDrawIdx* idx_dst = bd->idx_staging.data + idx_dst_offset;
-    ImDrawIdx base_vtx_idx = (ImDrawIdx)vtx_dst_offset;
-
-    for (size_t i = 0; i < idx_count; i++) {
-      idx_dst[i] = idx_src[i] + base_vtx_idx;
-    }
+    memcpy(bd->idx_staging.data + idx_dst_offset, cmd_list->IdxBuffer.Data,
+           idx_count * sizeof(ImDrawIdx));
 
     vtx_dst_offset += vtx_count;
     idx_dst_offset += idx_count;
@@ -118,11 +121,13 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
 
   // 3. One single upload to GPU
   glBindBuffer(GL_ARRAY_BUFFER, bd->vbo);
-  glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(total_vtx_count * sizeof(ImDrawVert)),
+  glBufferData(GL_ARRAY_BUFFER,
+               (GLsizeiptr)(total_vtx_count * sizeof(ImDrawVert)),
                bd->vtx_staging.data, GL_STREAM_DRAW);
 
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bd->ebo);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)(total_idx_count * sizeof(ImDrawIdx)),
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+               (GLsizeiptr)(total_idx_count * sizeof(ImDrawIdx)),
                bd->idx_staging.data, GL_STREAM_DRAW);
 
   // 4. Setup state and render
@@ -130,6 +135,7 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
 
   ImVec2 clip_off = draw_data->DisplayPos;
   ImVec2 clip_scale = draw_data->FramebufferScale;
+  size_t global_vtx_offset = 0;
   size_t global_idx_offset = 0;
 
   for (int n = 0; n < draw_data->CmdListsCount; n++) {
@@ -147,6 +153,7 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
                   (int)(clip_max.x - clip_min.x),
                   (int)(clip_max.y - clip_min.y));
         glBindTexture(GL_TEXTURE_2D, (GLuint)(intptr_t)pcmd->GetTexID());
+        setup_vertex_attributes(global_vtx_offset + pcmd->VtxOffset);
         glDrawElements(
             GL_TRIANGLES, (GLsizei)pcmd->ElemCount,
             sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT,
@@ -154,6 +161,7 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
                               sizeof(ImDrawIdx)));
       }
     }
+    global_vtx_offset += (size_t)cmd_list->VtxBuffer.Size;
     global_idx_offset += (size_t)cmd_list->IdxBuffer.Size;
   }
 }
@@ -165,6 +173,7 @@ bool imgui_impl_webgl_init(Allocator allocator) {
   bd->allocator = allocator;
   io.BackendRendererUserData = (void*)bd;
   io.BackendRendererName = "imgui_impl_webgl";
+  io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
 
   const GLchar* vertex_shader =
       "#version 300 es\n"

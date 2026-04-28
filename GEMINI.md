@@ -50,10 +50,10 @@
     - **StringRef**: Events and arguments store `StringRef` (indices) into the table rather than raw offsets, providing $O(1)$ access to both string data and length without `strlen` overhead.
     - **Pre-parsed Numbers**: Numeric arguments are pre-parsed into `double` values during ingestion to eliminate conversion overhead during rendering.
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic.
-    - **Single-Upload Strategy**: To minimize WASM-JS bridge overhead, all vertex and index data for a frame are concatenated on the CPU and uploaded in just two `glBufferData` calls.
     - **Manual Attribute Binding**: Bypasses Vertex Array Objects (VAOs) in favor of manual `glVertexAttribPointer` calls each frame. This improves compatibility and performance on software-rendering paths (like SwiftShader) that may have slower VAO implementations.
-    - **Index Adjustment**: Indices are adjusted on the CPU to be absolute, allowing for a single attribute setup per frame.
-    - **32-bit Indices**: Supports more than 65,535 vertices (required for large traces).
+    - **Manual BaseVertex**: Since WebGL 2.0 lacks `glDrawElementsBaseVertex`, the renderer manually offsets `glVertexAttribPointer` calls using `ImDrawCmd::VtxOffset`. This allows for more than 65,535 vertices while still using 16-bit indices.
+    - **Single-Upload Strategy**: To minimize WASM-JS bridge overhead, all vertex and index data for a frame are concatenated on the CPU and uploaded in just two `glBufferData` calls.
+    - **32-bit Indices Support**: While 16-bit indices are the default and preferred for performance, the renderer automatically detects `ImDrawIdx` size and uses `GL_UNSIGNED_INT` if 32-bit indices are enabled in `imconfig.h`.
     - **Optimized Blending**: Uses `glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)` to match Dear ImGui's requirements and avoid expensive alpha-normalization in compositors.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
     - **Software Renderer Detection**: Automatically detects software rendering paths (SwiftShader, llvmpipe) via the `WEBGL_debug_renderer_info` extension.
@@ -227,7 +227,6 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **cname Support**: Standard Chrome Trace `cname` values are mapped to specific theme-appropriate colors.
     - **Name Hashing**: Consistent fallback coloring using FNV-1a hash of the event name to select from a balanced palette.
     - **Caching**: Colors are pre-computed and cached in `TraceEventPersisted` during parsing to maximize rendering performance.
-- **32-bit Indices**: ImGui is patched via `MODULE.bazel` to use `unsigned int` for `ImDrawIdx` (via `third_party/imgui/imgui.BUILD`), allowing for more than 65,535 vertices (required for large traces).
 
 ## Details Panel
 
@@ -290,8 +289,4 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
 - **Defaults**:
     - Release builds (`-c opt`): `LOG_LEVEL_INFO` (hides `LOG_DEBUG`).
     - Debug builds: `LOG_LEVEL_DEBUG` (shows all).
-- **Override**: Use `--copt="-DLOG_LEVEL=<LEVEL>"` (e.g., `--copt="-DLOG_LEVEL=LOG_LEVEL_WARN"`) to set the minimum log level at compile-time.
-_DEBUG` (shows all).
-- **Override**: Use `--copt="-DLOG_LEVEL=<LEVEL>"` (e.g., `--copt="-DLOG_LEVEL=LOG_LEVEL_WARN"`) to set the minimum log level at compile-time.
-LEVEL_DEBUG` (shows all).
 - **Override**: Use `--copt="-DLOG_LEVEL=<LEVEL>"` (e.g., `--copt="-DLOG_LEVEL=LOG_LEVEL_WARN"`) to set the minimum log level at compile-time.
