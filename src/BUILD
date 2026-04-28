@@ -313,4 +313,7 @@ wasm_cc_binary(
     tags = ["wasm"],
 )
 
-exports_files(["shell.html"])
+exports_files([
+    "shell.html",
+    "coi-serviceworker.js",
+])

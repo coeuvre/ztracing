@@ -97,10 +97,11 @@
 - **Communication**: Chunks are streamed from the main thread to the worker via a thread-safe `ChunkQueue`.
 - **Backpressure**: To prevent excessive memory usage, the JS bridge monitors the `ChunkQueue` size. If the total queued data exceeds **32MB**, the loader yields to the browser's event loop via `setTimeout(10)` until the worker thread has cleared enough space.
 - **Atomics**: Progress metrics (event count, bytes loaded) are updated using C++20 atomics to provide live feedback on the loading screen.
-- **COOP/COEP Headers**: To enable PThreads in the browser (via `SharedArrayBuffer`), the web server must provide the following security headers:
-    - `Cross-Origin-Opener-Policy: same-origin`
-    - `Cross-Origin-Embedder-Policy: require-corp`
-- **Local Development**: When using `python3 -m http.server`, these headers are NOT provided by default. For local development with PThreads enabled, use a custom server script (e.g., `tools/serve.py`) that includes these headers.
+- **COOP/COEP Headers**: To enable PThreads in the browser (via `SharedArrayBuffer`), the web environment must be "cross-origin isolated".
+- **Client-Side Solution (Service Worker)**: For deployment on platforms that do not support custom headers (like GitHub Pages), the project includes `src/coi-serviceworker.js`. This service worker intercepts requests and injects the necessary `COOP` and `COEP` headers. It reloads the page once on the first visit to establish the isolated environment.
+- **Local Development**: 
+    - When using `python3 -m http.server`, the Service Worker will handle the headers automatically.
+    - A standard HTTP server script (`tools/serve.py`) is also provided which serves the project artifacts without any custom headers, relying on the Service Worker for environment isolation.
 
 ## Startup Optimization
 
