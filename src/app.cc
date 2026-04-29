@@ -375,6 +375,7 @@ void app_begin_session(App* app, int session_id, const char* filename,
   app->loading.allocator = app->allocator;
   app->loading.theme = app->theme;
   app->trace_viewer.focused_event_idx = -1;
+  app->trace_viewer.request_scroll_to_focused_event = false;
   array_list_clear(&app->trace_viewer.selected_event_indices);
 
   app->loading.worker_should_abort = false;
@@ -411,11 +412,12 @@ size_t app_handle_file_chunk(App* app, int session_id, char* data,
     return app->loading.chunk_queue.queue_size_bytes;
   }
 
-  TraceChunk chunk = {};
-  chunk.size = size;
-  chunk.input_consumed_bytes = input_consumed_bytes;
-  chunk.is_eof = is_eof;
-  chunk.data = data;
+  TraceChunk chunk = {
+      .data = data,
+      .size = size,
+      .input_consumed_bytes = input_consumed_bytes,
+      .is_eof = is_eof,
+  };
 
   {
     std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);

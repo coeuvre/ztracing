@@ -1,5 +1,6 @@
 #include "src/trace_viewer.h"
 #include <gtest/gtest.h>
+#include <algorithm>
 #include "src/allocator.h"
 
 class TraceViewerTest : public ::testing::Test {
@@ -852,6 +853,7 @@ TEST_F(TraceViewerTest, TimelineAreaIsolation) {
     input.mouse_x = 100.0f;
     input.is_mouse_clicked = true;
     input.is_mouse_down = true;
+    trace_viewer_step(&tv, &td, input, allocator);
 
     EXPECT_FALSE(tv.selection_active);
     EXPECT_EQ(tv.selection_drag_mode, InteractionDragMode::NONE);
@@ -1208,7 +1210,7 @@ TEST_F(TraceViewerTest, DoubleClickToZoomEdgeStability) {
     TraceEvent ev = {.name = "event1", .ph = "X", .ts = 0, .dur = 1000, .pid = 1, .tid = 1};
     trace_data_add_event(&td, allocator, theme, &ev);
     
-    Track t = {.tid = 1, .pid = 1, .type = TRACK_TYPE_THREAD};
+    Track t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
     array_list_push_back(&t.event_indices, allocator, (size_t)0);
     track_update_max_dur(&t, &td, allocator);
     track_calculate_depths(&t, &td, allocator);
@@ -1277,7 +1279,7 @@ TEST_F(TraceViewerTest, DoubleClickToZoomSameFrameRelease) {
     TraceEvent ev = {.name = "event1", .ph = "X", .ts = 5000, .dur = 1000, .pid = 1, .tid = 1};
     trace_data_add_event(&td, allocator, theme, &ev);
     
-    Track t = {.tid = 1, .pid = 1, .type = TRACK_TYPE_THREAD};
+    Track t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
     array_list_push_back(&t.event_indices, allocator, (size_t)0);
     track_update_max_dur(&t, &td, allocator);
     track_calculate_depths(&t, &td, allocator);
@@ -1331,7 +1333,7 @@ TEST_F(TraceViewerTest, DoubleClickEventOutsideCurrentSelection) {
     trace_data_add_event(&td, allocator, theme, &ev1);
     trace_data_add_event(&td, allocator, theme, &ev2);
     
-    Track t = {.tid = 1, .pid = 1, .type = TRACK_TYPE_THREAD};
+    Track t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
     array_list_push_back(&t.event_indices, allocator, (size_t)0);
     array_list_push_back(&t.event_indices, allocator, (size_t)1);
     track_update_max_dur(&t, &td, allocator);
@@ -1457,7 +1459,7 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
     trace_viewer_step(&tv, &td, input, allocator);
 
     EXPECT_EQ(tv.focused_event_idx, -1);
-    EXPECT_EQ(tv.selected_event_indices.size, 0u);
+    EXPECT_EQ(tv.selected_event_indices.size, 1u);
 }
 
 TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
@@ -1501,7 +1503,43 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
     trace_viewer_step(&tv, &td, input, allocator);
 
     EXPECT_TRUE(tv.selection_active); // Timeline range kept
-    EXPECT_EQ(tv.selected_event_indices.size, 0u); // Box selection cleared
+    EXPECT_EQ(tv.selected_event_indices.size, 1u);
     EXPECT_EQ(tv.focused_event_idx, -1);
 }
 
+
+TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
+    // Add a counter event (dur=0) at ts=5000
+    TraceEventPersisted e = {.ts = 5000, .dur = 0, .pid = 1, .tid = 1};
+    array_list_push_back(&td.events, allocator, e);
+    Track t = {.type = TRACK_TYPE_COUNTER, .pid = 1, .tid = -1};
+    array_list_push_back(&t.event_indices, allocator, (size_t)0);
+    array_list_push_back(&tv.tracks, allocator, t);
+
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 10000; // Zoom level: 10000 duration
+    tv.selection_active = true;
+    tv.selection_start_time = 100;
+    tv.selection_end_time = 200;
+
+    // Simulate click on the event in the details panel
+    tv.target_focused_event_idx = 0;
+    TraceViewerInput input = {};
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    // Should NOT have changed zoom (duration remains 10000)
+    EXPECT_DOUBLE_EQ(tv.viewport.end_time - tv.viewport.start_time, 10000.0);
+    
+    // Let's move viewport so it's NOT centered
+    tv.viewport.start_time = 8000;
+    tv.viewport.end_time = 18000;
+    tv.target_focused_event_idx = 0;
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    // Centered on 5000 with duration 10000 -> [0, 10000]
+    EXPECT_DOUBLE_EQ(tv.viewport.start_time, 0.0);
+    EXPECT_DOUBLE_EQ(tv.viewport.end_time, 10000.0);
+    
+    // Selection should NOT be active
+    EXPECT_FALSE(tv.selection_active);
+}

@@ -6,11 +6,11 @@
 - **C++ Standard**: C++20 (required for `__VA_OPT__` and other features).
 - **Style**: Google C++ Style (modified: snake_case for all functions, SCREAMING_CASE for constants).
 - **Include Guards**: Must follow the pattern `ZTRACING_SRC_<FILE>_H_`.
-- **Warnings**: Strict warnings are enabled for all local code (`-Wall -Wextra -Werror` etc.) via macros in `src/defs.bzl`.
+- **Warnings**: Strict warnings are enabled for all local code (`-Wall -Wextra -Werror` etc.) via macros in `src/defs.bzl`. Includes `-Wno-missing-field-initializers` (GCC) and `-Wno-missing-designated-field-initializers` (Clang) to support the project's concise ZII style.
 - **ZII & Initialization**: 
     - **Pattern**: Prefer Zero-Is-Initialization (ZII) via `{}` or designated initializers (C++20).
     - **No `memset(0)`**: Never use `memset(ptr, 0, sizeof(T))` for struct initialization.
-    - **Designated Initializers**: Use the concise `.field = value` pattern for "ZII + setting" operations. Redundant `= 0` or `= nullptr` initializers are omitted.
+    - **Designated Initializers**: Use the concise `.field = value` pattern for "ZII + setting" operations. Redundant `= 0` or `= nullptr` initializers are omitted. Fields MUST be listed in their exact declaration order to satisfy C++20 requirements.
     - **Non-Aggregates**: For types with `std::atomic` or `std::thread` (non-aggregates), use placement new (`new (ptr) T()`) to ensure correct value-initialization.
 - **UI Framework**: Dear ImGui (v1.92.7-docking).
 - **Backend**: Custom WebGL 2.0 (Rendering) and Custom Emscripten HTML5 (Platform).
@@ -72,7 +72,11 @@
     - **Precision & Formatting**: Consistently applies 2-decimal precision (`%.2f`) to all numeric data and utilizes relative, human-readable timestamps (e.g., "Start: 1.2s") for temporal analysis.
     - **Layout Pre-computation**: `trace_viewer_step` computes all layout-dependent state (track Y-offsets, heights, visibility, header names, ruler ticks, and selection overlay dimensions) into dedicated layout structures (`TrackViewInfo`, `RulerTick`, `SelectionOverlayLayout`). This ensures the drawing phase is "dumb" and strictly consumes pre-computed values.
     - **Unit Tests**: Logic is extensively verified in `src/trace_viewer_test.cc`, covering zoom/pan, event hit-testing/selection, timeline selection/snapping, and layout calculations (including culling and naming).
-    - **ZII Support**: Fully Zero-Is-Initialization compatible.
+    - **Focusing & Scrolling**: `trace_viewer_zoom_to_event` provides a unified interface for focusing events:
+        - **Thread Events**: Zooms to the event (5% padding) and creates a timeline selection.
+        - **Point Events (Counters/Instants)**: Centers the viewport horizontally on the event's timestamp without changing the current zoom level or adding a selection.
+        - **Vertical Scroll**: Automatically requests a scroll calculation (`request_scroll_to_focused_event`) to ensure the target event's track is centered vertically in the viewport.
+    - **ZII Support**: Fully Zero-Is-Initialization compatible. All internal structures utilize designated initializers in declaration order.
 - `src/loading_screen`: Specialized scene for displaying parsing progress and filename during trace loading.
     - **Progress Bar**: Displays a visual completion percentage based on the raw input bytes processed. The bar is styled using the theme's default aesthetics and automatically hides if the total file size is unknown.
 - `src/welcome_screen`: Initial "drop file" landing scene.
@@ -190,6 +194,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Deselection**:
         - **Ruler Click**: A simple click on the timeline ruler (without dragging) clears the active timeline selection.
         - **Viewport Click**: Clicking on an empty area of the track viewport clears the currently **focused event** but **preserves** the multi-event selection.
+        - **Timeline Interaction**: Clicking inside or outside a timeline selection range clears the **focused event** but **preserves** the box selection. Clicking outside the range additionally clears the timeline selection itself.
         - **Manual Clear**: The multi-event selection can be explicitly cleared using the **"Clear"** button in the Details panel.
     - **Refactored Interaction Logic**: Selection and snapping logic are consolidated directly into `TraceViewer`, with per-frame updates handled in `trace_viewer_step`. Dimming areas are calculated locally during rendering to ensure perfect alignment with viewport bounds.
     - **Multi-Selection Storage**: `TraceViewer` maintains an `ArrayList<int64_t> selected_event_indices` to support multiple simultaneous selections. The list is sorted for efficient $O(\log N)$ rendering checks.

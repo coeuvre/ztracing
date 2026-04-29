@@ -706,27 +706,36 @@ static void trace_viewer_box_select_update(TraceViewer* tv, TraceData* td, Alloc
 
 static void trace_viewer_zoom_to_event(TraceViewer* tv,
                                         const TraceEventPersisted& e) {
-  // Zoom to event with 5% padding
   double event_start = (double)e.ts;
   double event_end = (double)(e.ts + e.dur);
-  double event_dur = event_end - event_start;
-  if (event_dur < 0) event_dur = 0;
 
-  double padding = event_dur * 0.05;
-  double target_dur = event_dur + padding * 2.0;
-  if (target_dur < TRACE_VIEWER_MIN_ZOOM_DURATION) {
-    target_dur = TRACE_VIEWER_MIN_ZOOM_DURATION;
-    padding = (target_dur - event_dur) * 0.5;
+  if (e.dur > 0) {
+    // Zoom to event with 5% padding
+    double event_dur = event_end - event_start;
+    double padding = event_dur * 0.05;
+    double target_dur = event_dur + padding * 2.0;
+    if (target_dur < TRACE_VIEWER_MIN_ZOOM_DURATION) {
+      target_dur = TRACE_VIEWER_MIN_ZOOM_DURATION;
+      padding = (target_dur - event_dur) * 0.5;
+    }
+
+    tv->viewport.start_time = event_start - padding;
+    tv->viewport.end_time = event_start - padding + target_dur;
+
+    // Selection
+    tv->selection_active = true;
+    tv->selection_start_time = event_start;
+    tv->selection_end_time = event_end;
+  } else {
+    // Center viewport on event without changing zoom
+    double current_dur = tv->viewport.end_time - tv->viewport.start_time;
+    tv->viewport.start_time = event_start - current_dur * 0.5;
+    tv->viewport.end_time = tv->viewport.start_time + current_dur;
+    tv->selection_active = false;
   }
 
-  tv->viewport.start_time = event_start - padding;
-  tv->viewport.end_time = event_start - padding + target_dur;
-
-  // Selection
-  tv->selection_active = true;
-  tv->selection_start_time = event_start;
-  tv->selection_end_time = event_end;
   tv->selection_drag_mode = InteractionDragMode::NONE;
+  tv->request_scroll_to_focused_event = true;
 }
 
 void trace_viewer_step(TraceViewer* tv, TraceData* td,
@@ -739,7 +748,6 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
       tv->focused_event_idx = (int64_t)event_idx;
       tv->show_details_panel = true;
       trace_viewer_zoom_to_event(tv, e);
-      tv->target_scroll_y = -2.0f;  // Request scroll calculation
     }
     tv->target_focused_event_idx = -1;
   }
@@ -938,12 +946,13 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
                              : (float)(t.max_depth + 2) * input.lane_height;
     vi.y = input.canvas_y + input.ruler_height + tv->total_tracks_height - input.tracks_scroll_y;
 
-    if (tv->target_scroll_y == -2.0f) {
+    if (tv->request_scroll_to_focused_event) {
       for (size_t j = 0; j < t.event_indices.size; j++) {
         if (t.event_indices[j] == (size_t)tv->focused_event_idx) {
           float track_top = tv->total_tracks_height;
           float viewport_height = input.canvas_height - input.ruler_height;
           tv->target_scroll_y = track_top - (viewport_height - vi.height) * 0.5f;
+          tv->request_scroll_to_focused_event = false;
           break;
         }
       }
@@ -1065,9 +1074,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
         tv->focused_event_idx = (int64_t)hm.rb.event_idx;
         tv->show_details_panel = true;
         tv->ignore_next_release = true;
-
         trace_viewer_zoom_to_event(tv, e);
-        tv->target_scroll_y = -2.0f;  // Request scroll calculation
       }
     }
   } else if (!interaction_ignored && input.is_mouse_released && !was_drag) {
@@ -1079,10 +1086,10 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
       }
     } else if (input.tracks_hovered && mouse_in_tracks_content) {
       if (tv->selection_active && mouse_in_selection && !proximity.near_start && !proximity.near_end) {
-        // Click inside selection: clear focused event, keep timeline range and selection.
+        // Click inside selection: clear focused event, keep timeline range.
         tv->focused_event_idx = -1;
       } else if (tv->selection_active && !mouse_in_selection) {
-        // Click outside selection: clear timeline range and focused event, keep selection.
+        // Click outside selection: clear timeline range and focused event.
         tv->selection_active = false;
         tv->focused_event_idx = -1;
       } else {
@@ -1141,31 +1148,31 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     ImVec2 canvas_pos = ImGui::GetCursorScreenPos();
     ImVec2 canvas_size = ImGui::GetContentRegionAvail();
 
-    TraceViewerInput input = {};
-    input.canvas_x = canvas_pos.x;
-    input.canvas_y = canvas_pos.y;
-    input.canvas_width = canvas_size.x;
-    input.canvas_height = canvas_size.y;
-    input.ruler_height = ImGui::GetFrameHeight();
-    input.lane_height = ImGui::GetFrameHeight();
-
-    input.mouse_x = ImGui::GetMousePos().x;
-    input.mouse_y = ImGui::GetMousePos().y;
-    input.mouse_wheel = ImGui::GetIO().MouseWheel;
-    input.mouse_wheel_h = ImGui::GetIO().MouseWheelH;
-    input.click_x = ImGui::GetIO().MouseClickedPos[0].x;
-    input.click_y = ImGui::GetIO().MouseClickedPos[0].y;
-    input.is_mouse_down = ImGui::IsMouseDown(0);
-    input.is_mouse_clicked = ImGui::IsMouseClicked(0);
-    input.is_mouse_double_clicked = ImGui::IsMouseDoubleClicked(0);
-    input.is_mouse_released = ImGui::IsMouseReleased(0);
-    input.mouse_delta_x = ImGui::GetIO().MouseDelta.x;
-    input.mouse_delta_y = ImGui::GetIO().MouseDelta.y;
-    input.drag_delta_x = ImGui::GetMouseDragDelta(0).x;
-    input.drag_delta_y = ImGui::GetMouseDragDelta(0).y;
-    input.drag_threshold = ImGui::GetIO().MouseDragThreshold;
-    input.is_ctrl_down = ImGui::IsKeyDown(ImGuiMod_Ctrl);
-    input.is_shift_down = ImGui::IsKeyDown(ImGuiMod_Shift);
+    TraceViewerInput input = {
+        .canvas_x = canvas_pos.x,
+        .canvas_y = canvas_pos.y,
+        .canvas_width = canvas_size.x,
+        .canvas_height = canvas_size.y,
+        .ruler_height = ImGui::GetFrameHeight(),
+        .lane_height = ImGui::GetFrameHeight(),
+        .mouse_x = ImGui::GetMousePos().x,
+        .mouse_y = ImGui::GetMousePos().y,
+        .mouse_wheel = ImGui::GetIO().MouseWheel,
+        .mouse_wheel_h = ImGui::GetIO().MouseWheelH,
+        .click_x = ImGui::GetIO().MouseClickedPos[0].x,
+        .click_y = ImGui::GetIO().MouseClickedPos[0].y,
+        .is_mouse_down = ImGui::IsMouseDown(0),
+        .is_mouse_clicked = ImGui::IsMouseClicked(0),
+        .is_mouse_double_clicked = ImGui::IsMouseDoubleClicked(0),
+        .is_mouse_released = ImGui::IsMouseReleased(0),
+        .mouse_delta_x = ImGui::GetIO().MouseDelta.x,
+        .mouse_delta_y = ImGui::GetIO().MouseDelta.y,
+        .drag_delta_x = ImGui::GetMouseDragDelta(0).x,
+        .drag_delta_y = ImGui::GetMouseDragDelta(0).y,
+        .drag_threshold = ImGui::GetIO().MouseDragThreshold,
+        .is_ctrl_down = ImGui::IsKeyDown(ImGuiMod_Ctrl),
+        .is_shift_down = ImGui::IsKeyDown(ImGuiMod_Shift),
+    };
 
     float tracks_origin_x = tv->last_tracks_x > 0 ? tv->last_tracks_x : canvas_pos.x;
     float tracks_inner_width = tv->last_inner_width > 0 ? tv->last_inner_width : canvas_size.x;
@@ -1226,8 +1233,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     ImGui::SetCursorScreenPos(ImVec2(canvas_pos.x, canvas_pos.y + input.ruler_height));
     if (ImGui::BeginChild("TrackList", ImVec2(0, canvas_size.y - input.ruler_height),
                           ImGuiChildFlags_None, child_flags)) {
-      if (tv->target_scroll_y >= 0.0f) {
-        ImGui::SetScrollY(tv->target_scroll_y);
+      if (tv->target_scroll_y != -1.0f) {
+        ImGui::SetScrollY(std::max(0.0f, tv->target_scroll_y));
         tv->target_scroll_y = -1.0f;
       }
 

@@ -116,6 +116,7 @@ struct TraceViewer {
   ArrayList<int64_t> selected_event_indices;
   int64_t target_focused_event_idx = -1;
   float target_scroll_y = -1.0f;
+  bool request_scroll_to_focused_event;
   bool show_details_panel;
   bool ignore_next_release = false;
   float last_inner_width = 0;

@@ -11,6 +11,7 @@ COMMON_COPTS = [
     "-Wconversion",
     "-Wunused-parameter",
     "-Wformat=2",
+    "-Wno-missing-field-initializers",
     "-Wno-missing-designated-field-initializers",
 ]
 
