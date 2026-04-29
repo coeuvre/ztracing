@@ -48,10 +48,13 @@ struct TraceLoadingState {
   int session_id;
   ArrayList<char> filename;
 
-  std::thread worker_thread;
-  std::atomic<bool> worker_should_abort;
   std::atomic<bool> request_update;
   ChunkQueue chunk_queue;
+
+  // Background job coordination
+  std::atomic<bool> jobs_should_abort;
+  std::mutex quit_mutex;
+  std::condition_variable quit_cv;
 
   TraceParser parser;
 
@@ -64,7 +67,6 @@ struct TraceLoadingState {
 
 struct App {
   CountingAllocator counting_allocator;
-  Allocator allocator;
 
   // UI & Config
   ThemeMode theme_mode;

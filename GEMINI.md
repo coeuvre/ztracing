@@ -60,9 +60,9 @@
     - **Software Renderer Detection**: Automatically detects software rendering paths (SwiftShader, llvmpipe) via the `WEBGL_debug_renderer_info` extension.
     - **HiDPI Optimization**: Disables HiDPI scaling (forces 1.0x) when a software renderer is detected. This reduces the number of pixels processed by the CPU by 4x on 2x DPI displays, drastically lowering "Commit" latency.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop. Handles the orchestration of font loading and trace data streaming.
-- `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer). Utilizes a background `TraceLoadingState` to handle multi-threaded file streaming and data parsing without blocking the UI.
-    - **Initialization**: Initialized by `app_init` returning an `App` by value. Self-referencing pointers (e.g., wiring `loading.trace_data`) are established post-construction in `app_begin_session` or the platform entry point.
-    - **Thread Safety**: Access to `TraceData` from the main thread (e.g., for theme updates) is strictly prohibited while `loading.active` is true to avoid data races with the background parser.
+- `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer).
+    - **Initialization**: Initialized by `app_init` returning an `App` by value (ZII). Non-aggregate members (mutexes, atomics) are initialized post-construction via placement `new` in `app_start_background_services` (or once a stable address like `g_app` is established).
+    - **Thread Safety**: Access to `TraceData` from the main thread is strictly prohibited while `loading.active` is true. Background jobs (loading, search) are synchronized via session-based signaling in `app_begin_session` to ensure `TraceData` is not cleared while being accessed.
 - `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
     - **Architecture**: Decouples interaction and layout logic from ImGui rendering via a pure `trace_viewer_step` function and a `TraceViewerInput` struct. This enables comprehensive unit testing of viewport navigation, hit-testing, selection, and layout without an ImGui context.
     - **Independent States**: Maintains a single `focused_event_idx` (for single clicks) and an `ArrayList<int64_t> selected_event_indices` (for multi-selection) as independent states, allowing a focused event to exist within or outside of a box selection.
@@ -90,8 +90,9 @@
 - `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
     - **Performance Attributes**: Configures WebGL context with `alpha: false`, `antialias: false`, `depth: false`, and `premultipliedAlpha: false` to minimize compositor workload.
 - `src/ztracing.h`: Clean C API for the WASM-to-JS bridge.
-- `src/platform`: Platform abstraction layer (e.g., high-resolution timestamps). Supports both WASM and native (for tests).
 - `src/logging`: Simple logging utility with WASM console and native stdout integration.
+- `src/platform`: Platform abstraction layer (e.g., high-resolution timestamps). Provides `platform_submit_job` for background processing. Supports both WASM and native (for tests).
+    - **Background Jobs**: Utilizes a persistent worker pool (defined in `src/platform_common.cc`) to serialize background tasks. This avoids frequent thread spawning and addresses thread pool exhaustion in Emscripten.
 - `src/track_renderer`: Standalone rendering module that implements performance optimizations like LOD and event coalescing. 
     - **Allocation-Free Rendering**: Uses a persistent `TrackRendererState` (Zero-Is-Initialization compatible) to host temporary buffers (`thread_bucket_states`, `counter_current_values`, etc.), eliminating per-frame heap allocations during rendering.
     - **Block-Based Optimization**: Utilizes `block_max_durs` to achieve $O(\text{Blocks} + \text{VisibleEvents})$ rendering complexity. This ensures high performance even when zoomed into microsecond-level details on massive traces by instantly skipping irrelevant event blocks and identifying spanning events without a full trace scan.
@@ -99,10 +100,10 @@
 
 ## Multi-threading & PThreads
 
-- **Background Parsing**: Trace parsing and track organization are offloaded to a background Web Worker (using Emscripten PThreads). This ensures the UI remains responsive (60 FPS) during heavy data ingestion.
-- **Communication**: Chunks are streamed from the main thread to the worker via a thread-safe `ChunkQueue`.
-- **Backpressure**: To prevent excessive memory usage, the JS bridge monitors the `ChunkQueue` size. If the total queued data exceeds **32MB**, the loader yields to the browser's event loop via `setTimeout(10)` until the worker thread has cleared enough space.
-- **Atomics**: Progress metrics (event count, bytes loaded) are updated using C++20 atomics to provide live feedback on the loading screen.
+- **Background Processing**: Trace parsing, track organization, and expensive UI tasks (like search) are offloaded to a persistent background worker pool via `platform_submit_job`. This ensures the UI remains responsive (60 FPS) during heavy ingestion or complex queries.
+- **Communication**: Chunks are streamed from the main thread to the loading job via a thread-safe `ChunkQueue`.
+- **Backpressure**: To prevent excessive memory usage, the JS bridge monitors the `ChunkQueue` size. If the total queued data exceeds **32MB**, the loader yields to the browser's event loop via `setTimeout(10)` until the job has cleared enough space.
+- **Atomics**: Progress metrics (event count, bytes loaded) and job coordination flags (`jobs_should_abort`) are updated using C++20 atomics to provide live feedback and safe task termination.
 - **COOP/COEP Headers**: To enable PThreads in the browser (via `SharedArrayBuffer`), the web environment must be "cross-origin isolated".
 - **Client-Side Solution (Service Worker)**: For deployment on platforms that do not support custom headers (like GitHub Pages), the project includes `src/coi-serviceworker.js`. This service worker intercepts requests and injects the necessary `COOP` and `COEP` headers. It reloads the page once on the first visit to establish the isolated environment.
 - **Local Development**: 

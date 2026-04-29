@@ -1,4 +1,5 @@
 #include <GLES3/gl3.h>
+#include <cassert>
 #include <emscripten.h>
 #include <emscripten/html5.h>
 
@@ -65,9 +66,10 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   Allocator default_allocator = allocator_get_default();
   g_app = (App*)allocator_alloc(default_allocator, sizeof(App));
   new (g_app) App(app_init(default_allocator));
-  g_app->allocator = counting_allocator_get_allocator(&g_app->counting_allocator);
 
-  ImGui::SetAllocatorFunctions(imgui_alloc, imgui_free, &g_app->allocator);
+  static Allocator imgui_allocator;
+  imgui_allocator = counting_allocator_get_allocator(&g_app->counting_allocator);
+  ImGui::SetAllocatorFunctions(imgui_alloc, imgui_free, &imgui_allocator);
 
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
@@ -75,8 +77,7 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
-  Allocator allocator = g_app->allocator;
-
+  Allocator allocator = imgui_allocator;
   array_list_clear(&g_canvas_selector);
   array_list_append(&g_canvas_selector, allocator, canvas_selector,
                     strlen(canvas_selector) + 1);
@@ -119,7 +120,8 @@ EMSCRIPTEN_KEEPALIVE void ztracing_start() {
 EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
                                                  int font_size) {
   array_list_clear(&g_font_data);
-  array_list_append(&g_font_data, g_app->allocator, font_data,
+  Allocator allocator = counting_allocator_get_allocator(&g_app->counting_allocator);
+  array_list_append(&g_font_data, allocator, font_data,
                     (size_t)font_size);
 
   ImGuiIO& io = ImGui::GetIO();
@@ -138,15 +140,15 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
 }
 
 EMSCRIPTEN_KEEPALIVE void* ztracing_malloc(int size) {
+  assert(g_app != nullptr);
   // Use default allocator if app is not initialized yet.
-  Allocator a =
-      (g_app && g_app->allocator.alloc) ? g_app->allocator : allocator_get_default();
+  Allocator a = counting_allocator_get_allocator(&g_app->counting_allocator);
   return allocator_alloc(a, (size_t)size);
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_free(void* ptr, int size) {
-  Allocator a =
-      (g_app && g_app->allocator.alloc) ? g_app->allocator : allocator_get_default();
+  assert(g_app != nullptr);
+  Allocator a = counting_allocator_get_allocator(&g_app->counting_allocator);
   allocator_free(a, ptr, (size_t)size);
 }
 

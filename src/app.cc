@@ -13,9 +13,13 @@
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"
 
-static void trace_loading_worker(TraceLoadingState* loading) {
-  LOG_DEBUG("trace_loading_worker started (session_id: %d)",
-            loading->session_id);
+static void trace_loading_job(void* user_data) {
+  TraceLoadingState* loading = (TraceLoadingState*)user_data;
+  int my_session_id = loading->session_id;
+  Allocator allocator = loading->allocator;
+
+  LOG_DEBUG("trace_loading_job started (session_id: %d)",
+            my_session_id);
 
   size_t total_discarded_bytes = 0;
 
@@ -23,12 +27,15 @@ static void trace_loading_worker(TraceLoadingState* loading) {
     TraceChunk chunk = {};
     {
       std::unique_lock<std::mutex> lock(loading->chunk_queue.mutex);
-      loading->chunk_queue.cv.wait(lock, [loading] {
+      loading->chunk_queue.cv.wait(lock, [loading, my_session_id] {
         return !loading->chunk_queue.queue.empty() ||
-               loading->worker_should_abort;
+               loading->jobs_should_abort.load() ||
+               loading->session_id != my_session_id;
       });
 
-      if (loading->worker_should_abort) break;
+      if (loading->jobs_should_abort.load() ||
+          loading->session_id != my_session_id)
+        break;
 
       chunk = loading->chunk_queue.queue.front();
       loading->chunk_queue.queue.pop();
@@ -36,22 +43,23 @@ static void trace_loading_worker(TraceLoadingState* loading) {
 
     if (chunk.data) {
       total_discarded_bytes += trace_parser_feed(
-          &loading->parser, loading->allocator, chunk.data, chunk.size,
+          &loading->parser, allocator, chunk.data, chunk.size,
           chunk.is_eof);
-      allocator_free(loading->allocator, chunk.data, chunk.size);
+      allocator_free(allocator, chunk.data, chunk.size);
 
       loading->input_consumed_bytes.store(chunk.input_consumed_bytes,
                                             std::memory_order_relaxed);
 
       {
         std::lock_guard<std::mutex> lock(loading->chunk_queue.mutex);
-        loading->chunk_queue.queue_size_bytes -= chunk.size;
+        loading->chunk_queue.queue_size_bytes.fetch_sub(chunk.size,
+                                                          std::memory_order_relaxed);
       }
     }
 
     TraceEvent event;
-    while (trace_parser_next(&loading->parser, loading->allocator, &event)) {
-      trace_data_add_event(loading->trace_data, loading->allocator,
+    while (trace_parser_next(&loading->parser, allocator, &event)) {
+      trace_data_add_event(loading->trace_data, allocator,
                            loading->theme, &event);
       loading->event_count.fetch_add(1, std::memory_order_relaxed);
       loading->total_bytes.store(total_discarded_bytes + loading->parser.pos,
@@ -63,29 +71,38 @@ static void trace_loading_worker(TraceLoadingState* loading) {
     if (chunk.is_eof) break;
   }
 
-  if (!loading->worker_should_abort) {
+  if (!loading->jobs_should_abort.load() &&
+      loading->session_id == my_session_id) {
     double duration_ms = platform_get_now() - loading->start_time;
     double duration_s = duration_ms / 1000.0;
     double speed_mb_s =
         duration_s > 0.0
-            ? ((double)loading->total_bytes / (1024.0 * 1024.0)) / duration_s
+            ? ((double)loading->total_bytes.load() / (1024.0 * 1024.0)) /
+                  duration_s
             : 0.0;
     LOG_INFO("parsed %zu events (total) in %.3f ms (%.2f mb/s)",
              loading->event_count.load(), duration_ms, speed_mb_s);
 
     int64_t min_ts, max_ts;
-    track_organize(loading->trace_data, loading->allocator, loading->theme,
+    track_organize(loading->trace_data, allocator, loading->theme,
                    &loading->trace_viewer->tracks, &min_ts, &max_ts);
     loading->trace_viewer->viewport.min_ts = min_ts;
     loading->trace_viewer->viewport.max_ts = max_ts;
     trace_viewer_reset_view(loading->trace_viewer);
-    loading->active = false;
-    loading->request_update = true;
-    LOG_DEBUG("trace_loading_worker finished (session_id: %d)",
-              loading->session_id);
+    loading->request_update.store(true, std::memory_order_relaxed);
+    LOG_DEBUG("trace_loading_job finished (session_id: %d)",
+              my_session_id);
   } else {
-    LOG_DEBUG("trace_loading_worker aborted (session_id: %d)",
-              loading->session_id);
+    LOG_DEBUG("trace_loading_job aborted/superseded (session_id: %d)",
+              my_session_id);
+  }
+
+  trace_parser_deinit(&loading->parser, allocator);
+
+  {
+    std::lock_guard<std::mutex> lock(loading->quit_mutex);
+    loading->active.store(false);
+    loading->quit_cv.notify_all();
   }
 }
 
@@ -98,7 +115,7 @@ static void app_apply_theme(App* app, const Theme* theme) {
     ImGui::StyleColorsLight();
   }
 
-  if (app->loading.active) return;
+  if (app->loading.active.load()) return;
 
   // Re-compute all event colors when theme changes
   for (size_t i = 0; i < app->trace_data.events.size; i++) {
@@ -109,18 +126,16 @@ static void app_apply_theme(App* app, const Theme* theme) {
   track_update_colors(&app->trace_viewer.tracks, &app->trace_data, app->theme);
 }
 
-static void app_stop_worker(App* app) {
-  if (app->loading.active) {
-    app->loading.worker_should_abort = true;
-    {
-      std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);
-      app->loading.chunk_queue.cv.notify_one();
-    }
-    if (app->loading.worker_thread.joinable()) {
-      app->loading.worker_thread.join();
-    }
-    trace_parser_deinit(&app->loading.parser, app->allocator);
-    app->loading.active = false;
+static void app_stop_jobs(App* app) {
+  app->loading.jobs_should_abort.store(true);
+  {
+    std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);
+    app->loading.chunk_queue.cv.notify_all();
+  }
+
+  if (app->loading.active.load()) {
+    std::unique_lock<std::mutex> lock(app->loading.quit_mutex);
+    app->loading.quit_cv.wait(lock, [app] { return !app->loading.active.load(); });
   }
 }
 
@@ -133,10 +148,12 @@ App app_init(Allocator parent) {
 }
 
 void app_deinit(App* app) {
-  app_stop_worker(app);
-  trace_data_deinit(&app->trace_data, app->allocator);
-  array_list_deinit(&app->loading.filename, app->allocator);
-  trace_viewer_deinit(&app->trace_viewer, app->allocator);
+  app_stop_jobs(app);
+
+  Allocator allocator = counting_allocator_get_allocator(&app->counting_allocator);
+  trace_data_deinit(&app->trace_data, allocator);
+  array_list_deinit(&app->loading.filename, allocator);
+  trace_viewer_deinit(&app->trace_viewer, allocator);
 }
 
 void app_update(App* app) {
@@ -204,7 +221,7 @@ void app_update(App* app) {
     app->first_frame = false;
     ImGui::DockBuilderRemoveNode(dockspace_id);
     ImGui::DockBuilderAddNode(dockspace_id,
-                              dockspace_flags | ImGuiDockNodeFlags_DockSpace);
+                               dockspace_flags | ImGuiDockNodeFlags_DockSpace);
     ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->Size);
 
     ImGuiID dock_id_main = dockspace_id;
@@ -230,14 +247,14 @@ void app_update(App* app) {
     app->show_shortcuts_window = !app->show_shortcuts_window;
   }
 
-  if (app->show_shortcuts_window) {
-    ImGui::OpenPopup("Shortcuts");
-  }
-
   ImVec2 center = ImGui::GetMainViewport()->GetCenter();
   ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-  ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.7f, viewport_size.y * 0.7f), ImGuiCond_Always);
+  ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.7f, viewport_size.y * 0.7f), ImGuiCond_Appearing);
+
+  if (app->show_shortcuts_window) {
+    ImGui::OpenPopup("Shortcuts");
+  }
 
   ImGui::PushStyleColor(ImGuiCol_PopupBg, ImGui::ColorConvertU32ToFloat4(app->theme->viewport_bg));
   if (ImGui::BeginPopupModal("Shortcuts", &app->show_shortcuts_window, 
@@ -331,15 +348,16 @@ void app_update(App* app) {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 
   if (ImGui::Begin("Main Viewport", nullptr, viewport_flags)) {
-    if (app->loading.active) {
+    if (app->loading.active.load()) {
       const char* filename =
           app->loading.filename.size > 0 ? app->loading.filename.data : "";
-      loading_screen_draw(filename, (size_t)app->loading.event_count,
-                          (size_t)app->loading.total_bytes,
-                          (size_t)app->loading.input_consumed_bytes,
-                          (size_t)app->loading.input_total_bytes, app->theme);
-    } else if (app->trace_data.events.size > 0 && !app->loading.active) {
-      trace_viewer_draw(&app->trace_viewer, &app->trace_data, app->allocator,
+      loading_screen_draw(filename, (size_t)app->loading.event_count.load(),
+                          (size_t)app->loading.total_bytes.load(),
+                          (size_t)app->loading.input_consumed_bytes.load(),
+                          (size_t)app->loading.input_total_bytes.load(), app->theme);
+    } else if (app->trace_data.events.size > 0 && !app->loading.active.load()) {
+      Allocator allocator = counting_allocator_get_allocator(&app->counting_allocator);
+      trace_viewer_draw(&app->trace_viewer, &app->trace_data, allocator,
                         app->theme);
     } else {
       welcome_screen_draw(app->theme);
@@ -358,47 +376,53 @@ void app_on_theme_changed(App* app) {
 
 void app_begin_session(App* app, int session_id, const char* filename,
                        size_t input_total_bytes) {
-  app_stop_worker(app);
+  app_stop_jobs(app);
 
   app->loading.trace_data = &app->trace_data;
   app->loading.trace_viewer = &app->trace_viewer;
+  app->loading.allocator = counting_allocator_get_allocator(&app->counting_allocator);
 
   app->loading.parser = {};
-  trace_data_clear(&app->trace_data, app->allocator);
-  app->loading.event_count = 0;
-  app->loading.total_bytes = 0;
-  app->loading.input_total_bytes = input_total_bytes;
-  app->loading.input_consumed_bytes = 0;
+  Allocator allocator = app->loading.allocator;
+  trace_data_clear(&app->trace_data, allocator);
+  app->loading.event_count.store(0, std::memory_order_relaxed);
+  app->loading.total_bytes.store(0, std::memory_order_relaxed);
+  app->loading.input_total_bytes.store(input_total_bytes, std::memory_order_relaxed);
+  app->loading.input_consumed_bytes.store(0, std::memory_order_relaxed);
   app->loading.start_time = platform_get_now();
-  app->loading.active = true;
+  app->loading.active.store(true, std::memory_order_relaxed);
   app->loading.session_id = session_id;
-  app->loading.allocator = app->allocator;
   app->loading.theme = app->theme;
   app->trace_viewer.focused_event_idx = -1;
   app->trace_viewer.request_scroll_to_focused_event = false;
   array_list_clear(&app->trace_viewer.selected_event_indices);
 
-  app->loading.worker_should_abort = false;
+  app->loading.jobs_should_abort.store(false, std::memory_order_relaxed);
   {
     std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);
     while (!app->loading.chunk_queue.queue.empty()) {
       TraceChunk chunk = app->loading.chunk_queue.queue.front();
       if (chunk.data) {
-        allocator_free(app->allocator, chunk.data, chunk.size);
+        allocator_free(allocator, chunk.data, chunk.size);
       }
-      app->loading.chunk_queue.queue_size_bytes -= chunk.size;
       app->loading.chunk_queue.queue.pop();
     }
+    app->loading.chunk_queue.queue_size_bytes.store(0, std::memory_order_relaxed);
     app->loading.chunk_queue.closed = false;
   }
 
   array_list_clear(&app->loading.filename);
   if (filename) {
-    array_list_append(&app->loading.filename, app->allocator, filename,
+    array_list_append(&app->loading.filename, allocator, filename,
                       strlen(filename) + 1);
   }
 
-  app->loading.worker_thread = std::thread(trace_loading_worker, &app->loading);
+  {
+    std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);
+    app->loading.chunk_queue.cv.notify_all();
+  }
+
+  platform_submit_job((PlatformJobFn)trace_loading_job, &app->loading);
 }
 
 size_t app_handle_file_chunk(App* app, int session_id, char* data,
@@ -407,9 +431,10 @@ size_t app_handle_file_chunk(App* app, int session_id, char* data,
   if (session_id != app->loading.session_id) {
     // If this is an old session, free the data immediately.
     if (data && size > 0) {
-      allocator_free(app->allocator, data, size);
+      Allocator allocator = counting_allocator_get_allocator(&app->counting_allocator);
+      allocator_free(allocator, data, size);
     }
-    return app->loading.chunk_queue.queue_size_bytes;
+    return app->loading.chunk_queue.queue_size_bytes.load(std::memory_order_relaxed);
   }
 
   TraceChunk chunk = {
@@ -422,14 +447,14 @@ size_t app_handle_file_chunk(App* app, int session_id, char* data,
   {
     std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);
     app->loading.chunk_queue.queue.push(chunk);
-    app->loading.chunk_queue.queue_size_bytes += size;
+    app->loading.chunk_queue.queue_size_bytes.fetch_add(size, std::memory_order_relaxed);
     if (is_eof) app->loading.chunk_queue.closed = true;
-    app->loading.chunk_queue.cv.notify_one();
+    app->loading.chunk_queue.cv.notify_all();
   }
 
-  return app->loading.chunk_queue.queue_size_bytes;
+  return app->loading.chunk_queue.queue_size_bytes.load(std::memory_order_relaxed);
 }
 
 size_t app_get_queue_size(App* app) {
-  return app->loading.chunk_queue.queue_size_bytes;
+  return app->loading.chunk_queue.queue_size_bytes.load(std::memory_order_relaxed);
 }
