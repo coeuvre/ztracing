@@ -206,6 +206,7 @@ static ImGuiKey string_to_imgui_key(const char* code) {
   if (strcmp(code, "ControlRight") == 0) return ImGuiKey_RightCtrl;
   if (strcmp(code, "AltLeft") == 0) return ImGuiKey_LeftAlt;
   if (strcmp(code, "AltRight") == 0) return ImGuiKey_RightAlt;
+  if (strcmp(code, "Slash") == 0) return ImGuiKey_Slash;
   return ImGuiKey_None;
 }
 

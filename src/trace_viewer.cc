@@ -1327,7 +1327,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                                     tracks_canvas_pos.x, theme);
           }
         } else {
-          bool mouse_in_sel = trace_viewer_selection_is_mouse_inside(
+          bool mouse_in_sel = input.tracks_hovered && 
+                              trace_viewer_selection_is_mouse_inside(
               tv, trace_viewer_px_to_ts(tv->viewport.start_time,
                                         tv->viewport.end_time, inner_width,
                                         tracks_canvas_pos.x, input.mouse_x));

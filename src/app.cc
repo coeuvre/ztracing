@@ -174,6 +174,9 @@ void app_update(App* app) {
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Help")) {
+      if (ImGui::MenuItem("Shortcuts", "?")) {
+        app->show_shortcuts_window = true;
+      }
       ImGui::MenuItem("About Dear ImGui", nullptr, &app->show_about_window);
       ImGui::EndMenu();
     }
@@ -222,6 +225,100 @@ void app_update(App* app) {
 
   if (app->show_metrics_window) ImGui::ShowMetricsWindow(&app->show_metrics_window);
   if (app->show_about_window) ImGui::ShowAboutWindow(&app->show_about_window);
+
+  if (ImGui::IsKeyPressed(ImGuiKey_Slash) && ImGui::GetIO().KeyShift && !ImGui::GetIO().WantTextInput) {
+    app->show_shortcuts_window = !app->show_shortcuts_window;
+  }
+
+  if (app->show_shortcuts_window) {
+    ImGui::OpenPopup("Shortcuts");
+  }
+
+  ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+  ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
+  ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+  ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.7f, viewport_size.y * 0.7f), ImGuiCond_Always);
+
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, ImGui::ColorConvertU32ToFloat4(app->theme->viewport_bg));
+  if (ImGui::BeginPopupModal("Shortcuts", &app->show_shortcuts_window, 
+                             ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+    // Close when clicking outside
+    if (ImGui::IsMouseClicked(0)) {
+        ImVec2 mouse_pos = ImGui::GetMousePos();
+        ImVec2 window_pos = ImGui::GetWindowPos();
+        ImVec2 window_size = ImGui::GetWindowSize();
+        bool inside = mouse_pos.x >= window_pos.x && mouse_pos.x <= window_pos.x + window_size.x &&
+                     mouse_pos.y >= window_pos.y && mouse_pos.y <= window_pos.y + window_size.y;
+        if (!inside) {
+            app->show_shortcuts_window = false;
+            app->trace_viewer.ignore_next_release = true;
+            ImGui::CloseCurrentPopup();
+        }
+    }
+
+    if (ImGui::BeginChild("CheatsheetContent", ImVec2(0, 0), false, ImGuiWindowFlags_NoScrollbar)) {
+      auto add_section = [&](const char* title, auto content_func) {
+        ImGui::BeginGroup();
+        ImGui::Spacing();
+        ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(app->theme->track_text), "%s", title);
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        if (ImGui::BeginTable(title, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
+            ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 150.0f);
+            ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthStretch);
+            content_func();
+            ImGui::EndTable();
+        }
+        ImGui::EndGroup();
+      };
+
+      auto add_row = [&](const char* action, const char* shortcut) {
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted(action);
+        ImGui::TableNextColumn();
+        ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(app->theme->ruler_text), "%s", shortcut);
+      };
+
+      float width = ImGui::GetContentRegionAvail().x;
+      float gap = 40.0f;
+      float col_w = (width - gap) * 0.5f;
+
+      // Left Column
+      ImGui::BeginChild("LeftCol", ImVec2(col_w, 0), false, ImGuiWindowFlags_NoScrollbar);
+      add_section("GENERAL", [&]() {
+        add_row("Toggle Shortcuts", "?");
+        add_row("Toggle Details", "Menu > View");
+        add_row("Metrics / Debug", "Menu > Tools");
+      });
+      add_section("NAVIGATION", [&]() {
+        add_row("Zoom In/Out", "Ctrl + Scroll");
+        add_row("Zoom to Event", "Double Click");
+        add_row("Pan Horizontally", "Shift + Scroll");
+        add_row("Pan (Any Direction)", "Left Drag");
+        add_row("Reset View", "Menu > View");
+      });
+      ImGui::EndChild();
+
+      ImGui::SameLine(0, gap);
+
+      // Right Column
+      ImGui::BeginChild("RightCol", ImVec2(col_w, 0), false, ImGuiWindowFlags_NoScrollbar);
+      add_section("SELECTION", [&]() {
+        add_row("Timeline Selection", "Drag on Ruler");
+        add_row("Rectangle Select", "Shift + Drag");
+        add_row("Select Event", "Left Click");
+        add_row("Clear Selection", "Click Background");
+        add_row("Clear Focused", "Click Background");
+      });
+      ImGui::EndChild();
+
+      ImGui::EndChild();
+    }
+    ImGui::EndPopup();
+  }
+  ImGui::PopStyleColor();
 
   // 2. Scene Rendering
   ImGuiWindowFlags viewport_flags =

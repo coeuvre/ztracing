@@ -56,6 +56,7 @@
     - **32-bit Indices Support**: While 16-bit indices are the default and preferred for performance, the renderer automatically detects `ImDrawIdx` size and uses `GL_UNSIGNED_INT` if 32-bit indices are enabled in `imconfig.h`.
     - **Optimized Blending**: Uses `glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)` to match Dear ImGui's requirements and avoid expensive alpha-normalization in compositors.
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
+    - **Keyboard Mapping**: Implements a custom mapping from browser `KeyboardEvent.code` to `ImGuiKey`. Includes explicit support for the **Slash** key to enable the **?** hotkey.
     - **Software Renderer Detection**: Automatically detects software rendering paths (SwiftShader, llvmpipe) via the `WEBGL_debug_renderer_info` extension.
     - **HiDPI Optimization**: Disables HiDPI scaling (forces 1.0x) when a software renderer is detected. This reduces the number of pixels processed by the CPU by 4x on 2x DPI displays, drastically lowering "Commit" latency.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop. Handles the orchestration of font loading and trace data streaming.
@@ -124,7 +125,12 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
 - **Global Menu Bar**: A persistent menu bar at the top provides access to:
     - **View**: Reset View, Power-save Mode toggle, Details Panel toggle, and Theme selection (Auto, Dark, Light).
     - **Tools**: Access to "Metrics/Debugger" (ImGui's built-in debugger).
-    - **Help**: "About Dear ImGui" information.
+    - **Help**: Access to the "Shortcuts" cheatsheet and "About Dear ImGui" information.
+- **Shortcuts Cheatsheet**:
+    - **Interaction**: A global modal dialog accessible via the **Help** menu or the **?** hotkey (Shift + /).
+    - **Closing**: Can be dismissed by clicking the "Close" button or the background "blur" area. Background clicks are automatically consumed to prevent accidental interaction with underlying tracks.
+    - **Design**: A structured, two-column cheatsheet layout with themed grid backgrounds, 1px category separators, and top-aligned sections (**GENERAL**, **NAVIGATION**, **SELECTION**).
+    - **Aesthetics**: Fully theme-aware, using viewport-integrated background colors and high-contrast text for optimal legibility in both Light and Dark modes.
 - **Layout**: The "Main Viewport" is docked in the central area. The "Details" panel is docked at the bottom by default and can be toggled via the View menu. The viewport window has no title bar or tabs, and docking other windows directly into it is disabled (though splitting the area is allowed).
 - **Time Ruler**: A persistent horizontal ruler at the top displays the current time range with adaptive units (s, ms, us) and nice tick intervals.
     - **Full-Width Rendering**: The ruler background and border are rendered across the entire viewport width (including the area above the vertical scrollbar), ensuring a consistent visual appearance even when the track list is scrollable.

@@ -73,6 +73,8 @@ struct App {
   bool first_frame;
   bool show_metrics_window;
   bool show_about_window;
+  bool show_shortcuts_window;
+
 
   // Background Loading
   TraceLoadingState loading;
