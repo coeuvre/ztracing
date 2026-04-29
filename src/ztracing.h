@@ -24,12 +24,16 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
 EMSCRIPTEN_KEEPALIVE void ztracing_start();
 
 // Begins a new loading session.
+// input_total_bytes: Total expected raw bytes from source (0 if unknown).
 EMSCRIPTEN_KEEPALIVE void ztracing_begin_session(int session_id,
-                                                 const char* filename);
+                                                 const char* filename,
+                                                 double input_total_bytes);
 
 // Handles a chunk of file data from the JavaScript side. Returns current queue size.
+// input_consumed_bytes: Absolute count of raw bytes read from source up to this chunk.
 EMSCRIPTEN_KEEPALIVE int ztracing_handle_file_chunk(int session_id,
                                                      char* data, int size,
+                                                     double input_consumed_bytes,
                                                      bool is_eof);
 
 // Returns the current total size of chunks in the queue.

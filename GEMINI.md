@@ -73,6 +73,7 @@
     - **Unit Tests**: Logic is extensively verified in `src/trace_viewer_test.cc`, covering zoom/pan, event hit-testing/selection, timeline selection/snapping, and layout calculations (including culling and naming).
     - **ZII Support**: Fully Zero-Is-Initialization compatible.
 - `src/loading_screen`: Specialized scene for displaying parsing progress and filename during trace loading.
+    - **Progress Bar**: Displays a visual completion percentage based on the raw input bytes processed. The bar is styled using the theme's default aesthetics and automatically hides if the total file size is unknown.
 - `src/welcome_screen`: Initial "drop file" landing scene.
 - `src/colors`: Theme management system. Defines a `Theme` struct and provides standard Dark and Light theme implementations.
 - `src/track`: Logic for organizing events into tracks, sorting, and depth calculation. Supports ZII.

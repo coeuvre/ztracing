@@ -42,19 +42,31 @@ async function loadFromStream(stream, name, sizeHint, contentType) {
       (contentType === 'application/gzip' ||
        contentType === 'application/x-gzip');
 
+  console.log(`${statusMsg}, session: ${sessionId}`);
+
+  let inputTotalBytes = sizeHint || 0;
+  Module.ccall(
+      'ztracing_begin_session', null, ['number', 'string', 'number'],
+      [sessionId, name, inputTotalBytes]);
+
+  let inputProcessedBytes = 0;
+  const progressTracker = new TransformStream({
+    transform(chunk, controller) {
+      inputProcessedBytes += chunk.length;
+      controller.enqueue(chunk);
+    }
+  });
+
+  stream = stream.pipeThrough(progressTracker);
+
   if (isGzip) {
     if (typeof DecompressionStream !== 'undefined') {
       stream = stream.pipeThrough(new DecompressionStream('gzip'));
-      statusMsg += ' [decompressing gzip]';
     } else {
       console.warn(
           'ztracing: DecompressionStream not supported in this browser, skipping decompression.');
     }
   }
-  console.log(`${statusMsg}, session: ${sessionId}`);
-
-  Module.ccall(
-      'ztracing_begin_session', null, ['number', 'string'], [sessionId, name]);
 
   const reader = stream.getReader();
 
@@ -72,7 +84,9 @@ async function loadFromStream(stream, name, sizeHint, contentType) {
       const size = value.length;
       const ptr = Module._ztracing_malloc(size);
       setWasmMemory(ptr, value);
-      let queueSize = Module._ztracing_handle_file_chunk(sessionId, ptr, size, false);
+
+      // We pass the ABSOLUTE amount of RAW (compressed) bytes that were consumed so far.
+      let queueSize = Module._ztracing_handle_file_chunk(sessionId, ptr, size, inputProcessedBytes, false);
 
       const MAX_QUEUE_SIZE = 32 * 1024 * 1024; // 32MB
       if (queueSize > MAX_QUEUE_SIZE) {
@@ -96,7 +110,7 @@ async function loadFromStream(stream, name, sizeHint, contentType) {
 
     if (sessionId === currentSessionId) {
       // Signal EOF
-      Module._ztracing_handle_file_chunk(sessionId, 0, 0, true);
+      Module._ztracing_handle_file_chunk(sessionId, 0, 0, inputProcessedBytes, true);
     }
   } catch (err) {
     console.error(`error reading: ${err}`);

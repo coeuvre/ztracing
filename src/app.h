@@ -23,6 +23,8 @@ enum ThemeMode {
 struct TraceChunk {
   char* data;
   size_t size;
+  // Raw bytes consumed from the input stream to produce this chunk.
+  size_t input_consumed_bytes;
   bool is_eof;
 };
 
@@ -37,6 +39,10 @@ struct ChunkQueue {
 struct TraceLoadingState {
   std::atomic<size_t> event_count;
   std::atomic<size_t> total_bytes;
+  // Total expected bytes from the raw input stream (0 if unknown).
+  std::atomic<size_t> input_total_bytes;
+  // Total raw bytes consumed from the input stream so far.
+  std::atomic<size_t> input_consumed_bytes;
   double start_time;
   std::atomic<bool> active;
   int session_id;
@@ -89,11 +95,13 @@ void app_update(App* app);
 void app_on_theme_changed(App* app);
 
 // Begins a new loading session.
-void app_begin_session(App* app, int session_id, const char* filename);
+void app_begin_session(App* app, int session_id, const char* filename,
+                       size_t input_total_bytes);
 
 // Processes a chunk of trace data. Returns the current total size of chunks in the queue.
 size_t app_handle_file_chunk(App* app, int session_id, char* data,
-                             size_t size, bool is_eof);
+                             size_t size, size_t input_consumed_bytes,
+                             bool is_eof);
 
 // Returns the current total size of chunks in the queue.
 size_t app_get_queue_size(App* app);

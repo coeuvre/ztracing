@@ -151,16 +151,18 @@ EMSCRIPTEN_KEEPALIVE void ztracing_free(void* ptr, int size) {
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_begin_session(int session_id,
-                                                 const char* filename) {
-  app_begin_session(g_app, session_id, filename);
+                                                 const char* filename,
+                                                 double input_total_bytes) {
+  app_begin_session(g_app, session_id, filename, (size_t)input_total_bytes);
   imgui_impl_wasm_request_update();
 }
 
 EMSCRIPTEN_KEEPALIVE int ztracing_handle_file_chunk(int session_id,
                                                      char* data, int size,
+                                                     double input_consumed_bytes,
                                                      bool is_eof) {
   return (int)app_handle_file_chunk(g_app, session_id, data, (size_t)size,
-                                    is_eof);
+                                    (size_t)input_consumed_bytes, is_eof);
 }
 
 EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_size() {

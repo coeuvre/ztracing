@@ -40,6 +40,9 @@ static void trace_loading_worker(TraceLoadingState* loading) {
           chunk.is_eof);
       allocator_free(loading->allocator, chunk.data, chunk.size);
 
+      loading->input_consumed_bytes.store(chunk.input_consumed_bytes,
+                                            std::memory_order_relaxed);
+
       {
         std::lock_guard<std::mutex> lock(loading->chunk_queue.mutex);
         loading->chunk_queue.queue_size_bytes -= chunk.size;
@@ -235,7 +238,9 @@ void app_update(App* app) {
       const char* filename =
           app->loading.filename.size > 0 ? app->loading.filename.data : "";
       loading_screen_draw(filename, (size_t)app->loading.event_count,
-                          (size_t)app->loading.total_bytes, app->theme);
+                          (size_t)app->loading.total_bytes,
+                          (size_t)app->loading.input_consumed_bytes,
+                          (size_t)app->loading.input_total_bytes, app->theme);
     } else if (app->trace_data.events.size > 0 && !app->loading.active) {
       trace_viewer_draw(&app->trace_viewer, &app->trace_data, app->allocator,
                         app->theme);
@@ -254,7 +259,8 @@ void app_on_theme_changed(App* app) {
   }
 }
 
-void app_begin_session(App* app, int session_id, const char* filename) {
+void app_begin_session(App* app, int session_id, const char* filename,
+                       size_t input_total_bytes) {
   app_stop_worker(app);
 
   app->loading.trace_data = &app->trace_data;
@@ -264,6 +270,8 @@ void app_begin_session(App* app, int session_id, const char* filename) {
   trace_data_clear(&app->trace_data, app->allocator);
   app->loading.event_count = 0;
   app->loading.total_bytes = 0;
+  app->loading.input_total_bytes = input_total_bytes;
+  app->loading.input_consumed_bytes = 0;
   app->loading.start_time = platform_get_now();
   app->loading.active = true;
   app->loading.session_id = session_id;
@@ -296,7 +304,8 @@ void app_begin_session(App* app, int session_id, const char* filename) {
 }
 
 size_t app_handle_file_chunk(App* app, int session_id, char* data,
-                           size_t size, bool is_eof) {
+                           size_t size, size_t input_consumed_bytes,
+                           bool is_eof) {
   if (session_id != app->loading.session_id) {
     // If this is an old session, free the data immediately.
     if (data && size > 0) {
@@ -307,6 +316,7 @@ size_t app_handle_file_chunk(App* app, int session_id, char* data,
 
   TraceChunk chunk = {};
   chunk.size = size;
+  chunk.input_consumed_bytes = input_consumed_bytes;
   chunk.is_eof = is_eof;
   chunk.data = data;
 
