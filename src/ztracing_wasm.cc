@@ -36,7 +36,8 @@ static void imgui_free(void* ptr, void* user_data) {
 }
 
 static void main_loop() {
-  if (g_app->loading.request_update.exchange(false)) {
+  if (g_app->loading.request_update.exchange(false) ||
+      g_app->trace_viewer.search.request_update.exchange(false)) {
     imgui_impl_wasm_request_update();
   }
 

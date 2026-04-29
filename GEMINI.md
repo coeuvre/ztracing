@@ -61,7 +61,7 @@
     - **HiDPI Optimization**: Disables HiDPI scaling (forces 1.0x) when a software renderer is detected. This reduces the number of pixels processed by the CPU by 4x on 2x DPI displays, drastically lowering "Commit" latency.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop. Handles the orchestration of font loading and trace data streaming.
 - `src/app`: Application shell and state management. Orchestrates transitions between scenes (Welcome, Loading, Trace Viewer).
-    - **Initialization**: Initialized by `app_init` returning an `App` by value (ZII). Non-aggregate members (mutexes, atomics) are initialized post-construction via placement `new` in `app_start_background_services` (or once a stable address like `g_app` is established).
+    - **Initialization**: Initialized by `app_init` returning an `App` by value (ZII). Non-aggregate members (mutexes, atomics) are initialized post-construction via placement `new` in the platform entry point (after the stable address `g_app` is established).
     - **Thread Safety**: Access to `TraceData` from the main thread is strictly prohibited while `loading.active` is true. Background jobs (loading, search) are synchronized via session-based signaling in `app_begin_session` to ensure `TraceData` is not cleared while being accessed.
 - `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
     - **Architecture**: Decouples interaction and layout logic from ImGui rendering via a pure `trace_viewer_step` function and a `TraceViewerInput` struct. This enables comprehensive unit testing of viewport navigation, hit-testing, selection, and layout without an ImGui context.
@@ -252,7 +252,8 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Content**: 
         - **Focused Event**: Displays detailed information for the focused event (Name, Category, PH, Timestamp, Duration, PID, TID, and all Arguments).
         - **Selection**: Displays a summary (count) and a high-performance, scrollable table listing each selected event's Name, Category, Start time, and Duration.
-        - **Concurrent Display**: If both a focused event and a multi-selection exist, both sections are displayed simultaneously, separated by a visual divider, with the focused event details prioritized at the top.
+        - **Search**: Integrated search input at the top of the panel allows for filtering events by name across the entire trace. Search results are unified with the multi-selection system.
+        - **Concurrent Display**: If both a focused event and a multi-selection exist, both sections are displayed simultaneously, separated by a visual divider, with the selection table prioritized above the focused event.
             - **Click to Focus**: Clicking a row in the table instantly focuses, zooms, and scrolls to the corresponding event in the track viewport. The track is automatically centered vertically.
             - **Performance**: Utilizes `ImGuiListClipper` for the selection table to achieve $O(\text{VisibleRows})$ rendering and formatting complexity.
             - **Sticky Headers**: Implements a sticky header row via `ImGuiTableFlags_ScrollY` and `ImGui::TableSetupScrollFreeze(0, 1)`.

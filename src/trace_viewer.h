@@ -1,12 +1,32 @@
 #ifndef ZTRACING_SRC_TRACE_VIEWER_H_
 #define ZTRACING_SRC_TRACE_VIEWER_H_
 
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+
 #include "src/allocator.h"
 #include "src/array_list.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
 #include "src/track.h"
 #include "src/track_renderer.h"
+
+struct SearchState {
+  std::mutex mutex;
+  ArrayList<char> pending_query;
+  ArrayList<int64_t> pending_results;
+  TraceData* td;
+  Allocator allocator;
+  std::atomic<bool> new_query_available{false};
+  std::atomic<bool> jobs_should_abort{false};
+  std::atomic<bool> results_ready{false};
+  std::atomic<bool> is_searching{false};
+  std::atomic<bool> request_update{false};
+  std::mutex quit_mutex;
+  std::condition_variable quit_cv;
+};
 
 enum class InteractionDragMode {
   NONE,
@@ -125,6 +145,10 @@ struct TraceViewer {
   float last_tracks_y = 0;
   float last_lane_height = 0;
   double last_best_snap_ts = 0;
+ 
+  ArrayList<char> search_query;
+  bool focus_search_input;
+  SearchState search;
 };
 
 void trace_viewer_deinit(TraceViewer* tv, Allocator allocator);

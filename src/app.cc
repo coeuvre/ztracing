@@ -187,6 +187,10 @@ void app_update(App* app) {
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Tools")) {
+      if (ImGui::MenuItem("Search Events", "Ctrl+F")) {
+        app->trace_viewer.show_details_panel = true;
+        app->trace_viewer.focus_search_input = true;
+      }
       ImGui::MenuItem("Metrics/Debugger", nullptr, &app->show_metrics_window);
       ImGui::EndMenu();
     }
@@ -245,6 +249,11 @@ void app_update(App* app) {
 
   if (ImGui::IsKeyPressed(ImGuiKey_Slash) && ImGui::GetIO().KeyShift && !ImGui::GetIO().WantTextInput) {
     app->show_shortcuts_window = !app->show_shortcuts_window;
+  }
+
+  if (ImGui::IsKeyPressed(ImGuiKey_F) && ImGui::GetIO().KeyCtrl && !ImGui::GetIO().WantTextInput) {
+    app->trace_viewer.show_details_panel = true;
+    app->trace_viewer.focus_search_input = true;
   }
 
   ImVec2 center = ImGui::GetMainViewport()->GetCenter();
@@ -306,6 +315,7 @@ void app_update(App* app) {
       ImGui::BeginChild("LeftCol", ImVec2(col_w, 0), false, ImGuiWindowFlags_NoScrollbar);
       add_section("GENERAL", [&]() {
         add_row("Toggle Shortcuts", "?");
+        add_row("Search Events", "Ctrl + F");
         add_row("Toggle Details", "Menu > View");
         add_row("Metrics / Debug", "Menu > Tools");
       });
@@ -381,6 +391,9 @@ void app_begin_session(App* app, int session_id, const char* filename,
   app->loading.trace_data = &app->trace_data;
   app->loading.trace_viewer = &app->trace_viewer;
   app->loading.allocator = counting_allocator_get_allocator(&app->counting_allocator);
+  
+  app->trace_viewer.search.td = &app->trace_data;
+  app->trace_viewer.search.allocator = app->loading.allocator;
 
   app->loading.parser = {};
   Allocator allocator = app->loading.allocator;

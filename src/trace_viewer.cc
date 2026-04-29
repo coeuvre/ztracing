@@ -18,6 +18,8 @@ static void trace_viewer_draw_selection_overlay(
     TraceViewer* tv, ImDrawList* draw_list, ImVec2 pos, ImVec2 size,
     const Theme& theme, bool draw_duration_text);
 
+static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocator);
+
 static double trace_viewer_px_to_ts(double start_time, double end_time,
                                     float width, float origin_x, float px) {
   double duration = end_time - start_time;
@@ -99,6 +101,18 @@ void trace_viewer_deinit(TraceViewer* tv, Allocator allocator) {
   array_list_deinit(&tv->counter_render_blocks, allocator);
   array_list_deinit(&tv->hover_matches, allocator);
   array_list_deinit(&tv->selected_event_indices, allocator);
+  array_list_deinit(&tv->search_query, allocator);
+  tv->search.jobs_should_abort.store(true);
+  {
+    std::lock_guard<std::mutex> lock(tv->search.mutex);
+    tv->search.quit_cv.notify_all();
+  }
+  if (tv->search.is_searching.load()) {
+    std::unique_lock<std::mutex> lock(tv->search.quit_mutex);
+    tv->search.quit_cv.wait(lock, [tv] { return !tv->search.is_searching.load(); });
+  }
+  array_list_deinit(&tv->search.pending_query, allocator);
+  array_list_deinit(&tv->search.pending_results, allocator);
 }
 
 static void trace_viewer_draw_time_ruler(TraceViewer* tv, ImDrawList* draw_list,
@@ -1138,6 +1152,12 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
   }
 
   tv->last_best_snap_ts = tv->snap_best_ts;
+
+  if (tv->search.results_ready.exchange(false)) {
+    std::lock_guard<std::mutex> lock(tv->search.mutex);
+    array_list_clear(&tv->selected_event_indices);
+    array_list_append(&tv->selected_event_indices, allocator, tv->search.pending_results.data, tv->search.pending_results.size);
+  }
 }
 
 void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
@@ -1407,46 +1427,12 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
     if (ImGui::Begin("Details", &tv->show_details_panel,
                      ImGuiWindowFlags_NoFocusOnAppearing)) {
+      // Search Section
+      trace_viewer_draw_search_section(tv, allocator);
+      ImGui::Separator();
+
       bool has_focus = (tv->focused_event_idx != -1);
       bool has_selection = (tv->selected_event_indices.size > 0);
-
-      if (has_focus) {
-        const TraceEventPersisted& e =
-            td->events[(size_t)tv->focused_event_idx];
-        std::string_view name = trace_data_get_string(td, e.name_ref);
-        std::string_view cat = trace_data_get_string(td, e.cat_ref);
-        std::string_view ph = trace_data_get_string(td, e.ph_ref);
-        std::string_view id = trace_data_get_string(td, e.id_ref);
-
-        ImGui::TextDisabled("Focused Event");
-        if (ph != "C") {
-          ImGui::Text("Name: %.*s", (int)name.size(), name.data());
-        }
-        if (id.size() > 0) {
-          ImGui::Text("ID: %.*s", (int)id.size(), id.data());
-        }
-        if (cat.size() > 0) {
-          ImGui::Text("Category: %.*s", (int)cat.size(), cat.data());
-        }
-
-        char ts_buf[32];
-        format_duration(ts_buf, sizeof(ts_buf),
-                        (double)e.ts - (double)tv->viewport.min_ts);
-        ImGui::Text("Start: %s", ts_buf);
-
-        if (e.dur > 0) {
-          char dur_buf[32];
-          format_duration(dur_buf, sizeof(dur_buf), (double)e.dur);
-          ImGui::Text("Duration: %s", dur_buf);
-        }
-        ImGui::Text("PID: %d, TID: %d", e.pid, e.tid);
-
-        trace_viewer_draw_args_table(td, e, nullptr, 0);
-      }
-
-      if (has_focus && has_selection) {
-        ImGui::Separator();
-      }
 
       if (has_selection) {
         ImGui::TextDisabled("Selection (%zu events)",
@@ -1454,9 +1440,6 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         ImGui::SameLine();
         if (ImGui::SmallButton("Clear")) {
           array_list_clear(&tv->selected_event_indices);
-          if (tv->focused_event_idx == -1) {
-            tv->show_details_panel = false;
-          }
         }
         if (tv->selected_event_indices.size > 0) {
           if (ImGui::BeginTable("##multi_select", 4,
@@ -1467,7 +1450,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                                    ImGuiTableFlags_Borders |
                                    ImGuiTableFlags_SizingFixedFit |
                                    ImGuiTableFlags_NoSavedSettings,
-                               ImGui::GetContentRegionAvail())) {
+                               ImVec2(0, has_focus ? 200.0f : ImGui::GetContentRegionAvail().y))) {
             ImGui::TableSetupColumn("Name");
             ImGui::TableSetupColumn("Category");
             ImGui::TableSetupColumn("Start");
@@ -1520,6 +1503,44 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         }
       }
 
+      if (has_focus && has_selection) {
+        ImGui::Separator();
+      }
+
+      if (has_focus) {
+        const TraceEventPersisted& e =
+            td->events[(size_t)tv->focused_event_idx];
+        std::string_view name = trace_data_get_string(td, e.name_ref);
+        std::string_view cat = trace_data_get_string(td, e.cat_ref);
+        std::string_view ph = trace_data_get_string(td, e.ph_ref);
+        std::string_view id = trace_data_get_string(td, e.id_ref);
+
+        ImGui::TextDisabled("Focused Event");
+        if (ph != "C") {
+          ImGui::Text("Name: %.*s", (int)name.size(), name.data());
+        }
+        if (id.size() > 0) {
+          ImGui::Text("ID: %.*s", (int)id.size(), id.data());
+        }
+        if (cat.size() > 0) {
+          ImGui::Text("Category: %.*s", (int)cat.size(), cat.data());
+        }
+
+        char ts_buf[32];
+        format_duration(ts_buf, sizeof(ts_buf),
+                        (double)e.ts - (double)tv->viewport.min_ts);
+        ImGui::Text("Start: %s", ts_buf);
+
+        if (e.dur > 0) {
+          char dur_buf[32];
+          format_duration(dur_buf, sizeof(dur_buf), (double)e.dur);
+          ImGui::Text("Duration: %s", dur_buf);
+        }
+        ImGui::Text("PID: %d, TID: %d", e.pid, e.tid);
+
+        trace_viewer_draw_args_table(td, e, nullptr, 0);
+      }
+
       if (!has_focus && !has_selection) {
         ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
                            "Select an event to see details.");
@@ -1542,4 +1563,124 @@ void trace_viewer_reset_view(TraceViewer* tv) {
   double center = (trace_start + trace_end) * 0.5;
   tv->viewport.start_time = center - max_duration * 0.5;
   tv->viewport.end_time = center + max_duration * 0.5;
+}
+
+static void trace_viewer_search_job(void* user_data) {
+  SearchState* s = (SearchState*)user_data;
+  TraceData* td = s->td;
+  Allocator allocator = s->allocator;
+
+  if (s->jobs_should_abort.load()) return;
+
+  s->is_searching.store(true);
+
+  ArrayList<char> query = {};
+  {
+    std::lock_guard<std::mutex> lock(s->mutex);
+    array_list_append(&query, allocator, s->pending_query.data, s->pending_query.size);
+    s->new_query_available.store(false);
+  }
+
+  if (query.size > 0 && query.data[0] != '\0') {
+    ArrayList<int64_t> results = {};
+    const char* query_ptr = query.data;
+    size_t query_len = strlen(query_ptr);
+
+    size_t n_events = td->events.size;
+
+    for (size_t i = 0; i < n_events; i++) {
+      if (s->new_query_available.load() || s->jobs_should_abort.load()) break;
+
+      const TraceEventPersisted& e = td->events[i];
+      std::string_view name = trace_data_get_string(td, e.name_ref);
+
+      auto it = std::search(
+        name.begin(), name.end(),
+        query_ptr, query_ptr + query_len,
+        [](char a, char b) { return std::tolower(a) == std::tolower(b); }
+      );
+
+      if (it != name.end()) {
+        array_list_push_back(&results, allocator, (int64_t)i);
+      }
+      if (results.size > 10000) break;
+    }
+
+    if (!s->new_query_available.load() && !s->jobs_should_abort.load()) {
+      std::sort(results.data, results.data + results.size);
+      {
+        std::lock_guard<std::mutex> lock(s->mutex);
+        array_list_clear(&s->pending_results);
+        array_list_append(&s->pending_results, allocator, results.data, results.size);
+        s->results_ready.store(true);
+      }
+    }
+    array_list_deinit(&results, allocator);
+  } else {
+    {
+      std::lock_guard<std::mutex> lock(s->mutex);
+      array_list_clear(&s->pending_results);
+      s->results_ready.store(true);
+    }
+  }
+  s->is_searching.store(false);
+  s->request_update.store(true, std::memory_order_relaxed);
+  array_list_deinit(&query, allocator);
+
+  {
+    std::lock_guard<std::mutex> lock(s->quit_mutex);
+    s->quit_cv.notify_all();
+  }
+}
+
+struct InputTextCallback_UserData {
+  ArrayList<char>* al;
+  Allocator allocator;
+};
+
+static int trace_viewer_search_input_callback(ImGuiInputTextCallbackData* data) {
+  InputTextCallback_UserData* ud = (InputTextCallback_UserData*)data->UserData;
+  if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
+    ArrayList<char>* al = ud->al;
+    array_list_reserve(al, ud->allocator, (size_t)data->BufSize);
+    data->Buf = al->data;
+  }
+  return 0;
+}
+
+static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocator) {
+  ImGui::TextDisabled("Search Events");
+  if (tv->focus_search_input) {
+    ImGui::SetKeyboardFocusHere();
+    tv->focus_search_input = false;
+  }
+
+  if (tv->search_query.capacity == 0) {
+    array_list_reserve(&tv->search_query, allocator, 128);
+    tv->search_query.data[0] = '\0';
+    tv->search_query.size = 1;
+  }
+
+  InputTextCallback_UserData cb_data = {&tv->search_query, allocator};
+  bool search_changed = ImGui::InputText("##search", tv->search_query.data,
+                                         tv->search_query.capacity,
+                                         ImGuiInputTextFlags_CallbackResize,
+                                         trace_viewer_search_input_callback, &cb_data);
+
+  if (search_changed) {
+    std::lock_guard<std::mutex> lock(tv->search.mutex);
+    array_list_clear(&tv->search.pending_query);
+    array_list_append(&tv->search.pending_query, allocator, tv->search_query.data, strlen(tv->search_query.data) + 1);
+    tv->search.new_query_available.store(true);
+    tv->search.results_ready.store(false);
+    platform_submit_job(trace_viewer_search_job, &tv->search);
+  }
+
+  if (tv->search_query.data[0] != '\0') {
+    ImGui::Text("%zu events selected by search", tv->selected_event_indices.size);
+    if (tv->search.is_searching.load()) {
+       ImGui::SameLine();
+       ImGui::TextDisabled("(searching...)");
+    }
+  }
 }
