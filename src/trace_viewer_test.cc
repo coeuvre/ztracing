@@ -1651,7 +1651,8 @@ TEST_F(TraceViewerTest, AsyncHistogramIntegrationForBoxSelect) {
 
         EXPECT_TRUE(tv.search.results_ready.load());
 
-        trace_viewer_step(&tv, &td, input, allocator);
+        TraceViewerInput step_input = {};
+        trace_viewer_step(&tv, &td, step_input, allocator);
         
         EXPECT_FALSE(tv.search.results_ready.load());
         EXPECT_GT(tv.histogram.num_buckets, 0);

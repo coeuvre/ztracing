@@ -40,6 +40,35 @@ EM_JS(void, js_set_cursor, (const char* selector, const char* cursor), {
   }
 });
 
+EM_JS(void, js_set_clipboard, (const char* text), {
+  var str = UTF8ToString(text);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(str).catch(function(err) {
+      console.error("Failed to copy: ", err);
+    });
+  } else {
+    var textArea = document.createElement("textarea");
+    textArea.value = str;
+    textArea.style.position = "fixed";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand('copy');
+    } catch (err) {
+      console.error("Fallback copy failed: ", err);
+    }
+    document.body.removeChild(textArea);
+  }
+});
+
+static void imgui_impl_wasm_set_clipboard_text(void* user_data, const char* text) {
+  (void)user_data;
+  if (text) {
+    js_set_clipboard(text);
+  }
+}
+
 static BackendData* get_backend_data() {
   return ImGui::GetCurrentContext()
              ? (BackendData*)ImGui::GetIO().BackendPlatformUserData
@@ -317,6 +346,8 @@ bool imgui_impl_wasm_init(const char* canvas_selector, Allocator allocator) {
                                  EM_FALSE, on_resize);
 
   update_canvas_size(bd);
+
+  io.SetClipboardTextFn = imgui_impl_wasm_set_clipboard_text;
 
   return true;
 }
