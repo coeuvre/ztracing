@@ -20,7 +20,7 @@ static void trace_viewer_draw_selection_overlay(
     const Theme& theme, bool draw_duration_text);
 
 static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocator);
-static void trace_viewer_search_job(void* user_data);
+void trace_viewer_search_job(void* user_data);
 
 static double trace_viewer_px_to_ts(double start_time, double end_time,
                                     float width, float origin_x, float px) {
@@ -2017,7 +2017,7 @@ static void trace_viewer_sort_results(const TraceData* td, ArrayList<int64_t>* r
   array_list_deinit(&keys, allocator);
 }
 
-static void trace_viewer_search_job(void* user_data) {
+void trace_viewer_search_job(void* user_data) {
   SearchState* s = (SearchState*)user_data;
   TraceData* td = s->td;
   Allocator allocator = s->allocator;
@@ -2076,10 +2076,20 @@ static void trace_viewer_search_job(void* user_data) {
         return it != text.end();
       };
 
+      bool include_threads = s->include_thread_events.load();
+      bool include_counters = s->include_counter_events.load();
+
       for (size_t i = 0; i < n_events; i++) {
         if (s->new_query_available.load() || s->jobs_should_abort.load()) break;
 
         const TraceEventPersisted& e = td->events[i];
+        std::string_view ph = trace_data_get_string(td, e.ph_ref);
+        bool is_counter = (ph.size() == 1 && ph[0] == 'C');
+        bool is_metadata = (ph.size() == 1 && ph[0] == 'M');
+
+        if (is_counter && !include_counters) continue;
+        if (!is_counter && !is_metadata && !include_threads) continue;
+
         std::string_view name = trace_data_get_string(td, e.name_ref);
         std::string_view cat = trace_data_get_string(td, e.cat_ref);
 
@@ -2196,7 +2206,13 @@ static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocato
 
   bool enter_pressed = ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Enter);
 
-  if (search_input_changed || enter_pressed) {
+  ImGui::Spacing();
+  bool filter_changed = false;
+  filter_changed |= ImGui::Checkbox("Threads", &tv->search_thread_events);
+  ImGui::SameLine();
+  filter_changed |= ImGui::Checkbox("Counters", &tv->search_counter_events);
+
+  if (search_input_changed || enter_pressed || filter_changed) {
     std::lock_guard<std::mutex> lock(tv->search.mutex);
     const char* last_query = (tv->search.pending_query.size > 0 && tv->search.pending_query.data)
                                  ? tv->search.pending_query.data
@@ -2211,11 +2227,17 @@ static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocato
       if (strcmp(last_query, tv->search_query.data) != 0) {
         should_trigger = true;
       }
+    } else if (filter_changed) {
+      should_trigger = true;
     }
 
     if (should_trigger) {
       array_list_clear(&tv->search.pending_query);
       array_list_append(&tv->search.pending_query, allocator, tv->search_query.data, strlen(tv->search_query.data) + 1);
+      
+      tv->search.include_thread_events.store(tv->search_thread_events);
+      tv->search.include_counter_events.store(tv->search_counter_events);
+
       tv->search.new_query_available.store(true);
       tv->search.results_ready.store(false);
       tv->selected_histogram_bucket = -1;
@@ -2225,7 +2247,7 @@ static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocato
   }
 
   if (tv->search_query.data[0] != '\0') {
-    ImGui::Text("%zu events selected by search", tv->selected_event_indices.size);
+    ImGui::Text("%zu events selected", tv->selected_event_indices.size);
     if (tv->search.is_searching.load()) {
        ImGui::SameLine();
        ImGui::TextDisabled("(searching...)");

@@ -48,6 +48,9 @@ struct SearchState {
   std::atomic<bool> new_sort_specs_available{false};
   std::atomic<bool> new_box_selection_available{false};
 
+  std::atomic<bool> include_thread_events{true};
+  std::atomic<bool> include_counter_events{true};
+
   DurationHistogram pending_histogram = {};
 };
 
@@ -171,6 +174,8 @@ struct TraceViewer {
  
   ArrayList<char> search_query;
   bool focus_search_input;
+  bool search_thread_events = true;
+  bool search_counter_events = true;
   SearchState search;
 
   bool search_histogram_dirty = true;
@@ -187,5 +192,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                        const Theme* theme);
 
 void trace_viewer_calculate_histogram(const ArrayList<int64_t>& results, const TraceData* td, DurationHistogram* h);
+
+void trace_viewer_search_job(void* user_data);
 
 #endif  // ZTRACING_SRC_TRACE_VIEWER_H_

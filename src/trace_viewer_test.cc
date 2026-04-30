@@ -1659,4 +1659,65 @@ TEST_F(TraceViewerTest, AsyncHistogramIntegrationForBoxSelect) {
     }
 }
 
+TEST_F(TraceViewerTest, SearchFilteringWithOptions) {
+    // Add a thread event and a counter event
+    StringRef name_ref = trace_data_push_string(&td, allocator, "searchable_item");
+    
+    // 1. Add thread event
+    TraceEventPersisted e1 = {};
+    e1.ts = 1000;
+    e1.dur = 100;
+    e1.name_ref = name_ref;
+    e1.ph_ref = trace_data_push_string(&td, allocator, "X"); // Phase 'X' (Complete thread event)
+    array_list_push_back(&td.events, allocator, e1);
+
+    // 2. Add counter event
+    TraceEventPersisted e2 = {};
+    e2.ts = 2000;
+    e2.dur = 0;
+    e2.name_ref = name_ref;
+    e2.ph_ref = trace_data_push_string(&td, allocator, "C"); // Phase 'C' (Counter event)
+    array_list_push_back(&td.events, allocator, e2);
+
+    tv.search.include_thread_events.store(true);
+    tv.search.include_counter_events.store(true);
+    
+    // Simulate search query triggered
+    array_list_append(&tv.search.pending_query, allocator, "searchable_item", strlen("searchable_item") + 1);
+    tv.search.new_query_available.store(true);
+    tv.search.results_ready.store(false);
+
+    // Run search
+    trace_viewer_search_job(&tv.search);
+
+    EXPECT_TRUE(tv.search.results_ready.load());
+    EXPECT_EQ(tv.search.pending_results.size, 2u);
+    EXPECT_EQ(tv.search.pending_results[0], 0);
+    EXPECT_EQ(tv.search.pending_results[1], 1);
+
+    // Scenario B: Exclude counters
+    tv.search.include_thread_events.store(true);
+    tv.search.include_counter_events.store(false);
+    tv.search.new_query_available.store(true);
+    tv.search.results_ready.store(false);
+    
+    trace_viewer_search_job(&tv.search);
+
+    EXPECT_TRUE(tv.search.results_ready.load());
+    EXPECT_EQ(tv.search.pending_results.size, 1u);
+    EXPECT_EQ(tv.search.pending_results[0], 0);
+
+    // Scenario C: Exclude threads
+    tv.search.include_thread_events.store(false);
+    tv.search.include_counter_events.store(true);
+    tv.search.new_query_available.store(true);
+    tv.search.results_ready.store(false);
+    
+    trace_viewer_search_job(&tv.search);
+
+    EXPECT_TRUE(tv.search.results_ready.load());
+    EXPECT_EQ(tv.search.pending_results.size, 1u);
+    EXPECT_EQ(tv.search.pending_results[0], 1);
+}
+
 
