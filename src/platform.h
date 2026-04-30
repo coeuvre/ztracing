@@ -13,6 +13,7 @@ bool platform_is_dark_mode();
 
 typedef void (*PlatformJobFn)(void* user_data);
 void platform_submit_job(PlatformJobFn fn, void* user_data);
+void platform_teardown_workers();
 
 #ifdef __cplusplus
 }

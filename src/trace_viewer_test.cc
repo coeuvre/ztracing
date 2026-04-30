@@ -1,4 +1,5 @@
 #include "src/trace_viewer.h"
+#include "src/platform.h"
 #include <gtest/gtest.h>
 #include <algorithm>
 #include "src/allocator.h"
@@ -11,13 +12,18 @@ protected:
 
     void SetUp() override {
         allocator = allocator_get_default();
-        tv = {};
-        td = {};
+        tv.~TraceViewer();
+        new (&tv) TraceViewer();
+        tv.search.allocator = allocator;
+        td.~TraceData();
+        new (&td) TraceData();
+        tv.search.td = &td;
     }
 
     void TearDown() override {
         trace_viewer_deinit(&tv, allocator);
         trace_data_deinit(&td, allocator);
+        platform_teardown_workers();
     }
 };
 
@@ -1543,3 +1549,113 @@ TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
     // Selection should NOT be active
     EXPECT_FALSE(tv.selection_active);
 }
+
+TEST_F(TraceViewerTest, SearchHistogramCalculation) {
+    // 1. Add some test events
+    // Zero-duration events
+    TraceEventPersisted e0 = {};
+    e0.ts = 100;
+    e0.dur = 0;
+    array_list_push_back(&td.events, allocator, e0);
+
+    // Small-duration events
+    TraceEventPersisted e1 = {};
+    e1.ts = 150;
+    e1.dur = 50;
+    array_list_push_back(&td.events, allocator, e1);
+
+    // Large-duration events
+    TraceEventPersisted e2 = {};
+    e2.ts = 200;
+    e2.dur = 5000;
+    array_list_push_back(&td.events, allocator, e2);
+
+    // Setup input index list
+    ArrayList<int64_t> selected_indices = {};
+    array_list_push_back(&selected_indices, allocator, (int64_t)0);
+    array_list_push_back(&selected_indices, allocator, (int64_t)1);
+    array_list_push_back(&selected_indices, allocator, (int64_t)2);
+
+    DurationHistogram h = {};
+    trace_viewer_calculate_histogram(selected_indices, &td, &h);
+
+    EXPECT_GE(h.num_buckets, 2);
+    EXPECT_TRUE(h.has_non_zero_durations);
+
+    // Verify Zero-Duration bucket counts correctly
+    EXPECT_EQ(h.buckets[0].min_dur, 0);
+    EXPECT_EQ(h.buckets[0].max_dur, 0);
+    EXPECT_EQ(h.buckets[0].count, 1u);
+
+    array_list_deinit(&selected_indices, allocator);
+}
+
+TEST_F(TraceViewerTest, AsyncHistogramIntegrationForBoxSelect) {
+    TraceEventPersisted e1 = {.ts = 100, .dur = 50, .pid = 1, .tid = 1};
+    TraceEventPersisted e2 = {.ts = 200, .dur = 50, .pid = 1, .tid = 1};
+    array_list_push_back(&td.events, allocator, e1);
+    array_list_push_back(&td.events, allocator, e2);
+
+    Track t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
+    array_list_push_back(&t.event_indices, allocator, 0ul);
+    array_list_push_back(&t.event_indices, allocator, 1ul);
+    array_list_resize(&t.depths, allocator, 2);
+    t.depths[0] = 0; t.depths[1] = 0;
+    track_update_max_dur(&t, &td, allocator);
+    array_list_push_back(&tv.tracks, allocator, t);
+
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 1000;
+    tv.last_inner_width = 1000.0f;
+    tv.last_tracks_x = 0;
+    tv.last_tracks_y = 20.0f;
+    tv.last_lane_height = 20.0f;
+
+    tv.box_select_start = ImVec2(100.0f, 30.0f);
+    tv.box_select_end = ImVec2(300.0f, 80.0f);
+    
+    TraceViewerInput input = {};
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 1000.0f;
+    input.ruler_height = 20.0f;
+    input.lane_height = 20.0f;
+    input.is_shift_down = true;
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    input.mouse_x = 100.0f;
+    input.mouse_y = 30.0f;
+    input.tracks_hovered = true;
+
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    input.is_mouse_down = false;
+    input.is_mouse_released = true;
+    input.mouse_x = 250.0f;
+    input.mouse_y = 70.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    EXPECT_GT(tv.selected_event_indices.size, 0u);
+    EXPECT_EQ(tv.selected_event_indices.size, 2u);
+
+    // Wait for async background task completions.
+
+    // If results ready returned true asynchronously in testing frame step execution
+    // verify that output histogram buckets numbers were stored.
+    if (tv.histogram.num_buckets > 0) {
+        EXPECT_GT(tv.histogram.num_buckets, 0);
+    } else {
+        int retries = 100;
+        while (retries-- > 0 && !tv.search.results_ready.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+
+        EXPECT_TRUE(tv.search.results_ready.load());
+
+        trace_viewer_step(&tv, &td, input, allocator);
+        
+        EXPECT_FALSE(tv.search.results_ready.load());
+        EXPECT_GT(tv.histogram.num_buckets, 0);
+    }
+}
+
+

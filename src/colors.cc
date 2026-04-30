@@ -39,6 +39,12 @@ const Theme* theme_get_dark() {
       // Status
       ImVec4(1, 1, 0, 1),  // status_loading
 
+      // Search Histogram
+      IM_COL32(30, 30, 30, 255),    // search_histogram_bg
+      IM_COL32(150, 150, 150, 255), // search_histogram_bar (Mid Grey)
+      IM_COL32(255, 255, 255, 255), // search_histogram_bar_hovered (Solid White)
+      IM_COL32(0, 255, 255, 255),   // search_histogram_bar_selected (Electric Cyan)
+
       // Event Palette (0xAABBGGRR) - Refined Vibrant (30% darker than previous)
       {
           0xFF966D3C,  // Refined Blue
@@ -91,6 +97,12 @@ const Theme* theme_get_light() {
 
       // Status
       ImVec4(0.8f, 0.4f, 0.0f, 1.0f),  // status_loading (Dark Orange)
+
+      // Search Histogram
+      IM_COL32(240, 240, 240, 255), // search_histogram_bg (Off-White)
+      IM_COL32(140, 165, 180, 255), // search_histogram_bar (Soft Slate Blue)
+      IM_COL32(85, 108, 150, 255),  // search_histogram_bar_hovered (Muted Navy)
+      IM_COL32(215, 148, 93, 255),  // search_histogram_bar_selected (Dusty Orange)
 
       // Event Palette (0xAABBGGRR) - From "MRS. L'S CLASSROOM" (brightened for
       // legibility)

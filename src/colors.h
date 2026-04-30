@@ -43,6 +43,12 @@ struct Theme {
   // Status
   ImVec4 status_loading;
 
+  // Search Histogram
+  ImU32 search_histogram_bg;
+  ImU32 search_histogram_bar;
+  ImU32 search_histogram_bar_hovered;
+  ImU32 search_histogram_bar_selected;
+
   // Event Palette
   uint32_t event_palette[8];
 };

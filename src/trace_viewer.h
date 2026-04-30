@@ -13,6 +13,21 @@
 #include "src/track.h"
 #include "src/track_renderer.h"
 
+struct DurationHistogramBucket {
+  int64_t min_dur;
+  int64_t max_dur;
+  uint32_t count;
+};
+
+struct DurationHistogram {
+  static constexpr int MAX_BINS = 32;
+  DurationHistogramBucket buckets[MAX_BINS];
+  int num_buckets = 0;
+  uint32_t max_bucket_count = 0;
+  uint32_t total_count = 0;
+  bool has_non_zero_durations = false;
+};
+
 struct SearchState {
   std::mutex mutex;
   ArrayList<char> pending_query;
@@ -31,6 +46,9 @@ struct SearchState {
   bool sort_ascending = true;
   bool sort_none = true;
   std::atomic<bool> new_sort_specs_available{false};
+  std::atomic<bool> new_box_selection_available{false};
+
+  DurationHistogram pending_histogram = {};
 };
 
 enum class InteractionDragMode {
@@ -154,6 +172,11 @@ struct TraceViewer {
   ArrayList<char> search_query;
   bool focus_search_input;
   SearchState search;
+
+  bool search_histogram_dirty = true;
+  int selected_histogram_bucket = -1;
+  DurationHistogram histogram = {};
+  ArrayList<int64_t> filtered_event_indices = {};
 };
 
 void trace_viewer_deinit(TraceViewer* tv, Allocator allocator);
@@ -162,5 +185,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
                        const TraceViewerInput& input, Allocator allocator);
 void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                        const Theme* theme);
+
+void trace_viewer_calculate_histogram(const ArrayList<int64_t>& results, const TraceData* td, DurationHistogram* h);
 
 #endif  // ZTRACING_SRC_TRACE_VIEWER_H_

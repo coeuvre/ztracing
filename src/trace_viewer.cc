@@ -102,6 +102,7 @@ void trace_viewer_deinit(TraceViewer* tv, Allocator allocator) {
   array_list_deinit(&tv->counter_render_blocks, allocator);
   array_list_deinit(&tv->hover_matches, allocator);
   array_list_deinit(&tv->selected_event_indices, allocator);
+  array_list_deinit(&tv->filtered_event_indices, allocator);
   array_list_deinit(&tv->search_query, allocator);
   tv->search.jobs_should_abort.store(true);
   {
@@ -322,7 +323,7 @@ static void trace_viewer_draw_args_table(const TraceData* td,
 
   if (visible_args == 0) return;
 
-  ImGui::Separator();
+  ImGui::TextDisabled("Args");
   if (ImGui::BeginTable("##args", 2, ImGuiTableFlags_SizingFixedFit)) {
     ImGui::TableSetupColumn("Key");
     ImGui::TableSetupColumn("Value");
@@ -717,6 +718,24 @@ static void trace_viewer_box_select_update(TraceViewer* tv, TraceData* td, Alloc
     std::sort(tv->selected_event_indices.data,
               tv->selected_event_indices.data + tv->selected_event_indices.size);
   }
+
+  LOG_INFO("SYNC BOX SELECT COMPLETED! track size = %zu, found %zu selected event indices",
+           tv->tracks.size, tv->selected_event_indices.size);
+
+  tv->selected_histogram_bucket = -1;
+
+  array_list_clear(&tv->filtered_event_indices);
+  array_list_append(&tv->filtered_event_indices, allocator, tv->selected_event_indices.data, tv->selected_event_indices.size);
+
+  {
+    std::lock_guard<std::mutex> lock(tv->search.mutex);
+    array_list_clear(&tv->search.pending_results);
+    array_list_append(&tv->search.pending_results, tv->search.allocator, tv->selected_event_indices.data, tv->selected_event_indices.size);
+    tv->search.new_box_selection_available.store(true);
+    tv->search.results_ready.store(false);
+  }
+
+  platform_submit_job(trace_viewer_search_job, &tv->search);
 }
 
 static void trace_viewer_zoom_to_event(TraceViewer* tv,
@@ -751,6 +770,114 @@ static void trace_viewer_zoom_to_event(TraceViewer* tv,
 
   tv->selection_drag_mode = InteractionDragMode::NONE;
   tv->request_scroll_to_focused_event = true;
+}
+
+void trace_viewer_calculate_histogram(const ArrayList<int64_t>& results, const TraceData* td, DurationHistogram* h) {
+  h->num_buckets = 0;
+  h->max_bucket_count = 0;
+  h->total_count = (uint32_t)results.size;
+  h->has_non_zero_durations = false;
+
+  if (results.size > 0) {
+    int64_t min_dur = -1;
+    int64_t max_dur = -1;
+    uint32_t zero_count = 0;
+
+    for (size_t i = 0; i < results.size; i++) {
+      size_t idx = (size_t)results.data[i];
+      if (idx >= td->events.size) continue;
+      const TraceEventPersisted& e = td->events[idx];
+      int64_t d = e.dur;
+
+      if (d <= 0) {
+        zero_count++;
+      } else {
+        if (min_dur == -1 || d < min_dur) min_dur = d;
+        if (max_dur == -1 || d > max_dur) max_dur = d;
+      }
+    }
+
+    int k_bins = 20;
+
+    if (zero_count > 0) {
+      h->buckets[0].min_dur = 0;
+      h->buckets[0].max_dur = 0;
+      h->buckets[0].count = zero_count;
+      h->num_buckets = 1;
+      h->max_bucket_count = zero_count;
+    }
+
+    if (min_dur != -1) {
+      h->has_non_zero_durations = true;
+
+      bool is_logarithmic = false;
+      if (min_dur > 0 && max_dur > 0 && (double)max_dur / (double)min_dur > 100.0) {
+        is_logarithmic = true;
+      }
+
+      int64_t non_zero_range = max_dur - min_dur;
+      if (non_zero_range < k_bins) {
+        k_bins = (int)non_zero_range + 1;
+        is_logarithmic = false;
+      }
+
+      double log_min = 0.0;
+      double log_max = 0.0;
+      double log_width = 0.0;
+
+      if (is_logarithmic) {
+        log_min = log10((double)min_dur);
+        log_max = log10((double)max_dur);
+        log_width = (log_max - log_min) / k_bins;
+      }
+
+      int start_bin_idx = h->num_buckets;
+      h->num_buckets += k_bins;
+
+      int64_t L[36];
+      for (int j = 0; j <= k_bins; j++) {
+        if (j == k_bins) {
+          L[j] = max_dur + 1;
+        } else if (is_logarithmic) {
+          double ld = log_min + j * log_width;
+          L[j] = (int64_t)round(pow(10.0, ld));
+        } else {
+          L[j] = min_dur + (int64_t)((non_zero_range * j) / k_bins);
+        }
+
+        if (j > 0 && L[j] <= L[j-1]) {
+          L[j] = L[j-1] + 1;
+        }
+      }
+
+      for (int j = 0; j < k_bins; j++) {
+        DurationHistogramBucket& b = h->buckets[start_bin_idx + j];
+        b.min_dur = L[j];
+        b.max_dur = L[j+1] - 1;
+        b.count = 0;
+      }
+
+      for (size_t i = 0; i < results.size; i++) {
+        size_t idx = (size_t)results.data[i];
+        if (idx >= td->events.size) continue;
+        const TraceEventPersisted& e = td->events[idx];
+        int64_t d = e.dur;
+
+        if (d <= 0) continue;
+
+        for (int b_idx = start_bin_idx; b_idx < h->num_buckets; b_idx++) {
+          DurationHistogramBucket& b = h->buckets[b_idx];
+          if (d >= b.min_dur && d <= b.max_dur) {
+            b.count++;
+            if (b.count > h->max_bucket_count) {
+              h->max_bucket_count = b.count;
+            }
+            break;
+          }
+        }
+      }
+    }
+  }
 }
 
 void trace_viewer_step(TraceViewer* tv, TraceData* td,
@@ -1156,8 +1283,62 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
   if (tv->search.results_ready.exchange(false)) {
     std::lock_guard<std::mutex> lock(tv->search.mutex);
+    LOG_INFO("MAIN THREAD RESULTS READY EXCHANGED! pending_results size = %zu, histogram buckets = %d",
+             tv->search.pending_results.size, tv->search.pending_histogram.num_buckets);
     array_list_clear(&tv->selected_event_indices);
     array_list_append(&tv->selected_event_indices, allocator, tv->search.pending_results.data, tv->search.pending_results.size);
+    
+    tv->histogram = tv->search.pending_histogram;
+
+    array_list_clear(&tv->filtered_event_indices);
+    if (tv->selected_histogram_bucket == -1) {
+      for (size_t i = 0; i < tv->selected_event_indices.size; i++) {
+        size_t idx = (size_t)tv->selected_event_indices[i];
+        if (idx < td->events.size) {
+          array_list_push_back(&tv->filtered_event_indices, allocator, (int64_t)idx);
+        }
+      }
+    } else if (tv->selected_histogram_bucket >= 0 && tv->selected_histogram_bucket < tv->histogram.num_buckets) {
+      const DurationHistogramBucket& b = tv->histogram.buckets[tv->selected_histogram_bucket];
+      for (size_t i = 0; i < tv->selected_event_indices.size; i++) {
+        size_t idx = (size_t)tv->selected_event_indices[i];
+        if (idx >= td->events.size) continue;
+        const TraceEventPersisted& e = td->events[idx];
+        int64_t d = e.dur;
+
+        if (d >= b.min_dur && d <= b.max_dur) {
+          array_list_push_back(&tv->filtered_event_indices, allocator, (int64_t)idx);
+        }
+      }
+    }
+
+    tv->search_histogram_dirty = false;
+  }
+
+  if (tv->search_histogram_dirty) {
+    tv->search_histogram_dirty = false;
+
+    array_list_clear(&tv->filtered_event_indices);
+    if (tv->selected_histogram_bucket == -1) {
+      for (size_t i = 0; i < tv->selected_event_indices.size; i++) {
+        size_t idx = (size_t)tv->selected_event_indices[i];
+        if (idx < td->events.size) {
+          array_list_push_back(&tv->filtered_event_indices, allocator, (int64_t)idx);
+        }
+      }
+    } else if (tv->selected_histogram_bucket >= 0 && tv->selected_histogram_bucket < tv->histogram.num_buckets) {
+      const DurationHistogramBucket& b = tv->histogram.buckets[tv->selected_histogram_bucket];
+      for (size_t i = 0; i < tv->selected_event_indices.size; i++) {
+        size_t idx = (size_t)tv->selected_event_indices[i];
+        if (idx >= td->events.size) continue;
+        const TraceEventPersisted& e = td->events[idx];
+        int64_t d = e.dur;
+
+        if (d >= b.min_dur && d <= b.max_dur) {
+          array_list_push_back(&tv->filtered_event_indices, allocator, (int64_t)idx);
+        }
+      }
+    }
   }
 }
 
@@ -1441,8 +1622,148 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         ImGui::SameLine();
         if (ImGui::SmallButton("Clear")) {
           array_list_clear(&tv->selected_event_indices);
+          array_list_clear(&tv->filtered_event_indices);
+          tv->selected_histogram_bucket = -1;
+          tv->search_histogram_dirty = true;
         }
-        if (tv->selected_event_indices.size > 0) {
+
+        // Duration Histogram
+        const DurationHistogram& h = tv->histogram;
+        if (h.num_buckets > 0) {
+          ImGui::Spacing();
+          ImGui::TextDisabled("Duration Distribution");
+
+          ImVec2 h_canvas_pos = ImGui::GetCursorScreenPos();
+          float h_canvas_width = ImGui::GetContentRegionAvail().x;
+          float h_canvas_height = 80.0f;
+
+          ImGui::InvisibleButton("##dur_histogram", ImVec2(h_canvas_width, h_canvas_height));
+          bool is_hovered = ImGui::IsItemHovered();
+          ImVec2 mouse_pos = ImGui::GetIO().MousePos;
+
+          ImDrawList* draw_list = ImGui::GetWindowDrawList();
+
+          // Draw background
+          draw_list->AddRectFilled(h_canvas_pos, ImVec2(h_canvas_pos.x + h_canvas_width, h_canvas_pos.y + h_canvas_height),
+                                   theme.search_histogram_bg, 4.0f);
+
+          float bar_spacing = 2.0f;
+          float total_spacing = bar_spacing * static_cast<float>(h.num_buckets - 1);
+          float bar_width = (h_canvas_width - 10.0f - total_spacing) / static_cast<float>(h.num_buckets);
+
+          float baseline_y = h_canvas_pos.y + h_canvas_height - 20.0f;
+
+          int hovered_bucket = -1;
+
+          for (int i = 0; i < h.num_buckets; i++) {
+            const DurationHistogramBucket& b = h.buckets[i];
+            
+            float h_ratio = (h.max_bucket_count > 0) ? static_cast<float>(b.count) / static_cast<float>(h.max_bucket_count) : 0.0f;
+            float bar_h = h_ratio * (h_canvas_height - 35.0f);
+
+            float x1 = h_canvas_pos.x + 5.0f + static_cast<float>(i) * (bar_width + bar_spacing);
+            float x2 = x1 + bar_width;
+            float y1 = baseline_y - bar_h;
+            float y2 = baseline_y;
+
+            bool bucket_hovered = is_hovered && mouse_pos.x >= x1 && mouse_pos.x <= x2 &&
+                                  mouse_pos.y >= h_canvas_pos.y && mouse_pos.y <= baseline_y;
+
+            if (bucket_hovered) {
+              hovered_bucket = i;
+            }
+
+            bool is_selected = (tv->selected_histogram_bucket == i);
+
+            ImU32 bar_col;
+            if (is_selected) {
+              bar_col = theme.search_histogram_bar_selected;
+            } else if (bucket_hovered) {
+              bar_col = theme.search_histogram_bar_hovered;
+            } else {
+              bar_col = theme.search_histogram_bar;
+            }
+
+            if (b.count > 0) {
+              draw_list->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), bar_col, 2.0f);
+            }
+          }
+
+          // Draw baseline (X Axis)
+          draw_list->AddLine(ImVec2(h_canvas_pos.x + 5.0f, baseline_y),
+                             ImVec2(h_canvas_pos.x + h_canvas_width - 5.0f, baseline_y),
+                             theme.ruler_border);
+
+          // Draw vertical axis (Y Axis)
+          draw_list->AddLine(ImVec2(h_canvas_pos.x + 5.0f, h_canvas_pos.y + 5.0f),
+                             ImVec2(h_canvas_pos.x + 5.0f, baseline_y),
+                             theme.ruler_border);
+
+          // Label Y-Axis bounds
+          char y_max_buf[32];
+          snprintf(y_max_buf, sizeof(y_max_buf), "%u", h.max_bucket_count);
+          draw_list->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f,
+                             ImVec2(h_canvas_pos.x + 8.0f, h_canvas_pos.y + 4.0f),
+                             theme.ruler_text, y_max_buf);
+          draw_list->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f,
+                             ImVec2(h_canvas_pos.x + 8.0f, baseline_y - 12.0f),
+                             theme.ruler_text, "0");
+
+          // Label X-Axis bounds
+          char min_label[32] = "";
+          char max_label[32] = "";
+          if (h.num_buckets > 0) {
+            int first_non_zero_idx = 0;
+            if (h.buckets[0].min_dur <= 0 && h.buckets[0].max_dur <= 0 && h.num_buckets > 1) {
+              first_non_zero_idx = 1;
+            }
+            format_duration(min_label, sizeof(min_label), static_cast<double>(h.buckets[first_non_zero_idx].min_dur));
+            format_duration(max_label, sizeof(max_label), static_cast<double>(h.buckets[h.num_buckets - 1].max_dur));
+          }
+
+          draw_list->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f,
+                             ImVec2(h_canvas_pos.x + 5.0f, baseline_y + 2.0f),
+                             theme.ruler_text, min_label);
+
+          float max_text_w = ImGui::CalcTextSize(max_label).x * 0.75f;
+          draw_list->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f,
+                             ImVec2(h_canvas_pos.x + h_canvas_width - 5.0f - max_text_w, baseline_y + 2.0f),
+                             theme.ruler_text, max_label);
+
+          if (hovered_bucket != -1) {
+            const DurationHistogramBucket& b = h.buckets[hovered_bucket];
+
+            ImGui::BeginTooltip();
+            
+            char min_buf[32], max_buf[32];
+            if (b.min_dur <= 0 && b.max_dur <= 0) {
+              ImGui::Text("Duration: <= 0 us");
+            } else {
+              format_duration(min_buf, sizeof(min_buf), (double)b.min_dur);
+              format_duration(max_buf, sizeof(max_buf), (double)b.max_dur);
+              ImGui::Text("Duration: %s - %s", min_buf, max_buf);
+            }
+
+            float percent = h.total_count > 0 ? (static_cast<float>(b.count) / static_cast<float>(h.total_count)) * 100.0f : 0.0f;
+            ImGui::Text("Count: %u events (%.1f%%)", b.count, percent);
+            if (b.count > 0) {
+              ImGui::TextDisabled("Click to filter table below");
+            }
+            
+            ImGui::EndTooltip();
+
+            if (ImGui::IsMouseClicked(0) && b.count > 0) {
+              if (tv->selected_histogram_bucket == hovered_bucket) {
+                tv->selected_histogram_bucket = -1;
+              } else {
+                tv->selected_histogram_bucket = hovered_bucket;
+              }
+              tv->search_histogram_dirty = true;
+            }
+          }
+        }
+
+        if (tv->filtered_event_indices.size > 0) {
           if (ImGui::BeginTable("##multi_select", 4,
                                ImGuiTableFlags_Resizable |
                                    ImGuiTableFlags_ScrollY |
@@ -1477,11 +1798,11 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
             }
 
             ImGuiListClipper clipper;
-            clipper.Begin((int)tv->selected_event_indices.size);
+            clipper.Begin((int)tv->filtered_event_indices.size);
             while (clipper.Step()) {
               for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
                 size_t event_idx =
-                    (size_t)tv->selected_event_indices[(size_t)i];
+                    (size_t)tv->filtered_event_indices[(size_t)i];
                 const TraceEventPersisted& e = td->events[event_idx];
                 std::string_view name = trace_data_get_string(td, e.name_ref);
                 std::string_view cat = trace_data_get_string(td, e.cat_ref);
@@ -1517,6 +1838,10 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
               }
             }
             ImGui::EndTable();
+          }
+
+          if (tv->selected_histogram_bucket != -1) {
+            ImGui::TextDisabled("Filtered results: %zu / %zu events", tv->filtered_event_indices.size, tv->selected_event_indices.size);
           }
         }
       }
@@ -1676,6 +2001,7 @@ static void trace_viewer_search_job(void* user_data) {
   ArrayList<char> query = {};
   bool do_search = false;
   bool do_sort = false;
+  bool do_box_select = false;
   
   int sort_column = 0;
   bool sort_ascending = true;
@@ -1694,6 +2020,11 @@ static void trace_viewer_search_job(void* user_data) {
       do_sort = true;
     }
 
+    if (s->new_box_selection_available.load()) {
+      s->new_box_selection_available.store(false);
+      do_box_select = true;
+    }
+
     sort_column = s->sort_column;
     sort_ascending = s->sort_ascending;
     sort_none = s->sort_none;
@@ -1706,12 +2037,12 @@ static void trace_viewer_search_job(void* user_data) {
       size_t query_len = strlen(query_ptr);
       size_t n_events = td->events.size;
 
-      auto contains = [](std::string_view text, const char* query, size_t query_len) {
-        if (query_len == 0) return true;
-        if (text.length() < query_len) return false;
+      auto contains = [](std::string_view text, const char* q, size_t q_len) {
+        if (q_len == 0) return true;
+        if (text.length() < q_len) return false;
         auto it = std::search(
           text.begin(), text.end(),
-          query, query + query_len,
+          q, q + q_len,
           [](char a, char b) { return std::tolower(a) == std::tolower(b); }
         );
         return it != text.end();
@@ -1750,9 +2081,15 @@ static void trace_viewer_search_job(void* user_data) {
         trace_viewer_sort_results(td, &results, sort_column, sort_ascending, sort_none, allocator);
 
         if (!s->new_query_available.load() && !s->jobs_should_abort.load()) {
+          DurationHistogram hist = {};
+          trace_viewer_calculate_histogram(results, td, &hist);
+
           std::lock_guard<std::mutex> lock(s->mutex);
+          LOG_INFO("BACKGROUND SEARCH JOB COMPLETED! results size = %zu, histogram buckets = %d",
+                   results.size, hist.num_buckets);
           array_list_clear(&s->pending_results);
           array_list_append(&s->pending_results, allocator, results.data, results.size);
+          s->pending_histogram = hist;
           s->results_ready.store(true);
         }
       }
@@ -1760,9 +2097,10 @@ static void trace_viewer_search_job(void* user_data) {
     } else {
       std::lock_guard<std::mutex> lock(s->mutex);
       array_list_clear(&s->pending_results);
+      s->pending_histogram = {};
       s->results_ready.store(true);
     }
-  } else if (do_sort) {
+  } else if (do_box_select || do_sort) {
     ArrayList<int64_t> results = {};
     {
       std::lock_guard<std::mutex> lock(s->mutex);
@@ -1772,9 +2110,13 @@ static void trace_viewer_search_job(void* user_data) {
     trace_viewer_sort_results(td, &results, sort_column, sort_ascending, sort_none, allocator);
 
     if (!s->new_query_available.load() && !s->jobs_should_abort.load()) {
+      DurationHistogram hist = {};
+      trace_viewer_calculate_histogram(results, td, &hist);
+
       std::lock_guard<std::mutex> lock(s->mutex);
       array_list_clear(&s->pending_results);
       array_list_append(&s->pending_results, allocator, results.data, results.size);
+      s->pending_histogram = hist;
       s->results_ready.store(true);
     }
     array_list_deinit(&results, allocator);
@@ -1848,6 +2190,8 @@ static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocato
       array_list_append(&tv->search.pending_query, allocator, tv->search_query.data, strlen(tv->search_query.data) + 1);
       tv->search.new_query_available.store(true);
       tv->search.results_ready.store(false);
+      tv->selected_histogram_bucket = -1;
+      tv->search_histogram_dirty = true;
       platform_submit_job(trace_viewer_search_job, &tv->search);
     }
   }

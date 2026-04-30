@@ -49,4 +49,23 @@ void platform_submit_job(PlatformJobFn fn, void* user_data) {
   g_job_cv.notify_all();
 }
 
+void platform_teardown_workers() {
+  {
+    std::lock_guard<std::mutex> lock(g_job_mutex);
+    if (!g_worker_started) return;
+    g_worker_should_exit = true;
+    while (!g_job_queue.empty()) {
+      g_job_queue.pop();
+    }
+    g_job_cv.notify_all();
+  }
+  for (int i = 0; i < 2; i++) {
+    if (g_workers[i].joinable()) {
+      g_workers[i].join();
+    }
+  }
+  g_worker_started = false;
+  g_worker_should_exit = false;
+}
+
 } // extern "C"
