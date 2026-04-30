@@ -34,6 +34,21 @@ void track_flush_bucket_depth(ArrayList<TrackRenderBlock>* out_blocks,
   s->rep_event_idx = (size_t)-1;
 }
 
+static void track_update_selection_bitset(
+    const ArrayList<int64_t>& selected_event_indices, size_t total_events,
+    ArrayList<uint8_t>* bitset, Allocator a) {
+  array_list_resize(bitset, a, total_events);
+  if (bitset->size > 0) {
+    memset(bitset->data, 0, bitset->size * sizeof(uint8_t));
+    for (size_t i = 0; i < selected_event_indices.size; i++) {
+      size_t idx = (size_t)selected_event_indices.data[i];
+      if (idx < bitset->size) {
+        bitset->data[idx] = 1;
+      }
+    }
+  }
+}
+
 void track_compute_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
     double viewport_end, float inner_width, float tracks_canvas_pos_x,
@@ -42,6 +57,9 @@ void track_compute_render_blocks(
     Allocator a) {
   array_list_clear(out_blocks);
   if (track->event_indices.size == 0) return;
+
+  track_update_selection_bitset(selected_event_indices, trace_data->events.size,
+                                &state->selected_events_bitset, a);
 
   double duration = viewport_end - viewport_start;
   if (duration <= 0) return;
@@ -84,10 +102,10 @@ void track_compute_render_blocks(
 
       if (e.ts + e.dur > (int64_t)viewport_start) {
         uint32_t depth = track->depths[i];
-        bool is_selected = std::binary_search(
-            selected_event_indices.data,
-            selected_event_indices.data + selected_event_indices.size,
-            (int64_t)event_idx);
+        bool is_selected = false;
+        if (event_idx < state->selected_events_bitset.size) {
+          is_selected = (state->selected_events_bitset.data[event_idx] != 0);
+        }
         bool is_focused = (event_idx == (size_t)focused_event_idx);
 
         float x1 = (float)(tracks_canvas_pos_x +
@@ -144,10 +162,10 @@ void track_compute_render_blocks(
       if (e.ts >= (int64_t)next_bucket_ts) break;
 
       uint32_t depth = track->depths[k];
-      bool is_selected = std::binary_search(
-          selected_event_indices.data,
-          selected_event_indices.data + selected_event_indices.size,
-          (int64_t)event_idx);
+      bool is_selected = false;
+      if (event_idx < state->selected_events_bitset.size) {
+        is_selected = (state->selected_events_bitset.data[event_idx] != 0);
+      }
       bool is_focused = (event_idx == (size_t)focused_event_idx);
       // Use a small epsilon to prevent floating point jitter from flipping an
       // event between 'large' and 'tiny' during panning.
@@ -236,6 +254,9 @@ void track_compute_counter_render_blocks(
   array_list_clear(&state->counter_peaks);
   if (track->event_indices.size == 0) return;
 
+  track_update_selection_bitset(selected_event_indices, trace_data->events.size,
+                                &state->selected_events_bitset, a);
+
   int64_t track_first_ts = trace_data->events[track->event_indices[0]].ts;
   int64_t track_last_ts =
       trace_data->events[track->event_indices[track->event_indices.size - 1]].ts;
@@ -317,10 +338,9 @@ void track_compute_counter_render_blocks(
       last_event_idx_in_bucket = *it;
 
       if (!is_selected) {
-        is_selected = std::binary_search(
-            selected_event_indices.data,
-            selected_event_indices.data + selected_event_indices.size,
-            (int64_t)*it);
+        if (*it < state->selected_events_bitset.size) {
+          is_selected = (state->selected_events_bitset.data[*it] != 0);
+        }
       }
       if (!is_focused) {
         is_focused = (*it == (size_t)focused_event_idx);

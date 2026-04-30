@@ -53,6 +53,7 @@ struct TrackRendererState {
   ArrayList<uint8_t> counter_series_updated;
   ArrayList<double> counter_peaks;
   ArrayList<float> counter_visual_offsets;
+  ArrayList<uint8_t> selected_events_bitset;
 };
 
 inline void track_renderer_state_deinit(TrackRendererState* state,
@@ -64,6 +65,7 @@ inline void track_renderer_state_deinit(TrackRendererState* state,
   array_list_deinit(&state->counter_series_updated, a);
   array_list_deinit(&state->counter_peaks, a);
   array_list_deinit(&state->counter_visual_offsets, a);
+  array_list_deinit(&state->selected_events_bitset, a);
 }
 
 inline void track_renderer_state_clear(TrackRendererState* state) {
@@ -74,6 +76,7 @@ inline void track_renderer_state_clear(TrackRendererState* state) {
   array_list_clear(&state->counter_series_updated);
   array_list_clear(&state->counter_peaks);
   array_list_clear(&state->counter_visual_offsets);
+  array_list_clear(&state->selected_events_bitset);
 }
 
 void track_compute_render_blocks(
