@@ -26,6 +26,11 @@ struct SearchState {
   std::atomic<bool> request_update{false};
   std::mutex quit_mutex;
   std::condition_variable quit_cv;
+
+  int sort_column = 0;
+  bool sort_ascending = true;
+  bool sort_none = true;
+  std::atomic<bool> new_sort_specs_available{false};
 };
 
 enum class InteractionDragMode {

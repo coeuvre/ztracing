@@ -229,9 +229,9 @@ void app_update(App* app) {
     ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->Size);
 
     ImGuiID dock_id_main = dockspace_id;
-    ImGuiID dock_id_bottom = ImGui::DockBuilderSplitNode(
-        dock_id_main, ImGuiDir_Down, 0.25f, nullptr, &dock_id_main);
-    ImGui::DockBuilderDockWindow("Details", dock_id_bottom);
+    ImGuiID dock_id_right = ImGui::DockBuilderSplitNode(
+        dock_id_main, ImGuiDir_Right, 0.30f, nullptr, &dock_id_main);
+    ImGui::DockBuilderDockWindow("Details", dock_id_right);
 
     // Hide tab bar and prevent docking over the main viewport area
     ImGuiDockNode* main_node = ImGui::DockBuilderGetNode(dock_id_main);

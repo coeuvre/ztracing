@@ -249,7 +249,10 @@ static EM_BOOL on_key(int event_type, const EmscriptenKeyboardEvent* key_event,
   }
 
   if (event_type == EMSCRIPTEN_EVENT_KEYDOWN && strlen(key_event->key) == 1) {
-    io.AddInputCharacter(key_event->key[0]);
+    bool is_shortcut = key_event->metaKey || (key_event->ctrlKey && !key_event->altKey);
+    if (!is_shortcut) {
+      io.AddInputCharacter(key_event->key[0]);
+    }
   }
 
   imgui_impl_wasm_request_update();

@@ -64,7 +64,7 @@
     - **Initialization**: Initialized by `app_init` returning an `App` by value (ZII). Non-aggregate members (mutexes, atomics) are initialized post-construction via placement `new` in the platform entry point (after the stable address `g_app` is established).
     - **Thread Safety**: Access to `TraceData` from the main thread is strictly prohibited while `loading.active` is true. Background jobs (loading, search) are synchronized via session-based signaling in `app_begin_session` to ensure `TraceData` is not cleared while being accessed.
 - `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
-    - **Architecture**: Decouples interaction and layout logic from ImGui rendering via a pure `trace_viewer_step` function and a `TraceViewerInput` struct. This enables comprehensive unit testing of viewport navigation, hit-testing, selection, and layout without an ImGui context.
+    - **Architecture**: Decouples interaction and layout logic from ImGui rendering via a pure `trace_viewer_step` function and a `TraceViewerInput` struct. This enables comprehensive unit testing of viewport navigation, hit-testing, selection, and layout without an ImGui context. Search filtering operations and computations are dispatched to background worker threads and cached into structured `SortKey` staging buffers before sorting.
     - **Independent States**: Maintains a single `focused_event_idx` (for single clicks) and an `ArrayList<int64_t> selected_event_indices` (for multi-selection) as independent states, allowing a focused event to exist within or outside of a box selection.
     - **Unified Inspection UI**: Centralizes argument and property rendering into modular helper functions (`trace_viewer_draw_args_table`, `trace_viewer_draw_tooltip`). This ensures a consistent, professional, and zero-redundancy experience across all interactive elements.
     - **Table-Based Layout**: Utilizes structured ImGui tables for all multi-key data (Counter series, Event arguments), providing perfect vertical alignment and high legibility.
@@ -136,7 +136,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Closing**: Can be dismissed by clicking the "Close" button or the background "blur" area. Background clicks are automatically consumed to prevent accidental interaction with underlying tracks.
     - **Design**: A structured, two-column cheatsheet layout with themed grid backgrounds, 1px category separators, and top-aligned sections (**GENERAL**, **NAVIGATION**, **SELECTION**).
     - **Aesthetics**: Fully theme-aware, using viewport-integrated background colors and high-contrast text for optimal legibility in both Light and Dark modes.
-- **Layout**: The "Main Viewport" is docked in the central area. The "Details" panel is docked at the bottom by default and can be toggled via the View menu. The viewport window has no title bar or tabs, and docking other windows directly into it is disabled (though splitting the area is allowed).
+- **Layout**: The "Main Viewport" is docked in the central area. The "Details" panel is docked at the right by default and can be toggled via the View menu. The viewport window has no title bar or tabs, and docking other windows directly into it is disabled (though splitting the area is allowed).
 - **Time Ruler**: A persistent horizontal ruler at the top displays the current time range with adaptive units (s, ms, us) and nice tick intervals.
     - **Full-Width Rendering**: The ruler background and border are rendered across the entire viewport width (including the area above the vertical scrollbar), ensuring a consistent visual appearance even when the track list is scrollable.
 - **Vertical Scrolling**: Tracks are rendered within a scrollable child window. Mouse wheel scrolls the track list vertically. Individual tracks have variable heights based on their maximum nesting depth plus a dedicated header lane.
@@ -244,20 +244,20 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
 
 ## Details Panel
 
-- **Visibility**: Can be toggled via the "View" menu. Docked at the bottom by default.
+- **Visibility**: Can be toggled via the "View" menu. Docked at the right by default.
 - **Behavior**:
     - **Closed by Default**: The panel is initially closed to maximize the viewport area.
     - **Auto-Open**: Automatically opens when one or more events are selected.
     - **Focus Management**: When automatically opened, it does not steal focus (`ImGuiWindowFlags_NoFocusOnAppearing`), ensuring the user can continue navigating the viewport uninterrupted.
     - **Content**: 
         - **Focused Event**: Displays detailed information for the focused event (Name, Category, PH, Timestamp, Duration, PID, TID, and all Arguments).
-        - **Selection**: Displays a summary (count) and a high-performance, scrollable table listing each selected event's Name, Category, Start time, and Duration.
-        - **Search**: Integrated search input at the top of the panel allows for filtering events by name across the entire trace. Search results are unified with the multi-selection system.
+        - **Selection**: Displays a summary (count) and a high-performance, fixed-height scrollable table listing each selected event's Name, Category, Start time, and Duration.
+        - **Search**: Integrated search input at the top of the panel allows for filtering events by name, categories, and string argument values across the entire trace without capping maximum match results. Filters are updated upon input changes and Enter keys triggers.
         - **Concurrent Display**: If both a focused event and a multi-selection exist, both sections are displayed simultaneously, separated by a visual divider, with the selection table prioritized above the focused event.
             - **Click to Focus**: Clicking a row in the table instantly focuses, zooms, and scrolls to the corresponding event in the track viewport. The track is automatically centered vertically.
             - **Performance**: Utilizes `ImGuiListClipper` for the selection table to achieve $O(\text{VisibleRows})$ rendering and formatting complexity.
             - **Sticky Headers**: Implements a sticky header row via `ImGuiTableFlags_ScrollY` and `ImGui::TableSetupScrollFreeze(0, 1)`.
-            - **Alignment & Legibility**: All data is left-aligned using `ImGuiTableFlags_SizingFixedFit`. Row backgrounds and borders are enabled to improve row tracking.
+            - **Alignment & Legibility**: Columns conform to container width without enabling horizontal overflow scrolling on the X-axis. Tristate column header controls provide access to ascending, descending, and chronological unsorted options. The column for event Name stretches across table margins.
     - **Arguments**: Supports both string and numeric arguments (`val_double`), ensuring counter values are correctly displayed.
     - **Selection Prompt**: Displays a "Select an event to see details" prompt when no event is selected.
     - **Padding**: Uses `10.0f` window padding for better legibility.

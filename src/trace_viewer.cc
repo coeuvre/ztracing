@@ -19,6 +19,7 @@ static void trace_viewer_draw_selection_overlay(
     const Theme& theme, bool draw_duration_text);
 
 static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocator);
+static void trace_viewer_search_job(void* user_data);
 
 static double trace_viewer_px_to_ts(double start_time, double end_time,
                                     float width, float origin_x, float px) {
@@ -1445,18 +1446,35 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           if (ImGui::BeginTable("##multi_select", 4,
                                ImGuiTableFlags_Resizable |
                                    ImGuiTableFlags_ScrollY |
-                                   ImGuiTableFlags_ScrollX |
                                    ImGuiTableFlags_RowBg |
                                    ImGuiTableFlags_Borders |
                                    ImGuiTableFlags_SizingFixedFit |
+                                   ImGuiTableFlags_Sortable |
+                                   ImGuiTableFlags_SortTristate |
                                    ImGuiTableFlags_NoSavedSettings,
-                               ImVec2(0, has_focus ? 200.0f : ImGui::GetContentRegionAvail().y))) {
-            ImGui::TableSetupColumn("Name");
-            ImGui::TableSetupColumn("Category");
-            ImGui::TableSetupColumn("Start");
-            ImGui::TableSetupColumn("Duration");
+                               ImVec2(0, 200.0f))) {
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Category", ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableSetupColumn("Start", ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableSetupColumn("Duration", ImGuiTableColumnFlags_WidthFixed);
             ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableHeadersRow();
+
+            ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs();
+            if (specs != nullptr && specs->SpecsDirty) {
+              if (specs->SpecsCount > 0) {
+                const ImGuiTableColumnSortSpecs& spec = specs->Specs[0];
+
+                std::lock_guard<std::mutex> lock(tv->search.mutex);
+                tv->search.sort_column = spec.ColumnIndex;
+                tv->search.sort_ascending = (spec.SortDirection == ImGuiSortDirection_Ascending);
+                tv->search.sort_none = (spec.SortDirection == ImGuiSortDirection_None);
+                tv->search.new_sort_specs_available.store(true);
+
+                platform_submit_job(trace_viewer_search_job, &tv->search);
+              }
+              specs->SpecsDirty = false;
+            }
 
             ImGuiListClipper clipper;
             clipper.Begin((int)tv->selected_event_indices.size);
@@ -1565,6 +1583,87 @@ void trace_viewer_reset_view(TraceViewer* tv) {
   tv->viewport.end_time = center + max_duration * 0.5;
 }
 
+struct SortKey {
+  int64_t event_idx;
+  std::string_view text;
+  int64_t numeric_val;
+};
+
+static void trace_viewer_sort_results(const TraceData* td, ArrayList<int64_t>* results,
+                                      int sort_column, bool sort_ascending, bool sort_none,
+                                      Allocator allocator) {
+  if (results->size <= 1) return;
+
+  if (sort_none) {
+    std::sort(results->data, results->data + results->size);
+    return;
+  }
+
+  ArrayList<SortKey> keys = {};
+  array_list_resize(&keys, allocator, results->size);
+
+  for (size_t i = 0; i < results->size; i++) {
+    int64_t idx = results->data[i];
+    const TraceEventPersisted& e = td->events[(size_t)idx];
+
+    SortKey sk;
+    sk.event_idx = idx;
+
+    switch (sort_column) {
+      case 0:
+        sk.text = trace_data_get_string(td, e.name_ref);
+        break;
+      case 1:
+        sk.text = trace_data_get_string(td, e.cat_ref);
+        break;
+      case 2:
+        sk.numeric_val = e.ts;
+        break;
+      case 3:
+        sk.numeric_val = e.dur;
+        break;
+      default:
+        sk.numeric_val = 0;
+        break;
+    }
+    keys.data[i] = sk;
+  }
+
+  std::sort(keys.data, keys.data + keys.size,
+            [sort_column, sort_ascending](const SortKey& a, const SortKey& b) {
+              int comp = 0;
+              switch (sort_column) {
+                case 0:
+                case 1: {
+                  if (a.text.data() == b.text.data()) {
+                    comp = 0;
+                  } else {
+                    comp = a.text.compare(b.text);
+                  }
+                  break;
+                }
+                case 2:
+                case 3: {
+                  if (a.numeric_val < b.numeric_val) comp = -1;
+                  else if (a.numeric_val > b.numeric_val) comp = 1;
+                  break;
+                }
+              }
+
+              if (comp == 0) {
+                return sort_ascending ? (a.event_idx < b.event_idx) : (a.event_idx > b.event_idx);
+              }
+
+              return sort_ascending ? (comp < 0) : (comp > 0);
+            });
+
+  for (size_t i = 0; i < results->size; i++) {
+    results->data[i] = keys.data[i].event_idx;
+  }
+
+  array_list_deinit(&keys, allocator);
+}
+
 static void trace_viewer_search_job(void* user_data) {
   SearchState* s = (SearchState*)user_data;
   TraceData* td = s->td;
@@ -1575,54 +1674,112 @@ static void trace_viewer_search_job(void* user_data) {
   s->is_searching.store(true);
 
   ArrayList<char> query = {};
+  bool do_search = false;
+  bool do_sort = false;
+  
+  int sort_column = 0;
+  bool sort_ascending = true;
+  bool sort_none = true;
+
   {
     std::lock_guard<std::mutex> lock(s->mutex);
-    array_list_append(&query, allocator, s->pending_query.data, s->pending_query.size);
-    s->new_query_available.store(false);
+    if (s->new_query_available.load()) {
+      array_list_append(&query, allocator, s->pending_query.data, s->pending_query.size);
+      s->new_query_available.store(false);
+      do_search = true;
+    }
+    
+    if (s->new_sort_specs_available.load()) {
+      s->new_sort_specs_available.store(false);
+      do_sort = true;
+    }
+
+    sort_column = s->sort_column;
+    sort_ascending = s->sort_ascending;
+    sort_none = s->sort_none;
   }
 
-  if (query.size > 0 && query.data[0] != '\0') {
+  if (do_search) {
     ArrayList<int64_t> results = {};
-    const char* query_ptr = query.data;
-    size_t query_len = strlen(query_ptr);
+    if (query.size > 0 && query.data[0] != '\0') {
+      const char* query_ptr = query.data;
+      size_t query_len = strlen(query_ptr);
+      size_t n_events = td->events.size;
 
-    size_t n_events = td->events.size;
+      auto contains = [](std::string_view text, const char* query, size_t query_len) {
+        if (query_len == 0) return true;
+        if (text.length() < query_len) return false;
+        auto it = std::search(
+          text.begin(), text.end(),
+          query, query + query_len,
+          [](char a, char b) { return std::tolower(a) == std::tolower(b); }
+        );
+        return it != text.end();
+      };
 
-    for (size_t i = 0; i < n_events; i++) {
-      if (s->new_query_available.load() || s->jobs_should_abort.load()) break;
+      for (size_t i = 0; i < n_events; i++) {
+        if (s->new_query_available.load() || s->jobs_should_abort.load()) break;
 
-      const TraceEventPersisted& e = td->events[i];
-      std::string_view name = trace_data_get_string(td, e.name_ref);
+        const TraceEventPersisted& e = td->events[i];
+        std::string_view name = trace_data_get_string(td, e.name_ref);
+        std::string_view cat = trace_data_get_string(td, e.cat_ref);
 
-      auto it = std::search(
-        name.begin(), name.end(),
-        query_ptr, query_ptr + query_len,
-        [](char a, char b) { return std::tolower(a) == std::tolower(b); }
-      );
+        bool match = contains(name, query_ptr, query_len) ||
+                     contains(cat, query_ptr, query_len);
 
-      if (it != name.end()) {
-        array_list_push_back(&results, allocator, (int64_t)i);
+        if (!match) {
+          for (uint32_t k = 0; k < e.args_count; k++) {
+            const TraceArgPersisted& arg = td->args[e.args_offset + k];
+
+            if (arg.val_ref != 0) {
+              std::string_view arg_val = trace_data_get_string(td, arg.val_ref);
+              if (contains(arg_val, query_ptr, query_len)) {
+                match = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (match) {
+          array_list_push_back(&results, allocator, (int64_t)i);
+        }
       }
-      if (results.size > 10000) break;
-    }
 
-    if (!s->new_query_available.load() && !s->jobs_should_abort.load()) {
-      std::sort(results.data, results.data + results.size);
-      {
-        std::lock_guard<std::mutex> lock(s->mutex);
-        array_list_clear(&s->pending_results);
-        array_list_append(&s->pending_results, allocator, results.data, results.size);
-        s->results_ready.store(true);
+      if (!s->new_query_available.load() && !s->jobs_should_abort.load()) {
+        trace_viewer_sort_results(td, &results, sort_column, sort_ascending, sort_none, allocator);
+
+        if (!s->new_query_available.load() && !s->jobs_should_abort.load()) {
+          std::lock_guard<std::mutex> lock(s->mutex);
+          array_list_clear(&s->pending_results);
+          array_list_append(&s->pending_results, allocator, results.data, results.size);
+          s->results_ready.store(true);
+        }
       }
-    }
-    array_list_deinit(&results, allocator);
-  } else {
-    {
+      array_list_deinit(&results, allocator);
+    } else {
       std::lock_guard<std::mutex> lock(s->mutex);
       array_list_clear(&s->pending_results);
       s->results_ready.store(true);
     }
+  } else if (do_sort) {
+    ArrayList<int64_t> results = {};
+    {
+      std::lock_guard<std::mutex> lock(s->mutex);
+      array_list_append(&results, allocator, s->pending_results.data, s->pending_results.size);
+    }
+
+    trace_viewer_sort_results(td, &results, sort_column, sort_ascending, sort_none, allocator);
+
+    if (!s->new_query_available.load() && !s->jobs_should_abort.load()) {
+      std::lock_guard<std::mutex> lock(s->mutex);
+      array_list_clear(&s->pending_results);
+      array_list_append(&s->pending_results, allocator, results.data, results.size);
+      s->results_ready.store(true);
+    }
+    array_list_deinit(&results, allocator);
   }
+
   s->is_searching.store(false);
   s->request_update.store(true, std::memory_order_relaxed);
   array_list_deinit(&query, allocator);
@@ -1662,18 +1819,37 @@ static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocato
   }
 
   InputTextCallback_UserData cb_data = {&tv->search_query, allocator};
-  bool search_changed = ImGui::InputText("##search", tv->search_query.data,
-                                         tv->search_query.capacity,
-                                         ImGuiInputTextFlags_CallbackResize,
-                                         trace_viewer_search_input_callback, &cb_data);
+  bool search_input_changed = ImGui::InputText("##search", tv->search_query.data,
+                                             tv->search_query.capacity,
+                                             ImGuiInputTextFlags_CallbackResize,
+                                             trace_viewer_search_input_callback, &cb_data);
 
-  if (search_changed) {
+  bool enter_pressed = ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Enter);
+
+  if (search_input_changed || enter_pressed) {
     std::lock_guard<std::mutex> lock(tv->search.mutex);
-    array_list_clear(&tv->search.pending_query);
-    array_list_append(&tv->search.pending_query, allocator, tv->search_query.data, strlen(tv->search_query.data) + 1);
-    tv->search.new_query_available.store(true);
-    tv->search.results_ready.store(false);
-    platform_submit_job(trace_viewer_search_job, &tv->search);
+    const char* last_query = (tv->search.pending_query.size > 0 && tv->search.pending_query.data)
+                                 ? tv->search.pending_query.data
+                                 : "";
+
+    bool should_trigger = false;
+    if (enter_pressed) {
+      if (tv->selected_event_indices.size == 0) {
+        should_trigger = true;
+      }
+    } else if (search_input_changed) {
+      if (strcmp(last_query, tv->search_query.data) != 0) {
+        should_trigger = true;
+      }
+    }
+
+    if (should_trigger) {
+      array_list_clear(&tv->search.pending_query);
+      array_list_append(&tv->search.pending_query, allocator, tv->search_query.data, strlen(tv->search_query.data) + 1);
+      tv->search.new_query_available.store(true);
+      tv->search.results_ready.store(false);
+      platform_submit_job(trace_viewer_search_job, &tv->search);
+    }
   }
 
   if (tv->search_query.data[0] != '\0') {
