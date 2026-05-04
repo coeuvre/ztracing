@@ -160,6 +160,7 @@ struct TraceViewer {
   ArrayList<HoverMatch> hover_matches;
   int64_t focused_event_idx = -1;
   ArrayList<int64_t> selected_event_indices;
+  bool selected_events_dirty;
   int64_t target_focused_event_idx = -1;
   float target_scroll_y = -1.0f;
   bool request_scroll_to_focused_event;

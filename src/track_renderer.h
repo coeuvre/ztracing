@@ -79,17 +79,21 @@ inline void track_renderer_state_clear(TrackRendererState* state) {
   array_list_clear(&state->selected_events_bitset);
 }
 
+void track_renderer_update_selection_bitset(
+    TrackRendererState* state, const TraceData* trace_data,
+    const ArrayList<int64_t>& selected_event_indices, Allocator a);
+
 void track_compute_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
     double viewport_end, float inner_width, float tracks_canvas_pos_x,
-    int64_t focused_event_idx, const ArrayList<int64_t>& selected_event_indices,
+    int64_t focused_event_idx,
     TrackRendererState* state, ArrayList<TrackRenderBlock>* out_blocks,
     Allocator a);
 
 void track_compute_counter_render_blocks(
     const Track* track, const TraceData* trace_data, double viewport_start,
     double viewport_end, float inner_width, float tracks_canvas_pos_x,
-    int64_t focused_event_idx, const ArrayList<int64_t>& selected_event_indices,
+    int64_t focused_event_idx,
     TrackRendererState* state, ArrayList<CounterRenderBlock>* out_blocks,
     Allocator a);
 

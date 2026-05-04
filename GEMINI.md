@@ -97,7 +97,7 @@
 - `src/track_renderer`: Standalone rendering module that implements performance optimizations like LOD and event coalescing. 
     - **Allocation-Free Rendering**: Uses a persistent `TrackRendererState` (Zero-Is-Initialization compatible) to host temporary buffers (`thread_bucket_states`, `counter_current_values`, etc.), eliminating per-frame heap allocations during rendering.
     - **Block-Based Optimization**: Utilizes `block_max_durs` to achieve $O(\text{Blocks} + \text{VisibleEvents})$ rendering complexity. This ensures high performance even when zoomed into microsecond-level details on massive traces by instantly skipping irrelevant event blocks and identifying spanning events without a full trace scan.
-    - **Fast Selection Tracking**: Implements optimized $O(1)$ boolean selection bitsets tracking system (`state->selected_events_bitset`) avoiding non-monotonic sorting issues across frames without sacrificing timeline interactive performance.
+    - **Fast Selection Tracking**: Decoupled selection bitset updates from per-track block computation. Updates to `state->selected_events_bitset` are executed exactly once per frame *only* when the selection actually changes (monitored via `selected_events_dirty` flag on box selection, search results ingestion, or selection clearing), avoiding $O(\text{Tracks} \times \text{TotalEvents})$ overhead per frame.
     - **Decoupling**: Separates rendering calculations from ImGui-specific logic to allow for comprehensive unit testing.
 
 ## Multi-threading & PThreads

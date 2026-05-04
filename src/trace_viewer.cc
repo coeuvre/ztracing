@@ -559,8 +559,7 @@ static void trace_viewer_draw_counter_track(
     TraceViewer* tv, TraceData* td, ImDrawList* draw_list, const Track& t,
     ImVec2 pos, float width, float height, double viewport_start,
     double viewport_end, const Theme& theme, ImVec2 mouse_pos,
-    bool track_list_hovered, int64_t focused_event_idx,
-    const ArrayList<int64_t>& selected_event_indices, Allocator allocator) {
+    bool track_list_hovered, int64_t focused_event_idx, Allocator allocator) {
   if (t.event_indices.size == 0) return;
 
   double duration = viewport_end - viewport_start;
@@ -575,7 +574,7 @@ static void trace_viewer_draw_counter_track(
 
   track_compute_counter_render_blocks(
       &t, td, viewport_start, viewport_end, width, pos.x, focused_event_idx,
-      selected_event_indices, state, &tv->counter_render_blocks, allocator);
+      state, &tv->counter_render_blocks, allocator);
 
   if (tv->counter_render_blocks.size == 0) return;
 
@@ -762,6 +761,7 @@ static void trace_viewer_box_select_update(TraceViewer* tv, TraceData* td, Alloc
     tv->search.results_ready.store(false);
   }
 
+  tv->selected_events_dirty = true;
   platform_submit_job(trace_viewer_search_job, &tv->search);
 }
 
@@ -1106,6 +1106,11 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
   bool should_snap = is_dragging && was_drag &&
                      tv->selection_drag_mode != InteractionDragMode::BOX_SELECT;
 
+  if (tv->selected_events_dirty) {
+    track_renderer_update_selection_bitset(&tv->track_renderer_state, td, tv->selected_event_indices, allocator);
+    tv->selected_events_dirty = false;
+  }
+
   for (size_t i = 0; i < tv->tracks.size; i++) {
     Track& t = tv->tracks[i];
     TrackViewInfo& vi = tv->track_infos[i];
@@ -1155,8 +1160,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
         track_compute_render_blocks(
             &t, td, tv->viewport.start_time, tv->viewport.end_time,
             tracks_inner_width, tracks_origin_x, tv->focused_event_idx,
-            tv->selected_event_indices, &tv->track_renderer_state,
-            &tv->render_blocks, allocator);
+            &tv->track_renderer_state, &tv->render_blocks, allocator);
 
         for (size_t k = 0; k < tv->render_blocks.size; k++) {
           const TrackRenderBlock& rb = tv->render_blocks[k];
@@ -1185,8 +1189,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
         track_compute_counter_render_blocks(
             &t, td, tv->viewport.start_time, tv->viewport.end_time,
             tracks_inner_width, tracks_origin_x, tv->focused_event_idx,
-            tv->selected_event_indices, &tv->track_renderer_state,
-            &tv->counter_render_blocks, allocator);
+            &tv->track_renderer_state, &tv->counter_render_blocks, allocator);
         
         float track_content_y = vi.y + input.lane_height;
         float track_content_h = vi.height - input.lane_height;
@@ -1314,6 +1317,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
              tv->search.pending_results.size, tv->search.pending_histogram.num_buckets);
     array_list_clear(&tv->selected_event_indices);
     array_list_append(&tv->selected_event_indices, allocator, tv->search.pending_results.data, tv->search.pending_results.size);
+    tv->selected_events_dirty = true;
     
     tv->histogram = tv->search.pending_histogram;
 
@@ -1549,8 +1553,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           track_compute_render_blocks(
               &t, td, tv->viewport.start_time, tv->viewport.end_time,
               inner_width, tracks_canvas_pos.x, tv->focused_event_idx,
-              tv->selected_event_indices, &tv->track_renderer_state,
-              &tv->render_blocks, allocator);
+              &tv->track_renderer_state, &tv->render_blocks, allocator);
 
           for (size_t k = 0; k < tv->render_blocks.size; k++) {
             const TrackRenderBlock& rb = tv->render_blocks[k];
@@ -1574,7 +1577,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
               vi.height - input.lane_height, tv->viewport.start_time,
               tv->viewport.end_time, theme,
               ImVec2(input.mouse_x, input.mouse_y), mouse_in_sel,
-              tv->focused_event_idx, tv->selected_event_indices, allocator);
+              tv->focused_event_idx, allocator);
         }
       }
 
@@ -1652,6 +1655,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           array_list_clear(&tv->filtered_event_indices);
           tv->selected_histogram_bucket = -1;
           tv->search_histogram_dirty = true;
+          tv->selected_events_dirty = true;
         }
 
         // Duration Histogram
@@ -1934,6 +1938,7 @@ void trace_viewer_reset_view(TraceViewer* tv) {
   double center = (trace_start + trace_end) * 0.5;
   tv->viewport.start_time = center - max_duration * 0.5;
   tv->viewport.end_time = center + max_duration * 0.5;
+  tv->selected_events_dirty = true;
 }
 
 struct SortKey {
