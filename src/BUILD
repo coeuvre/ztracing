@@ -289,7 +289,7 @@ cc_binary(
         "-sUSE_PTHREADS=1",
         "-sPTHREAD_POOL_SIZE=2",
         "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8','HEAPF32','UTF8ToString','wasmMemory']",
-        "-sEXPORTED_FUNCTIONS=['_ztracing_init','_ztracing_start','_ztracing_set_font_data','_ztracing_malloc','_ztracing_free','_ztracing_begin_session','_ztracing_handle_file_chunk','_ztracing_on_theme_changed']",
+        "-sEXPORTED_FUNCTIONS=['_ztracing_init','_ztracing_start','_ztracing_set_font_data','_ztracing_malloc','_ztracing_free','_ztracing_begin_session','_ztracing_handle_file_chunk','_ztracing_on_theme_changed','_imgui_impl_wasm_set_clipboard_text_from_js','_imgui_impl_wasm_trigger_paste_event']",
         "-sINITIAL_MEMORY=128MB",
         "-sMAXIMUM_MEMORY=4GB",
         "-sALLOW_MEMORY_GROWTH=1",

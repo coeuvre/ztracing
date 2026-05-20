@@ -4,6 +4,7 @@
 #include <emscripten/html5.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 
 #include "src/allocator.h"
 #include "src/logging.h"
@@ -40,6 +41,45 @@ EM_JS(void, js_set_cursor, (const char* selector, const char* cursor), {
     el.style.cursor = cursorStr;
   }
 });
+
+EM_JS(void, js_setup_paste_listener, (), {
+  window.addEventListener("paste", function(e) {
+    var text = e.clipboardData ? e.clipboardData.getData("text") : "";
+    if (text) {
+      var textBytes = lengthBytesUTF8(text) + 1;
+      var stream = _ztracing_malloc(textBytes);
+      stringToUTF8(text, stream, textBytes);
+      _imgui_impl_wasm_set_clipboard_text_from_js(stream);
+      _ztracing_free(stream, textBytes);
+      _imgui_impl_wasm_trigger_paste_event();
+    }
+  });
+});
+
+static std::string g_clipboard_buffer;
+
+extern "C" {
+EMSCRIPTEN_KEEPALIVE void imgui_impl_wasm_set_clipboard_text_from_js(const char* text) {
+  if (text) {
+    g_clipboard_buffer = text;
+    imgui_impl_wasm_request_update();
+  }
+}
+
+EMSCRIPTEN_KEEPALIVE void imgui_impl_wasm_trigger_paste_event() {
+  if (ImGui::GetCurrentContext()) {
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddKeyEvent(ImGuiKey_V, true);
+    io.AddKeyEvent(ImGuiKey_V, false);
+    imgui_impl_wasm_request_update();
+  }
+}
+}
+
+static const char* imgui_impl_wasm_get_clipboard_text(void* user_data) {
+  (void)user_data;
+  return g_clipboard_buffer.c_str();
+}
 
 EM_JS(void, js_set_clipboard, (const char* text), {
   var str = UTF8ToString(text);
@@ -309,10 +349,11 @@ static bool imgui_wants_key(ImGuiKey key, const EmscriptenKeyboardEvent* key_eve
       return true;
     }
 
-    // Allow standard text editing shortcuts (Ctrl/Cmd + A, C, V, X, Z, Y)
+    // Allow standard text editing shortcuts (Ctrl/Cmd + A, C, X, Z, Y)
+    // Note: ImGuiKey_V is intentionally excluded here to allow browser native paste event to trigger.
     bool has_cmd_or_ctrl = key_event->metaKey || key_event->ctrlKey;
     if (has_cmd_or_ctrl) {
-      if (key == ImGuiKey_A || key == ImGuiKey_C || key == ImGuiKey_V ||
+      if (key == ImGuiKey_A || key == ImGuiKey_C ||
           key == ImGuiKey_X || key == ImGuiKey_Z || key == ImGuiKey_Y) {
         return true;
       }
@@ -366,7 +407,10 @@ static EM_BOOL on_key(int event_type, const EmscriptenKeyboardEvent* key_event,
 
   ImGuiKey key = string_to_imgui_key(key_event->code);
   if (key != ImGuiKey_None) {
-    io.AddKeyEvent(key, event_type == EMSCRIPTEN_EVENT_KEYDOWN);
+    bool is_paste_shortcut = (key == ImGuiKey_V) && (key_event->ctrlKey || key_event->metaKey);
+    if (!is_paste_shortcut) {
+      io.AddKeyEvent(key, event_type == EMSCRIPTEN_EVENT_KEYDOWN);
+    }
   }
 
   if (event_type == EMSCRIPTEN_EVENT_KEYDOWN && strlen(key_event->key) == 1) {
@@ -471,6 +515,9 @@ bool imgui_impl_wasm_init(const char* canvas_selector, Allocator allocator) {
   update_canvas_size(bd);
 
   io.SetClipboardTextFn = imgui_impl_wasm_set_clipboard_text;
+  io.GetClipboardTextFn = imgui_impl_wasm_get_clipboard_text;
+
+  js_setup_paste_listener();
 
   return true;
 }
@@ -487,6 +534,11 @@ void imgui_impl_wasm_shutdown() {
 void imgui_impl_wasm_new_frame() {
   BackendData* bd = get_backend_data();
   ImGuiIO& io = ImGui::GetIO();
+
+  // Auto-release stuck non-modifier keys at the start of the new frame if a modifier is active
+  if (io.KeyCtrl || io.KeySuper || io.KeyAlt) {
+    release_all_non_modifier_keys();
+  }
 
   if (bd->frames_to_render > 0) {
     bd->frames_to_render--;
