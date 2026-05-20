@@ -79,6 +79,12 @@ struct TraceViewerInput {
   float lane_height;
   float tracks_scroll_y;
 
+  // Parent viewport boundaries (unaltered by child scroll or padding offsets)
+  float viewport_x;
+  float viewport_y;
+  float viewport_width;
+  float viewport_height;
+
   // Interaction info
   float mouse_x, mouse_y;
   float mouse_wheel, mouse_wheel_h;
@@ -119,6 +125,30 @@ struct SelectionOverlayLayout {
   bool active;
   float x1, x2;
   char duration_label[64];
+};
+
+const float VERTICAL_MINIMAP_WIDTH = 64.0f;
+
+struct TrackHeatmap {
+  static constexpr int BUCKET_COUNT = 16;
+  size_t event_indices[BUCKET_COUNT];
+};
+
+struct VerticalMinimapLayout {
+  bool active;
+  float x, y;
+  float width, height;
+  float scale_y;
+  float slider_y1;
+  float slider_y2;
+  bool is_hovered;
+};
+
+struct VerticalMinimapState {
+  bool is_dragging;
+  ArrayList<bool> track_has_selected;
+  ArrayList<TrackHeatmap> track_heatmap_densities;
+  VerticalMinimapLayout layout;
 };
 
 struct TraceViewer {
@@ -183,10 +213,12 @@ struct TraceViewer {
   int selected_histogram_bucket = -1;
   DurationHistogram histogram = {};
   ArrayList<int64_t> filtered_event_indices = {};
+  VerticalMinimapState vertical_minimap;
 };
 
 void trace_viewer_deinit(TraceViewer* tv, Allocator allocator);
 void trace_viewer_reset_view(TraceViewer* tv);
+void trace_viewer_precompute_minimap_heatmap(TraceViewer* tv, const TraceData* td, Allocator allocator);
 void trace_viewer_step(TraceViewer* tv, TraceData* td,
                        const TraceViewerInput& input, Allocator allocator);
 void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,

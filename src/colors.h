@@ -49,6 +49,12 @@ struct Theme {
   ImU32 search_histogram_bar_hovered;
   ImU32 search_histogram_bar_selected;
 
+  // Vertical Minimap
+  ImU32 vertical_minimap_bg;
+  ImU32 vertical_minimap_slider_bg;
+  ImU32 vertical_minimap_slider_bg_hovered;
+  ImU32 vertical_minimap_slider_bg_active;
+
   // Event Palette
   uint32_t event_palette[8];
 };

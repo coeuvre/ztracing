@@ -21,6 +21,8 @@ static void trace_viewer_draw_selection_overlay(
 
 static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocator);
 void trace_viewer_search_job(void* user_data);
+static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewerInput& input);
+static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv, const TraceData* td, ImDrawList* draw_list, const Theme& theme);
 
 static double trace_viewer_px_to_ts(double start_time, double end_time,
                                     float width, float origin_x, float px) {
@@ -104,6 +106,8 @@ void trace_viewer_deinit(TraceViewer* tv, Allocator allocator) {
   array_list_deinit(&tv->hover_matches, allocator);
   array_list_deinit(&tv->selected_event_indices, allocator);
   array_list_deinit(&tv->filtered_event_indices, allocator);
+  array_list_deinit(&tv->vertical_minimap.track_has_selected, allocator);
+  array_list_deinit(&tv->vertical_minimap.track_heatmap_densities, allocator);
   array_list_deinit(&tv->search_query, allocator);
   tv->search.jobs_should_abort.store(true);
   {
@@ -1108,6 +1112,22 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
   if (tv->selected_events_dirty) {
     track_renderer_update_selection_bitset(&tv->track_renderer_state, td, tv->selected_event_indices, allocator);
+
+    array_list_resize(&tv->vertical_minimap.track_has_selected, allocator, tv->tracks.size);
+    for (size_t i = 0; i < tv->tracks.size; i++) {
+      const Track& t = tv->tracks[i];
+      bool has_sel = false;
+      for (size_t j = 0; j < t.event_indices.size; j++) {
+        size_t event_idx = t.event_indices[j];
+        if (event_idx < tv->track_renderer_state.selected_events_bitset.size &&
+            tv->track_renderer_state.selected_events_bitset.data[event_idx] != 0) {
+          has_sel = true;
+          break;
+        }
+      }
+      tv->vertical_minimap.track_has_selected[i] = has_sel;
+    }
+
     tv->selected_events_dirty = false;
   }
 
@@ -1371,6 +1391,157 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
       }
     }
   }
+
+  // 7. Precompute Vertical Minimap Layout & Interaction
+  trace_viewer_step_vertical_minimap(tv, input);
+}
+
+static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewerInput& input) {
+  float minimap_x = input.viewport_x + input.viewport_width - VERTICAL_MINIMAP_WIDTH;
+  float minimap_y = input.viewport_y + input.ruler_height;
+  float visible_h = input.viewport_height - input.ruler_height;
+  float total_h = tv->total_tracks_height;
+
+  // Interaction Logic (Mouse Hit-testing & Drag state)
+  bool is_hovered = total_h > 0 &&
+                    input.mouse_x >= minimap_x && input.mouse_x <= minimap_x + VERTICAL_MINIMAP_WIDTH &&
+                    input.mouse_y >= minimap_y && input.mouse_y <= minimap_y + visible_h;
+
+  if (is_hovered && input.is_mouse_clicked) {
+    tv->vertical_minimap.is_dragging = true;
+  }
+  if (!input.is_mouse_down) {
+    tv->vertical_minimap.is_dragging = false;
+  }
+
+  if (tv->vertical_minimap.is_dragging && total_h > visible_h) {
+    float mouse_y_rel = input.mouse_y - minimap_y;
+    float target_pct = mouse_y_rel / visible_h;
+    // Center viewport on mouse
+    float target_scroll_y = (target_pct * total_h) - (visible_h * 0.5f);
+    tv->target_scroll_y = std::max(0.0f, std::min(target_scroll_y, total_h - visible_h));
+  }
+
+  // Layout Projections
+  VerticalMinimapLayout& layout = tv->vertical_minimap.layout;
+  layout.active = total_h > 0;
+  layout.x = minimap_x;
+  layout.y = minimap_y;
+  layout.width = VERTICAL_MINIMAP_WIDTH;
+  layout.height = visible_h;
+  layout.is_hovered = is_hovered;
+
+  if (total_h > 0) {
+    layout.scale_y = total_h > visible_h ? (visible_h / total_h) : 1.0f;
+
+    float scroll_y = input.tracks_scroll_y;
+    float slider_y1 = minimap_y + scroll_y * layout.scale_y;
+    float slider_y2 = slider_y1 + visible_h * layout.scale_y;
+
+    // Clamp slider bounds
+    if (slider_y2 > minimap_y + visible_h) {
+      slider_y2 = minimap_y + visible_h;
+    }
+    if (slider_y1 < minimap_y) {
+      slider_y1 = minimap_y;
+    }
+
+    layout.slider_y1 = slider_y1;
+    layout.slider_y2 = slider_y2;
+  } else {
+    layout.scale_y = 1.0f;
+    layout.slider_y1 = minimap_y;
+    layout.slider_y2 = minimap_y + visible_h;
+  }
+}
+
+static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv, const TraceData* td, ImDrawList* draw_list, const Theme& theme) {
+  const VerticalMinimapLayout& layout = tv->vertical_minimap.layout;
+  if (!layout.active) return;
+
+  ImVec2 minimap_pos(layout.x, layout.y);
+  ImVec2 minimap_size(layout.width, layout.height);
+
+  // Draw minimap background with premium glassmorphic styling
+  draw_list->AddRectFilled(minimap_pos, ImVec2(minimap_pos.x + minimap_size.x, minimap_pos.y + minimap_size.y),
+                           theme.vertical_minimap_bg);
+  draw_list->AddLine(minimap_pos, ImVec2(minimap_pos.x, minimap_pos.y + minimap_size.y),
+                     theme.track_separator);
+
+  // 1. Draw 2D micro track heat blocks
+  float current_y = 0.0f;
+  float cell_w = (minimap_size.x - 2.0f) / TrackHeatmap::BUCKET_COUNT;
+
+  for (size_t i = 0; i < tv->tracks.size; i++) {
+    const TrackViewInfo& vi = tv->track_infos[i];
+    float draw_y1 = minimap_pos.y + current_y * layout.scale_y;
+    float draw_y2 = draw_y1 + vi.height * layout.scale_y;
+
+    // Guarantee a minimum visual height of 1.0px to prevent WebGL sub-pixel culling
+    if (draw_y2 < draw_y1 + 1.0f) {
+      draw_y2 = draw_y1 + 1.0f;
+    }
+
+    const TrackHeatmap& h = tv->vertical_minimap.track_heatmap_densities[i];
+
+    // Render the 16 horizontal time slices with consecutive bucket coalescing
+    int start_b = -1;
+    ImU32 active_col = 0;
+
+    for (int b = 0; b < TrackHeatmap::BUCKET_COUNT; b++) {
+      size_t event_idx = h.event_indices[b];
+      ImU32 cell_col = (event_idx != (size_t)-1) ? td->events[event_idx].color : 0;
+
+      if (cell_col == active_col) {
+        continue;
+      }
+
+      // Flush previous coalesced block
+      if (active_col != 0 && start_b != -1) {
+        float cell_x1 = minimap_pos.x + 1.0f + (float)start_b * cell_w;
+        float cell_x2 = minimap_pos.x + 1.0f + (float)b * cell_w;
+        draw_list->AddRectFilled(ImVec2(cell_x1, draw_y1), ImVec2(cell_x2, draw_y2), active_col);
+      }
+
+      // Start new block
+      active_col = cell_col;
+      start_b = (cell_col != 0) ? b : -1;
+    }
+
+    // Final flush
+    if (active_col != 0 && start_b != -1) {
+      float cell_x1 = minimap_pos.x + 1.0f + (float)start_b * cell_w;
+      float cell_x2 = minimap_pos.x + 1.0f + (float)TrackHeatmap::BUCKET_COUNT * cell_w;
+      draw_list->AddRectFilled(ImVec2(cell_x1, draw_y1), ImVec2(cell_x2, draw_y2), active_col);
+    }
+
+    current_y += vi.height;
+  }
+
+  // 2. Draw search/selection hotspot ticks
+  current_y = 0.0f;
+  for (size_t i = 0; i < tv->tracks.size; i++) {
+    const TrackViewInfo& vi = tv->track_infos[i];
+    if (i < tv->vertical_minimap.track_has_selected.size && tv->vertical_minimap.track_has_selected[i]) {
+      float draw_y = minimap_pos.y + (current_y + vi.height * 0.5f) * layout.scale_y;
+      draw_list->AddLine(ImVec2(minimap_pos.x + 1.0f, draw_y),
+                         ImVec2(minimap_pos.x + minimap_size.x, draw_y),
+                         theme.timeline_selection_line, 1.5f);
+    }
+    current_y += vi.height;
+  }
+
+  // 3. Draw viewport bracket/slider
+  ImU32 slider_col = theme.vertical_minimap_slider_bg;
+  if (tv->vertical_minimap.is_dragging) {
+    slider_col = theme.vertical_minimap_slider_bg_active;
+  } else if (layout.is_hovered) {
+    slider_col = theme.vertical_minimap_slider_bg_hovered;
+  }
+
+  draw_list->AddRectFilled(ImVec2(minimap_pos.x + 2.0f, layout.slider_y1 + 1.0f),
+                           ImVec2(minimap_pos.x + minimap_size.x - 2.0f, layout.slider_y2 - 1.0f),
+                           slider_col, 0.0f);
 }
 
 void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
@@ -1388,6 +1559,10 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         .canvas_height = canvas_size.y,
         .ruler_height = ImGui::GetFrameHeight(),
         .lane_height = ImGui::GetFrameHeight(),
+        .viewport_x = canvas_pos.x,
+        .viewport_y = canvas_pos.y,
+        .viewport_width = canvas_size.x,
+        .viewport_height = canvas_size.y,
         .mouse_x = ImGui::GetMousePos().x,
         .mouse_y = ImGui::GetMousePos().y,
         .mouse_wheel = ImGui::GetIO().MouseWheel,
@@ -1408,7 +1583,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     };
 
     float tracks_origin_x = tv->last_tracks_x > 0 ? tv->last_tracks_x : canvas_pos.x;
-    float tracks_inner_width = tv->last_inner_width > 0 ? tv->last_inner_width : canvas_size.x;
+    float tracks_inner_width = tv->last_inner_width > 0 ? tv->last_inner_width : (canvas_size.x - VERTICAL_MINIMAP_WIDTH);
     if (tracks_inner_width <= 0) tracks_inner_width = 1.0f;
 
     // Pre-pass to capture interaction state
@@ -1418,12 +1593,12 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     input.ruler_activated = ImGui::IsItemActivated();
     input.ruler_deactivated = ImGui::IsItemDeactivated();
 
-    ImGuiWindowFlags child_flags = ImGuiWindowFlags_NoMove;
+    ImGuiWindowFlags child_flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar;
     if (input.is_ctrl_down)
       child_flags |= ImGuiWindowFlags_NoScrollWithMouse;
 
     ImGui::SetCursorScreenPos(ImVec2(canvas_pos.x, canvas_pos.y + input.ruler_height));
-    if (ImGui::BeginChild("TrackList", ImVec2(0, canvas_size.y - input.ruler_height),
+    if (ImGui::BeginChild("TrackList", ImVec2(canvas_size.x - VERTICAL_MINIMAP_WIDTH, canvas_size.y - input.ruler_height),
                           ImGuiChildFlags_None, child_flags)) {
       input.tracks_hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
       input.tracks_scroll_y = ImGui::GetScrollY();
@@ -1464,7 +1639,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     }
 
     ImGui::SetCursorScreenPos(ImVec2(canvas_pos.x, canvas_pos.y + input.ruler_height));
-    if (ImGui::BeginChild("TrackList", ImVec2(0, canvas_size.y - input.ruler_height),
+    if (ImGui::BeginChild("TrackList", ImVec2(canvas_size.x - VERTICAL_MINIMAP_WIDTH, canvas_size.y - input.ruler_height),
                           ImGuiChildFlags_None, child_flags)) {
       if (tv->target_scroll_y != -1.0f) {
         ImGui::SetScrollY(std::max(0.0f, tv->target_scroll_y));
@@ -1627,6 +1802,9 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       }
     }
     ImGui::EndChild();
+
+    // --- Vertical Minimap Render (Dumb Phase) ---
+    trace_viewer_draw_vertical_minimap(tv, td, draw_list, theme);
 
     trace_viewer_draw_time_ruler(
         tv, draw_list, ImVec2(tracks_origin_x, canvas_pos.y),
@@ -1939,6 +2117,50 @@ void trace_viewer_reset_view(TraceViewer* tv) {
   tv->viewport.start_time = center - max_duration * 0.5;
   tv->viewport.end_time = center + max_duration * 0.5;
   tv->selected_events_dirty = true;
+}
+
+void trace_viewer_precompute_minimap_heatmap(TraceViewer* tv, const TraceData* td, Allocator a) {
+  array_list_resize(&tv->vertical_minimap.track_heatmap_densities, a, tv->tracks.size);
+  
+  double total_dur = (double)(tv->viewport.max_ts - tv->viewport.min_ts);
+  if (total_dur <= 0) return;
+  double bucket_dur = total_dur / TrackHeatmap::BUCKET_COUNT;
+
+  // Duration cache for finding the dominant event color
+  int64_t max_dur[TrackHeatmap::BUCKET_COUNT];
+
+  for (size_t i = 0; i < tv->tracks.size; i++) {
+    Track& t = tv->tracks[i];
+    TrackHeatmap& h = tv->vertical_minimap.track_heatmap_densities[i];
+    
+    // Initialize buckets to (size_t)-1 (idle)
+    for (int b = 0; b < TrackHeatmap::BUCKET_COUNT; b++) {
+      h.event_indices[b] = (size_t)-1;
+      max_dur[b] = -1;
+    }
+
+    if (t.event_indices.size == 0) continue;
+
+    // Identify dominant event index in each bucket
+    for (size_t k = 0; k < t.event_indices.size; k++) {
+      if (t.type == TRACK_TYPE_THREAD && t.depths[k] != 0) {
+        continue;
+      }
+
+      size_t event_idx = t.event_indices[k];
+      const TraceEventPersisted& e = td->events[event_idx];
+      double rel_ts = (double)(e.ts - tv->viewport.min_ts);
+      int b_idx = (int)(rel_ts / bucket_dur);
+      if (b_idx < 0) b_idx = 0;
+      if (b_idx >= TrackHeatmap::BUCKET_COUNT) b_idx = TrackHeatmap::BUCKET_COUNT - 1;
+      
+      // Pick dominant event index based on longest duration
+      if (e.dur > max_dur[b_idx]) {
+        max_dur[b_idx] = e.dur;
+        h.event_indices[b_idx] = event_idx;
+      }
+    }
+  }
 }
 
 struct SortKey {

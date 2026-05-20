@@ -89,6 +89,7 @@ static void trace_loading_job(void* user_data) {
     loading->trace_viewer->viewport.min_ts = min_ts;
     loading->trace_viewer->viewport.max_ts = max_ts;
     trace_viewer_reset_view(loading->trace_viewer);
+    trace_viewer_precompute_minimap_heatmap(loading->trace_viewer, loading->trace_data, allocator);
     loading->request_update.store(true, std::memory_order_relaxed);
     LOG_DEBUG("trace_loading_job finished (session_id: %d)",
               my_session_id);

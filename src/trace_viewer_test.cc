@@ -1720,4 +1720,153 @@ TEST_F(TraceViewerTest, SearchFilteringWithOptions) {
     EXPECT_EQ(tv.search.pending_results[0], 1);
 }
 
+TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
+    // 1. Add enough tracks to exceed viewport height
+    for (int i = 0; i < 10; i++) {
+        Track t = {};
+        t.type = TRACK_TYPE_THREAD;
+        t.tid = i;
+        t.max_depth = 0; // (max_depth + 2) * lane_height = (0 + 2) * 20 = 40px height per track
+        array_list_push_back(&tv.tracks, allocator, t);
+    }
+
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 10000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 10000;
+
+    // 10 tracks * 40px = 400px total track height
+    // Viewport height = 200px, content height = 200 - 20 (ruler) = 180px
+    TraceViewerInput input = {};
+    input.canvas_x = 0.0f;
+    input.canvas_y = 0.0f;
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 200.0f;
+    input.viewport_x = 0.0f;
+    input.viewport_y = 0.0f;
+    input.viewport_width = 1000.0f;
+    input.viewport_height = 200.0f;
+    input.ruler_height = 20.0f;
+    input.lane_height = 20.0f;
+    input.tracks_scroll_y = 0.0f;
+
+    // Step once to compute track heights and initial layout
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    float expected_minimap_x = 1000.0f - VERTICAL_MINIMAP_WIDTH;
+    float expected_minimap_y = 20.0f; // ruler_height
+    float expected_visible_h = 180.0f;
+    float expected_total_h = 400.0f; // 10 tracks * 40px each
+
+    const VerticalMinimapLayout& layout = tv.vertical_minimap.layout;
+    EXPECT_TRUE(layout.active);
+    EXPECT_FLOAT_EQ(layout.x, expected_minimap_x);
+    EXPECT_FLOAT_EQ(layout.y, expected_minimap_y);
+    EXPECT_FLOAT_EQ(layout.width, VERTICAL_MINIMAP_WIDTH);
+    EXPECT_FLOAT_EQ(layout.height, expected_visible_h);
+    EXPECT_FLOAT_EQ(layout.scale_y, expected_visible_h / expected_total_h); // 180 / 400 = 0.45
+    EXPECT_FALSE(layout.is_hovered);
+    EXPECT_FALSE(tv.vertical_minimap.is_dragging);
+
+    // 2. Test Hover State
+    input.mouse_x = expected_minimap_x + 5.0f;
+    input.mouse_y = expected_minimap_y + 50.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_TRUE(tv.vertical_minimap.layout.is_hovered);
+
+    // 3. Test Click / Press (Trigger Dragging)
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_TRUE(tv.vertical_minimap.is_dragging);
+
+    // 4. Test Drag Scrolling
+    // Move mouse relative to minimap top: mouse_y_rel = 100px
+    // pct = 100 / 180 = 0.5555
+    // target_scroll_y = (0.5555 * 400) - (180 * 0.5) = 222.22 - 90 = 132.22px
+    input.is_mouse_clicked = false;
+    input.mouse_y = expected_minimap_y + 100.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+    
+    EXPECT_TRUE(tv.vertical_minimap.is_dragging);
+    EXPECT_NEAR(tv.target_scroll_y, 132.22f, 0.5f);
+
+    // 5. Test Release
+    input.is_mouse_down = false;
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_FALSE(tv.vertical_minimap.is_dragging);
+}
+
+TEST_F(TraceViewerTest, VerticalMinimap2DHeatmap) {
+    // 1. Setup overall trace viewport bounds
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 16000; // 16 buckets * 1000 dur each
+
+    // 2. Create mock trace events
+    // Event A (Track 0, ts = 500, belongs to Bucket 0, depth 0)
+    TraceEventPersisted e1 = {};
+    e1.ts = 500;
+    e1.dur = 100;
+    size_t e1_idx = td.events.size;
+    array_list_push_back(&td.events, allocator, e1);
+
+    // Event B (Track 0, ts = 5500, belongs to Bucket 5, depth 0)
+    TraceEventPersisted e2 = {};
+    e2.ts = 5500;
+    e2.dur = 100;
+    size_t e2_idx = td.events.size;
+    array_list_push_back(&td.events, allocator, e2);
+
+    // Event C (Track 1, ts = 5000, belongs to Bucket 5, depth 0)
+    TraceEventPersisted e3 = {};
+    e3.ts = 5000;
+    e3.dur = 100;
+    size_t e3_idx = td.events.size;
+    array_list_push_back(&td.events, allocator, e3);
+
+    // Event D (Track 0, ts = 5600, belongs to Bucket 5, nested at depth 1)
+    // This event should be ignored in heat calculation because depth != 0
+    TraceEventPersisted e4 = {};
+    e4.ts = 5600;
+    e4.dur = 50;
+    size_t e4_idx = td.events.size;
+    array_list_push_back(&td.events, allocator, e4);
+
+    // 3. Setup mock tracks
+    // Track 0: holds Event A, Event B, and Event D
+    Track t0 = {};
+    t0.type = TRACK_TYPE_THREAD;
+    array_list_push_back(&t0.event_indices, allocator, e1_idx);
+    array_list_push_back(&t0.depths, allocator, (uint32_t)0); // Event A
+    array_list_push_back(&t0.event_indices, allocator, e2_idx);
+    array_list_push_back(&t0.depths, allocator, (uint32_t)0); // Event B
+    array_list_push_back(&t0.event_indices, allocator, e4_idx);
+    array_list_push_back(&t0.depths, allocator, (uint32_t)1); // Event D (ignored)
+    array_list_push_back(&tv.tracks, allocator, t0);
+
+    // Track 1: holds Event C
+    Track t1 = {};
+    t1.type = TRACK_TYPE_THREAD;
+    array_list_push_back(&t1.event_indices, allocator, e3_idx);
+    array_list_push_back(&t1.depths, allocator, (uint32_t)0); // Event C
+    array_list_push_back(&tv.tracks, allocator, t1);
+
+    // 4. Run precompute heatmap function
+    trace_viewer_precompute_minimap_heatmap(&tv, &td, allocator);
+
+    // 5. Verify cached 2D densities
+    ASSERT_EQ(tv.vertical_minimap.track_heatmap_densities.size, 2u);
+    
+    const TrackHeatmap& h0 = tv.vertical_minimap.track_heatmap_densities[0];
+    EXPECT_EQ(h0.event_indices[0], e1_idx); // Event A (depth 0) contributes
+    EXPECT_EQ(h0.event_indices[5], e2_idx); // Event B (depth 0) contributes. Event D (depth 1) is skipped.
+    EXPECT_EQ(h0.event_indices[1], (size_t)-1);
+    EXPECT_EQ(h0.event_indices[15], (size_t)-1);
+
+    const TrackHeatmap& h1 = tv.vertical_minimap.track_heatmap_densities[1];
+    EXPECT_EQ(h1.event_indices[5], e3_idx); // Event C (depth 0) contributes
+    EXPECT_EQ(h1.event_indices[0], (size_t)-1);
+    EXPECT_EQ(h1.event_indices[15], (size_t)-1);
+}
+
 
