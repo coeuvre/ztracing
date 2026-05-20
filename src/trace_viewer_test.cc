@@ -1869,4 +1869,22 @@ TEST_F(TraceViewerTest, VerticalMinimap2DHeatmap) {
     EXPECT_EQ(h1.event_indices[15], (size_t)-1);
 }
 
+TEST_F(TraceViewerTest, VerticalMinimapHeatmapZeroDuration) {
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 0;
+
+    Track t0 = {};
+    t0.type = TRACK_TYPE_THREAD;
+    array_list_push_back(&tv.tracks, allocator, t0);
+
+    trace_viewer_precompute_minimap_heatmap(&tv, &td, allocator);
+
+    ASSERT_EQ(tv.vertical_minimap.track_heatmap_densities.size, 1u);
+    const TrackHeatmap& h0 = tv.vertical_minimap.track_heatmap_densities[0];
+    for (int b = 0; b < TrackHeatmap::BUCKET_COUNT; b++) {
+        EXPECT_EQ(h0.event_indices[b], (size_t)-1);
+    }
+}
+
+
 

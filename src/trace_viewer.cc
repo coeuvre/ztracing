@@ -2122,6 +2122,14 @@ void trace_viewer_reset_view(TraceViewer* tv) {
 void trace_viewer_precompute_minimap_heatmap(TraceViewer* tv, const TraceData* td, Allocator a) {
   array_list_resize(&tv->vertical_minimap.track_heatmap_densities, a, tv->tracks.size);
   
+  // Initialize all buckets to (size_t)-1 (idle) to prevent out-of-bounds access on zero duration or empty traces
+  for (size_t i = 0; i < tv->tracks.size; i++) {
+    TrackHeatmap& h = tv->vertical_minimap.track_heatmap_densities[i];
+    for (int b = 0; b < TrackHeatmap::BUCKET_COUNT; b++) {
+      h.event_indices[b] = (size_t)-1;
+    }
+  }
+
   double total_dur = (double)(tv->viewport.max_ts - tv->viewport.min_ts);
   if (total_dur <= 0) return;
   double bucket_dur = total_dur / TrackHeatmap::BUCKET_COUNT;
