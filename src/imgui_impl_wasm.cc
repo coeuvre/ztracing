@@ -235,31 +235,122 @@ static ImGuiKey string_to_imgui_key(const char* code) {
   if (strcmp(code, "ControlRight") == 0) return ImGuiKey_RightCtrl;
   if (strcmp(code, "AltLeft") == 0) return ImGuiKey_LeftAlt;
   if (strcmp(code, "AltRight") == 0) return ImGuiKey_RightAlt;
+  if (strcmp(code, "MetaLeft") == 0 || strcmp(code, "OSLeft") == 0) return ImGuiKey_LeftSuper;
+  if (strcmp(code, "MetaRight") == 0 || strcmp(code, "OSRight") == 0) return ImGuiKey_RightSuper;
   if (strcmp(code, "Slash") == 0) return ImGuiKey_Slash;
   return ImGuiKey_None;
 }
 
-static bool is_disruptive_browser_key(ImGuiKey key) {
-  switch (key) {
-    case ImGuiKey_Tab:
-    case ImGuiKey_LeftArrow:
-    case ImGuiKey_RightArrow:
-    case ImGuiKey_UpArrow:
-    case ImGuiKey_DownArrow:
-    case ImGuiKey_PageUp:
-    case ImGuiKey_PageDown:
-    case ImGuiKey_Home:
-    case ImGuiKey_End:
-    case ImGuiKey_Backspace:
-    case ImGuiKey_Space:
-    case ImGuiKey_Enter:
-    case ImGuiKey_Escape:
-    case ImGuiKey_Insert:
-    case ImGuiKey_Delete:
-      return true;
-    default:
-      return false;
+static void release_all_non_modifier_keys() {
+  if (!ImGui::GetCurrentContext()) return;
+  ImGuiIO& io = ImGui::GetIO();
+  for (int n = ImGuiKey_NamedKey_BEGIN; n < ImGuiKey_NamedKey_END; n++) {
+    ImGuiKey key = (ImGuiKey)n;
+    if (key == ImGuiKey_LeftCtrl || key == ImGuiKey_RightCtrl ||
+        key == ImGuiKey_LeftShift || key == ImGuiKey_RightShift ||
+        key == ImGuiKey_LeftAlt || key == ImGuiKey_RightAlt ||
+        key == ImGuiKey_LeftSuper || key == ImGuiKey_RightSuper) {
+      continue;
+    }
+    if (ImGui::IsKeyDown(key)) {
+      io.AddKeyEvent(key, false);
+    }
   }
+}
+
+static bool is_browser_control_shortcut(ImGuiKey key, const EmscriptenKeyboardEvent* key_event) {
+  bool has_cmd_or_ctrl = key_event->metaKey || key_event->ctrlKey;
+
+  // Function keys F5, F11, F12 are always browser control
+  if (key == ImGuiKey_F5 || key == ImGuiKey_F11 || key == ImGuiKey_F12) {
+    return true;
+  }
+
+  if (has_cmd_or_ctrl) {
+    // Exclude standard browser shortcuts
+    if (key == ImGuiKey_R || key == ImGuiKey_W || key == ImGuiKey_T ||
+        key == ImGuiKey_N || key == ImGuiKey_L || key == ImGuiKey_Q ||
+        key == ImGuiKey_D) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool imgui_wants_key(ImGuiKey key, const EmscriptenKeyboardEvent* key_event) {
+  if (key == ImGuiKey_None) {
+    return false;
+  }
+
+  // Never block modifier keys themselves
+  if (key == ImGuiKey_LeftCtrl || key == ImGuiKey_RightCtrl ||
+      key == ImGuiKey_LeftShift || key == ImGuiKey_RightShift ||
+      key == ImGuiKey_LeftAlt || key == ImGuiKey_RightAlt ||
+      key == ImGuiKey_LeftSuper || key == ImGuiKey_RightSuper) {
+    return false;
+  }
+
+  // Never block browser control shortcuts
+  if (is_browser_control_shortcut(key, key_event)) {
+    return false;
+  }
+
+  ImGuiIO& io = ImGui::GetIO();
+
+  // 1. If a text input is active, we want to capture all typing, editing, and clipboard shortcuts
+  if (io.WantTextInput) {
+    // Allow editing/navigation keys in text fields
+    if (key == ImGuiKey_Backspace || key == ImGuiKey_Delete || key == ImGuiKey_Tab ||
+        key == ImGuiKey_Enter || key == ImGuiKey_Escape || key == ImGuiKey_Space ||
+        key == ImGuiKey_LeftArrow || key == ImGuiKey_RightArrow ||
+        key == ImGuiKey_UpArrow || key == ImGuiKey_DownArrow ||
+        key == ImGuiKey_Home || key == ImGuiKey_End) {
+      return true;
+    }
+
+    // Allow standard text editing shortcuts (Ctrl/Cmd + A, C, V, X, Z, Y)
+    bool has_cmd_or_ctrl = key_event->metaKey || key_event->ctrlKey;
+    if (has_cmd_or_ctrl) {
+      if (key == ImGuiKey_A || key == ImGuiKey_C || key == ImGuiKey_V ||
+          key == ImGuiKey_X || key == ImGuiKey_Z || key == ImGuiKey_Y) {
+        return true;
+      }
+    }
+
+    // If it's a printable character without modifiers (other than Shift), we want it
+    if (!key_event->ctrlKey && !key_event->metaKey && !key_event->altKey) {
+      return true;
+    }
+  }
+
+  // 2. If we want to capture keyboard (even if not text input), we want navigation and custom shortcuts
+  if (io.WantCaptureKeyboard) {
+    // Navigation keys
+    if (io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) {
+      if (key == ImGuiKey_LeftArrow || key == ImGuiKey_RightArrow ||
+          key == ImGuiKey_UpArrow || key == ImGuiKey_DownArrow ||
+          key == ImGuiKey_PageUp || key == ImGuiKey_PageDown ||
+          key == ImGuiKey_Home || key == ImGuiKey_End ||
+          key == ImGuiKey_Space || key == ImGuiKey_Enter ||
+          key == ImGuiKey_Escape || key == ImGuiKey_Tab) {
+        return true;
+      }
+    }
+
+    // Custom app shortcuts:
+    // - Cmd+F / Ctrl+F for Search
+    bool has_cmd_or_ctrl = key_event->metaKey || key_event->ctrlKey;
+    if (has_cmd_or_ctrl && key == ImGuiKey_F) {
+      return true;
+    }
+
+    // - Shift+Slash ('?') for Cheatsheet
+    if (key_event->shiftKey && key == ImGuiKey_Slash) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 static EM_BOOL on_key(int event_type, const EmscriptenKeyboardEvent* key_event,
@@ -284,15 +375,39 @@ static EM_BOOL on_key(int event_type, const EmscriptenKeyboardEvent* key_event,
     }
   }
 
+  if (event_type == EMSCRIPTEN_EVENT_KEYUP) {
+    if (key == ImGuiKey_LeftCtrl || key == ImGuiKey_RightCtrl ||
+        key == ImGuiKey_LeftAlt || key == ImGuiKey_RightAlt ||
+        key == ImGuiKey_LeftSuper || key == ImGuiKey_RightSuper) {
+      release_all_non_modifier_keys();
+    }
+  }
+
   imgui_impl_wasm_request_update();
 
-  // "Polite" passthrough: allow browser to handle keys by default (e.g. F12,
-  // F5) Only block keys that would cause disruptive browser behavior
-  // (scrolling, focus change) when ImGui explicitly wants the keyboard.
-  if (io.WantCaptureKeyboard && is_disruptive_browser_key(key)) {
+  bool wants = imgui_wants_key(key, key_event);
+  LOG_DEBUG("on_key: event=%s, code=%s, key=%s, ctrl=%d, shift=%d, alt=%d, meta=%d, imgui_key=%d, wants=%d",
+            event_type == EMSCRIPTEN_EVENT_KEYDOWN ? "DOWN" : "UP",
+            key_event->code, key_event->key, key_event->ctrlKey,
+            key_event->shiftKey, key_event->altKey, key_event->metaKey,
+            (int)key, wants);
+
+  if (wants) {
     return EM_TRUE;
   }
 
+  return EM_FALSE;
+}
+
+static EM_BOOL on_blur(int event_type, const EmscriptenFocusEvent* focus_event,
+                       void* user_data) {
+  (void)event_type;
+  (void)focus_event;
+  (void)user_data;
+  if (ImGui::GetCurrentContext()) {
+    ImGui::GetIO().ClearInputKeys();
+  }
+  imgui_impl_wasm_request_update();
   return EM_FALSE;
 }
 
@@ -341,6 +456,9 @@ bool imgui_impl_wasm_init(const char* canvas_selector, Allocator allocator) {
                                   EM_FALSE, on_key);
   emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
                                 EM_FALSE, on_key);
+
+  emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+                               EM_FALSE, on_blur);
 
   emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, (void*)bd,
                                  EM_FALSE, on_resize);
