@@ -1578,7 +1578,7 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         .drag_delta_x = ImGui::GetMouseDragDelta(0).x,
         .drag_delta_y = ImGui::GetMouseDragDelta(0).y,
         .drag_threshold = ImGui::GetIO().MouseDragThreshold,
-        .is_ctrl_down = ImGui::IsKeyDown(ImGuiMod_Ctrl),
+        .is_ctrl_down = platform_is_mac() ? ImGui::IsKeyDown(ImGuiMod_Super) : ImGui::IsKeyDown(ImGuiMod_Ctrl),
         .is_shift_down = ImGui::IsKeyDown(ImGuiMod_Shift),
     };
 

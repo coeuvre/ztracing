@@ -7,6 +7,7 @@
 
 #include "src/allocator.h"
 #include "src/logging.h"
+#include "src/platform.h"
 
 EM_JS(bool, js_is_software_renderer, (), {
   var canvas = document.createElement('canvas');
@@ -259,14 +260,14 @@ static void release_all_non_modifier_keys() {
 }
 
 static bool is_browser_control_shortcut(ImGuiKey key, const EmscriptenKeyboardEvent* key_event) {
-  bool has_cmd_or_ctrl = key_event->metaKey || key_event->ctrlKey;
-
   // Function keys F5, F11, F12 are always browser control
   if (key == ImGuiKey_F5 || key == ImGuiKey_F11 || key == ImGuiKey_F12) {
     return true;
   }
 
-  if (has_cmd_or_ctrl) {
+  bool has_shortcut_modifier = platform_is_mac() ? key_event->metaKey : key_event->ctrlKey;
+
+  if (has_shortcut_modifier) {
     // Exclude standard browser shortcuts
     if (key == ImGuiKey_R || key == ImGuiKey_W || key == ImGuiKey_T ||
         key == ImGuiKey_N || key == ImGuiKey_L || key == ImGuiKey_Q ||
@@ -462,6 +463,10 @@ bool imgui_impl_wasm_init(const char* canvas_selector, Allocator allocator) {
 
   emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, (void*)bd,
                                  EM_FALSE, on_resize);
+
+  if (platform_is_mac()) {
+    io.ConfigMacOSXBehaviors = true;
+  }
 
   update_canvas_size(bd);
 

@@ -58,6 +58,7 @@
 - `src/imgui_impl_wasm`: Handles browser event loops and input mapping via `emscripten/html5.h`.
     - **Keyboard Mapping & Stuck Keys Prevention**: Implements a custom mapping from browser `KeyboardEvent.code` to `ImGuiKey` (including meta/modifier keys). Resolves macOS/browser modifier-linked `keyup` swallowing by automatically triggering `release_all_non_modifier_keys()` to release active keys when shortcut modifiers (`Ctrl`, `Alt`, `Super/Command`) are released. Additionally registers a window blur handler via `emscripten_set_blur_callback` to invoke `ClearInputKeys()` and instantly reset key states on focus loss.
     - **Precise Passthrough**: Employs a context-aware filter `imgui_wants_key()` to determine when to consume keyboard inputs (returning `EM_TRUE`/`preventDefault`) vs allowing them to bubble to the browser (`EM_FALSE`). Printable text, editing hotkeys, and standard clipboard actions are cleanly intercepted only when a text field is active (`io.WantTextInput`), and custom app shortcuts like `Cmd+F` or `?` cheatsheet are captured. Meanwhile, native browser controls (like F5, F11, F12, Cmd+R, Cmd+W, Cmd+T, etc.) are transparently bypassed to allow native browser operations.
+    - **macOS Platform Support**: Dynamically detects macOS platform and enables `io.ConfigMacOSXBehaviors = true` in Dear ImGui to use native Mac keyboard shortcuts, word-by-word text navigation, and editing. Filters browser native navigation shortcuts (Reload, Close, etc.) using `metaKey` on Mac and `ctrlKey` on other platforms to allow standard browser shortcuts to function properly.
     - **Software Renderer Detection**: Automatically detects software rendering paths (SwiftShader, llvmpipe) via the `WEBGL_debug_renderer_info` extension.
     - **HiDPI Optimization**: Disables HiDPI scaling (forces 1.0x) when a software renderer is detected. This reduces the number of pixels processed by the CPU by 4x on 2x DPI displays, drastically lowering "Commit" latency.
 - `src/ztracing.js`: JavaScript side of the WASM/Web interop for file streaming and drag-and-drop. Handles the orchestration of font loading and trace data streaming.
@@ -174,7 +175,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Ruler Height**: Dynamically matches the menu bar height using `ImGui::GetFrameHeight()`.
     - **Counter Height**: Counter tracks have a fixed height equivalent to 3 lanes.
 - **Navigation**: 
-    - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor. Requires modern ImGui modifier checks (`ImGui::IsKeyDown`).
+    - **Zoom**: `Ctrl + MouseWheel` to zoom in/out horizontally around the mouse cursor. On macOS, because Dear ImGui automatically swaps `Ctrl` and `Super`/`Command` internally under Mac behaviors, the zoom logic queries the physical `Control` key directly (using a platform-conditional check: checking `ImGuiMod_Super` on macOS and `ImGuiMod_Ctrl` on other platforms) to ensure the zoom modifier is always physically mapped to the `Control` key regardless of platform.
         - **Max Zoom-out**: Limited to 1.2x the trace's total duration.
         - **Min Zoom-in**: Limited to 1000us (1ms).
     - **Pan (Horizontal)**: `Shift + MouseWheel` or horizontal scroll wheel.

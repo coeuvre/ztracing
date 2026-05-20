@@ -10,3 +10,8 @@ EM_JS(bool, platform_is_dark_mode, (), {
              ? 1
              : 0;
 });
+
+EM_JS(bool, platform_is_mac, (), {
+  return /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent || navigator.platform || "");
+});
+

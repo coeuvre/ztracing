@@ -188,7 +188,8 @@ void app_update(App* app) {
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Tools")) {
-      if (ImGui::MenuItem("Search Events", "Ctrl+F")) {
+      const char* search_shortcut = platform_is_mac() ? "Cmd+F" : "Ctrl+F";
+      if (ImGui::MenuItem("Search Events", search_shortcut)) {
         app->trace_viewer.show_details_panel = true;
         app->trace_viewer.focus_search_input = true;
       }
@@ -312,11 +313,13 @@ void app_update(App* app) {
       float gap = 40.0f;
       float col_w = (width - gap) * 0.5f;
 
+      bool is_mac = platform_is_mac();
+
       // Left Column
       ImGui::BeginChild("LeftCol", ImVec2(col_w, 0), false, ImGuiWindowFlags_NoScrollbar);
       add_section("GENERAL", [&]() {
         add_row("Toggle Shortcuts", "?");
-        add_row("Search Events", "Ctrl + F");
+        add_row("Search Events", is_mac ? "Cmd + F" : "Ctrl + F");
         add_row("Toggle Details", "Menu > View");
         add_row("Metrics / Debug", "Menu > Tools");
       });

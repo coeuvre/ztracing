@@ -12,3 +12,12 @@ double platform_get_now() {
 bool platform_is_dark_mode() {
   return true;  // Default to dark mode for native
 }
+
+bool platform_is_mac() {
+#ifdef __APPLE__
+  return true;
+#else
+  return false;
+#endif
+}
+

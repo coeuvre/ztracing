@@ -99,6 +99,7 @@ cc_library(
     deps = [
         ":allocator",
         ":logging",
+        ":platform",
         "@imgui",
     ],
 )
