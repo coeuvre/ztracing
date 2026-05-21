@@ -241,7 +241,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
 - **Theming**:
     - **Theme Struct**: A centralized `Theme` struct in `src/colors.h` holds all UI colors, including backgrounds, ruler elements, and event palettes.
     - **Dark Theme**: Muted, professional palette with dark grey tracks and solid black background (rendered within the canvas). White 1px selection borders.
-    - **Light Theme**: Based on "MRS. L'S CLASSROOM" palette with brightened green/teal for optimal legibility of black text. Black 1px selection borders.
+    - **Light Theme**: A premium, high-contrast design featuring clean, crisp white track backgrounds (`#FFFFFF`) against a very soft slate-white viewport background (`#F9FAFB`). Uses highly legible dark slate text, subtle transparent event borders, and a hand-picked, modern, professional pastel palette (Lavender-Blue, Mint-Green, Amber-Gold, Rose-Pink, Purple-Amethyst, Cyan-Teal, Peach-Orange, Slate-Grey) optimized for visual clarity and unified ImGui integration. Selection uses high-contrast slate-900 borders (`#0F172A`), and focus states use electric blue highlights.
     - **Dynamic Switching**: Themes can be toggled via the global menu bar, automatically updating both application-specific colors and ImGui's built-in styles.
     - **Color Updates**: Switching themes triggers a full re-computation of counter track series colors (`track_update_colors`) to maintain visual consistency.
     - **Auto Mode (Default)**: Tracks the system's preferred color scheme.
