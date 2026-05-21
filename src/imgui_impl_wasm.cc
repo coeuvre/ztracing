@@ -535,11 +535,6 @@ void imgui_impl_wasm_new_frame() {
   BackendData* bd = get_backend_data();
   ImGuiIO& io = ImGui::GetIO();
 
-  // Auto-release stuck non-modifier keys at the start of the new frame if a modifier is active
-  if (io.KeyCtrl || io.KeySuper || io.KeyAlt) {
-    release_all_non_modifier_keys();
-  }
-
   if (bd->frames_to_render > 0) {
     bd->frames_to_render--;
   }
