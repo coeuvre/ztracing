@@ -117,7 +117,7 @@
 - **Client-Side Solution (Service Worker)**: For deployment on platforms that do not support custom headers (like GitHub Pages), the project includes `src/coi-serviceworker.js`. This service worker intercepts requests and injects the necessary `COOP` and `COEP` headers. It reloads the page once on the first visit to establish the isolated environment.
 - **Local Development**: 
     - When using `python3 -m http.server`, the Service Worker will handle the headers automatically.
-    - A standard HTTP server script (`tools/serve.py`) is also provided which serves the project artifacts without any custom headers, relying on the Service Worker for environment isolation.
+    - A standard HTTP server script (`tools/serve.py`) is also provided which serves the project artifacts with the correct COOP and COEP headers, avoiding the need for the Service Worker during local development.
 
 ## Startup Optimization
 
