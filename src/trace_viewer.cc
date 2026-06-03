@@ -1138,6 +1138,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
     vi.height = (t.type == TRACK_TYPE_COUNTER)
                              ? counter_track_height
                              : (float)(t.max_depth + 2) * input.lane_height;
+    vi.y_rel = tv->total_tracks_height;
     vi.y = input.canvas_y + input.ruler_height + tv->total_tracks_height - input.tracks_scroll_y;
 
     if (tv->request_scroll_to_focused_event) {
@@ -1401,25 +1402,94 @@ static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewe
   float minimap_y = input.viewport_y + input.ruler_height;
   float visible_h = input.viewport_height - input.ruler_height;
   float total_h = tv->total_tracks_height;
+  
+  float lane_height = input.lane_height;
+  float scale = VERTICAL_MINIMAP_LANE_HEIGHT / (lane_height > 0.0f ? lane_height : 1.0f);
+  
+  float minimap_content_h = total_h * scale;
+  float minimap_draw_h = std::min(minimap_content_h, visible_h);
+
+  float scroll_y = input.tracks_scroll_y;
+
+  // Calculate current minimap scroll based on current main scroll
+  float minimap_scroll_y = 0.0f;
+  if (minimap_content_h > visible_h && total_h > visible_h) {
+    float pct = scroll_y / (total_h - visible_h);
+    minimap_scroll_y = pct * (minimap_content_h - visible_h);
+  }
 
   // Interaction Logic (Mouse Hit-testing & Drag state)
   bool is_hovered = total_h > 0 &&
                     input.mouse_x >= minimap_x && input.mouse_x <= minimap_x + VERTICAL_MINIMAP_WIDTH &&
-                    input.mouse_y >= minimap_y && input.mouse_y <= minimap_y + visible_h;
+                    input.mouse_y >= minimap_y && input.mouse_y <= minimap_y + minimap_draw_h;
+
+  bool inside_slider = false;
+  if (tv->vertical_minimap.layout.active) {
+    inside_slider = input.mouse_y >= tv->vertical_minimap.layout.slider_y1 &&
+                    input.mouse_y <= tv->vertical_minimap.layout.slider_y2;
+  }
+
+  bool jump_clicked = false;
 
   if (is_hovered && input.is_mouse_clicked) {
     tv->vertical_minimap.is_dragging = true;
+    
+    if (inside_slider) {
+      // Clicked on slider: start dragging directly, capture offset immediately
+      tv->vertical_minimap.drag_offset_y = input.mouse_y - tv->vertical_minimap.layout.slider_y1;
+    } else {
+      // Clicked outside slider: jump to track
+      jump_clicked = true;
+      if (total_h > visible_h) {
+        float mouse_y_rel = input.mouse_y - minimap_y;
+        float y_content = mouse_y_rel + minimap_scroll_y;
+        float y_content_main = y_content / scale;
+
+        size_t clicked_track_idx = (size_t)-1;
+        for (size_t i = 0; i < tv->tracks.size; i++) {
+          const TrackViewInfo& vi = tv->track_infos[i];
+          if (y_content_main >= vi.y_rel && y_content_main < vi.y_rel + vi.height) {
+            clicked_track_idx = i;
+            break;
+          }
+        }
+
+        if (clicked_track_idx != (size_t)-1) {
+          const TrackViewInfo& vi = tv->track_infos[clicked_track_idx];
+          float target_scroll = vi.y_rel - (visible_h - vi.height) * 0.5f;
+          tv->target_scroll_y = std::clamp(target_scroll, 0.0f, total_h - visible_h);
+        }
+      }
+      // Set sentinel to calculate offset in next frame after scroll applies
+      tv->vertical_minimap.drag_offset_y = -1.0f;
+    }
   }
+  
   if (!input.is_mouse_down) {
     tv->vertical_minimap.is_dragging = false;
   }
 
-  if (tv->vertical_minimap.is_dragging && total_h > visible_h) {
-    float mouse_y_rel = input.mouse_y - minimap_y;
-    float target_pct = mouse_y_rel / visible_h;
-    // Center viewport on mouse
-    float target_scroll_y = (target_pct * total_h) - (visible_h * 0.5f);
-    tv->target_scroll_y = std::max(0.0f, std::min(target_scroll_y, total_h - visible_h));
+  // Calculate slider height (fixed ratio of viewport to total height, scaled)
+  float slider_h = visible_h * scale;
+  slider_h = std::clamp(slider_h, 10.0f, minimap_draw_h);
+
+  if (tv->vertical_minimap.is_dragging && !jump_clicked && total_h > visible_h) {
+    float current_slider_y1 = minimap_y + scroll_y * scale - minimap_scroll_y;
+    
+    if (tv->vertical_minimap.drag_offset_y == -1.0f) {
+      // Capture offset in the first frame after a jump-click
+      tv->vertical_minimap.drag_offset_y = input.mouse_y - current_slider_y1;
+    }
+
+    float mouse_y_rel = std::clamp(input.mouse_y - minimap_y, 0.0f, minimap_draw_h);
+    float slider_y1_target = mouse_y_rel - tv->vertical_minimap.drag_offset_y;
+    float max_slider_y = minimap_draw_h - slider_h;
+    
+    float pct = 0.0f;
+    if (max_slider_y > 0.0f) {
+      pct = std::clamp(slider_y1_target / max_slider_y, 0.0f, 1.0f);
+    }
+    tv->target_scroll_y = pct * (total_h - visible_h);
   }
 
   // Layout Projections
@@ -1428,30 +1498,21 @@ static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewe
   layout.x = minimap_x;
   layout.y = minimap_y;
   layout.width = VERTICAL_MINIMAP_WIDTH;
-  layout.height = visible_h;
+  layout.height = minimap_draw_h;
   layout.is_hovered = is_hovered;
+  layout.minimap_scroll_y = minimap_scroll_y;
 
   if (total_h > 0) {
-    layout.scale_y = total_h > visible_h ? (visible_h / total_h) : 1.0f;
-
-    float scroll_y = input.tracks_scroll_y;
-    float slider_y1 = minimap_y + scroll_y * layout.scale_y;
-    float slider_y2 = slider_y1 + visible_h * layout.scale_y;
-
-    // Clamp slider bounds
-    if (slider_y2 > minimap_y + visible_h) {
-      slider_y2 = minimap_y + visible_h;
-    }
-    if (slider_y1 < minimap_y) {
-      slider_y1 = minimap_y;
-    }
+    float slider_y1 = minimap_y + scroll_y * scale - minimap_scroll_y;
+    // Clamp slider bounds to maintain fixed height
+    slider_y1 = std::clamp(slider_y1, minimap_y, minimap_y + minimap_draw_h - slider_h);
+    float slider_y2 = slider_y1 + slider_h;
 
     layout.slider_y1 = slider_y1;
     layout.slider_y2 = slider_y2;
   } else {
-    layout.scale_y = 1.0f;
     layout.slider_y1 = minimap_y;
-    layout.slider_y2 = minimap_y + visible_h;
+    layout.slider_y2 = minimap_y + minimap_draw_h;
   }
 }
 
@@ -1468,67 +1529,72 @@ static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv, const Trac
   draw_list->AddLine(minimap_pos, ImVec2(minimap_pos.x, minimap_pos.y + minimap_size.y),
                      theme.track_separator);
 
+  float scale = VERTICAL_MINIMAP_LANE_HEIGHT / (tv->last_lane_height > 0.0f ? tv->last_lane_height : 1.0f);
+
   // 1. Draw 2D micro track heat blocks
-  float current_y = 0.0f;
   float cell_w = (minimap_size.x - 2.0f) / TrackHeatmap::BUCKET_COUNT;
+  float minimap_scroll_y = layout.minimap_scroll_y;
 
   for (size_t i = 0; i < tv->tracks.size; i++) {
     const TrackViewInfo& vi = tv->track_infos[i];
-    float draw_y1 = minimap_pos.y + current_y * layout.scale_y;
-    float draw_y2 = draw_y1 + vi.height * layout.scale_y;
+    // Offset by header height in minimap (1 lane = VERTICAL_MINIMAP_LANE_HEIGHT)
+    float draw_y1 = minimap_pos.y + vi.y_rel * scale - minimap_scroll_y + VERTICAL_MINIMAP_LANE_HEIGHT;
+    float draw_y2 = minimap_pos.y + (vi.y_rel + vi.height) * scale - minimap_scroll_y;
 
-    // Guarantee a minimum visual height of 1.0px to prevent WebGL sub-pixel culling
-    if (draw_y2 < draw_y1 + 1.0f) {
-      draw_y2 = draw_y1 + 1.0f;
+    // Culling (use full track bounds for culling)
+    float full_draw_y1 = minimap_pos.y + vi.y_rel * scale - minimap_scroll_y;
+    if (draw_y2 <= minimap_pos.y || full_draw_y1 >= minimap_pos.y + minimap_size.y) {
+      continue;
     }
 
-    const TrackHeatmap& h = tv->vertical_minimap.track_heatmap_densities[i];
+    if (draw_y1 < draw_y2) {
+      const TrackHeatmap& h = tv->vertical_minimap.track_heatmap_densities[i];
 
-    // Render the 16 horizontal time slices with consecutive bucket coalescing
-    int start_b = -1;
-    ImU32 active_col = 0;
+      // Render the 16 horizontal time slices with consecutive bucket coalescing
+      int start_b = -1;
+      ImU32 active_col = 0;
 
-    for (int b = 0; b < TrackHeatmap::BUCKET_COUNT; b++) {
-      size_t event_idx = h.event_indices[b];
-      ImU32 cell_col = (event_idx != (size_t)-1) ? td->events[event_idx].color : 0;
+      for (int b = 0; b < TrackHeatmap::BUCKET_COUNT; b++) {
+        size_t event_idx = h.event_indices[b];
+        ImU32 cell_col = (event_idx != (size_t)-1) ? td->events[event_idx].color : 0;
 
-      if (cell_col == active_col) {
-        continue;
+        if (cell_col == active_col) {
+          continue;
+        }
+
+        // Flush previous coalesced block
+        if (active_col != 0 && start_b != -1) {
+          float cell_x1 = minimap_pos.x + 1.0f + (float)start_b * cell_w;
+          float cell_x2 = minimap_pos.x + 1.0f + (float)b * cell_w;
+          draw_list->AddRectFilled(ImVec2(cell_x1, draw_y1), ImVec2(cell_x2, draw_y2), active_col);
+        }
+
+        // Start new block
+        active_col = cell_col;
+        start_b = (cell_col != 0) ? b : -1;
       }
 
-      // Flush previous coalesced block
+      // Final flush
       if (active_col != 0 && start_b != -1) {
         float cell_x1 = minimap_pos.x + 1.0f + (float)start_b * cell_w;
-        float cell_x2 = minimap_pos.x + 1.0f + (float)b * cell_w;
+        float cell_x2 = minimap_pos.x + 1.0f + (float)TrackHeatmap::BUCKET_COUNT * cell_w;
         draw_list->AddRectFilled(ImVec2(cell_x1, draw_y1), ImVec2(cell_x2, draw_y2), active_col);
       }
-
-      // Start new block
-      active_col = cell_col;
-      start_b = (cell_col != 0) ? b : -1;
     }
-
-    // Final flush
-    if (active_col != 0 && start_b != -1) {
-      float cell_x1 = minimap_pos.x + 1.0f + (float)start_b * cell_w;
-      float cell_x2 = minimap_pos.x + 1.0f + (float)TrackHeatmap::BUCKET_COUNT * cell_w;
-      draw_list->AddRectFilled(ImVec2(cell_x1, draw_y1), ImVec2(cell_x2, draw_y2), active_col);
-    }
-
-    current_y += vi.height;
   }
 
   // 2. Draw search/selection hotspot ticks
-  current_y = 0.0f;
   for (size_t i = 0; i < tv->tracks.size; i++) {
-    const TrackViewInfo& vi = tv->track_infos[i];
     if (i < tv->vertical_minimap.track_has_selected.size && tv->vertical_minimap.track_has_selected[i]) {
-      float draw_y = minimap_pos.y + (current_y + vi.height * 0.5f) * layout.scale_y;
-      draw_list->AddLine(ImVec2(minimap_pos.x + 1.0f, draw_y),
-                         ImVec2(minimap_pos.x + minimap_size.x, draw_y),
-                         theme.timeline_selection_line, 1.5f);
+      const TrackViewInfo& vi = tv->track_infos[i];
+      // Center on content area (excluding header)
+      float draw_y = minimap_pos.y + (vi.y_rel + (vi.height + tv->last_lane_height) * 0.5f) * scale - minimap_scroll_y;
+      if (draw_y >= minimap_pos.y && draw_y <= minimap_pos.y + minimap_size.y) {
+        draw_list->AddLine(ImVec2(minimap_pos.x + 1.0f, draw_y),
+                           ImVec2(minimap_pos.x + minimap_size.x, draw_y),
+                           theme.timeline_selection_line, 1.5f);
+      }
     }
-    current_y += vi.height;
   }
 
   // 3. Draw viewport bracket/slider

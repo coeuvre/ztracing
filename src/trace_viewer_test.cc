@@ -1721,7 +1721,7 @@ TEST_F(TraceViewerTest, SearchFilteringWithOptions) {
 }
 
 TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
-    // 1. Add enough tracks to exceed viewport height
+    // 1. Add enough tracks, but not exceeding viewport minimap height capability
     for (int i = 0; i < 10; i++) {
         Track t = {};
         t.type = TRACK_TYPE_THREAD;
@@ -1737,6 +1737,7 @@ TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
 
     // 10 tracks * 40px = 400px total track height
     // Viewport height = 200px, content height = 200 - 20 (ruler) = 180px
+    // Minimap content height = 400px * (1 / 20) = 20px (fits in 180px)
     TraceViewerInput input = {};
     input.canvas_x = 0.0f;
     input.canvas_y = 0.0f;
@@ -1755,46 +1756,148 @@ TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
 
     float expected_minimap_x = 1000.0f - VERTICAL_MINIMAP_WIDTH;
     float expected_minimap_y = 20.0f; // ruler_height
-    float expected_visible_h = 180.0f;
-    float expected_total_h = 400.0f; // 10 tracks * 40px each
+    float expected_minimap_h = 20.0f; // 10 tracks * 40px * 0.05
 
     const VerticalMinimapLayout& layout = tv.vertical_minimap.layout;
     EXPECT_TRUE(layout.active);
     EXPECT_FLOAT_EQ(layout.x, expected_minimap_x);
     EXPECT_FLOAT_EQ(layout.y, expected_minimap_y);
     EXPECT_FLOAT_EQ(layout.width, VERTICAL_MINIMAP_WIDTH);
-    EXPECT_FLOAT_EQ(layout.height, expected_visible_h);
-    EXPECT_FLOAT_EQ(layout.scale_y, expected_visible_h / expected_total_h); // 180 / 400 = 0.45
+    EXPECT_FLOAT_EQ(layout.height, expected_minimap_h);
+    EXPECT_FLOAT_EQ(layout.minimap_scroll_y, 0.0f);
     EXPECT_FALSE(layout.is_hovered);
     EXPECT_FALSE(tv.vertical_minimap.is_dragging);
 
-    // 2. Test Hover State
+    // 2. Test Hover State (within active area)
     input.mouse_x = expected_minimap_x + 5.0f;
-    input.mouse_y = expected_minimap_y + 50.0f;
+    input.mouse_y = expected_minimap_y + 15.0f; // 15px is within 20px
     trace_viewer_step(&tv, &td, input, allocator);
     EXPECT_TRUE(tv.vertical_minimap.layout.is_hovered);
 
-    // 3. Test Click / Press (Trigger Dragging)
+    // Test Hover State (outside active area but within viewport)
+    input.mouse_y = expected_minimap_y + 50.0f; // 50px is outside 20px
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_FALSE(tv.vertical_minimap.layout.is_hovered);
+
+    // Reset mouse to active area for next tests
+    input.mouse_y = expected_minimap_y + 15.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_TRUE(tv.vertical_minimap.layout.is_hovered);
+
+    // 3. Test Click / Press (Trigger Jump)
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    input.mouse_y = expected_minimap_y + 15.0f; // Click at 15px (Track 7)
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_TRUE(tv.vertical_minimap.is_dragging);
+    // Should jump to center Track 7: 280 - (180 - 40)*0.5 = 210
+    EXPECT_NEAR(tv.target_scroll_y, 210.0f, 0.5f);
+
+    // 4. Simulate scroll update and transition to drag (mouse still at 15px)
+    input.is_mouse_clicked = false;
+    input.tracks_scroll_y = tv.target_scroll_y; // 210.0f
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_TRUE(tv.vertical_minimap.is_dragging);
+    // drag_offset_y should be captured as: mouse_y (35) - slider_y1 (20 + 210*0.05 - 0 = 30.5) = 4.5
+    EXPECT_FLOAT_EQ(tv.vertical_minimap.drag_offset_y, 4.5f);
+
+    // 5. Test Drag Scrolling (Move mouse to 10px)
+    input.mouse_y = expected_minimap_y + 10.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_TRUE(tv.vertical_minimap.is_dragging);
+    // slider_y1_target = 10 - 4.5 = 5.5
+    // pct = 5.5 / 10 = 0.55
+    // target_scroll_y = 0.55 * 220 = 121
+    EXPECT_NEAR(tv.target_scroll_y, 121.0f, 0.5f);
+
+    // 6. Test Release
+    input.is_mouse_down = false;
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_FALSE(tv.vertical_minimap.is_dragging);
+}
+
+TEST_F(TraceViewerTest, VerticalMinimapScrollingLayoutAndDragScroll) {
+    // 1. Add enough tracks to exceed viewport minimap height capability
+    for (int i = 0; i < 100; i++) {
+        Track t = {};
+        t.type = TRACK_TYPE_THREAD;
+        t.tid = i;
+        t.max_depth = 0; // 40px height per track
+        array_list_push_back(&tv.tracks, allocator, t);
+    }
+
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 10000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 10000;
+
+    // 100 tracks * 40px = 4000px total track height
+    // Viewport height = 200px, content height = 180px
+    // Minimap content height = 4000px * (1 / 20) = 200px (exceeds 180px)
+    TraceViewerInput input = {};
+    input.canvas_x = 0.0f;
+    input.canvas_y = 0.0f;
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 200.0f;
+    input.viewport_x = 0.0f;
+    input.viewport_y = 0.0f;
+    input.viewport_width = 1000.0f;
+    input.viewport_height = 200.0f;
+    input.ruler_height = 20.0f;
+    input.lane_height = 20.0f;
+    input.tracks_scroll_y = 0.0f;
+
+    // Step once to compute layout at scroll = 0
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    float expected_minimap_x = 1000.0f - VERTICAL_MINIMAP_WIDTH;
+    float expected_minimap_y = 20.0f; // ruler_height
+    float expected_visible_h = 180.0f;
+
+    const VerticalMinimapLayout& layout = tv.vertical_minimap.layout;
+    EXPECT_TRUE(layout.active);
+    EXPECT_FLOAT_EQ(layout.x, expected_minimap_x);
+    EXPECT_FLOAT_EQ(layout.y, expected_minimap_y);
+    EXPECT_FLOAT_EQ(layout.width, VERTICAL_MINIMAP_WIDTH);
+    EXPECT_FLOAT_EQ(layout.height, expected_visible_h); // Fills viewport
+    EXPECT_FLOAT_EQ(layout.minimap_scroll_y, 0.0f);
+
+    // Step with scroll at max
+    float max_scroll = 100.0f * 40.0f - expected_visible_h; // 4000 - 180 = 3820
+    input.tracks_scroll_y = max_scroll;
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_FLOAT_EQ(layout.minimap_scroll_y, 200.0f - expected_visible_h); // 200 - 180 = 20
+
+    // Test Drag Scrolling from scroll = 0
+    input.tracks_scroll_y = 0.0f;
+    trace_viewer_step(&tv, &td, input, allocator); // Reset layout state to scroll 0
+    
+    // 1. Click at 90px (Track 45)
+    input.mouse_x = expected_minimap_x + 5.0f;
+    input.mouse_y = expected_minimap_y + 90.0f; // Middle of viewport
     input.is_mouse_clicked = true;
     input.is_mouse_down = true;
     trace_viewer_step(&tv, &td, input, allocator);
     EXPECT_TRUE(tv.vertical_minimap.is_dragging);
+    // Should jump to center Track 45: 45 * 40 - (180 - 40)*0.5 = 1730
+    EXPECT_NEAR(tv.target_scroll_y, 1730.0f, 0.5f);
 
-    // 4. Test Drag Scrolling
-    // Move mouse relative to minimap top: mouse_y_rel = 100px
-    // pct = 100 / 180 = 0.5555
-    // target_scroll_y = (0.5555 * 400) - (180 * 0.5) = 222.22 - 90 = 132.22px
+    // 2. Simulate scroll update and transition to drag (mouse still at 90px)
     input.is_mouse_clicked = false;
-    input.mouse_y = expected_minimap_y + 100.0f;
+    input.tracks_scroll_y = tv.target_scroll_y; // 1730.0f
     trace_viewer_step(&tv, &td, input, allocator);
-    
     EXPECT_TRUE(tv.vertical_minimap.is_dragging);
-    EXPECT_NEAR(tv.target_scroll_y, 132.22f, 0.5f);
+    // drag_offset_y should be captured: 110 - (20 + 1730*0.05 - 9.0576) = 110 - 97.4424 = 12.5576
+    EXPECT_NEAR(tv.vertical_minimap.drag_offset_y, 12.5576f, 0.01f);
 
-    // 5. Test Release
-    input.is_mouse_down = false;
+    // 3. Test Drag Scrolling (Move mouse to 80px relative)
+    input.mouse_y = expected_minimap_y + 80.0f;
     trace_viewer_step(&tv, &td, input, allocator);
-    EXPECT_FALSE(tv.vertical_minimap.is_dragging);
+    EXPECT_TRUE(tv.vertical_minimap.is_dragging);
+    // slider_y1_target = 80 - 12.5576 = 67.4424
+    // pct = 67.4424 / 170 = 0.39672
+    // target_scroll_y = 0.39672 * 3820 = 1515.47
+    EXPECT_NEAR(tv.target_scroll_y, 1515.47f, 0.5f);
 }
 
 TEST_F(TraceViewerTest, VerticalMinimap2DHeatmap) {
@@ -1885,6 +1988,191 @@ TEST_F(TraceViewerTest, VerticalMinimapHeatmapZeroDuration) {
         EXPECT_EQ(h0.event_indices[b], (size_t)-1);
     }
 }
+
+TEST_F(TraceViewerTest, VerticalMinimapSliderFixedSizeAndBoundaryAlignment) {
+    // Setup 100 tracks to exceed viewport (4000px total height)
+    for (int i = 0; i < 100; i++) {
+        Track t = {};
+        t.type = TRACK_TYPE_THREAD;
+        t.tid = i;
+        t.max_depth = 0; // 40px height per track
+        array_list_push_back(&tv.tracks, allocator, t);
+    }
+
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 10000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 10000;
+
+    TraceViewerInput input = {};
+    input.canvas_x = 0.0f;
+    input.canvas_y = 0.0f;
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 200.0f;
+    input.viewport_x = 0.0f;
+    input.viewport_y = 0.0f;
+    input.viewport_width = 1000.0f;
+    input.viewport_height = 200.0f;
+    input.ruler_height = 20.0f;
+    input.lane_height = 20.0f;
+    input.tracks_scroll_y = 0.0f;
+
+    float expected_minimap_x = 1000.0f - VERTICAL_MINIMAP_WIDTH;
+    float expected_minimap_y = 20.0f; // ruler_height
+    float expected_visible_h = 180.0f;
+    float max_scroll = 100.0f * 40.0f - expected_visible_h; // 3820
+
+    // 1. Verify fixed slider height at different scroll positions
+    trace_viewer_step(&tv, &td, input, allocator);
+    const VerticalMinimapLayout& layout = tv.vertical_minimap.layout;
+    float h0 = layout.slider_y2 - layout.slider_y1;
+    EXPECT_FLOAT_EQ(h0, 10.0f); // 180 * 0.05 = 9.0f, clamped to 10.0f
+
+    input.tracks_scroll_y = 1000.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+    float h1 = layout.slider_y2 - layout.slider_y1;
+    EXPECT_FLOAT_EQ(h0, h1);
+
+    input.tracks_scroll_y = max_scroll;
+    trace_viewer_step(&tv, &td, input, allocator);
+    float h2 = layout.slider_y2 - layout.slider_y1;
+    EXPECT_FLOAT_EQ(h0, h2);
+
+    // 2. Test Boundary Alignment
+    // Start drag at scroll = 1000
+    input.tracks_scroll_y = 1000.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+    
+    // Click on slider center to start drag
+    input.mouse_x = expected_minimap_x + 5.0f;
+    // slider_y1 at scroll 1000: 20 + 1000*0.05 - 1000/3820*20 = 20 + 50 - 5.2356 = 64.7644
+    // slider center: 64.7644 + 5 = 69.7644
+    input.mouse_y = expected_minimap_y + 49.7644f; 
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_TRUE(tv.vertical_minimap.is_dragging);
+    EXPECT_NEAR(tv.vertical_minimap.drag_offset_y, 5.0f, 0.001f); // Centered
+
+    // Drag to top boundary (minimap_y = 20)
+    input.is_mouse_clicked = false;
+    input.mouse_y = expected_minimap_y; // 20.0f
+    trace_viewer_step(&tv, &td, input, allocator);
+    // slider_y1_target = 0 - 5 = -5
+    // pct clamped to 0
+    EXPECT_FLOAT_EQ(tv.target_scroll_y, 0.0f);
+
+    // Drag to bottom boundary (minimap_y + minimap_draw_h = 200)
+    input.mouse_y = expected_minimap_y + expected_visible_h; // 200.0f
+    trace_viewer_step(&tv, &td, input, allocator);
+    // slider_y1_target = 180 - 5 = 175
+    // max_slider_y = 170
+    // pct clamped to 1.0
+    EXPECT_FLOAT_EQ(tv.target_scroll_y, max_scroll);
+
+    // 3. Test Monotonicity
+    // Drag mouse down in steps and verify target_scroll_y increases strictly
+    float last_scroll = -1.0f;
+    for (float my = 40.0f; my <= 160.0f; my += 20.0f) {
+        input.mouse_y = expected_minimap_y + my;
+        trace_viewer_step(&tv, &td, input, allocator);
+        EXPECT_GT(tv.target_scroll_y, last_scroll);
+        last_scroll = tv.target_scroll_y;
+    }
+}
+
+TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
+    // Setup 10 tracks (400px total height, fits in 180px minimap viewport with scale 0.05)
+    for (int i = 0; i < 10; i++) {
+        Track t = {};
+        t.type = TRACK_TYPE_THREAD;
+        t.tid = i;
+        t.max_depth = 0; // 40px height per track
+        array_list_push_back(&tv.tracks, allocator, t);
+    }
+
+    tv.viewport.min_ts = 0;
+    tv.viewport.max_ts = 10000;
+    tv.viewport.start_time = 0;
+    tv.viewport.end_time = 10000;
+
+    TraceViewerInput input = {};
+    input.canvas_x = 0.0f;
+    input.canvas_y = 0.0f;
+    input.canvas_width = 1000.0f;
+    input.canvas_height = 200.0f;
+    input.viewport_x = 0.0f;
+    input.viewport_y = 0.0f;
+    input.viewport_width = 1000.0f;
+    input.viewport_height = 200.0f;
+    input.ruler_height = 20.0f;
+    input.lane_height = 20.0f;
+    input.tracks_scroll_y = 0.0f;
+
+    float expected_minimap_x = 1000.0f - VERTICAL_MINIMAP_WIDTH;
+    float expected_minimap_y = 20.0f; // ruler_height
+
+    // Initial step to populate layout
+    trace_viewer_step(&tv, &td, input, allocator);
+    // Slider is [20.0f, 30.0f] (since scroll = 0, slider_h = 10.0f)
+
+    // --- Case 1: Click Inside Slider ---
+    tv.target_scroll_y = -999.0f; // Set to sentinel to check if it changes
+    input.mouse_x = expected_minimap_x + 5.0f;
+    input.mouse_y = expected_minimap_y + 5.0f; // 25.0f (inside [20, 30])
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    trace_viewer_step(&tv, &td, input, allocator);
+    
+    EXPECT_TRUE(tv.vertical_minimap.is_dragging);
+    EXPECT_FLOAT_EQ(tv.vertical_minimap.drag_offset_y, 5.0f); // 25 - 20
+    EXPECT_FLOAT_EQ(tv.target_scroll_y, 0.0f); // No jump (calculates to current scroll 0)
+
+    // Drag down by 3px (mouse to 28.0f)
+    input.is_mouse_clicked = false;
+    input.mouse_y = expected_minimap_y + 8.0f; // 28.0f
+    trace_viewer_step(&tv, &td, input, allocator);
+    // slider_y1_target = 8 - 5 = 3
+    // pct = 3 / 10 = 0.3
+    // target_scroll_y = 0.3 * (400 - 180) = 66
+    EXPECT_NEAR(tv.target_scroll_y, 66.0f, 0.5f);
+
+    // Release
+    input.is_mouse_down = false;
+    trace_viewer_step(&tv, &td, input, allocator);
+    EXPECT_FALSE(tv.vertical_minimap.is_dragging);
+
+    // --- Case 2: Click Outside Slider (Jump) ---
+    // Reset scroll to 0
+    input.tracks_scroll_y = 0.0f;
+    trace_viewer_step(&tv, &td, input, allocator); 
+
+    input.mouse_y = expected_minimap_y + 15.0f; // 35.0f (outside [20, 30], Track 7)
+    input.is_mouse_clicked = true;
+    input.is_mouse_down = true;
+    trace_viewer_step(&tv, &td, input, allocator);
+
+    EXPECT_TRUE(tv.vertical_minimap.is_dragging);
+    // Should jump to center Track 7 (300px): 280 - (180 - 40)*0.5 = 210
+    EXPECT_NEAR(tv.target_scroll_y, 210.0f, 0.5f);
+    EXPECT_FLOAT_EQ(tv.vertical_minimap.drag_offset_y, -1.0f); // Sentinel set
+
+    // Simulate scroll update in next frame
+    input.is_mouse_clicked = false;
+    input.tracks_scroll_y = tv.target_scroll_y; // 210.0f
+    trace_viewer_step(&tv, &td, input, allocator);
+    // Offset captured: mouse_y (35) - slider_y1 (20 + 210*0.05 = 30.5) = 4.5
+    EXPECT_FLOAT_EQ(tv.vertical_minimap.drag_offset_y, 4.5f);
+
+    // Drag to 10px relative (30.0f)
+    input.mouse_y = expected_minimap_y + 10.0f;
+    trace_viewer_step(&tv, &td, input, allocator);
+    // slider_y1_target = 10 - 4.5 = 5.5
+    // pct = 5.5 / 10 = 0.55
+    // target_scroll_y = 0.55 * 220 = 121
+    EXPECT_NEAR(tv.target_scroll_y, 121.0f, 0.5f);
+}
+
 
 
 

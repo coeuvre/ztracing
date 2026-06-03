@@ -110,6 +110,7 @@ struct TraceViewerInput {
 
 struct TrackViewInfo {
   float y;
+  float y_rel;
   float height;
   bool visible;
   char name[128];
@@ -128,6 +129,7 @@ struct SelectionOverlayLayout {
 };
 
 const float VERTICAL_MINIMAP_WIDTH = 64.0f;
+const float VERTICAL_MINIMAP_LANE_HEIGHT = 1.0f;
 
 struct TrackHeatmap {
   static constexpr int BUCKET_COUNT = 16;
@@ -138,7 +140,7 @@ struct VerticalMinimapLayout {
   bool active;
   float x, y;
   float width, height;
-  float scale_y;
+  float minimap_scroll_y;
   float slider_y1;
   float slider_y2;
   bool is_hovered;
@@ -146,6 +148,7 @@ struct VerticalMinimapLayout {
 
 struct VerticalMinimapState {
   bool is_dragging;
+  float drag_offset_y;
   ArrayList<bool> track_has_selected;
   ArrayList<TrackHeatmap> track_heatmap_densities;
   VerticalMinimapLayout layout;
