@@ -246,6 +246,7 @@ cc_library(
     hdrs = ["welcome_screen.h"],
     deps = [
         ":colors",
+        ":platform",
         "@imgui",
     ],
 )
