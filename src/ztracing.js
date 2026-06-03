@@ -117,6 +117,8 @@ async function loadFromStream(stream, name, sizeHint, contentType) {
   }
 }
 
+Module['ztracing_load_from_stream'] = loadFromStream;
+
 function setupDragDrop(canvasSelector) {
   const canvas = document.querySelector(canvasSelector);
   if (!canvas) {

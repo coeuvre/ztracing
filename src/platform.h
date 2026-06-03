@@ -17,6 +17,7 @@ bool platform_is_mac();
 typedef void (*PlatformJobFn)(void* user_data);
 void platform_submit_job(PlatformJobFn fn, void* user_data);
 void platform_teardown_workers();
+void platform_open_file_dialog();
 
 #ifdef __cplusplus
 }
