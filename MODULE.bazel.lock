@@ -228,7 +228,7 @@
     },
     "@@emsdk+//:emscripten_deps.bzl%emscripten_deps": {
       "general": {
-        "bzlTransitiveDigest": "OLFoBQ4jt6KPWirS83hmjVcnoi5pElB8pEuUh9SOl/I=",
+        "bzlTransitiveDigest": "rzTlc140UTzvwergoHc+zmunA9K0OI6mrmkvkp4Zr6k=",
         "usagesDigest": "NLvauo6OQ/KPgGQ7S1voD7odkGA/JYzZHBGBybbQEBY=",
         "recordedInputs": [
           "REPO_MAPPING:bazel_features+,bazel_features_globals bazel_features++version_extension+bazel_features_globals",

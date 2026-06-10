@@ -4,6 +4,14 @@
 
 #include "src/allocator.h"
 #include "src/colors.h"
+#include "src/trace_data.h"
+
+#define trace_data_add_event(td, a, theme, ev) \
+  do { \
+    TraceEventMatcher matcher = {}; \
+    (trace_data_add_event)((td), (a), (theme), (ev), &matcher); \
+    trace_event_matcher_deinit(&matcher, (a)); \
+  } while (0)
 
 class TrackRendererTest : public ::testing::Test {
  protected:

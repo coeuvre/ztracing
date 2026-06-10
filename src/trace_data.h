@@ -64,6 +64,20 @@ struct TraceData {
   } tmp;
 };
 
+struct ActiveEventB {
+  size_t event_idx;
+};
+
+struct ThreadStack {
+  ArrayList<ActiveEventB> stack;
+};
+
+struct TraceEventMatcher {
+  HashTable<uint64_t, ThreadStack> active_b_events;
+};
+
+void trace_event_matcher_deinit(TraceEventMatcher* matcher, Allocator a);
+
 struct Theme;
 
 void trace_data_deinit(TraceData* td, Allocator a);
@@ -72,7 +86,7 @@ void trace_data_clear(TraceData* td, Allocator a);
 StringRef trace_data_push_string(TraceData* td, Allocator a, std::string_view s);
 
 void trace_data_add_event(TraceData* td, Allocator a, const Theme* theme,
-                          const TraceEvent* event);
+                          const TraceEvent* event, TraceEventMatcher* matcher);
 void trace_data_update_event_color(TraceData* td, uint32_t event_idx,
                                    const Theme* theme);
 

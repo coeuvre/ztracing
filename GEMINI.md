@@ -49,6 +49,7 @@
     - **Hash Caching**: Each `StringEntry` stores a persistent hash, computed once during insertion. This makes subsequent lookups for the same string (which occur frequently during trace ingestion) extremely efficient.
     - **StringRef**: Events and arguments store `StringRef` (indices) into the table rather than raw offsets, providing $O(1)$ access to both string data and length without `strlen` overhead.
     - **Pre-parsed Numbers**: Numeric arguments are pre-parsed into `double` values during ingestion to eliminate conversion overhead during rendering.
+    - **Begin/End Event Ingestion**: Matches Begin (`B`/`b`) and End (`E`/`e`) duration events on the fly during ingestion using a thread-stack based `TraceEventMatcher`. The matcher updates the matching `B` event's duration in-place, merges arguments (with `E` values taking precedence), and discards the `E` event, resulting in zero permanent memory overhead for end events.
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic.
     - **Manual Attribute Binding**: Bypasses Vertex Array Objects (VAOs) in favor of manual `glVertexAttribPointer` calls each frame. This improves compatibility and performance on software-rendering paths (like SwiftShader) that may have slower VAO implementations.
     - **Manual BaseVertex**: Since WebGL 2.0 lacks `glDrawElementsBaseVertex`, the renderer manually offsets `glVertexAttribPointer` calls using `ImDrawCmd::VtxOffset`. This allows for more than 65,535 vertices while still using 16-bit indices.

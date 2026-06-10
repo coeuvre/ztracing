@@ -22,6 +22,7 @@ static void trace_loading_job(void* user_data) {
             my_session_id);
 
   size_t total_discarded_bytes = 0;
+  TraceEventMatcher matcher = {};
 
   while (true) {
     TraceChunk chunk = {};
@@ -60,7 +61,7 @@ static void trace_loading_job(void* user_data) {
     TraceEvent event;
     while (trace_parser_next(&loading->parser, allocator, &event)) {
       trace_data_add_event(loading->trace_data, allocator,
-                           loading->theme, &event);
+                           loading->theme, &event, &matcher);
       loading->event_count.fetch_add(1, std::memory_order_relaxed);
       loading->total_bytes.store(total_discarded_bytes + loading->parser.pos,
                                  std::memory_order_relaxed);
@@ -98,6 +99,7 @@ static void trace_loading_job(void* user_data) {
               my_session_id);
   }
 
+  trace_event_matcher_deinit(&matcher, allocator);
   trace_parser_deinit(&loading->parser, allocator);
 
   {
