@@ -2,16 +2,16 @@
 
 #include <gtest/gtest.h>
 
-TEST(AllocatorTest, DefaultAllocator) {
-  Allocator a = allocator_get_default();
+TEST(allocator_test, default_allocator) {
+  allocator_t a = allocator_get_default();
   void* ptr = allocator_alloc(a, 100);
   EXPECT_NE(ptr, nullptr);
   allocator_free(a, ptr, 100);
 }
 
-TEST(AllocatorTest, CountingAllocator) {
-  CountingAllocator ca = counting_allocator_init(allocator_get_default());
-  Allocator a = counting_allocator_get_allocator(&ca);
+TEST(allocator_test, counting_allocator) {
+  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
+  allocator_t a = counting_allocator_get_allocator(&ca);
 
   EXPECT_EQ(counting_allocator_get_allocated_bytes(&ca), 0u);
 
@@ -43,10 +43,10 @@ static void* fail_alloc(void* ctx, void* ptr, size_t old_size,
   return nullptr;
 }
 
-TEST(AllocatorTest, CountingAllocatorFailure) {
-  Allocator parent = {fail_alloc, nullptr};
-  CountingAllocator ca = counting_allocator_init(parent);
-  Allocator a = counting_allocator_get_allocator(&ca);
+TEST(allocator_test, counting_allocator_failure) {
+  allocator_t parent = {fail_alloc, nullptr};
+  counting_allocator_t ca = counting_allocator_init(parent);
+  allocator_t a = counting_allocator_get_allocator(&ca);
 
   void* p = allocator_alloc(a, 100);
   EXPECT_EQ(p, nullptr);

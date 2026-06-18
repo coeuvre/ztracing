@@ -4,79 +4,90 @@
 
 #include "src/allocator.h"
 
-TEST(ArrayListTest, ZII) {
-  ArrayList<int> al = {};
-  EXPECT_EQ(al.data, nullptr);
-  EXPECT_EQ(al.size, 0u);
-  EXPECT_EQ(al.capacity, 0u);
+TEST(array_list_test, zii) {
+  array_list_t al = {.elem_size = sizeof(int)};
+  EXPECT_EQ(al.ptr, nullptr);
+  EXPECT_EQ(al.len, 0u);
+  EXPECT_EQ(al.cap, 0u);
+  EXPECT_EQ(al.elem_size, sizeof(int));
 }
 
-TEST(ArrayListTest, PushBack) {
-  ArrayList<int> al = {};
-  Allocator a = allocator_get_default();
+TEST(array_list_test, push) {
+  array_list_t al = array_list_init(sizeof(int));
+  allocator_t a = allocator_get_default();
 
   for (size_t i = 0; i < 100; ++i) {
-    array_list_push_back(&al, a, (int)i);
+    int* slot = (int*)array_list_push(&al, a);
+    EXPECT_NE(slot, nullptr);
+    *slot = (int)i;
   }
 
-  EXPECT_EQ(al.size, 100u);
-  EXPECT_GE(al.capacity, 100u);
+  EXPECT_EQ(al.len, 100u);
+  EXPECT_GE(al.cap, 100u);
 
+  int* data = (int*)al.ptr;
   for (size_t i = 0; i < 100; ++i) {
-    EXPECT_EQ(al[i], (int)i);
+    EXPECT_EQ(data[i], (int)i);
   }
 
   array_list_deinit(&al, a);
-  EXPECT_EQ(al.data, nullptr);
-  EXPECT_EQ(al.size, 0u);
-  EXPECT_EQ(al.capacity, 0u);
+  EXPECT_EQ(al.ptr, nullptr);
+  EXPECT_EQ(al.len, 0u);
+  EXPECT_EQ(al.cap, 0u);
 }
 
-TEST(ArrayListTest, PopBack) {
-  ArrayList<int> al = {};
-  Allocator a = allocator_get_default();
+TEST(array_list_test, pop) {
+  array_list_t al = array_list_init(sizeof(int));
+  allocator_t a = allocator_get_default();
 
-  array_list_push_back(&al, a, 10);
-  array_list_push_back(&al, a, 20);
-  EXPECT_EQ(al.size, 2u);
+  *(int*)array_list_push(&al, a) = 10;
+  *(int*)array_list_push(&al, a) = 20;
+  EXPECT_EQ(al.len, 2u);
 
-  array_list_pop_back(&al);
-  EXPECT_EQ(al.size, 1u);
-  EXPECT_EQ(al[0], 10);
+  int* popped = (int*)array_list_pop(&al);
+  EXPECT_NE(popped, nullptr);
+  EXPECT_EQ(*popped, 20);
+  EXPECT_EQ(al.len, 1u);
 
-  array_list_pop_back(&al);
-  EXPECT_EQ(al.size, 0u);
+  int* data = (int*)al.ptr;
+  EXPECT_EQ(data[0], 10);
 
-  // Pop from empty list should be safe
-  array_list_pop_back(&al);
-  EXPECT_EQ(al.size, 0u);
+  popped = (int*)array_list_pop(&al);
+  EXPECT_NE(popped, nullptr);
+  EXPECT_EQ(*popped, 10);
+  EXPECT_EQ(al.len, 0u);
+
+  // Pop from empty list should return nullptr and be safe
+  popped = (int*)array_list_pop(&al);
+  EXPECT_EQ(popped, nullptr);
+  EXPECT_EQ(al.len, 0u);
 
   array_list_deinit(&al, a);
 }
 
-TEST(ArrayListTest, Clear) {
-  ArrayList<int> al = {};
-  Allocator a = allocator_get_default();
+TEST(array_list_test, clear) {
+  array_list_t al = array_list_init(sizeof(int));
+  allocator_t a = allocator_get_default();
 
-  array_list_push_back(&al, a, 1);
-  array_list_push_back(&al, a, 2);
-  EXPECT_EQ(al.size, 2u);
+  *(int*)array_list_push(&al, a) = 1;
+  *(int*)array_list_push(&al, a) = 2;
+  EXPECT_EQ(al.len, 2u);
 
   array_list_clear(&al);
-  EXPECT_EQ(al.size, 0u);
-  EXPECT_GE(al.capacity, 2u);
+  EXPECT_EQ(al.len, 0u);
+  EXPECT_GE(al.cap, 2u);
 
   array_list_deinit(&al, a);
 }
 
-TEST(ArrayListTest, MemoryLeak) {
-  CountingAllocator ca = counting_allocator_init(allocator_get_default());
-  Allocator a = counting_allocator_get_allocator(&ca);
+TEST(array_list_test, memory_leak) {
+  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
+  allocator_t a = counting_allocator_get_allocator(&ca);
 
   {
-    ArrayList<int> al = {};
+    array_list_t al = array_list_init(sizeof(int));
     for (size_t i = 0; i < 100; ++i) {
-      array_list_push_back(&al, a, (int)i);
+      *(int*)array_list_push(&al, a) = (int)i;
     }
     EXPECT_GT(counting_allocator_get_allocated_bytes(&ca), 0u);
     array_list_deinit(&al, a);
@@ -85,46 +96,48 @@ TEST(ArrayListTest, MemoryLeak) {
   EXPECT_EQ(counting_allocator_get_allocated_bytes(&ca), 0u);
 }
 
-TEST(ArrayListTest, Reserve) {
-  ArrayList<int> al = {};
-  Allocator a = allocator_get_default();
+TEST(array_list_test, reserve) {
+  array_list_t al = array_list_init(sizeof(int));
+  allocator_t a = allocator_get_default();
 
-  array_list_reserve(&al, a, 100);
-  EXPECT_EQ(al.size, 0u);
-  EXPECT_EQ(al.capacity, 100u);
-  EXPECT_NE(al.data, nullptr);
+  array_list_reserve(&al, 100, a);
+  EXPECT_EQ(al.len, 0u);
+  EXPECT_EQ(al.cap, 100u);
+  EXPECT_NE(al.ptr, nullptr);
 
   for (size_t i = 0; i < 100; ++i) {
-    array_list_push_back(&al, a, (int)i);
+    *(int*)array_list_push(&al, a) = (int)i;
   }
-  EXPECT_EQ(al.size, 100u);
-  EXPECT_EQ(al.capacity, 100u);
+  EXPECT_EQ(al.len, 100u);
+  EXPECT_EQ(al.cap, 100u);
 
   // Reserve less than current capacity should do nothing
-  array_list_reserve(&al, a, 50);
-  EXPECT_EQ(al.capacity, 100u);
+  array_list_reserve(&al, 50, a);
+  EXPECT_EQ(al.cap, 100u);
 
   array_list_deinit(&al, a);
 }
 
-TEST(ArrayListTest, Resize) {
-  ArrayList<int> al = {};
-  Allocator a = allocator_get_default();
+TEST(array_list_test, resize) {
+  array_list_t al = array_list_init(sizeof(int));
+  allocator_t a = allocator_get_default();
 
-  array_list_resize(&al, a, 100);
-  EXPECT_EQ(al.size, 100u);
-  EXPECT_GE(al.capacity, 100u);
+  array_list_resize(&al, 100, a);
+  EXPECT_EQ(al.len, 100u);
+  EXPECT_GE(al.cap, 100u);
 
+  int* data = (int*)al.ptr;
   for (size_t i = 0; i < 100; i++) {
-    al[i] = (int)i;
+    data[i] = (int)i;
   }
 
-  array_list_resize(&al, a, 50);
-  EXPECT_EQ(al.size, 50u);
-  EXPECT_GE(al.capacity, 100u);
+  array_list_resize(&al, 50, a);
+  EXPECT_EQ(al.len, 50u);
+  EXPECT_GE(al.cap, 100u);
 
+  data = (int*)al.ptr;
   for (size_t i = 0; i < 50; i++) {
-    EXPECT_EQ(al[i], (int)i);
+    EXPECT_EQ(data[i], (int)i);
   }
 
   array_list_deinit(&al, a);
