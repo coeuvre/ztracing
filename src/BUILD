@@ -79,11 +79,12 @@ cc_test(
 
 cc_library(
     name = "trace_parser",
-    srcs = ["trace_parser.cc"],
+    srcs = ["trace_parser.c"],
     hdrs = ["trace_parser.h"],
     deps = [
         ":allocator",
         ":array_list",
+        ":string",
     ],
 )
 

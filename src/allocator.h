@@ -5,6 +5,9 @@
 #include <stdatomic.h>
 #endif
 #include <stddef.h>
+#include <stdlib.h>
+
+#include "src/logging.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,16 +26,27 @@ typedef struct allocator {
   void* ctx;
 } allocator_t;
 
-inline void* allocator_alloc(allocator_t a, size_t size) {
-  return a.alloc(a.ctx, nullptr, 0, size);
+static inline void* allocator_alloc(allocator_t a, size_t size) {
+  void* ptr = a.alloc(a.ctx, nullptr, 0, size);
+  if (size > 0 && ptr == nullptr) {
+    LOG_ERROR("Fatal Error: Out of memory allocating %zu bytes.", size);
+    abort();
+  }
+  return ptr;
 }
 
-inline void* allocator_realloc(allocator_t a, void* ptr, size_t old_size,
-                               size_t new_size) {
-  return a.alloc(a.ctx, ptr, old_size, new_size);
+static inline void* allocator_realloc(allocator_t a, void* ptr, size_t old_size,
+                                      size_t new_size) {
+  void* new_ptr = a.alloc(a.ctx, ptr, old_size, new_size);
+  if (new_size > 0 && new_ptr == nullptr) {
+    LOG_ERROR("Fatal Error: Out of memory reallocating from %zu to %zu bytes.",
+              old_size, new_size);
+    abort();
+  }
+  return new_ptr;
 }
 
-inline void allocator_free(allocator_t a, void* ptr, size_t size) {
+static inline void allocator_free(allocator_t a, void* ptr, size_t size) {
   a.alloc(a.ctx, ptr, size, 0);
 }
 

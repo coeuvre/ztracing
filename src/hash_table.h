@@ -29,7 +29,7 @@ typedef struct hash_table {
   void* ctx;
 } hash_table_t;
 
-inline void hash_table_calculate_layout(hash_table_t* ht) {
+static inline void hash_table_calculate_layout(hash_table_t* ht) {
   size_t offset = ht->key_size;
 
   // Align value
@@ -56,7 +56,7 @@ inline void hash_table_calculate_layout(hash_table_t* ht) {
   ht->entry_size = (offset + max_align - 1) & ~(max_align - 1);
 }
 
-inline hash_table_t hash_table_init_(
+static inline hash_table_t hash_table_init_(
     size_t key_size, size_t value_size, size_t key_align, size_t value_align,
     uint32_t (*hash_fn)(const void* key, void* ctx),
     bool (*eq_fn)(const void* a, const void* b, void* ctx), void* ctx) {
@@ -77,24 +77,27 @@ inline hash_table_t hash_table_init_(
   hash_table_init_(sizeof(key_t), sizeof(value_t), alignof(key_t), \
                    alignof(value_t), (hash_fn), (eq_fn), (ctx))
 
-inline void* hash_table_entry_key(const hash_table_t* ht, void* entry) {
+static inline void* hash_table_entry_key(const hash_table_t* ht, void* entry) {
   (void)ht;
   return entry;
 }
 
-inline void* hash_table_entry_value(const hash_table_t* ht, void* entry) {
+static inline void* hash_table_entry_value(const hash_table_t* ht,
+                                           void* entry) {
   return (char*)entry + ht->value_offset;
 }
 
-inline uint32_t* hash_table_entry_hash(const hash_table_t* ht, void* entry) {
+static inline uint32_t* hash_table_entry_hash(const hash_table_t* ht,
+                                              void* entry) {
   return (uint32_t*)((char*)entry + ht->hash_offset);
 }
 
-inline bool* hash_table_entry_occupied(const hash_table_t* ht, void* entry) {
+static inline bool* hash_table_entry_occupied(const hash_table_t* ht,
+                                              void* entry) {
   return (bool*)((char*)entry + ht->occupied_offset);
 }
 
-inline void hash_table_deinit(hash_table_t* ht, allocator_t a) {
+static inline void hash_table_deinit(hash_table_t* ht, allocator_t a) {
   if (ht->entries != nullptr) {
     allocator_free(a, ht->entries, ht->capacity * ht->entry_size);
   }
@@ -102,10 +105,11 @@ inline void hash_table_deinit(hash_table_t* ht, allocator_t a) {
   *ht = empty;
 }
 
-void hash_table_resize(hash_table_t* ht, size_t new_capacity, allocator_t a);
+static inline void hash_table_resize(hash_table_t* ht, size_t new_capacity,
+                                     allocator_t a);
 
-inline void* hash_table_put_with_hash(hash_table_t* ht, const void* key,
-                                      uint32_t h, allocator_t a) {
+static inline void* hash_table_put_with_hash(hash_table_t* ht, const void* key,
+                                             uint32_t h, allocator_t a) {
   assert(ht->key_size > 0 && ht->entry_size > 0 && ht->hash_fn != nullptr &&
          ht->eq_fn != nullptr && "HashTable must be initialized before use!");
   if (ht->capacity == 0 || ht->size * 2 > ht->capacity) {
@@ -138,14 +142,15 @@ inline void* hash_table_put_with_hash(hash_table_t* ht, const void* key,
   return result_value;
 }
 
-inline void* hash_table_put(hash_table_t* ht, const void* key, allocator_t a) {
+static inline void* hash_table_put(hash_table_t* ht, const void* key,
+                                   allocator_t a) {
   uint32_t h = ht->hash_fn(key, ht->ctx);
   void* result = hash_table_put_with_hash(ht, key, h, a);
   return result;
 }
 
-inline void* hash_table_get_with_hash(const hash_table_t* ht, const void* key,
-                                      uint32_t h) {
+static inline void* hash_table_get_with_hash(const hash_table_t* ht,
+                                             const void* key, uint32_t h) {
   assert(ht->key_size > 0 && ht->entry_size > 0 && ht->hash_fn != nullptr &&
          ht->eq_fn != nullptr && "HashTable must be initialized before use!");
   void* result_value = nullptr;
@@ -166,7 +171,7 @@ inline void* hash_table_get_with_hash(const hash_table_t* ht, const void* key,
   return result_value;
 }
 
-inline void* hash_table_get(const hash_table_t* ht, const void* key) {
+static inline void* hash_table_get(const hash_table_t* ht, const void* key) {
   void* result = nullptr;
   if (ht->capacity > 0) {
     uint32_t h = ht->hash_fn(key, ht->ctx);
@@ -175,15 +180,15 @@ inline void* hash_table_get(const hash_table_t* ht, const void* key) {
   return result;
 }
 
-inline void hash_table_clear(hash_table_t* ht) {
+static inline void hash_table_clear(hash_table_t* ht) {
   if (ht->entries != nullptr) {
     memset(ht->entries, 0, ht->capacity * ht->entry_size);
   }
   ht->size = 0;
 }
 
-inline void hash_table_resize(hash_table_t* ht, size_t new_capacity,
-                              allocator_t a) {
+static inline void hash_table_resize(hash_table_t* ht, size_t new_capacity,
+                                     allocator_t a) {
   assert(ht->key_size > 0 && ht->entry_size > 0 && ht->hash_fn != nullptr &&
          ht->eq_fn != nullptr && "HashTable must be initialized before use!");
   if (new_capacity < 4) {

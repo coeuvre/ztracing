@@ -19,13 +19,8 @@ typedef struct array_list {
   size_t elem_size;
 } array_list_t;
 
-inline array_list_t array_list_init(size_t elem_size) {
-  array_list_t al = {.elem_size = elem_size};
-  return al;
-}
-
-inline size_t array_list_calculate_new_capacity(size_t current_capacity,
-                                                size_t min_capacity) {
+static inline size_t array_list_calculate_new_capacity(size_t current_capacity,
+                                                       size_t min_capacity) {
   size_t new_capacity = current_capacity == 0 ? 8 : current_capacity * 2;
   if (current_capacity > 1024 * 1024) {
     size_t grow_by = current_capacity / 4;
@@ -44,8 +39,8 @@ inline size_t array_list_calculate_new_capacity(size_t current_capacity,
   return new_capacity;
 }
 
-inline void array_list_reserve(array_list_t* al, size_t new_capacity,
-                               size_t elem_size, allocator_t a) {
+static inline void array_list_reserve(array_list_t* al, size_t new_capacity,
+                                      size_t elem_size, allocator_t a) {
   if (al->elem_size == 0) {
     al->elem_size = elem_size;
   }
@@ -63,8 +58,8 @@ inline void array_list_reserve(array_list_t* al, size_t new_capacity,
   }
 }
 
-inline void* array_list_push_(array_list_t* al, size_t elem_size,
-                              allocator_t a) {
+static inline void* array_list_push_(array_list_t* al, size_t elem_size,
+                                     allocator_t a) {
   if (al->elem_size == 0) {
     al->elem_size = elem_size;
   }
@@ -82,7 +77,7 @@ inline void* array_list_push_(array_list_t* al, size_t elem_size,
 #define array_list_push(al, type_t, a) \
   ((type_t*)array_list_push_((al), sizeof(type_t), (a)))
 
-inline void* array_list_pop_(array_list_t* al) {
+static inline void* array_list_pop_(array_list_t* al) {
   void* slot = nullptr;
   if (al->len > 0) {
     al->len--;
@@ -93,10 +88,10 @@ inline void* array_list_pop_(array_list_t* al) {
 
 #define array_list_pop(al, type_t) ((type_t*)array_list_pop_((al)))
 
-inline void array_list_clear(array_list_t* al) { al->len = 0; }
+static inline void array_list_clear(array_list_t* al) { al->len = 0; }
 
-inline void array_list_resize(array_list_t* al, size_t new_size,
-                              size_t elem_size, allocator_t a) {
+static inline void array_list_resize(array_list_t* al, size_t new_size,
+                                     size_t elem_size, allocator_t a) {
   if (al->elem_size == 0) {
     al->elem_size = elem_size;
   }
@@ -107,7 +102,7 @@ inline void array_list_resize(array_list_t* al, size_t new_size,
   al->len = new_size;
 }
 
-inline void array_list_deinit(array_list_t* al, allocator_t a) {
+static inline void array_list_deinit(array_list_t* al, allocator_t a) {
   if (al->ptr != nullptr) {
     allocator_free(a, al->ptr, al->cap * al->elem_size);
   }
@@ -115,7 +110,7 @@ inline void array_list_deinit(array_list_t* al, allocator_t a) {
   *al = empty;
 }
 
-inline void* array_list_get(const array_list_t* al, size_t index) {
+static inline void* array_list_get(const array_list_t* al, size_t index) {
   void* result = (char*)al->ptr + index * al->elem_size;
   return result;
 }

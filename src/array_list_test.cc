@@ -5,14 +5,6 @@
 #include "src/allocator.h"
 
 TEST(array_list_test, zii) {
-  array_list_t al = {.elem_size = sizeof(int)};
-  EXPECT_EQ(al.ptr, nullptr);
-  EXPECT_EQ(al.len, 0u);
-  EXPECT_EQ(al.cap, 0u);
-  EXPECT_EQ(al.elem_size, sizeof(int));
-}
-
-TEST(array_list_test, true_zii) {
   // Completely zero-initialized, no init, no designated initializer!
   array_list_t al = {};
   allocator_t a = allocator_get_default();
@@ -37,7 +29,7 @@ TEST(array_list_test, true_zii) {
 }
 
 TEST(array_list_test, push) {
-  array_list_t al = array_list_init(sizeof(int));
+  array_list_t al = {};
   allocator_t a = allocator_get_default();
 
   for (size_t i = 0; i < 100; ++i) {
@@ -61,7 +53,7 @@ TEST(array_list_test, push) {
 }
 
 TEST(array_list_test, pop) {
-  array_list_t al = array_list_init(sizeof(int));
+  array_list_t al = {};
   allocator_t a = allocator_get_default();
 
   *array_list_push(&al, int, a) = 10;
@@ -91,7 +83,7 @@ TEST(array_list_test, pop) {
 }
 
 TEST(array_list_test, clear) {
-  array_list_t al = array_list_init(sizeof(int));
+  array_list_t al = {};
   allocator_t a = allocator_get_default();
 
   *array_list_push(&al, int, a) = 1;
@@ -110,7 +102,7 @@ TEST(array_list_test, memory_leak) {
   allocator_t a = counting_allocator_get_allocator(&ca);
 
   {
-    array_list_t al = array_list_init(sizeof(int));
+    array_list_t al = {};
     for (size_t i = 0; i < 100; ++i) {
       *array_list_push(&al, int, a) = (int)i;
     }
@@ -122,7 +114,7 @@ TEST(array_list_test, memory_leak) {
 }
 
 TEST(array_list_test, reserve) {
-  array_list_t al = array_list_init(sizeof(int));
+  array_list_t al = {};
   allocator_t a = allocator_get_default();
 
   array_list_reserve(&al, 100, sizeof(int), a);
@@ -144,7 +136,7 @@ TEST(array_list_test, reserve) {
 }
 
 TEST(array_list_test, resize) {
-  array_list_t al = array_list_init(sizeof(int));
+  array_list_t al = {};
   allocator_t a = allocator_get_default();
 
   array_list_resize(&al, 100, sizeof(int), a);

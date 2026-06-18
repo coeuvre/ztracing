@@ -20,10 +20,10 @@ void log_message(log_level_t level, const char* format, ...) {
       break;
   }
 
-  printf("[%s] ", level_str);
+  fprintf(stderr, "[%s] ", level_str);
   va_list args;
   va_start(args, format);
-  vprintf(format, args);
+  vfprintf(stderr, format, args);
   va_end(args);
-  printf("\n");
+  fprintf(stderr, "\n");
 }

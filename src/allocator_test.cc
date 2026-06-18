@@ -48,7 +48,7 @@ TEST(allocator_test, counting_allocator_failure) {
   counting_allocator_t ca = counting_allocator_init(parent);
   allocator_t a = counting_allocator_get_allocator(&ca);
 
-  void* p = allocator_alloc(a, 100);
-  EXPECT_EQ(p, nullptr);
-  EXPECT_EQ(counting_allocator_get_allocated_bytes(&ca), 0u);
+  EXPECT_DEATH(
+      { (void)allocator_alloc(a, 100); },
+      "Fatal Error: Out of memory allocating 100 bytes");
 }
