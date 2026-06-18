@@ -28,7 +28,7 @@ cc_library(
 
 cc_library(
     name = "allocator",
-    srcs = ["allocator.cc"],
+    srcs = ["allocator.c"],
     hdrs = ["allocator.h"],
     deps = [":logging"],
 )
