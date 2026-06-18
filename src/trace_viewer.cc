@@ -15,14 +15,21 @@
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"
 
-static void trace_viewer_draw_selection_overlay(
-    TraceViewer* tv, ImDrawList* draw_list, ImVec2 pos, ImVec2 size,
-    const Theme& theme, bool draw_duration_text);
+static void trace_viewer_draw_selection_overlay(TraceViewer* tv,
+                                                ImDrawList* draw_list,
+                                                ImVec2 pos, ImVec2 size,
+                                                const Theme& theme,
+                                                bool draw_duration_text);
 
-static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocator);
+static void trace_viewer_draw_search_section(TraceViewer* tv,
+                                             Allocator allocator);
 void trace_viewer_search_job(void* user_data);
-static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewerInput& input);
-static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv, const TraceData* td, ImDrawList* draw_list, const Theme& theme);
+static void trace_viewer_step_vertical_minimap(TraceViewer* tv,
+                                               const TraceViewerInput& input);
+static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv,
+                                               const TraceData* td,
+                                               ImDrawList* draw_list,
+                                               const Theme& theme);
 
 static double trace_viewer_px_to_ts(double start_time, double end_time,
                                     float width, float origin_x, float px) {
@@ -32,7 +39,7 @@ static double trace_viewer_px_to_ts(double start_time, double end_time,
 }
 
 static void trace_viewer_snapping_reset(TraceViewer* tv, double mouse_ts,
-                                       float threshold_px) {
+                                        float threshold_px) {
   tv->snap_best_ts = mouse_ts;
   tv->snap_best_dist_px = threshold_px;
   tv->snap_threshold_px = threshold_px;
@@ -116,7 +123,8 @@ void trace_viewer_deinit(TraceViewer* tv, Allocator allocator) {
   }
   if (tv->search.is_searching.load()) {
     std::unique_lock<std::mutex> lock(tv->search.quit_mutex);
-    tv->search.quit_cv.wait(lock, [tv] { return !tv->search.is_searching.load(); });
+    tv->search.quit_cv.wait(lock,
+                            [tv] { return !tv->search.is_searching.load(); });
   }
   array_list_deinit(&tv->search.pending_query, allocator);
   array_list_deinit(&tv->search.pending_results, allocator);
@@ -138,7 +146,8 @@ static void trace_viewer_draw_time_ruler(TraceViewer* tv, ImDrawList* draw_list,
     const RulerTick& tick = tv->ruler_ticks[i];
     draw_list->AddLine(ImVec2(tick.x, pos.y + size.y * 0.6f),
                        ImVec2(tick.x, pos.y + size.y - 1), theme.ruler_tick);
-    draw_list->AddText(ImVec2(tick.x + 3, pos.y + 2), theme.ruler_text, tick.label);
+    draw_list->AddText(ImVec2(tick.x + 3, pos.y + 2), theme.ruler_text,
+                       tick.label);
   }
 
   trace_viewer_draw_selection_overlay(tv, draw_list, ImVec2(canvas_x, pos.y),
@@ -146,9 +155,11 @@ static void trace_viewer_draw_time_ruler(TraceViewer* tv, ImDrawList* draw_list,
                                       false);
 }
 
-static void trace_viewer_draw_selection_overlay(
-    TraceViewer* tv, ImDrawList* draw_list, ImVec2 pos, ImVec2 size,
-    const Theme& theme, bool draw_duration_text) {
+static void trace_viewer_draw_selection_overlay(TraceViewer* tv,
+                                                ImDrawList* draw_list,
+                                                ImVec2 pos, ImVec2 size,
+                                                const Theme& theme,
+                                                bool draw_duration_text) {
   const SelectionOverlayLayout& lo = tv->selection_layout;
   if (!lo.active) return;
 
@@ -193,17 +204,20 @@ static void trace_viewer_draw_selection_overlay(
     float text_y = pos.y + size.y / 3.0f - text_size.y * 0.5f;
 
     // Ensure text is visible even if partially off-screen
-    text_x = std::max(
-        pos.x + 5.0f, std::min(text_x, pos.x + size.x - text_size.x - 5.0f));
+    text_x = std::max(pos.x + 5.0f,
+                      std::min(text_x, pos.x + size.x - text_size.x - 5.0f));
 
     // Draw background and border for the text
     float padding_x = 4.0f;
     float padding_y = 2.0f;
     ImVec2 bg_min(text_x - padding_x, text_y - padding_y);
-    ImVec2 bg_max(text_x + text_size.x + padding_x, text_y + text_size.y + padding_y);
-    
-    draw_list->AddRectFilled(bg_min, bg_max, theme.timeline_selection_text_bg, 4.0f);
-    draw_list->AddRect(bg_min, bg_max, theme.timeline_selection_line, 4.0f, 0, 1.0f);
+    ImVec2 bg_max(text_x + text_size.x + padding_x,
+                  text_y + text_size.y + padding_y);
+
+    draw_list->AddRectFilled(bg_min, bg_max, theme.timeline_selection_text_bg,
+                             4.0f);
+    draw_list->AddRect(bg_min, bg_max, theme.timeline_selection_line, 4.0f, 0,
+                       1.0f);
 
     draw_list->AddText(ImVec2(text_x, text_y), theme.timeline_selection_text,
                        lo.duration_label);
@@ -216,22 +230,26 @@ static void trace_viewer_draw_selection_overlay(
     // Left line and arrow
     float left_line_end_x = text_x - 5.0f;
     if (left_line_end_x > draw_x1) {
-      draw_list->AddLine(ImVec2(draw_x1, line_y), ImVec2(left_line_end_x, line_y),
+      draw_list->AddLine(ImVec2(draw_x1, line_y),
+                         ImVec2(left_line_end_x, line_y), line_col, 1.0f);
+      draw_list->AddLine(ImVec2(draw_x1, line_y),
+                         ImVec2(draw_x1 + arrow_size, line_y - arrow_size),
                          line_col, 1.0f);
-      draw_list->AddLine(ImVec2(draw_x1, line_y), ImVec2(draw_x1 + arrow_size, line_y - arrow_size),
-                         line_col, 1.0f);
-      draw_list->AddLine(ImVec2(draw_x1, line_y), ImVec2(draw_x1 + arrow_size, line_y + arrow_size),
+      draw_list->AddLine(ImVec2(draw_x1, line_y),
+                         ImVec2(draw_x1 + arrow_size, line_y + arrow_size),
                          line_col, 1.0f);
     }
 
     // Right line and arrow
     float right_line_start_x = text_x + text_size.x + 5.0f;
     if (right_line_start_x < draw_x2) {
-      draw_list->AddLine(ImVec2(right_line_start_x, line_y), ImVec2(draw_x2, line_y),
+      draw_list->AddLine(ImVec2(right_line_start_x, line_y),
+                         ImVec2(draw_x2, line_y), line_col, 1.0f);
+      draw_list->AddLine(ImVec2(draw_x2, line_y),
+                         ImVec2(draw_x2 - arrow_size, line_y - arrow_size),
                          line_col, 1.0f);
-      draw_list->AddLine(ImVec2(draw_x2, line_y), ImVec2(draw_x2 - arrow_size, line_y - arrow_size),
-                         line_col, 1.0f);
-      draw_list->AddLine(ImVec2(draw_x2, line_y), ImVec2(draw_x2 - arrow_size, line_y + arrow_size),
+      draw_list->AddLine(ImVec2(draw_x2, line_y),
+                         ImVec2(draw_x2 - arrow_size, line_y + arrow_size),
                          line_col, 1.0f);
     }
   }
@@ -289,12 +307,14 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
           float event_font_size = ImGui::GetFontSize();
           float text_y = y1 + (lane_height - event_font_size) * 0.5f;
 
-          float text_width = ImGui::GetFont()
-                                 ->CalcTextSizeA(event_font_size, FLT_MAX, 0.0f,
-                                                 name.data(), name.data() + name.size())
-                                 .x;
+          float text_width =
+              ImGui::GetFont()
+                  ->CalcTextSizeA(event_font_size, FLT_MAX, 0.0f, name.data(),
+                                  name.data() + name.size())
+                  .x;
 
-          float text_x = std::max(x1 + padding_h, x1 + (event_width - text_width) * 0.5f);
+          float text_x =
+              std::max(x1 + padding_h, x1 + (event_width - text_width) * 0.5f);
 
           ImVec4 fine_clip_rect(visible_x1 + padding_h, y1,
                                 visible_x2 - padding_h, y2);
@@ -306,7 +326,7 @@ static void trace_viewer_draw_event(TraceViewer* tv, TraceData* td,
         }
       }
     }
-   }
+  }
 }
 
 static void trace_viewer_draw_event_properties(const TraceData* td,
@@ -334,7 +354,10 @@ static void trace_viewer_draw_event_properties(const TraceData* td,
     }
     ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed);
 
-    auto add_row = [show_copy_buttons](const char* field_label, std::string_view value_str, const char* btn_id_suffix, uint32_t color = 0, bool has_color = false) {
+    auto add_row = [show_copy_buttons](
+                       const char* field_label, std::string_view value_str,
+                       const char* btn_id_suffix, uint32_t color = 0,
+                       bool has_color = false) {
       ImGui::TableNextRow();
 
       // Column 0: Label
@@ -344,8 +367,9 @@ static void trace_viewer_draw_event_properties(const TraceData* td,
         float sz_col = ImGui::GetTextLineHeight() * 0.7f;
         float offset_col = (ImGui::GetTextLineHeight() - sz_col) * 0.5f;
         ImGui::GetWindowDrawList()->AddRectFilled(
-            ImVec2(p_col.x, p_col.y + offset_col), ImVec2(p_col.x + sz_col, p_col.y + offset_col + sz_col),
-            color, 2.0f);
+            ImVec2(p_col.x, p_col.y + offset_col),
+            ImVec2(p_col.x + sz_col, p_col.y + offset_col + sz_col), color,
+            2.0f);
 
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + sz_col + 4.0f);
       }
@@ -356,7 +380,8 @@ static void trace_viewer_draw_event_properties(const TraceData* td,
       if (show_copy_buttons) {
         ImGui::TextWrapped("%.*s", (int)value_str.size(), value_str.data());
       } else {
-        ImGui::TextUnformatted(value_str.data(), value_str.data() + value_str.size());
+        ImGui::TextUnformatted(value_str.data(),
+                               value_str.data() + value_str.size());
       }
 
       // Column 2: Action
@@ -388,12 +413,13 @@ static void trace_viewer_draw_event_properties(const TraceData* td,
     }
 
     char ts_buf[32];
-    format_duration(ts_buf, sizeof(ts_buf), (double)e.ts - viewport_min_ts);
+    format_duration(ts_buf, sizeof(ts_buf), (double)e.ts - viewport_min_ts,
+                    0.0);
     add_row("Start", std::string_view(ts_buf), nullptr);
 
     if (e.dur > 0) {
       char dur_buf[32];
-      format_duration(dur_buf, sizeof(dur_buf), (double)e.dur);
+      format_duration(dur_buf, sizeof(dur_buf), (double)e.dur, 0.0);
       add_row("Duration", std::string_view(dur_buf), nullptr);
     }
 
@@ -411,8 +437,10 @@ static void trace_viewer_draw_event_properties(const TraceData* td,
       std::string_view t_name = trace_data_get_string(td, t->name_ref);
 
       if (t->counter_series.size == 1) {
-        std::string_view s_name = trace_data_get_string(td, t->counter_series[0]);
-        if (s_name == t_name || s_name == "" || s_name == "value" || s_name == "Value") {
+        std::string_view s_name =
+            trace_data_get_string(td, t->counter_series[0]);
+        if (s_name == t_name || s_name == "" || s_name == "value" ||
+            s_name == "Value") {
           single_series_redundant = true;
         }
       }
@@ -428,7 +456,7 @@ static void trace_viewer_draw_event_properties(const TraceData* td,
             break;
           }
         }
-        
+
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::TextDisabled("Value");
@@ -472,12 +500,14 @@ static void trace_viewer_draw_event_properties(const TraceData* td,
           char series_val_buf[64];
           if (val_s_ref != 0) {
             std::string_view val_s = trace_data_get_string(td, val_s_ref);
-            snprintf(series_val_buf, sizeof(series_val_buf), "%.*s", (int)val_s.size(), val_s.data());
+            snprintf(series_val_buf, sizeof(series_val_buf), "%.*s",
+                     (int)val_s.size(), val_s.data());
           } else {
             snprintf(series_val_buf, sizeof(series_val_buf), "%.2f", val);
           }
 
-          add_row(s_name.data(), std::string_view(series_val_buf), nullptr, t->counter_colors[s_idx], true);
+          add_row(s_name.data(), std::string_view(series_val_buf), nullptr,
+                  t->counter_colors[s_idx], true);
 
           total += val;
         }
@@ -509,7 +539,7 @@ static void trace_viewer_draw_event_properties(const TraceData* td,
 
       char val_buf[256];
       bool is_str = (arg.val_ref != 0);
-      
+
       if (is_str) {
         std::string_view val = trace_data_get_string(td, arg.val_ref);
         add_row(key.data(), val, std::string(key).c_str());
@@ -524,7 +554,8 @@ static void trace_viewer_draw_event_properties(const TraceData* td,
 }
 
 static void trace_viewer_draw_tooltip(TraceViewer* tv, TraceData* td,
-                                      const HoverMatch* best_hm, float inner_width,
+                                      const HoverMatch* best_hm,
+                                      float inner_width,
                                       float tracks_canvas_pos_x) {
   const TrackRenderBlock& rb = best_hm->rb;
   if (rb.count == 1) {
@@ -535,9 +566,11 @@ static void trace_viewer_draw_tooltip(TraceViewer* tv, TraceData* td,
     ImGui::BeginTooltip();
 
     if (t.type == TRACK_TYPE_COUNTER) {
-      trace_viewer_draw_event_properties(td, e, (double)tv->viewport.min_ts, false, &t);
+      trace_viewer_draw_event_properties(td, e, (double)tv->viewport.min_ts,
+                                         false, &t);
     } else {
-      trace_viewer_draw_event_properties(td, e, (double)tv->viewport.min_ts, false, &t);
+      trace_viewer_draw_event_properties(td, e, (double)tv->viewport.min_ts,
+                                         false, &t);
     }
     ImGui::EndTooltip();
     ImGui::PopStyleVar();
@@ -546,12 +579,14 @@ static void trace_viewer_draw_tooltip(TraceViewer* tv, TraceData* td,
     ImGui::BeginTooltip();
     ImGui::Text("%u merged events", rb.count);
 
-    double ts1 = trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
-                                       inner_width, tracks_canvas_pos_x, rb.x1);
-    double ts2 = trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
-                                       inner_width, tracks_canvas_pos_x, rb.x2);
+    double ts1 =
+        trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
+                              inner_width, tracks_canvas_pos_x, rb.x1);
+    double ts2 =
+        trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
+                              inner_width, tracks_canvas_pos_x, rb.x2);
     char dur_buf[32];
-    format_duration(dur_buf, sizeof(dur_buf), ts2 - ts1);
+    format_duration(dur_buf, sizeof(dur_buf), ts2 - ts1, 0.0);
     ImGui::Text("Duration: %s", dur_buf);
 
     ImGui::EndTooltip();
@@ -576,9 +611,9 @@ static void trace_viewer_draw_counter_track(
   array_list_resize(&state->counter_current_values, allocator,
                     t.counter_series.size);
 
-  track_compute_counter_render_blocks(
-      &t, td, viewport_start, viewport_end, width, pos.x, focused_event_idx,
-      state, &tv->counter_render_blocks, allocator);
+  track_compute_counter_render_blocks(&t, td, viewport_start, viewport_end,
+                                      width, pos.x, focused_event_idx, state,
+                                      &tv->counter_render_blocks, allocator);
 
   if (tv->counter_render_blocks.size == 0) return;
 
@@ -610,8 +645,10 @@ static void trace_viewer_draw_counter_track(
 
     // Draw stack
     for (size_t s_idx = 0; s_idx < n_series; s_idx++) {
-      float off_bottom = state->counter_visual_offsets[i * (n_series + 1) + s_idx];
-      float off_top = state->counter_visual_offsets[i * (n_series + 1) + s_idx + 1];
+      float off_bottom =
+          state->counter_visual_offsets[i * (n_series + 1) + s_idx];
+      float off_top =
+          state->counter_visual_offsets[i * (n_series + 1) + s_idx + 1];
 
       float y_top = pos.y + height - off_top;
       float y_bottom = pos.y + height - off_bottom;
@@ -642,7 +679,8 @@ static void trace_viewer_draw_counter_track(
     for (size_t i = 0; i < n_blocks; i++) {
       const CounterRenderBlock& rb = tv->counter_render_blocks[i];
 
-      float off_top = state->counter_visual_offsets[i * (n_series + 1) + s_idx + 1];
+      float off_top =
+          state->counter_visual_offsets[i * (n_series + 1) + s_idx + 1];
       float y_top = pos.y + height - off_top;
 
       ImU32 line_col = theme.event_border;
@@ -670,7 +708,8 @@ static void trace_viewer_draw_counter_track(
   draw_list->Flags = old_flags;
 }
 
-static void trace_viewer_box_select_update(TraceViewer* tv, TraceData* td, Allocator allocator) {
+static void trace_viewer_box_select_update(TraceViewer* tv, TraceData* td,
+                                           Allocator allocator) {
   float x1 = tv->box_select_start.x;
   float x2 = tv->box_select_end.x;
   float y1 = tv->box_select_start.y;
@@ -680,12 +719,12 @@ static void trace_viewer_box_select_update(TraceViewer* tv, TraceData* td, Alloc
 
   array_list_clear(&tv->selected_event_indices);
 
-  double ts1 = trace_viewer_px_to_ts(
-      tv->viewport.start_time, tv->viewport.end_time, tv->last_inner_width,
-      tv->last_tracks_x, x1);
-  double ts2 = trace_viewer_px_to_ts(
-      tv->viewport.start_time, tv->viewport.end_time, tv->last_inner_width,
-      tv->last_tracks_x, x2);
+  double ts1 =
+      trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
+                            tv->last_inner_width, tv->last_tracks_x, x1);
+  double ts2 =
+      trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
+                            tv->last_inner_width, tv->last_tracks_x, x2);
 
   for (size_t i = 0; i < tv->tracks.size; i++) {
     const Track& t = tv->tracks[i];
@@ -698,9 +737,8 @@ static void trace_viewer_box_select_update(TraceViewer* tv, TraceData* td, Alloc
     if (t.type == TRACK_TYPE_THREAD) {
       auto it_start = std::lower_bound(
           t.event_indices.data, t.event_indices.data + t.event_indices.size,
-          (int64_t)ts1 - t.max_dur, [&](size_t idx, int64_t val) {
-            return td->events[idx].ts < val;
-          });
+          (int64_t)ts1 - t.max_dur,
+          [&](size_t idx, int64_t val) { return td->events[idx].ts < val; });
 
       for (const size_t* it = it_start;
            it < t.event_indices.data + t.event_indices.size; ++it) {
@@ -723,7 +761,8 @@ static void trace_viewer_box_select_update(TraceViewer* tv, TraceData* td, Alloc
     } else {
       // Counter track
       if (t.event_indices.size > 0) {
-        // Only select if the box intersects the actual chart area (below header)
+        // Only select if the box intersects the actual chart area (below
+        // header)
         float chart_y1 = vi.y + tv->last_lane_height;
         float chart_y2 = vi.y + vi.height;
         if (!(chart_y2 < y1 || chart_y1 > y2)) {
@@ -745,22 +784,29 @@ static void trace_viewer_box_select_update(TraceViewer* tv, TraceData* td, Alloc
 
   // Sort for binary search
   if (tv->selected_event_indices.size > 0) {
-    std::sort(tv->selected_event_indices.data,
-              tv->selected_event_indices.data + tv->selected_event_indices.size);
+    std::sort(
+        tv->selected_event_indices.data,
+        tv->selected_event_indices.data + tv->selected_event_indices.size);
   }
 
-  LOG_INFO("SYNC BOX SELECT COMPLETED! track size = %zu, found %zu selected event indices",
-           tv->tracks.size, tv->selected_event_indices.size);
+  LOG_INFO(
+      "SYNC BOX SELECT COMPLETED! track size = %zu, found %zu selected event "
+      "indices",
+      tv->tracks.size, tv->selected_event_indices.size);
 
   tv->selected_histogram_bucket = -1;
 
   array_list_clear(&tv->filtered_event_indices);
-  array_list_append(&tv->filtered_event_indices, allocator, tv->selected_event_indices.data, tv->selected_event_indices.size);
+  array_list_append(&tv->filtered_event_indices, allocator,
+                    tv->selected_event_indices.data,
+                    tv->selected_event_indices.size);
 
   {
     std::lock_guard<std::mutex> lock(tv->search.mutex);
     array_list_clear(&tv->search.pending_results);
-    array_list_append(&tv->search.pending_results, tv->search.allocator, tv->selected_event_indices.data, tv->selected_event_indices.size);
+    array_list_append(&tv->search.pending_results, tv->search.allocator,
+                      tv->selected_event_indices.data,
+                      tv->selected_event_indices.size);
     tv->search.new_box_selection_available.store(true);
     tv->search.results_ready.store(false);
   }
@@ -770,7 +816,7 @@ static void trace_viewer_box_select_update(TraceViewer* tv, TraceData* td, Alloc
 }
 
 static void trace_viewer_zoom_to_event(TraceViewer* tv,
-                                        const TraceEventPersisted& e) {
+                                       const TraceEventPersisted& e) {
   double event_start = (double)e.ts;
   double event_end = (double)(e.ts + e.dur);
 
@@ -803,7 +849,9 @@ static void trace_viewer_zoom_to_event(TraceViewer* tv,
   tv->request_scroll_to_focused_event = true;
 }
 
-void trace_viewer_calculate_histogram(const ArrayList<int64_t>& results, const TraceData* td, DurationHistogram* h) {
+void trace_viewer_calculate_histogram(const ArrayList<int64_t>& results,
+                                      const TraceData* td,
+                                      DurationHistogram* h) {
   h->num_buckets = 0;
   h->max_bucket_count = 0;
   h->total_count = (uint32_t)results.size;
@@ -842,7 +890,8 @@ void trace_viewer_calculate_histogram(const ArrayList<int64_t>& results, const T
       h->has_non_zero_durations = true;
 
       bool is_logarithmic = false;
-      if (min_dur > 0 && max_dur > 0 && (double)max_dur / (double)min_dur > 100.0) {
+      if (min_dur > 0 && max_dur > 0 &&
+          (double)max_dur / (double)min_dur > 100.0) {
         is_logarithmic = true;
       }
 
@@ -876,15 +925,15 @@ void trace_viewer_calculate_histogram(const ArrayList<int64_t>& results, const T
           L[j] = min_dur + (int64_t)((non_zero_range * j) / k_bins);
         }
 
-        if (j > 0 && L[j] <= L[j-1]) {
-          L[j] = L[j-1] + 1;
+        if (j > 0 && L[j] <= L[j - 1]) {
+          L[j] = L[j - 1] + 1;
         }
       }
 
       for (int j = 0; j < k_bins; j++) {
         DurationHistogramBucket& b = h->buckets[start_bin_idx + j];
         b.min_dur = L[j];
-        b.max_dur = L[j+1] - 1;
+        b.max_dur = L[j + 1] - 1;
         b.count = 0;
       }
 
@@ -939,8 +988,9 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
   tv->last_inner_height = tracks_inner_height;
   tv->last_lane_height = input.lane_height;
 
-  double mouse_ts = trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
-                                          tracks_inner_width, tracks_origin_x, input.mouse_x);
+  double mouse_ts =
+      trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
+                            tracks_inner_width, tracks_origin_x, input.mouse_x);
 
   bool mouse_in_tracks_content =
       input.mouse_x >= tracks_origin_x &&
@@ -960,7 +1010,8 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
   SelectionProximity proximity =
       trace_viewer_selection_check_proximity(tv, mouse_ts, threshold_ts);
 
-  bool mouse_in_selection = trace_viewer_selection_is_mouse_inside(tv, mouse_ts);
+  bool mouse_in_selection =
+      trace_viewer_selection_is_mouse_inside(tv, mouse_ts);
   bool interaction_ignored = tv->ignore_next_release;
 
   // Ruler Interaction
@@ -1001,15 +1052,17 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
   // Tracks Interaction
   if (input.tracks_hovered && !input.ruler_active) {
-    if (!interaction_ignored && tv->selection_drag_mode == InteractionDragMode::NONE) {
+    if (!interaction_ignored &&
+        tv->selection_drag_mode == InteractionDragMode::NONE) {
       if (input.is_shift_down && input.is_mouse_clicked) {
         tv->selection_drag_mode = InteractionDragMode::BOX_SELECT;
         tv->box_select_start = ImVec2(input.mouse_x, input.mouse_y);
         tv->box_select_end = tv->box_select_start;
       } else if (tv->selection_active && input.is_mouse_clicked &&
-          (proximity.near_start || proximity.near_end)) {
-        tv->selection_drag_mode = proximity.near_start ? InteractionDragMode::TRACKS_START
-                                                       : InteractionDragMode::TRACKS_END;
+                 (proximity.near_start || proximity.near_end)) {
+        tv->selection_drag_mode = proximity.near_start
+                                      ? InteractionDragMode::TRACKS_START
+                                      : InteractionDragMode::TRACKS_END;
       }
     }
 
@@ -1033,11 +1086,14 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
     // Zooming
     if (input.mouse_wheel != 0.0f && input.is_ctrl_down) {
-      double mouse_x_rel = (double)(input.mouse_x - tracks_origin_x) / (double)tracks_inner_width;
-      double zoom_factor = (input.mouse_wheel > 0.0f) ? 0.8 : TRACE_VIEWER_MAX_ZOOM_FACTOR;
+      double mouse_x_rel = (double)(input.mouse_x - tracks_origin_x) /
+                           (double)tracks_inner_width;
+      double zoom_factor =
+          (input.mouse_wheel > 0.0f) ? 0.8 : TRACE_VIEWER_MAX_ZOOM_FACTOR;
       double new_duration = current_duration * zoom_factor;
 
-      double trace_duration = (double)(tv->viewport.max_ts - tv->viewport.min_ts);
+      double trace_duration =
+          (double)(tv->viewport.max_ts - tv->viewport.min_ts);
       double max_duration = trace_duration * TRACE_VIEWER_MAX_ZOOM_FACTOR;
       double min_duration = TRACE_VIEWER_MIN_ZOOM_DURATION;
 
@@ -1095,11 +1151,10 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
   array_list_resize(&tv->track_infos, allocator, tv->tracks.size);
   tv->total_tracks_height = 0.0f;
-  
+
   float counter_track_height = 3.0f * input.lane_height;
   bool track_list_hovered =
-      input.tracks_hovered &&
-      mouse_in_tracks_content &&
+      input.tracks_hovered && mouse_in_tracks_content &&
       (mouse_in_selection || input.is_mouse_double_clicked) &&
       tv->selection_drag_mode == InteractionDragMode::NONE &&
       !proximity.near_start && !proximity.near_end;
@@ -1111,16 +1166,19 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
                      tv->selection_drag_mode != InteractionDragMode::BOX_SELECT;
 
   if (tv->selected_events_dirty) {
-    track_renderer_update_selection_bitset(&tv->track_renderer_state, td, tv->selected_event_indices, allocator);
+    track_renderer_update_selection_bitset(
+        &tv->track_renderer_state, td, tv->selected_event_indices, allocator);
 
-    array_list_resize(&tv->vertical_minimap.track_has_selected, allocator, tv->tracks.size);
+    array_list_resize(&tv->vertical_minimap.track_has_selected, allocator,
+                      tv->tracks.size);
     for (size_t i = 0; i < tv->tracks.size; i++) {
       const Track& t = tv->tracks[i];
       bool has_sel = false;
       for (size_t j = 0; j < t.event_indices.size; j++) {
         size_t event_idx = t.event_indices[j];
         if (event_idx < tv->track_renderer_state.selected_events_bitset.size &&
-            tv->track_renderer_state.selected_events_bitset.data[event_idx] != 0) {
+            tv->track_renderer_state.selected_events_bitset.data[event_idx] !=
+                0) {
           has_sel = true;
           break;
         }
@@ -1136,17 +1194,19 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
     TrackViewInfo& vi = tv->track_infos[i];
 
     vi.height = (t.type == TRACK_TYPE_COUNTER)
-                             ? counter_track_height
-                             : (float)(t.max_depth + 2) * input.lane_height;
+                    ? counter_track_height
+                    : (float)(t.max_depth + 2) * input.lane_height;
     vi.y_rel = tv->total_tracks_height;
-    vi.y = input.canvas_y + input.ruler_height + tv->total_tracks_height - input.tracks_scroll_y;
+    vi.y = input.canvas_y + input.ruler_height + tv->total_tracks_height -
+           input.tracks_scroll_y;
 
     if (tv->request_scroll_to_focused_event) {
       for (size_t j = 0; j < t.event_indices.size; j++) {
         if (t.event_indices[j] == (size_t)tv->focused_event_idx) {
           float track_top = tv->total_tracks_height;
           float viewport_height = input.canvas_height - input.ruler_height;
-          tv->target_scroll_y = track_top - (viewport_height - vi.height) * 0.5f;
+          tv->target_scroll_y =
+              track_top - (viewport_height - vi.height) * 0.5f;
           tv->request_scroll_to_focused_event = false;
           break;
         }
@@ -1154,7 +1214,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
     }
 
     tv->total_tracks_height += vi.height;
-    
+
     // Frustum culling
     vi.visible = (vi.y + vi.height >= input.canvas_y + input.ruler_height &&
                   vi.y <= input.canvas_y + input.canvas_height);
@@ -1170,10 +1230,11 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
         snprintf(vi.name, sizeof(vi.name), "Counter");
       }
     } else if (id_str.size() > 0) {
-      snprintf(vi.name, sizeof(vi.name), "%.*s (%.*s)",
-               (int)name_str.size(), name_str.data(), (int)id_str.size(), id_str.data());
+      snprintf(vi.name, sizeof(vi.name), "%.*s (%.*s)", (int)name_str.size(),
+               name_str.data(), (int)id_str.size(), id_str.data());
     } else {
-      snprintf(vi.name, sizeof(vi.name), "%.*s", (int)name_str.size(), name_str.data());
+      snprintf(vi.name, sizeof(vi.name), "%.*s", (int)name_str.size(),
+               name_str.data());
     }
 
     if (vi.visible) {
@@ -1190,12 +1251,16 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
           // Snapping
           if (should_snap) {
-            double ts1 = trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
-                                               tracks_inner_width, tracks_origin_x, rb.x1);
-            trace_viewer_snapping_suggest(tv, ts1, rb.x1, input.mouse_x, y1, y2);
-            double ts2 = trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
-                                               tracks_inner_width, tracks_origin_x, rb.x2);
-            trace_viewer_snapping_suggest(tv, ts2, rb.x2, input.mouse_x, y1, y2);
+            double ts1 = trace_viewer_px_to_ts(
+                tv->viewport.start_time, tv->viewport.end_time,
+                tracks_inner_width, tracks_origin_x, rb.x1);
+            trace_viewer_snapping_suggest(tv, ts1, rb.x1, input.mouse_x, y1,
+                                          y2);
+            double ts2 = trace_viewer_px_to_ts(
+                tv->viewport.start_time, tv->viewport.end_time,
+                tracks_inner_width, tracks_origin_x, rb.x2);
+            trace_viewer_snapping_suggest(tv, ts2, rb.x2, input.mouse_x, y1,
+                                          y2);
           }
 
           // Hit-testing
@@ -1211,7 +1276,7 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
             &t, td, tv->viewport.start_time, tv->viewport.end_time,
             tracks_inner_width, tracks_origin_x, tv->focused_event_idx,
             &tv->track_renderer_state, &tv->counter_render_blocks, allocator);
-        
+
         float track_content_y = vi.y + input.lane_height;
         float track_content_h = vi.height - input.lane_height;
 
@@ -1220,11 +1285,12 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
           for (size_t k = 0; k < tv->counter_render_blocks.size; k++) {
             const CounterRenderBlock& rb = tv->counter_render_blocks[k];
             if (input.mouse_x >= rb.x1 && input.mouse_x < rb.x2) {
-               HoverMatch hm = {i, k, track_content_y, track_content_y + track_content_h, {}};
-               hm.rb.event_idx = rb.event_idx;
-               hm.rb.count = (rb.event_idx != (size_t)-1) ? 1 : 0;
-               array_list_push_back(&tv->hover_matches, allocator, hm);
-               break;
+              HoverMatch hm = {
+                  i, k, track_content_y, track_content_y + track_content_h, {}};
+              hm.rb.event_idx = rb.event_idx;
+              hm.rb.count = (rb.event_idx != (size_t)-1) ? 1 : 0;
+              array_list_push_back(&tv->hover_matches, allocator, hm);
+              break;
             }
           }
         }
@@ -1247,12 +1313,12 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
     } else if (input.tracks_hovered) {
       if (tv->selection_drag_mode == InteractionDragMode::TRACKS_START ||
           tv->selection_drag_mode == InteractionDragMode::TRACKS_END) {
-          double ts = (input.is_mouse_clicked) ? mouse_ts : tv->snap_best_ts;
-          if (tv->selection_drag_mode == InteractionDragMode::TRACKS_START) {
-            tv->selection_start_time = ts;
-          } else {
-            tv->selection_end_time = ts;
-          }
+        double ts = (input.is_mouse_clicked) ? mouse_ts : tv->snap_best_ts;
+        if (tv->selection_drag_mode == InteractionDragMode::TRACKS_START) {
+          tv->selection_start_time = ts;
+        } else {
+          tv->selection_end_time = ts;
+        }
       }
     }
   }
@@ -1278,7 +1344,8 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
         tv->show_details_panel = true;
       }
     } else if (input.tracks_hovered && mouse_in_tracks_content) {
-      if (tv->selection_active && mouse_in_selection && !proximity.near_start && !proximity.near_end) {
+      if (tv->selection_active && mouse_in_selection && !proximity.near_start &&
+          !proximity.near_end) {
         // Click inside selection: clear focused event, keep timeline range.
         tv->focused_event_idx = -1;
       } else if (tv->selection_active && !mouse_in_selection) {
@@ -1306,22 +1373,33 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
     double t2 = tv->selection_end_time;
     if (t1 > t2) std::swap(t1, t2);
 
-    tv->selection_layout.x1 = (float)(tracks_origin_x + (t1 - tv->viewport.start_time) / current_duration * tracks_inner_width);
-    tv->selection_layout.x2 = (float)(tracks_origin_x + (t2 - tv->viewport.start_time) / current_duration * tracks_inner_width);
+    tv->selection_layout.x1 =
+        (float)(tracks_origin_x + (t1 - tv->viewport.start_time) /
+                                      current_duration * tracks_inner_width);
+    tv->selection_layout.x2 =
+        (float)(tracks_origin_x + (t2 - tv->viewport.start_time) /
+                                      current_duration * tracks_inner_width);
 
-    format_duration(tv->selection_layout.duration_label, sizeof(tv->selection_layout.duration_label), t2 - t1, t2 - t1);
+    format_duration(tv->selection_layout.duration_label,
+                    sizeof(tv->selection_layout.duration_label), t2 - t1,
+                    t2 - t1);
   }
 
   // Ruler Ticks
   array_list_clear(&tv->ruler_ticks);
-  double tick_interval = calculate_tick_interval(current_duration, tracks_inner_width, 100.0);
+  double tick_interval =
+      calculate_tick_interval(current_duration, tracks_inner_width, 100.0);
   double display_start = tv->viewport.start_time - (double)tv->viewport.min_ts;
   double display_end = tv->viewport.end_time - (double)tv->viewport.min_ts;
   double first_tick_rel = ceil(display_start / tick_interval) * tick_interval;
-  for (double t_rel = first_tick_rel; t_rel <= display_end; t_rel += tick_interval) {
+  for (double t_rel = first_tick_rel; t_rel <= display_end;
+       t_rel += tick_interval) {
     double t = t_rel + (double)tv->viewport.min_ts;
-    float x = (float)(tracks_origin_x + (t - tv->viewport.start_time) / current_duration * tracks_inner_width);
-    if (x < tracks_origin_x || x > tracks_origin_x + tracks_inner_width) continue;
+    float x =
+        (float)(tracks_origin_x + (t - tv->viewport.start_time) /
+                                      current_duration * tracks_inner_width);
+    if (x < tracks_origin_x || x > tracks_origin_x + tracks_inner_width)
+      continue;
 
     RulerTick tick;
     tick.x = x;
@@ -1334,12 +1412,17 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
 
   if (tv->search.results_ready.exchange(false)) {
     std::lock_guard<std::mutex> lock(tv->search.mutex);
-    LOG_INFO("MAIN THREAD RESULTS READY EXCHANGED! pending_results size = %zu, histogram buckets = %d",
-             tv->search.pending_results.size, tv->search.pending_histogram.num_buckets);
+    LOG_INFO(
+        "MAIN THREAD RESULTS READY EXCHANGED! pending_results size = %zu, "
+        "histogram buckets = %d",
+        tv->search.pending_results.size,
+        tv->search.pending_histogram.num_buckets);
     array_list_clear(&tv->selected_event_indices);
-    array_list_append(&tv->selected_event_indices, allocator, tv->search.pending_results.data, tv->search.pending_results.size);
+    array_list_append(&tv->selected_event_indices, allocator,
+                      tv->search.pending_results.data,
+                      tv->search.pending_results.size);
     tv->selected_events_dirty = true;
-    
+
     tv->histogram = tv->search.pending_histogram;
 
     array_list_clear(&tv->filtered_event_indices);
@@ -1347,11 +1430,14 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
       for (size_t i = 0; i < tv->selected_event_indices.size; i++) {
         size_t idx = (size_t)tv->selected_event_indices[i];
         if (idx < td->events.size) {
-          array_list_push_back(&tv->filtered_event_indices, allocator, (int64_t)idx);
+          array_list_push_back(&tv->filtered_event_indices, allocator,
+                               (int64_t)idx);
         }
       }
-    } else if (tv->selected_histogram_bucket >= 0 && tv->selected_histogram_bucket < tv->histogram.num_buckets) {
-      const DurationHistogramBucket& b = tv->histogram.buckets[tv->selected_histogram_bucket];
+    } else if (tv->selected_histogram_bucket >= 0 &&
+               tv->selected_histogram_bucket < tv->histogram.num_buckets) {
+      const DurationHistogramBucket& b =
+          tv->histogram.buckets[tv->selected_histogram_bucket];
       for (size_t i = 0; i < tv->selected_event_indices.size; i++) {
         size_t idx = (size_t)tv->selected_event_indices[i];
         if (idx >= td->events.size) continue;
@@ -1359,7 +1445,8 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
         int64_t d = e.dur;
 
         if (d >= b.min_dur && d <= b.max_dur) {
-          array_list_push_back(&tv->filtered_event_indices, allocator, (int64_t)idx);
+          array_list_push_back(&tv->filtered_event_indices, allocator,
+                               (int64_t)idx);
         }
       }
     }
@@ -1375,11 +1462,14 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
       for (size_t i = 0; i < tv->selected_event_indices.size; i++) {
         size_t idx = (size_t)tv->selected_event_indices[i];
         if (idx < td->events.size) {
-          array_list_push_back(&tv->filtered_event_indices, allocator, (int64_t)idx);
+          array_list_push_back(&tv->filtered_event_indices, allocator,
+                               (int64_t)idx);
         }
       }
-    } else if (tv->selected_histogram_bucket >= 0 && tv->selected_histogram_bucket < tv->histogram.num_buckets) {
-      const DurationHistogramBucket& b = tv->histogram.buckets[tv->selected_histogram_bucket];
+    } else if (tv->selected_histogram_bucket >= 0 &&
+               tv->selected_histogram_bucket < tv->histogram.num_buckets) {
+      const DurationHistogramBucket& b =
+          tv->histogram.buckets[tv->selected_histogram_bucket];
       for (size_t i = 0; i < tv->selected_event_indices.size; i++) {
         size_t idx = (size_t)tv->selected_event_indices[i];
         if (idx >= td->events.size) continue;
@@ -1387,7 +1477,8 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
         int64_t d = e.dur;
 
         if (d >= b.min_dur && d <= b.max_dur) {
-          array_list_push_back(&tv->filtered_event_indices, allocator, (int64_t)idx);
+          array_list_push_back(&tv->filtered_event_indices, allocator,
+                               (int64_t)idx);
         }
       }
     }
@@ -1397,15 +1488,18 @@ void trace_viewer_step(TraceViewer* tv, TraceData* td,
   trace_viewer_step_vertical_minimap(tv, input);
 }
 
-static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewerInput& input) {
-  float minimap_x = input.viewport_x + input.viewport_width - VERTICAL_MINIMAP_WIDTH;
+static void trace_viewer_step_vertical_minimap(TraceViewer* tv,
+                                               const TraceViewerInput& input) {
+  float minimap_x =
+      input.viewport_x + input.viewport_width - VERTICAL_MINIMAP_WIDTH;
   float minimap_y = input.viewport_y + input.ruler_height;
   float visible_h = input.viewport_height - input.ruler_height;
   float total_h = tv->total_tracks_height;
-  
+
   float lane_height = input.lane_height;
-  float scale = VERTICAL_MINIMAP_LANE_HEIGHT / (lane_height > 0.0f ? lane_height : 1.0f);
-  
+  float scale =
+      VERTICAL_MINIMAP_LANE_HEIGHT / (lane_height > 0.0f ? lane_height : 1.0f);
+
   float minimap_content_h = total_h * scale;
   float minimap_draw_h = std::min(minimap_content_h, visible_h);
 
@@ -1419,9 +1513,10 @@ static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewe
   }
 
   // Interaction Logic (Mouse Hit-testing & Drag state)
-  bool is_hovered = total_h > 0 &&
-                    input.mouse_x >= minimap_x && input.mouse_x <= minimap_x + VERTICAL_MINIMAP_WIDTH &&
-                    input.mouse_y >= minimap_y && input.mouse_y <= minimap_y + minimap_draw_h;
+  bool is_hovered = total_h > 0 && input.mouse_x >= minimap_x &&
+                    input.mouse_x <= minimap_x + VERTICAL_MINIMAP_WIDTH &&
+                    input.mouse_y >= minimap_y &&
+                    input.mouse_y <= minimap_y + minimap_draw_h;
 
   bool inside_slider = false;
   if (tv->vertical_minimap.layout.active) {
@@ -1433,10 +1528,11 @@ static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewe
 
   if (is_hovered && input.is_mouse_clicked) {
     tv->vertical_minimap.is_dragging = true;
-    
+
     if (inside_slider) {
       // Clicked on slider: start dragging directly, capture offset immediately
-      tv->vertical_minimap.drag_offset_y = input.mouse_y - tv->vertical_minimap.layout.slider_y1;
+      tv->vertical_minimap.drag_offset_y =
+          input.mouse_y - tv->vertical_minimap.layout.slider_y1;
     } else {
       // Clicked outside slider: jump to track
       jump_clicked = true;
@@ -1448,7 +1544,8 @@ static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewe
         size_t clicked_track_idx = (size_t)-1;
         for (size_t i = 0; i < tv->tracks.size; i++) {
           const TrackViewInfo& vi = tv->track_infos[i];
-          if (y_content_main >= vi.y_rel && y_content_main < vi.y_rel + vi.height) {
+          if (y_content_main >= vi.y_rel &&
+              y_content_main < vi.y_rel + vi.height) {
             clicked_track_idx = i;
             break;
           }
@@ -1457,14 +1554,15 @@ static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewe
         if (clicked_track_idx != (size_t)-1) {
           const TrackViewInfo& vi = tv->track_infos[clicked_track_idx];
           float target_scroll = vi.y_rel - (visible_h - vi.height) * 0.5f;
-          tv->target_scroll_y = std::clamp(target_scroll, 0.0f, total_h - visible_h);
+          tv->target_scroll_y =
+              std::clamp(target_scroll, 0.0f, total_h - visible_h);
         }
       }
       // Set sentinel to calculate offset in next frame after scroll applies
       tv->vertical_minimap.drag_offset_y = -1.0f;
     }
   }
-  
+
   if (!input.is_mouse_down) {
     tv->vertical_minimap.is_dragging = false;
   }
@@ -1473,18 +1571,20 @@ static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewe
   float slider_h = visible_h * scale;
   slider_h = std::clamp(slider_h, 10.0f, minimap_draw_h);
 
-  if (tv->vertical_minimap.is_dragging && !jump_clicked && total_h > visible_h) {
+  if (tv->vertical_minimap.is_dragging && !jump_clicked &&
+      total_h > visible_h) {
     float current_slider_y1 = minimap_y + scroll_y * scale - minimap_scroll_y;
-    
+
     if (tv->vertical_minimap.drag_offset_y == -1.0f) {
       // Capture offset in the first frame after a jump-click
       tv->vertical_minimap.drag_offset_y = input.mouse_y - current_slider_y1;
     }
 
-    float mouse_y_rel = std::clamp(input.mouse_y - minimap_y, 0.0f, minimap_draw_h);
+    float mouse_y_rel =
+        std::clamp(input.mouse_y - minimap_y, 0.0f, minimap_draw_h);
     float slider_y1_target = mouse_y_rel - tv->vertical_minimap.drag_offset_y;
     float max_slider_y = minimap_draw_h - slider_h;
-    
+
     float pct = 0.0f;
     if (max_slider_y > 0.0f) {
       pct = std::clamp(slider_y1_target / max_slider_y, 0.0f, 1.0f);
@@ -1505,7 +1605,8 @@ static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewe
   if (total_h > 0) {
     float slider_y1 = minimap_y + scroll_y * scale - minimap_scroll_y;
     // Clamp slider bounds to maintain fixed height
-    slider_y1 = std::clamp(slider_y1, minimap_y, minimap_y + minimap_draw_h - slider_h);
+    slider_y1 =
+        std::clamp(slider_y1, minimap_y, minimap_y + minimap_draw_h - slider_h);
     float slider_y2 = slider_y1 + slider_h;
 
     layout.slider_y1 = slider_y1;
@@ -1516,7 +1617,10 @@ static void trace_viewer_step_vertical_minimap(TraceViewer* tv, const TraceViewe
   }
 }
 
-static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv, const TraceData* td, ImDrawList* draw_list, const Theme& theme) {
+static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv,
+                                               const TraceData* td,
+                                               ImDrawList* draw_list,
+                                               const Theme& theme) {
   const VerticalMinimapLayout& layout = tv->vertical_minimap.layout;
   if (!layout.active) return;
 
@@ -1524,12 +1628,16 @@ static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv, const Trac
   ImVec2 minimap_size(layout.width, layout.height);
 
   // Draw minimap background with premium glassmorphic styling
-  draw_list->AddRectFilled(minimap_pos, ImVec2(minimap_pos.x + minimap_size.x, minimap_pos.y + minimap_size.y),
-                           theme.vertical_minimap_bg);
-  draw_list->AddLine(minimap_pos, ImVec2(minimap_pos.x, minimap_pos.y + minimap_size.y),
+  draw_list->AddRectFilled(
+      minimap_pos,
+      ImVec2(minimap_pos.x + minimap_size.x, minimap_pos.y + minimap_size.y),
+      theme.vertical_minimap_bg);
+  draw_list->AddLine(minimap_pos,
+                     ImVec2(minimap_pos.x, minimap_pos.y + minimap_size.y),
                      theme.track_separator);
 
-  float scale = VERTICAL_MINIMAP_LANE_HEIGHT / (tv->last_lane_height > 0.0f ? tv->last_lane_height : 1.0f);
+  float scale = VERTICAL_MINIMAP_LANE_HEIGHT /
+                (tv->last_lane_height > 0.0f ? tv->last_lane_height : 1.0f);
 
   // 1. Draw 2D micro track heat blocks
   float cell_w = (minimap_size.x - 2.0f) / TrackHeatmap::BUCKET_COUNT;
@@ -1537,13 +1645,17 @@ static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv, const Trac
 
   for (size_t i = 0; i < tv->tracks.size; i++) {
     const TrackViewInfo& vi = tv->track_infos[i];
-    // Offset by header height in minimap (1 lane = VERTICAL_MINIMAP_LANE_HEIGHT)
-    float draw_y1 = minimap_pos.y + vi.y_rel * scale - minimap_scroll_y + VERTICAL_MINIMAP_LANE_HEIGHT;
-    float draw_y2 = minimap_pos.y + (vi.y_rel + vi.height) * scale - minimap_scroll_y;
+    // Offset by header height in minimap (1 lane =
+    // VERTICAL_MINIMAP_LANE_HEIGHT)
+    float draw_y1 = minimap_pos.y + vi.y_rel * scale - minimap_scroll_y +
+                    VERTICAL_MINIMAP_LANE_HEIGHT;
+    float draw_y2 =
+        minimap_pos.y + (vi.y_rel + vi.height) * scale - minimap_scroll_y;
 
     // Culling (use full track bounds for culling)
     float full_draw_y1 = minimap_pos.y + vi.y_rel * scale - minimap_scroll_y;
-    if (draw_y2 <= minimap_pos.y || full_draw_y1 >= minimap_pos.y + minimap_size.y) {
+    if (draw_y2 <= minimap_pos.y ||
+        full_draw_y1 >= minimap_pos.y + minimap_size.y) {
       continue;
     }
 
@@ -1556,7 +1668,8 @@ static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv, const Trac
 
       for (int b = 0; b < TrackHeatmap::BUCKET_COUNT; b++) {
         size_t event_idx = h.event_indices[b];
-        ImU32 cell_col = (event_idx != (size_t)-1) ? td->events[event_idx].color : 0;
+        ImU32 cell_col =
+            (event_idx != (size_t)-1) ? td->events[event_idx].color : 0;
 
         if (cell_col == active_col) {
           continue;
@@ -1566,7 +1679,8 @@ static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv, const Trac
         if (active_col != 0 && start_b != -1) {
           float cell_x1 = minimap_pos.x + 1.0f + (float)start_b * cell_w;
           float cell_x2 = minimap_pos.x + 1.0f + (float)b * cell_w;
-          draw_list->AddRectFilled(ImVec2(cell_x1, draw_y1), ImVec2(cell_x2, draw_y2), active_col);
+          draw_list->AddRectFilled(ImVec2(cell_x1, draw_y1),
+                                   ImVec2(cell_x2, draw_y2), active_col);
         }
 
         // Start new block
@@ -1577,18 +1691,24 @@ static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv, const Trac
       // Final flush
       if (active_col != 0 && start_b != -1) {
         float cell_x1 = minimap_pos.x + 1.0f + (float)start_b * cell_w;
-        float cell_x2 = minimap_pos.x + 1.0f + (float)TrackHeatmap::BUCKET_COUNT * cell_w;
-        draw_list->AddRectFilled(ImVec2(cell_x1, draw_y1), ImVec2(cell_x2, draw_y2), active_col);
+        float cell_x2 =
+            minimap_pos.x + 1.0f + (float)TrackHeatmap::BUCKET_COUNT * cell_w;
+        draw_list->AddRectFilled(ImVec2(cell_x1, draw_y1),
+                                 ImVec2(cell_x2, draw_y2), active_col);
       }
     }
   }
 
   // 2. Draw search/selection hotspot ticks
   for (size_t i = 0; i < tv->tracks.size; i++) {
-    if (i < tv->vertical_minimap.track_has_selected.size && tv->vertical_minimap.track_has_selected[i]) {
+    if (i < tv->vertical_minimap.track_has_selected.size &&
+        tv->vertical_minimap.track_has_selected[i]) {
       const TrackViewInfo& vi = tv->track_infos[i];
       // Center on content area (excluding header)
-      float draw_y = minimap_pos.y + (vi.y_rel + (vi.height + tv->last_lane_height) * 0.5f) * scale - minimap_scroll_y;
+      float draw_y =
+          minimap_pos.y +
+          (vi.y_rel + (vi.height + tv->last_lane_height) * 0.5f) * scale -
+          minimap_scroll_y;
       if (draw_y >= minimap_pos.y && draw_y <= minimap_pos.y + minimap_size.y) {
         draw_list->AddLine(ImVec2(minimap_pos.x + 1.0f, draw_y),
                            ImVec2(minimap_pos.x + minimap_size.x, draw_y),
@@ -1605,9 +1725,10 @@ static void trace_viewer_draw_vertical_minimap(const TraceViewer* tv, const Trac
     slider_col = theme.vertical_minimap_slider_bg_hovered;
   }
 
-  draw_list->AddRectFilled(ImVec2(minimap_pos.x + 2.0f, layout.slider_y1 + 1.0f),
-                           ImVec2(minimap_pos.x + minimap_size.x - 2.0f, layout.slider_y2 - 1.0f),
-                           slider_col, 0.0f);
+  draw_list->AddRectFilled(
+      ImVec2(minimap_pos.x + 2.0f, layout.slider_y1 + 1.0f),
+      ImVec2(minimap_pos.x + minimap_size.x - 2.0f, layout.slider_y2 - 1.0f),
+      slider_col, 0.0f);
 }
 
 void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
@@ -1644,29 +1765,38 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         .drag_delta_x = ImGui::GetMouseDragDelta(0).x,
         .drag_delta_y = ImGui::GetMouseDragDelta(0).y,
         .drag_threshold = ImGui::GetIO().MouseDragThreshold,
-        .is_ctrl_down = platform_is_mac() ? ImGui::IsKeyDown(ImGuiMod_Super) : ImGui::IsKeyDown(ImGuiMod_Ctrl),
+        .is_ctrl_down = platform_is_mac() ? ImGui::IsKeyDown(ImGuiMod_Super)
+                                          : ImGui::IsKeyDown(ImGuiMod_Ctrl),
         .is_shift_down = ImGui::IsKeyDown(ImGuiMod_Shift),
     };
 
-    float tracks_origin_x = tv->last_tracks_x > 0 ? tv->last_tracks_x : canvas_pos.x;
-    float tracks_inner_width = tv->last_inner_width > 0 ? tv->last_inner_width : (canvas_size.x - VERTICAL_MINIMAP_WIDTH);
+    float tracks_origin_x =
+        tv->last_tracks_x > 0 ? tv->last_tracks_x : canvas_pos.x;
+    float tracks_inner_width = tv->last_inner_width > 0
+                                   ? tv->last_inner_width
+                                   : (canvas_size.x - VERTICAL_MINIMAP_WIDTH);
     if (tracks_inner_width <= 0) tracks_inner_width = 1.0f;
 
     // Pre-pass to capture interaction state
     ImGui::SetCursorScreenPos(ImVec2(tracks_origin_x, canvas_pos.y));
-    ImGui::InvisibleButton("##Ruler", ImVec2(tracks_inner_width, input.ruler_height));
+    ImGui::InvisibleButton("##Ruler",
+                           ImVec2(tracks_inner_width, input.ruler_height));
     input.ruler_active = ImGui::IsItemActive();
     input.ruler_activated = ImGui::IsItemActivated();
     input.ruler_deactivated = ImGui::IsItemDeactivated();
 
-    ImGuiWindowFlags child_flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar;
-    if (input.is_ctrl_down)
-      child_flags |= ImGuiWindowFlags_NoScrollWithMouse;
+    ImGuiWindowFlags child_flags =
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar;
+    if (input.is_ctrl_down) child_flags |= ImGuiWindowFlags_NoScrollWithMouse;
 
-    ImGui::SetCursorScreenPos(ImVec2(canvas_pos.x, canvas_pos.y + input.ruler_height));
-    if (ImGui::BeginChild("TrackList", ImVec2(canvas_size.x - VERTICAL_MINIMAP_WIDTH, canvas_size.y - input.ruler_height),
+    ImGui::SetCursorScreenPos(
+        ImVec2(canvas_pos.x, canvas_pos.y + input.ruler_height));
+    if (ImGui::BeginChild("TrackList",
+                          ImVec2(canvas_size.x - VERTICAL_MINIMAP_WIDTH,
+                                 canvas_size.y - input.ruler_height),
                           ImGuiChildFlags_None, child_flags)) {
-      input.tracks_hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+      input.tracks_hovered =
+          ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
       input.tracks_scroll_y = ImGui::GetScrollY();
 
       // Top-left of the child window area (excluding scroll)
@@ -1677,7 +1807,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       input.canvas_x = window_pos.x + padding_x;
       input.canvas_y = window_pos.y + padding_y - input.ruler_height;
       input.canvas_width = ImGui::GetContentRegionAvail().x;
-      input.canvas_height = ImGui::GetContentRegionAvail().y + input.ruler_height;
+      input.canvas_height =
+          ImGui::GetContentRegionAvail().y + input.ruler_height;
     }
     ImGui::EndChild();
 
@@ -1694,8 +1825,9 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         tv->viewport.start_time, tv->viewport.end_time, input.canvas_width,
         input.canvas_x, input.mouse_x);
     SelectionProximity proximity = trace_viewer_selection_check_proximity(
-        tv, current_mouse_ts, (5.0f / input.canvas_width) *
-                                  (tv->viewport.end_time - tv->viewport.start_time));
+        tv, current_mouse_ts,
+        (5.0f / input.canvas_width) *
+            (tv->viewport.end_time - tv->viewport.start_time));
 
     if (tv->selection_drag_mode != InteractionDragMode::BOX_SELECT &&
         ((tv->selection_drag_mode != InteractionDragMode::NONE &&
@@ -1704,8 +1836,11 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
     }
 
-    ImGui::SetCursorScreenPos(ImVec2(canvas_pos.x, canvas_pos.y + input.ruler_height));
-    if (ImGui::BeginChild("TrackList", ImVec2(canvas_size.x - VERTICAL_MINIMAP_WIDTH, canvas_size.y - input.ruler_height),
+    ImGui::SetCursorScreenPos(
+        ImVec2(canvas_pos.x, canvas_pos.y + input.ruler_height));
+    if (ImGui::BeginChild("TrackList",
+                          ImVec2(canvas_size.x - VERTICAL_MINIMAP_WIDTH,
+                                 canvas_size.y - input.ruler_height),
                           ImGuiChildFlags_None, child_flags)) {
       if (tv->target_scroll_y != -1.0f) {
         ImGui::SetScrollY(std::max(0.0f, tv->target_scroll_y));
@@ -1754,7 +1889,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
             theme.track_header_bg);
         track_draw_list->AddLine(
             ImVec2(track_pos.x, track_pos.y + input.lane_height - 1),
-            ImVec2(track_pos.x + inner_width, track_pos.y + input.lane_height - 1),
+            ImVec2(track_pos.x + inner_width,
+                   track_pos.y + input.lane_height - 1),
             theme.track_separator);
 
         // Sticky header text
@@ -1762,23 +1898,23 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         float font_size = ImGui::GetFontSize();
         ImVec2 text_pos = ImVec2(
             sticky_x + 5, track_pos.y + (input.lane_height - font_size) * 0.5f);
-        
+
         size_t display_name_len = strlen(vi.name);
         track_draw_list->AddText(ImGui::GetFont(), font_size, text_pos,
                                  theme.track_text, vi.name,
                                  vi.name + display_name_len);
 
         ImVec2 text_size = ImGui::GetFont()->CalcTextSizeA(
-            font_size, FLT_MAX, 0.0f, vi.name,
-            vi.name + display_name_len);
-        
+            font_size, FLT_MAX, 0.0f, vi.name, vi.name + display_name_len);
+
         // Tooltip for header
-        if (trace_viewer_selection_is_mouse_inside(tv, 
-                trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
-                                      inner_width, tracks_canvas_pos.x, input.mouse_x)) &&
+        if (trace_viewer_selection_is_mouse_inside(
+                tv, trace_viewer_px_to_ts(
+                        tv->viewport.start_time, tv->viewport.end_time,
+                        inner_width, tracks_canvas_pos.x, input.mouse_x)) &&
             ImGui::IsMouseHoveringRect(
-                text_pos, ImVec2(text_pos.x + text_size.x,
-                                 text_pos.y + text_size.y))) {
+                text_pos,
+                ImVec2(text_pos.x + text_size.x, text_pos.y + text_size.y))) {
           ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
                               ImVec2(10.0f, 10.0f));
           ImGui::BeginTooltip();
@@ -1807,11 +1943,12 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                                     tracks_canvas_pos.x, theme);
           }
         } else {
-          bool mouse_in_sel = input.tracks_hovered && 
-                              trace_viewer_selection_is_mouse_inside(
-              tv, trace_viewer_px_to_ts(tv->viewport.start_time,
-                                        tv->viewport.end_time, inner_width,
-                                        tracks_canvas_pos.x, input.mouse_x));
+          bool mouse_in_sel =
+              input.tracks_hovered &&
+              trace_viewer_selection_is_mouse_inside(
+                  tv, trace_viewer_px_to_ts(
+                          tv->viewport.start_time, tv->viewport.end_time,
+                          inner_width, tracks_canvas_pos.x, input.mouse_x));
           trace_viewer_draw_counter_track(
               tv, td, track_draw_list, t,
               ImVec2(track_pos.x, track_pos.y + input.lane_height), inner_width,
@@ -1828,25 +1965,27 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
             &tv->hover_matches[tv->hover_matches.size - 1];
         const TrackRenderBlock& rb = best_hm->rb;
 
-        // Re-draw hovered block with highlight (only for threads, counters do it themselves)
+        // Re-draw hovered block with highlight (only for threads, counters do
+        // it themselves)
         if (tv->tracks[best_hm->track_idx].type == TRACK_TYPE_THREAD) {
-           ImU32 col = rb.color;
-           if (!rb.is_selected) {
-             ImVec4 col_v = ImGui::ColorConvertU32ToFloat4(col);
-             col_v.x = std::min(col_v.x + 0.15f, 1.0f);
-             col_v.y = std::min(col_v.y + 0.15f, 1.0f);
-             col_v.z = std::min(col_v.z + 0.15f, 1.0f);
-             col = ImGui::ColorConvertFloat4ToU32(col_v);
+          ImU32 col = rb.color;
+          if (!rb.is_selected) {
+            ImVec4 col_v = ImGui::ColorConvertU32ToFloat4(col);
+            col_v.x = std::min(col_v.x + 0.15f, 1.0f);
+            col_v.y = std::min(col_v.y + 0.15f, 1.0f);
+            col_v.z = std::min(col_v.z + 0.15f, 1.0f);
+            col = ImGui::ColorConvertFloat4ToU32(col_v);
 
-             trace_viewer_draw_event(tv, td, track_draw_list, rb.x1, rb.x2,
-                                     best_hm->y1, best_hm->y2, col, false,
-                                     rb.is_focused, rb.name_ref, inner_width,
-                                     tracks_canvas_pos.x, theme);
-           }
+            trace_viewer_draw_event(tv, td, track_draw_list, rb.x1, rb.x2,
+                                    best_hm->y1, best_hm->y2, col, false,
+                                    rb.is_focused, rb.name_ref, inner_width,
+                                    tracks_canvas_pos.x, theme);
+          }
         }
 
         // Show tooltip
-        trace_viewer_draw_tooltip(tv, td, best_hm, inner_width, tracks_canvas_pos.x);
+        trace_viewer_draw_tooltip(tv, td, best_hm, inner_width,
+                                  tracks_canvas_pos.x);
       }
 
       if (tv->selection_drag_mode == InteractionDragMode::BOX_SELECT) {
@@ -1857,7 +1996,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
       }
 
       trace_viewer_draw_selection_overlay(
-          tv, track_draw_list, ImVec2(tracks_canvas_pos.x, ImGui::GetWindowPos().y),
+          tv, track_draw_list,
+          ImVec2(tracks_canvas_pos.x, ImGui::GetWindowPos().y),
           ImVec2(inner_width, ImGui::GetWindowSize().y), theme, true);
 
       if (tv->snap_has_snap &&
@@ -1872,10 +2012,10 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     // --- Vertical Minimap Render (Dumb Phase) ---
     trace_viewer_draw_vertical_minimap(tv, td, draw_list, theme);
 
-    trace_viewer_draw_time_ruler(
-        tv, draw_list, ImVec2(tracks_origin_x, canvas_pos.y),
-        ImVec2(tracks_inner_width, input.ruler_height), canvas_pos.x,
-        canvas_size.x, theme);
+    trace_viewer_draw_time_ruler(tv, draw_list,
+                                 ImVec2(tracks_origin_x, canvas_pos.y),
+                                 ImVec2(tracks_inner_width, input.ruler_height),
+                                 canvas_pos.x, canvas_size.x, theme);
   }
 
   // Details Panel
@@ -1912,19 +2052,24 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           float h_canvas_width = ImGui::GetContentRegionAvail().x;
           float h_canvas_height = 80.0f;
 
-          ImGui::InvisibleButton("##dur_histogram", ImVec2(h_canvas_width, h_canvas_height));
+          ImGui::InvisibleButton("##dur_histogram",
+                                 ImVec2(h_canvas_width, h_canvas_height));
           bool is_hovered = ImGui::IsItemHovered();
           ImVec2 mouse_pos = ImGui::GetIO().MousePos;
 
           ImDrawList* draw_list = ImGui::GetWindowDrawList();
 
           // Draw background
-          draw_list->AddRectFilled(h_canvas_pos, ImVec2(h_canvas_pos.x + h_canvas_width, h_canvas_pos.y + h_canvas_height),
+          draw_list->AddRectFilled(h_canvas_pos,
+                                   ImVec2(h_canvas_pos.x + h_canvas_width,
+                                          h_canvas_pos.y + h_canvas_height),
                                    theme.search_histogram_bg, 4.0f);
 
           float bar_spacing = 2.0f;
-          float total_spacing = bar_spacing * static_cast<float>(h.num_buckets - 1);
-          float bar_width = (h_canvas_width - 10.0f - total_spacing) / static_cast<float>(h.num_buckets);
+          float total_spacing =
+              bar_spacing * static_cast<float>(h.num_buckets - 1);
+          float bar_width = (h_canvas_width - 10.0f - total_spacing) /
+                            static_cast<float>(h.num_buckets);
 
           float baseline_y = h_canvas_pos.y + h_canvas_height - 20.0f;
 
@@ -1932,17 +2077,22 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
           for (int i = 0; i < h.num_buckets; i++) {
             const DurationHistogramBucket& b = h.buckets[i];
-            
-            float h_ratio = (h.max_bucket_count > 0) ? static_cast<float>(b.count) / static_cast<float>(h.max_bucket_count) : 0.0f;
+
+            float h_ratio = (h.max_bucket_count > 0)
+                                ? static_cast<float>(b.count) /
+                                      static_cast<float>(h.max_bucket_count)
+                                : 0.0f;
             float bar_h = h_ratio * (h_canvas_height - 35.0f);
 
-            float x1 = h_canvas_pos.x + 5.0f + static_cast<float>(i) * (bar_width + bar_spacing);
+            float x1 = h_canvas_pos.x + 5.0f +
+                       static_cast<float>(i) * (bar_width + bar_spacing);
             float x2 = x1 + bar_width;
             float y1 = baseline_y - bar_h;
             float y2 = baseline_y;
 
-            bool bucket_hovered = is_hovered && mouse_pos.x >= x1 && mouse_pos.x <= x2 &&
-                                  mouse_pos.y >= h_canvas_pos.y && mouse_pos.y <= baseline_y;
+            bool bucket_hovered =
+                is_hovered && mouse_pos.x >= x1 && mouse_pos.x <= x2 &&
+                mouse_pos.y >= h_canvas_pos.y && mouse_pos.y <= baseline_y;
 
             if (bucket_hovered) {
               hovered_bucket = i;
@@ -1960,26 +2110,29 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
             }
 
             if (b.count > 0) {
-              draw_list->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), bar_col, 2.0f);
+              draw_list->AddRectFilled(ImVec2(x1, y1), ImVec2(x2, y2), bar_col,
+                                       2.0f);
             }
           }
 
           // Draw baseline (X Axis)
-          draw_list->AddLine(ImVec2(h_canvas_pos.x + 5.0f, baseline_y),
-                             ImVec2(h_canvas_pos.x + h_canvas_width - 5.0f, baseline_y),
-                             theme.ruler_border);
+          draw_list->AddLine(
+              ImVec2(h_canvas_pos.x + 5.0f, baseline_y),
+              ImVec2(h_canvas_pos.x + h_canvas_width - 5.0f, baseline_y),
+              theme.ruler_border);
 
           // Draw vertical axis (Y Axis)
-          draw_list->AddLine(ImVec2(h_canvas_pos.x + 5.0f, h_canvas_pos.y + 5.0f),
-                             ImVec2(h_canvas_pos.x + 5.0f, baseline_y),
-                             theme.ruler_border);
+          draw_list->AddLine(
+              ImVec2(h_canvas_pos.x + 5.0f, h_canvas_pos.y + 5.0f),
+              ImVec2(h_canvas_pos.x + 5.0f, baseline_y), theme.ruler_border);
 
           // Label Y-Axis bounds
           char y_max_buf[32];
           snprintf(y_max_buf, sizeof(y_max_buf), "%u", h.max_bucket_count);
-          draw_list->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f,
-                             ImVec2(h_canvas_pos.x + 8.0f, h_canvas_pos.y + 4.0f),
-                             theme.ruler_text, y_max_buf);
+          draw_list->AddText(
+              ImGui::GetFont(), ImGui::GetFontSize() * 0.75f,
+              ImVec2(h_canvas_pos.x + 8.0f, h_canvas_pos.y + 4.0f),
+              theme.ruler_text, y_max_buf);
           draw_list->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f,
                              ImVec2(h_canvas_pos.x + 8.0f, baseline_y - 12.0f),
                              theme.ruler_text, "0");
@@ -1989,11 +2142,17 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           char max_label[32] = "";
           if (h.num_buckets > 0) {
             int first_non_zero_idx = 0;
-            if (h.buckets[0].min_dur <= 0 && h.buckets[0].max_dur <= 0 && h.num_buckets > 1) {
+            if (h.buckets[0].min_dur <= 0 && h.buckets[0].max_dur <= 0 &&
+                h.num_buckets > 1) {
               first_non_zero_idx = 1;
             }
-            format_duration(min_label, sizeof(min_label), static_cast<double>(h.buckets[first_non_zero_idx].min_dur));
-            format_duration(max_label, sizeof(max_label), static_cast<double>(h.buckets[h.num_buckets - 1].max_dur));
+            format_duration(
+                min_label, sizeof(min_label),
+                static_cast<double>(h.buckets[first_non_zero_idx].min_dur),
+                0.0);
+            format_duration(
+                max_label, sizeof(max_label),
+                static_cast<double>(h.buckets[h.num_buckets - 1].max_dur), 0.0);
           }
 
           draw_list->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f,
@@ -2001,30 +2160,36 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                              theme.ruler_text, min_label);
 
           float max_text_w = ImGui::CalcTextSize(max_label).x * 0.75f;
-          draw_list->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 0.75f,
-                             ImVec2(h_canvas_pos.x + h_canvas_width - 5.0f - max_text_w, baseline_y + 2.0f),
-                             theme.ruler_text, max_label);
+          draw_list->AddText(
+              ImGui::GetFont(), ImGui::GetFontSize() * 0.75f,
+              ImVec2(h_canvas_pos.x + h_canvas_width - 5.0f - max_text_w,
+                     baseline_y + 2.0f),
+              theme.ruler_text, max_label);
 
           if (hovered_bucket != -1) {
             const DurationHistogramBucket& b = h.buckets[hovered_bucket];
 
             ImGui::BeginTooltip();
-            
+
             char min_buf[32], max_buf[32];
             if (b.min_dur <= 0 && b.max_dur <= 0) {
               ImGui::Text("Duration: <= 0 us");
             } else {
-              format_duration(min_buf, sizeof(min_buf), (double)b.min_dur);
-              format_duration(max_buf, sizeof(max_buf), (double)b.max_dur);
+              format_duration(min_buf, sizeof(min_buf), (double)b.min_dur, 0.0);
+              format_duration(max_buf, sizeof(max_buf), (double)b.max_dur, 0.0);
               ImGui::Text("Duration: %s - %s", min_buf, max_buf);
             }
 
-            float percent = h.total_count > 0 ? (static_cast<float>(b.count) / static_cast<float>(h.total_count)) * 100.0f : 0.0f;
+            float percent = h.total_count > 0
+                                ? (static_cast<float>(b.count) /
+                                   static_cast<float>(h.total_count)) *
+                                      100.0f
+                                : 0.0f;
             ImGui::Text("Count: %u events (%.1f%%)", b.count, percent);
             if (b.count > 0) {
               ImGui::TextDisabled("Click to filter table below");
             }
-            
+
             ImGui::EndTooltip();
 
             if (ImGui::IsMouseClicked(0) && b.count > 0) {
@@ -2039,20 +2204,20 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         }
 
         if (tv->filtered_event_indices.size > 0) {
-          if (ImGui::BeginTable("##multi_select", 4,
-                               ImGuiTableFlags_Resizable |
-                                   ImGuiTableFlags_ScrollY |
-                                   ImGuiTableFlags_RowBg |
-                                   ImGuiTableFlags_Borders |
-                                   ImGuiTableFlags_SizingFixedFit |
-                                   ImGuiTableFlags_Sortable |
-                                   ImGuiTableFlags_SortTristate |
-                                   ImGuiTableFlags_NoSavedSettings,
-                               ImVec2(0, 200.0f))) {
+          if (ImGui::BeginTable(
+                  "##multi_select", 4,
+                  ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY |
+                      ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders |
+                      ImGuiTableFlags_SizingFixedFit |
+                      ImGuiTableFlags_Sortable | ImGuiTableFlags_SortTristate |
+                      ImGuiTableFlags_NoSavedSettings,
+                  ImVec2(0, 200.0f))) {
             ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
-            ImGui::TableSetupColumn("Category", ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableSetupColumn("Category",
+                                    ImGuiTableColumnFlags_WidthFixed);
             ImGui::TableSetupColumn("Start", ImGuiTableColumnFlags_WidthFixed);
-            ImGui::TableSetupColumn("Duration", ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableSetupColumn("Duration",
+                                    ImGuiTableColumnFlags_WidthFixed);
             ImGui::TableSetupScrollFreeze(0, 1);
             ImGui::TableHeadersRow();
 
@@ -2063,8 +2228,10 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
 
                 std::lock_guard<std::mutex> lock(tv->search.mutex);
                 tv->search.sort_column = spec.ColumnIndex;
-                tv->search.sort_ascending = (spec.SortDirection == ImGuiSortDirection_Ascending);
-                tv->search.sort_none = (spec.SortDirection == ImGuiSortDirection_None);
+                tv->search.sort_ascending =
+                    (spec.SortDirection == ImGuiSortDirection_Ascending);
+                tv->search.sort_none =
+                    (spec.SortDirection == ImGuiSortDirection_None);
                 tv->search.new_sort_specs_available.store(true);
 
                 platform_submit_job(trace_viewer_search_job, &tv->search);
@@ -2101,13 +2268,14 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
                 ImGui::TableNextColumn();
                 char ts_buf[32];
                 format_duration(ts_buf, sizeof(ts_buf),
-                                (double)e.ts - (double)tv->viewport.min_ts);
+                                (double)e.ts - (double)tv->viewport.min_ts,
+                                0.0);
                 ImGui::TextUnformatted(ts_buf);
 
                 ImGui::TableNextColumn();
                 if (e.dur > 0) {
                   char dur_buf[32];
-                  format_duration(dur_buf, sizeof(dur_buf), (double)e.dur);
+                  format_duration(dur_buf, sizeof(dur_buf), (double)e.dur, 0.0);
                   ImGui::TextUnformatted(dur_buf);
                 }
               }
@@ -2116,7 +2284,9 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           }
 
           if (tv->selected_histogram_bucket != -1) {
-            ImGui::TextDisabled("Filtered results: %zu / %zu events", tv->filtered_event_indices.size, tv->selected_event_indices.size);
+            ImGui::TextDisabled("Filtered results: %zu / %zu events",
+                                tv->filtered_event_indices.size,
+                                tv->selected_event_indices.size);
           }
         }
       }
@@ -2137,16 +2307,13 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
           bool is_counter = (ph.size() == 1 && ph[0] == 'C');
 
           if (is_counter) {
-            if (test_t.type == TRACK_TYPE_COUNTER &&
-                test_t.pid == e.pid &&
-                test_t.name_ref == e.name_ref &&
-                test_t.id_ref == e.id_ref) {
+            if (test_t.type == TRACK_TYPE_COUNTER && test_t.pid == e.pid &&
+                test_t.name_ref == e.name_ref && test_t.id_ref == e.id_ref) {
               target_track = &test_t;
               break;
             }
           } else {
-            if (test_t.type == TRACK_TYPE_THREAD &&
-                test_t.pid == e.pid &&
+            if (test_t.type == TRACK_TYPE_THREAD && test_t.pid == e.pid &&
                 test_t.tid == e.tid) {
               target_track = &test_t;
               break;
@@ -2157,7 +2324,8 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
         ImGui::TextDisabled("Focused Event");
         ImGui::Spacing();
 
-        trace_viewer_draw_event_properties(td, e, (double)tv->viewport.min_ts, true, target_track);
+        trace_viewer_draw_event_properties(td, e, (double)tv->viewport.min_ts,
+                                           true, target_track);
       }
 
       if (!has_focus && !has_selection) {
@@ -2185,10 +2353,13 @@ void trace_viewer_reset_view(TraceViewer* tv) {
   tv->selected_events_dirty = true;
 }
 
-void trace_viewer_precompute_minimap_heatmap(TraceViewer* tv, const TraceData* td, Allocator a) {
-  array_list_resize(&tv->vertical_minimap.track_heatmap_densities, a, tv->tracks.size);
-  
-  // Initialize all buckets to (size_t)-1 (idle) to prevent out-of-bounds access on zero duration or empty traces
+void trace_viewer_precompute_minimap_heatmap(TraceViewer* tv,
+                                             const TraceData* td, Allocator a) {
+  array_list_resize(&tv->vertical_minimap.track_heatmap_densities, a,
+                    tv->tracks.size);
+
+  // Initialize all buckets to (size_t)-1 (idle) to prevent out-of-bounds access
+  // on zero duration or empty traces
   for (size_t i = 0; i < tv->tracks.size; i++) {
     TrackHeatmap& h = tv->vertical_minimap.track_heatmap_densities[i];
     for (int b = 0; b < TrackHeatmap::BUCKET_COUNT; b++) {
@@ -2206,7 +2377,7 @@ void trace_viewer_precompute_minimap_heatmap(TraceViewer* tv, const TraceData* t
   for (size_t i = 0; i < tv->tracks.size; i++) {
     Track& t = tv->tracks[i];
     TrackHeatmap& h = tv->vertical_minimap.track_heatmap_densities[i];
-    
+
     // Initialize buckets to (size_t)-1 (idle)
     for (int b = 0; b < TrackHeatmap::BUCKET_COUNT; b++) {
       h.event_indices[b] = (size_t)-1;
@@ -2226,8 +2397,9 @@ void trace_viewer_precompute_minimap_heatmap(TraceViewer* tv, const TraceData* t
       double rel_ts = (double)(e.ts - tv->viewport.min_ts);
       int b_idx = (int)(rel_ts / bucket_dur);
       if (b_idx < 0) b_idx = 0;
-      if (b_idx >= TrackHeatmap::BUCKET_COUNT) b_idx = TrackHeatmap::BUCKET_COUNT - 1;
-      
+      if (b_idx >= TrackHeatmap::BUCKET_COUNT)
+        b_idx = TrackHeatmap::BUCKET_COUNT - 1;
+
       // Pick dominant event index based on longest duration
       if (e.dur > max_dur[b_idx]) {
         max_dur[b_idx] = e.dur;
@@ -2243,9 +2415,10 @@ struct SortKey {
   int64_t numeric_val;
 };
 
-static void trace_viewer_sort_results(const TraceData* td, ArrayList<int64_t>* results,
-                                      int sort_column, bool sort_ascending, bool sort_none,
-                                      Allocator allocator) {
+static void trace_viewer_sort_results(const TraceData* td,
+                                      ArrayList<int64_t>* results,
+                                      int sort_column, bool sort_ascending,
+                                      bool sort_none, Allocator allocator) {
   if (results->size <= 1) return;
 
   if (sort_none) {
@@ -2298,14 +2471,17 @@ static void trace_viewer_sort_results(const TraceData* td, ArrayList<int64_t>* r
                 }
                 case 2:
                 case 3: {
-                  if (a.numeric_val < b.numeric_val) comp = -1;
-                  else if (a.numeric_val > b.numeric_val) comp = 1;
+                  if (a.numeric_val < b.numeric_val)
+                    comp = -1;
+                  else if (a.numeric_val > b.numeric_val)
+                    comp = 1;
                   break;
                 }
               }
 
               if (comp == 0) {
-                return sort_ascending ? (a.event_idx < b.event_idx) : (a.event_idx > b.event_idx);
+                return sort_ascending ? (a.event_idx < b.event_idx)
+                                      : (a.event_idx > b.event_idx);
               }
 
               return sort_ascending ? (comp < 0) : (comp > 0);
@@ -2331,7 +2507,7 @@ void trace_viewer_search_job(void* user_data) {
   bool do_search = false;
   bool do_sort = false;
   bool do_box_select = false;
-  
+
   int sort_column = 0;
   bool sort_ascending = true;
   bool sort_none = true;
@@ -2339,11 +2515,12 @@ void trace_viewer_search_job(void* user_data) {
   {
     std::lock_guard<std::mutex> lock(s->mutex);
     if (s->new_query_available.load()) {
-      array_list_append(&query, allocator, s->pending_query.data, s->pending_query.size);
+      array_list_append(&query, allocator, s->pending_query.data,
+                        s->pending_query.size);
       s->new_query_available.store(false);
       do_search = true;
     }
-    
+
     if (s->new_sort_specs_available.load()) {
       s->new_sort_specs_available.store(false);
       do_sort = true;
@@ -2370,10 +2547,8 @@ void trace_viewer_search_job(void* user_data) {
         if (q_len == 0) return true;
         if (text.length() < q_len) return false;
         auto it = std::search(
-          text.begin(), text.end(),
-          q, q + q_len,
-          [](char a, char b) { return std::tolower(a) == std::tolower(b); }
-        );
+            text.begin(), text.end(), q, q + q_len,
+            [](char a, char b) { return std::tolower(a) == std::tolower(b); });
         return it != text.end();
       };
 
@@ -2417,17 +2592,21 @@ void trace_viewer_search_job(void* user_data) {
       }
 
       if (!s->new_query_available.load() && !s->jobs_should_abort.load()) {
-        trace_viewer_sort_results(td, &results, sort_column, sort_ascending, sort_none, allocator);
+        trace_viewer_sort_results(td, &results, sort_column, sort_ascending,
+                                  sort_none, allocator);
 
         if (!s->new_query_available.load() && !s->jobs_should_abort.load()) {
           DurationHistogram hist = {};
           trace_viewer_calculate_histogram(results, td, &hist);
 
           std::lock_guard<std::mutex> lock(s->mutex);
-          LOG_INFO("BACKGROUND SEARCH JOB COMPLETED! results size = %zu, histogram buckets = %d",
-                   results.size, hist.num_buckets);
+          LOG_INFO(
+              "BACKGROUND SEARCH JOB COMPLETED! results size = %zu, histogram "
+              "buckets = %d",
+              results.size, hist.num_buckets);
           array_list_clear(&s->pending_results);
-          array_list_append(&s->pending_results, allocator, results.data, results.size);
+          array_list_append(&s->pending_results, allocator, results.data,
+                            results.size);
           s->pending_histogram = hist;
           s->results_ready.store(true);
         }
@@ -2443,10 +2622,12 @@ void trace_viewer_search_job(void* user_data) {
     ArrayList<int64_t> results = {};
     {
       std::lock_guard<std::mutex> lock(s->mutex);
-      array_list_append(&results, allocator, s->pending_results.data, s->pending_results.size);
+      array_list_append(&results, allocator, s->pending_results.data,
+                        s->pending_results.size);
     }
 
-    trace_viewer_sort_results(td, &results, sort_column, sort_ascending, sort_none, allocator);
+    trace_viewer_sort_results(td, &results, sort_column, sort_ascending,
+                              sort_none, allocator);
 
     if (!s->new_query_available.load() && !s->jobs_should_abort.load()) {
       DurationHistogram hist = {};
@@ -2454,7 +2635,8 @@ void trace_viewer_search_job(void* user_data) {
 
       std::lock_guard<std::mutex> lock(s->mutex);
       array_list_clear(&s->pending_results);
-      array_list_append(&s->pending_results, allocator, results.data, results.size);
+      array_list_append(&s->pending_results, allocator, results.data,
+                        results.size);
       s->pending_histogram = hist;
       s->results_ready.store(true);
     }
@@ -2476,7 +2658,8 @@ struct InputTextCallback_UserData {
   Allocator allocator;
 };
 
-static int trace_viewer_search_input_callback(ImGuiInputTextCallbackData* data) {
+static int trace_viewer_search_input_callback(
+    ImGuiInputTextCallbackData* data) {
   InputTextCallback_UserData* ud = (InputTextCallback_UserData*)data->UserData;
   if (data->EventFlag == ImGuiInputTextFlags_CallbackResize) {
     ArrayList<char>* al = ud->al;
@@ -2486,7 +2669,8 @@ static int trace_viewer_search_input_callback(ImGuiInputTextCallbackData* data) 
   return 0;
 }
 
-static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocator) {
+static void trace_viewer_draw_search_section(TraceViewer* tv,
+                                             Allocator allocator) {
   ImGui::TextDisabled("Search Events");
   if (tv->focus_search_input) {
     ImGui::SetKeyboardFocusHere();
@@ -2500,12 +2684,13 @@ static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocato
   }
 
   InputTextCallback_UserData cb_data = {&tv->search_query, allocator};
-  bool search_input_changed = ImGui::InputText("##search", tv->search_query.data,
-                                             tv->search_query.capacity,
-                                             ImGuiInputTextFlags_CallbackResize,
-                                             trace_viewer_search_input_callback, &cb_data);
+  bool search_input_changed = ImGui::InputText(
+      "##search", tv->search_query.data, tv->search_query.capacity,
+      ImGuiInputTextFlags_CallbackResize, trace_viewer_search_input_callback,
+      &cb_data);
 
-  bool enter_pressed = ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Enter);
+  bool enter_pressed =
+      ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Enter);
 
   ImGui::Spacing();
   bool filter_changed = false;
@@ -2515,9 +2700,10 @@ static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocato
 
   if (search_input_changed || enter_pressed || filter_changed) {
     std::lock_guard<std::mutex> lock(tv->search.mutex);
-    const char* last_query = (tv->search.pending_query.size > 0 && tv->search.pending_query.data)
-                                 ? tv->search.pending_query.data
-                                 : "";
+    const char* last_query =
+        (tv->search.pending_query.size > 0 && tv->search.pending_query.data)
+            ? tv->search.pending_query.data
+            : "";
 
     bool should_trigger = false;
     if (enter_pressed) {
@@ -2534,8 +2720,10 @@ static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocato
 
     if (should_trigger) {
       array_list_clear(&tv->search.pending_query);
-      array_list_append(&tv->search.pending_query, allocator, tv->search_query.data, strlen(tv->search_query.data) + 1);
-      
+      array_list_append(&tv->search.pending_query, allocator,
+                        tv->search_query.data,
+                        strlen(tv->search_query.data) + 1);
+
       tv->search.include_thread_events.store(tv->search_thread_events);
       tv->search.include_counter_events.store(tv->search_counter_events);
 
@@ -2550,8 +2738,8 @@ static void trace_viewer_draw_search_section(TraceViewer* tv, Allocator allocato
   if (tv->search_query.data[0] != '\0') {
     ImGui::Text("%zu events selected", tv->selected_event_indices.size);
     if (tv->search.is_searching.load()) {
-       ImGui::SameLine();
-       ImGui::TextDisabled("(searching...)");
+      ImGui::SameLine();
+      ImGui::TextDisabled("(searching...)");
     }
   }
 }

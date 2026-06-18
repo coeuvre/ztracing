@@ -5,35 +5,35 @@
 TEST(FormatTest, FormatDuration) {
   char buf[32];
 
-  format_duration(buf, sizeof(buf), 0.0);
+  format_duration(buf, sizeof(buf), 0.0, 0.0);
   EXPECT_STREQ(buf, "0");
 
-  format_duration(buf, sizeof(buf), 500.0);
+  format_duration(buf, sizeof(buf), 500.0, 0.0);
   EXPECT_STREQ(buf, "500 us");
 
-  format_duration(buf, sizeof(buf), 1000.0);
+  format_duration(buf, sizeof(buf), 1000.0, 0.0);
   EXPECT_STREQ(buf, "1 ms");
 
-  format_duration(buf, sizeof(buf), 1500.0);
+  format_duration(buf, sizeof(buf), 1500.0, 0.0);
   EXPECT_STREQ(buf, "1.5 ms");
 
-  format_duration(buf, sizeof(buf), 1000000.0);
+  format_duration(buf, sizeof(buf), 1000000.0, 0.0);
   EXPECT_STREQ(buf, "1 s");
 
-  format_duration(buf, sizeof(buf), 2500000.0);
+  format_duration(buf, sizeof(buf), 2500000.0, 0.0);
   EXPECT_STREQ(buf, "2.5 s");
 }
 
 TEST(FormatTest, FormatDurationNegative) {
   char buf[32];
 
-  format_duration(buf, sizeof(buf), -500.0);
+  format_duration(buf, sizeof(buf), -500.0, 0.0);
   EXPECT_STREQ(buf, "-500 us");
 
-  format_duration(buf, sizeof(buf), -1000.0);
+  format_duration(buf, sizeof(buf), -1000.0, 0.0);
   EXPECT_STREQ(buf, "-1 ms");
 
-  format_duration(buf, sizeof(buf), -1000000.0);
+  format_duration(buf, sizeof(buf), -1000000.0, 0.0);
   EXPECT_STREQ(buf, "-1 s");
 }
 

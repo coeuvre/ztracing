@@ -40,7 +40,7 @@ cc_library(
 
 cc_library(
     name = "format",
-    srcs = ["format.cc"],
+    srcs = ["format.c"],
     hdrs = ["format.h"],
 )
 
