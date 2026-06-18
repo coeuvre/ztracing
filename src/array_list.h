@@ -1,6 +1,7 @@
 #ifndef ZTRACING_SRC_ARRAY_LIST_H_
 #define ZTRACING_SRC_ARRAY_LIST_H_
 
+#include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,7 +45,11 @@ inline size_t array_list_calculate_new_capacity(size_t current_capacity,
 }
 
 inline void array_list_reserve(array_list_t* al, size_t new_capacity,
-                               allocator_t a) {
+                               size_t elem_size, allocator_t a) {
+  if (al->elem_size == 0) {
+    al->elem_size = elem_size;
+  }
+  assert(al->elem_size == elem_size);
   if (new_capacity > al->cap) {
     // Check for overflow in size calculation
     if (new_capacity > (size_t)-1 / al->elem_size) {
@@ -58,18 +63,26 @@ inline void array_list_reserve(array_list_t* al, size_t new_capacity,
   }
 }
 
-inline void* array_list_push(array_list_t* al, allocator_t a) {
+inline void* array_list_push_(array_list_t* al, size_t elem_size,
+                              allocator_t a) {
+  if (al->elem_size == 0) {
+    al->elem_size = elem_size;
+  }
+  assert(al->elem_size == elem_size);
   if (al->len == al->cap) {
     size_t new_capacity =
         array_list_calculate_new_capacity(al->cap, al->len + 1);
-    array_list_reserve(al, new_capacity, a);
+    array_list_reserve(al, new_capacity, al->elem_size, a);
   }
   void* slot = (char*)al->ptr + al->len * al->elem_size;
   al->len++;
   return slot;
 }
 
-inline void* array_list_pop(array_list_t* al) {
+#define array_list_push(al, type_t, a) \
+  ((type_t*)array_list_push_((al), sizeof(type_t), (a)))
+
+inline void* array_list_pop_(array_list_t* al) {
   void* slot = nullptr;
   if (al->len > 0) {
     al->len--;
@@ -78,12 +91,18 @@ inline void* array_list_pop(array_list_t* al) {
   return slot;
 }
 
+#define array_list_pop(al, type_t) ((type_t*)array_list_pop_((al)))
+
 inline void array_list_clear(array_list_t* al) { al->len = 0; }
 
 inline void array_list_resize(array_list_t* al, size_t new_size,
-                              allocator_t a) {
+                              size_t elem_size, allocator_t a) {
+  if (al->elem_size == 0) {
+    al->elem_size = elem_size;
+  }
+  assert(al->elem_size == elem_size);
   if (new_size > al->cap) {
-    array_list_reserve(al, new_size, a);
+    array_list_reserve(al, new_size, al->elem_size, a);
   }
   al->len = new_size;
 }
@@ -122,14 +141,16 @@ template <typename T>
 inline void array_list_reserve(ArrayList<T>* al, allocator_t a,
                                size_t new_capacity) {
   al->element_size = sizeof(T);
-  array_list_reserve(reinterpret_cast<array_list_t*>(al), new_capacity, a);
+  array_list_reserve(reinterpret_cast<array_list_t*>(al), new_capacity,
+                     sizeof(T), a);
 }
 
 template <typename T>
 inline void array_list_push_back(ArrayList<T>* al, allocator_t a,
                                  const T& item) {
   al->element_size = sizeof(T);
-  void* slot = array_list_push(reinterpret_cast<array_list_t*>(al), a);
+  void* slot =
+      array_list_push_(reinterpret_cast<array_list_t*>(al), sizeof(T), a);
   *static_cast<T*>(slot) = item;
 }
 
@@ -139,7 +160,7 @@ inline void array_list_append(ArrayList<T>* al, allocator_t a, const T* items,
   if (count > 0) {
     al->element_size = sizeof(T);
     array_list_t* impl = reinterpret_cast<array_list_t*>(al);
-    array_list_resize(impl, impl->len + count, a);
+    array_list_resize(impl, impl->len + count, sizeof(T), a);
     char* dst = (char*)impl->ptr + (impl->len - count) * impl->elem_size;
     memcpy(dst, items, count * impl->elem_size);
   }
@@ -147,7 +168,7 @@ inline void array_list_append(ArrayList<T>* al, allocator_t a, const T* items,
 
 template <typename T>
 inline void array_list_pop_back(ArrayList<T>* al) {
-  (void)array_list_pop(reinterpret_cast<array_list_t*>(al));
+  (void)array_list_pop_(reinterpret_cast<array_list_t*>(al));
 }
 
 template <typename T>
@@ -159,7 +180,8 @@ template <typename T>
 inline void array_list_resize(ArrayList<T>* al, allocator_t a,
                               size_t new_size) {
   al->element_size = sizeof(T);
-  array_list_resize(reinterpret_cast<array_list_t*>(al), new_size, a);
+  array_list_resize(reinterpret_cast<array_list_t*>(al), new_size, sizeof(T),
+                    a);
 }
 
 template <typename T>
