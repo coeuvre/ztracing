@@ -34,6 +34,11 @@ cc_library(
 )
 
 cc_library(
+    name = "string",
+    hdrs = ["string.h"],
+)
+
+cc_library(
     name = "format",
     srcs = ["format.cc"],
     hdrs = ["format.h"],
