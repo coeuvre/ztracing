@@ -7,6 +7,15 @@ This document defines the coding standards, style guidelines, and mandates for t
 ## 1. Language & Compiler Mandates
 
 *   **Standard**: Pure **C23** is required for all application logic. Compiles with `-std=c23`.
+*   **Null Pointers**: Always use the native C23 keyword `nullptr` for null pointer constants. The old C-style macro `NULL` and raw `0` are strictly prohibited for pointer values.
+*   **Constants**: Prefer the native C23 `constexpr` keyword over preprocessor `#define` macros for declaring typed constants. This provides compile-time type safety and scope control.
+    ```c
+    // Correct (C23 Style)
+    constexpr size_t NUM_WORKERS = 2;
+
+    // Incorrect (Obsolete preprocessor macro)
+    #define NUM_WORKERS 2
+    ```
 *   **Warnings**: Strict warnings are enabled for all local code (`-Wall -Wextra -Werror` etc.).
 *   **Include Guards**: All internal headers must use include guards matching the pattern `ZTRACING_SRC_<FILE>_H_` (not `#pragma once`).
     ```c
@@ -62,9 +71,15 @@ This document defines the coding standards, style guidelines, and mandates for t
 ## 4. Zero-Is-Initialization (ZII) & Initialization
 
 *   **Pattern**: Prefer Zero-Is-Initialization (ZII). A zeroed-out struct must represent a valid, default-initialized state.
-*   **Empty Initializer**: Use the C23 empty initializer `{}` to zero-initialize any struct:
+*   **Empty Initializer**: Use the C23 empty initializer `{}` to zero-initialize any struct, array, or union. Do **not** use the obsolete C11-style `{0}`:
     ```c
-    array_list_t al = {}; // Fully zero-initialized
+    // Correct (C23 Style)
+    array_list_t al = {};
+    int arr[10] = {};
+
+    // Incorrect (Obsolete C11 Style)
+    array_list_t al = {0};
+    int arr[10] = {0};
     ```
 *   **No `memset`**: Never use `memset(ptr, 0, sizeof(T))` for struct initialization. Use `{}` instead.
 *   **Designated Initializers**: For "ZII + setting" operations, use designated initializers. Redundant `= 0` or `= nullptr` fields must be omitted to keep the code concise:

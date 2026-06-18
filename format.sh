@@ -8,7 +8,7 @@ cd "$DIR"
 # Get changed files using jj diff git headers
 # This correctly captures modified, added, and renamed files by looking
 # at the destination paths (+++ b/ lines).
-files=$(jj diff | grep -E '^\+\+\+ ' | awk '{print $2}' | cut -c 3- | grep -E '\.(c|cc|cpp|h|hh|hpp)$' || true)
+files=$(jj diff --git | grep -E '^\+\+\+ ' | awk '{print $2}' | cut -c 3- | grep -E '\.(c|cc|cpp|h|hh|hpp)$' || true)
 
 if [ -z "$files" ]; then
   echo "No changed C/C++ files to format."

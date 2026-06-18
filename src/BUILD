@@ -10,9 +10,9 @@ config_setting(
 
 cc_library(
     name = "platform",
-    srcs = ["platform_common.cc"] + select({
-        ":wasm_build": ["platform_wasm.cc"],
-        "//conditions:default": ["platform_native.cc"],
+    srcs = ["platform_common.c"] + select({
+        ":wasm_build": ["platform_wasm.c"],
+        "//conditions:default": ["platform_native.c"],
     }),
     hdrs = ["platform.h"],
 )
