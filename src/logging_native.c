@@ -3,7 +3,7 @@
 
 #include "src/logging.h"
 
-void log_message(LogLevel level, const char* format, ...) {
+void log_message(log_level_t level, const char* format, ...) {
   const char* level_str = "DEBUG";
   switch (level) {
     case LOG_LEVEL_DEBUG:

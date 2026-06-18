@@ -20,8 +20,8 @@ cc_library(
 cc_library(
     name = "logging",
     srcs = select({
-        ":wasm_build": ["logging_wasm.cc"],
-        "//conditions:default": ["logging_native.cc"],
+        ":wasm_build": ["logging_wasm.c"],
+        "//conditions:default": ["logging_native.c"],
     }),
     hdrs = ["logging.h"],
 )

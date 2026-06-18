@@ -110,3 +110,17 @@ This document defines the coding standards, style guidelines, and mandates for t
 
 *   All UI code must interact with Dear ImGui strictly through a custom, hand-written C-compatible wrapper (`src/imgui_c.h`).
 *   Direct inclusion of the `<imgui.h>` header is strictly prohibited in C23 files.
+
+---
+
+## 8. Formatting Tooling
+
+To ensure consistent code style, a helper script is provided in the repository root:
+
+*   **Script**: `./format.sh` (executable).
+*   **Purpose**: Automatically formats changed C/C++ files (modified, added, or renamed) in the Jujutsu (`jj`) working copy using `clang-format` based on the `.clang-format` configuration.
+*   **Usage**: Run it before committing or sharing code:
+    ```bash
+    ./format.sh
+    ```
+    This script automatically queries Jujutsu, filters for C/C++ files, and formats them in-place, ensuring strict compliance with this style guide.

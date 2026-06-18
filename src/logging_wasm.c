@@ -4,7 +4,7 @@
 
 #include "src/logging.h"
 
-void log_message(LogLevel level, const char* format, ...) {
+void log_message(log_level_t level, const char* format, ...) {
   char buffer[1024];
   va_list args;
   va_start(args, format);
