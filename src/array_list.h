@@ -77,6 +77,22 @@ static inline void* array_list_push_(array_list_t* al, size_t elem_size,
 #define array_list_push(al, type_t, a) \
   ((type_t*)array_list_push_((al), sizeof(type_t), (a)))
 
+static inline void array_list_ensure_(array_list_t* al, size_t count,
+                                      size_t elem_size, allocator_t a) {
+  if (al->elem_size == 0) {
+    al->elem_size = elem_size;
+  }
+  assert(al->elem_size == elem_size);
+  if (al->len + count > al->cap) {
+    size_t new_capacity =
+        array_list_calculate_new_capacity(al->cap, al->len + count);
+    array_list_reserve(al, new_capacity, al->elem_size, a);
+  }
+}
+
+#define array_list_ensure(al, count, type_t, a) \
+  array_list_ensure_((al), (count), sizeof(type_t), (a))
+
 static inline void* array_list_pop_(array_list_t* al) {
   void* slot = nullptr;
   if (al->len > 0) {
@@ -123,10 +139,22 @@ static inline void* array_list_get(const array_list_t* al, size_t index) {
 // C++ Template compatibility wrapper
 template <typename T>
 struct ArrayList {
-  T* data;
-  size_t size;
-  size_t capacity;
-  size_t element_size;
+  union {
+    T* data;
+    void* ptr;
+  };
+  union {
+    size_t size;
+    size_t len;
+  };
+  union {
+    size_t capacity;
+    size_t cap;
+  };
+  union {
+    size_t element_size;
+    size_t elem_size;
+  };
 
   T& operator[](size_t index) { return data[index]; }
   const T& operator[](size_t index) const { return data[index]; }

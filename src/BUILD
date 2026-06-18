@@ -132,13 +132,14 @@ cc_library(
 
 cc_library(
     name = "trace_data",
-    srcs = ["trace_data.cc"],
+    srcs = ["trace_data.c"],
     hdrs = ["trace_data.h"],
     deps = [
         ":allocator",
         ":array_list",
         ":colors",
         ":hash_table",
+        ":string",
         ":trace_parser",
     ],
 )

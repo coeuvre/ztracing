@@ -2,28 +2,46 @@
 #define ZTRACING_SRC_TRACE_DATA_H_
 
 #include <stdint.h>
-#include <string_view>
 
 #include "src/allocator.h"
 #include "src/array_list.h"
 #include "src/hash_table.h"
+#include "src/string.h"
 #include "src/trace_parser.h"
 
 // A reference to a string in the TraceData string pool.
-typedef uint32_t StringRef;
+// TODO: Turn string_ref_t into a struct wrapping a single uint32_t once
+// the entire project has been fully migrated to C23. This will provide
+// compile-time type safety across all files without requiring C/C++ extern "C"
+// linkage compatibility scaffolds and warning-suppression hacks.
+typedef uint32_t string_ref_t;
 
-struct TraceArgPersisted {
-  StringRef key_ref;
-  StringRef val_ref;
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct trace_arg_persisted {
+  string_ref_t key_ref;
+  string_ref_t val_ref;
   double val_double;
-};
+} trace_arg_persisted_t;
 
-struct TraceEventPersisted {
-  StringRef name_ref;
-  StringRef cat_ref;
-  StringRef ph_ref;
-  StringRef cname_ref;
-  StringRef id_ref;
+// Represents a persistent trace event stored in trace_data_t.
+//
+// Lifetime:
+// All string fields (name_ref, cat_ref, ph_ref, cname_ref, id_ref) are stored
+// as string_ref_t indices into the global trace_data_t string pool. The
+// underlying string memory is managed by the trace_data_t instance. Therefore,
+// the lifetime of the resolved strings (retrieved via trace_data_get_string) is
+// strictly bound to the lifetime of the parent trace_data_t instance. They
+// remain valid and stable until the parent trace_data_t is cleared
+// (trace_data_clear) or deinitialized (trace_data_deinit).
+typedef struct trace_event_persisted {
+  string_ref_t name_ref;
+  string_ref_t cat_ref;
+  string_ref_t ph_ref;
+  string_ref_t cname_ref;
+  string_ref_t id_ref;
   uint32_t color;
   int64_t ts;
   int64_t dur;
@@ -31,70 +49,123 @@ struct TraceEventPersisted {
   int32_t tid;
   uint32_t args_offset;
   uint32_t args_count;
-};
+} trace_event_persisted_t;
 
-struct StringEntry {
+typedef struct string_entry {
   uint32_t offset;
   uint32_t len;
   uint32_t hash;
-};
+} string_entry_t;
 
-struct TraceData {
+typedef struct trace_data {
+#ifdef __cplusplus
   ArrayList<char> string_buffer;
-  ArrayList<StringEntry> string_table;
-
-  struct StringLookupHash {
-    const TraceData* td;
-    uint32_t operator()(uint32_t index) const;
-  };
-  struct StringLookupEq {
-    const TraceData* td;
-    bool operator()(uint32_t a, uint32_t b) const;
-  };
-
-  HashTable<uint32_t, uint32_t, StringLookupHash, StringLookupEq> string_lookup;
-
-  ArrayList<TraceEventPersisted> events;
-  ArrayList<TraceArgPersisted> args;
+  ArrayList<string_entry_t> string_table;
+  hash_table_t string_lookup;
+  ArrayList<trace_event_persisted_t> events;
+  ArrayList<trace_arg_persisted_t> args;
+#else
+  array_list_t string_buffer;  // Element type: char
+  array_list_t string_table;   // Element type: string_entry_t
+  hash_table_t string_lookup;
+  array_list_t events;  // Element type: trace_event_persisted_t
+  array_list_t args;    // Element type: trace_arg_persisted_t
+#endif
 
   // Temporary storage for hashing during push
   struct {
-    std::string_view current_str;
+    string_t current_str;
     uint32_t current_hash;
   } tmp;
-};
+} trace_data_t;
 
-struct ActiveEventB {
+typedef struct active_event_b {
   size_t event_idx;
-};
+} active_event_b_t;
 
-struct ThreadStack {
-  ArrayList<ActiveEventB> stack;
-};
+typedef struct thread_stack {
+  array_list_t stack;  // Element type: active_event_b_t
+} thread_stack_t;
 
-struct TraceEventMatcher {
-  HashTable<uint64_t, ThreadStack> active_b_events;
-};
+typedef struct trace_event_matcher {
+  hash_table_t active_b_events;
+} trace_event_matcher_t;
 
-void trace_event_matcher_deinit(TraceEventMatcher* matcher, Allocator a);
+void trace_event_matcher_deinit(trace_event_matcher_t* matcher, allocator_t a);
 
 struct Theme;
+typedef struct Theme theme_t;
 
-void trace_data_deinit(TraceData* td, Allocator a);
-void trace_data_clear(TraceData* td, Allocator a);
+void trace_data_deinit(trace_data_t* td, allocator_t a);
+void trace_data_clear(trace_data_t* td, allocator_t a);
 
-StringRef trace_data_push_string(TraceData* td, Allocator a, std::string_view s);
+string_ref_t trace_data_push_string(trace_data_t* td, string_t s,
+                                    allocator_t a);
 
-void trace_data_add_event(TraceData* td, Allocator a, const Theme* theme,
-                          const TraceEvent* event, TraceEventMatcher* matcher);
-void trace_data_update_event_color(TraceData* td, uint32_t event_idx,
-                                   const Theme* theme);
+void trace_data_add_event(trace_data_t* td, const theme_t* theme,
+                          const trace_event_t* event,
+                          trace_event_matcher_t* matcher, allocator_t a);
 
-// Helper to get a string from a reference.
-inline std::string_view trace_data_get_string(const TraceData* td, StringRef ref) {
-  if (ref == 0 || ref > td->string_table.size) return {};
-  const StringEntry& e = td->string_table[ref - 1];
-  return {&td->string_buffer[e.offset], (size_t)e.len};
+void trace_data_update_event_color(trace_data_t* td, uint32_t event_idx,
+                                   const theme_t* theme);
+
+// Internal helper to get a string from a reference.
+// TODO: Rename trace_data_get_string_c to trace_data_get_string once the C++
+// compatibility wrappers are removed after the entire project has been fully
+// migrated to C23.
+static inline string_t trace_data_get_string_c(const trace_data_t* td,
+                                               string_ref_t ref) {
+  string_t result = {};
+  if (ref > 0 && ref <= td->string_table.len) {
+    const string_entry_t* table = (const string_entry_t*)td->string_table.ptr;
+    const string_entry_t* e = &table[ref - 1];
+    result = string_from_parts((const char*)td->string_buffer.ptr + e->offset,
+                               e->len);
+  }
+  return result;
 }
+
+#ifndef __cplusplus
+static inline string_t trace_data_get_string(const trace_data_t* td,
+                                             string_ref_t ref) {
+  return trace_data_get_string_c(td, ref);
+}
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
+// C++ Compatibility Wrapper
+#ifdef __cplusplus
+#include <string_view>
+
+using StringRef = string_ref_t;
+using TraceArgPersisted = trace_arg_persisted_t;
+using TraceEventPersisted = trace_event_persisted_t;
+using StringEntry = string_entry_t;
+using TraceData = trace_data_t;
+using ActiveEventB = active_event_b_t;
+using ThreadStack = thread_stack_t;
+using TraceEventMatcher = trace_event_matcher_t;
+using Theme = theme_t;
+
+inline StringRef trace_data_push_string(TraceData* td, allocator_t a,
+                                        std::string_view s) {
+  return trace_data_push_string(td, string_t(s), a);
+}
+
+inline void trace_data_add_event(TraceData* td, allocator_t a,
+                                 const Theme* theme, const trace_event_t* event,
+                                 TraceEventMatcher* matcher) {
+  trace_data_add_event(td, theme, event, matcher, a);
+}
+
+inline std::string_view trace_data_get_string(const TraceData* td,
+                                              StringRef ref) {
+  string_t s = trace_data_get_string_c(td, ref);
+  return std::string_view(s.ptr, s.len);
+}
+#endif
 
 #endif  // ZTRACING_SRC_TRACE_DATA_H_

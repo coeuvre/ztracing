@@ -71,7 +71,11 @@ typedef struct string {
    // resolving Clang's -Wreturn-type-c-linkage warnings.
 #endif
 
+#ifdef __cplusplus
+#define string_lit(lit) (string_t{(lit ""), sizeof(lit "") - 1})
+#else
 #define string_lit(lit) ((string_t){(lit ""), sizeof(lit "") - 1})
+#endif
 
 static inline string_t string_from_parts(const char* ptr, size_t len) {
 #ifdef __cplusplus

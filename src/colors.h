@@ -3,7 +3,14 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
 #include "third_party/imgui/imgui.h"
+#else
+typedef uint32_t ImU32;
+typedef struct ImVec4 {
+  float x, y, z, w;
+} ImVec4;
+#endif
 
 struct Theme {
   // Main Viewport Backgrounds
@@ -59,7 +66,17 @@ struct Theme {
   uint32_t event_palette[8];
 };
 
-const Theme* theme_get_dark();
-const Theme* theme_get_light();
+typedef struct Theme theme_t;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+const theme_t* theme_get_dark();
+const theme_t* theme_get_light();
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif  // ZTRACING_SRC_COLORS_H_
