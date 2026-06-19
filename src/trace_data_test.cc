@@ -30,9 +30,9 @@ TEST(trace_data_test, basic) {
   const trace_event_persisted_t* events =
       (const trace_event_persisted_t*)td.events.ptr;
   const trace_event_persisted_t& p = events[0];
-  EXPECT_EQ(trace_data_get_string_c(&td, p.name_ref), "event1");
-  EXPECT_EQ(trace_data_get_string_c(&td, p.cat_ref), "cat1");
-  EXPECT_EQ(trace_data_get_string_c(&td, p.ph_ref), "X");
+  EXPECT_EQ(trace_data_get_string(&td, p.name_ref), "event1");
+  EXPECT_EQ(trace_data_get_string(&td, p.cat_ref), "cat1");
+  EXPECT_EQ(trace_data_get_string(&td, p.ph_ref), "X");
   EXPECT_EQ(p.ts, 100);
   EXPECT_EQ(p.dur, 50);
   EXPECT_EQ(p.pid, 1);
@@ -43,12 +43,12 @@ TEST(trace_data_test, basic) {
   const trace_arg_persisted_t* td_args =
       (const trace_arg_persisted_t*)td.args.ptr;
   const trace_arg_persisted_t& pa1 = td_args[p.args_offset];
-  EXPECT_EQ(trace_data_get_string_c(&td, pa1.key_ref), "key1");
-  EXPECT_EQ(trace_data_get_string_c(&td, pa1.val_ref), "val1");
+  EXPECT_EQ(trace_data_get_string(&td, pa1.key_ref), "key1");
+  EXPECT_EQ(trace_data_get_string(&td, pa1.val_ref), "val1");
 
   const trace_arg_persisted_t& pa2 = td_args[p.args_offset + 1];
-  EXPECT_EQ(trace_data_get_string_c(&td, pa2.key_ref), "key2");
-  EXPECT_EQ(trace_data_get_string_c(&td, pa2.val_ref), "val2");
+  EXPECT_EQ(trace_data_get_string(&td, pa2.key_ref), "key2");
+  EXPECT_EQ(trace_data_get_string(&td, pa2.val_ref), "val2");
 
   trace_event_matcher_deinit(&matcher, a);
   trace_data_deinit(&td, a);
@@ -66,8 +66,8 @@ TEST(trace_data_test, de_duplication) {
   EXPECT_NE(ref1, ref2);
   EXPECT_EQ(td.string_table.len, 2u);
 
-  EXPECT_EQ(trace_data_get_string_c(&td, ref1), "foo");
-  EXPECT_EQ(trace_data_get_string_c(&td, ref2), "bar");
+  EXPECT_EQ(trace_data_get_string(&td, ref1), "foo");
+  EXPECT_EQ(trace_data_get_string(&td, ref2), "bar");
 
   trace_data_deinit(&td, a);
 }
@@ -92,7 +92,7 @@ TEST(trace_data_test, clear) {
   // Should still be usable
   string_ref_t ref = trace_data_push_string(&td, string_lit("foo"), a);
   EXPECT_EQ(ref, 1u);
-  EXPECT_EQ(trace_data_get_string_c(&td, ref), "foo");
+  EXPECT_EQ(trace_data_get_string(&td, ref), "foo");
 
   trace_event_matcher_deinit(&matcher, a);
   trace_data_deinit(&td, a);
@@ -167,9 +167,9 @@ TEST(trace_data_test, begin_end_events_nested_and_thread_isolated) {
   ASSERT_EQ(td.events.len, 3u);
   const trace_event_persisted_t* events =
       (const trace_event_persisted_t*)td.events.ptr;
-  EXPECT_EQ(trace_data_get_string_c(&td, events[0].name_ref), "parent");
-  EXPECT_EQ(trace_data_get_string_c(&td, events[1].name_ref), "other");
-  EXPECT_EQ(trace_data_get_string_c(&td, events[2].name_ref), "child");
+  EXPECT_EQ(trace_data_get_string(&td, events[0].name_ref), "parent");
+  EXPECT_EQ(trace_data_get_string(&td, events[1].name_ref), "other");
+  EXPECT_EQ(trace_data_get_string(&td, events[2].name_ref), "child");
 
   // 4. Thread 1 End (Should match B3 "child")
   trace_event_t e3 = {.ph = string_lit("E"), .ts = 130, .pid = 1, .tid = 1};
@@ -238,16 +238,16 @@ TEST(trace_data_test, begin_end_events_args_merging) {
   const trace_arg_persisted_t* td_args =
       (const trace_arg_persisted_t*)td.args.ptr;
   const trace_arg_persisted_t& arg1 = td_args[p.args_offset];
-  EXPECT_EQ(trace_data_get_string_c(&td, arg1.key_ref), "arg1");
-  EXPECT_EQ(trace_data_get_string_c(&td, arg1.val_ref), "val1");
+  EXPECT_EQ(trace_data_get_string(&td, arg1.key_ref), "arg1");
+  EXPECT_EQ(trace_data_get_string(&td, arg1.val_ref), "val1");
 
   const trace_arg_persisted_t& arg2 = td_args[p.args_offset + 1];
-  EXPECT_EQ(trace_data_get_string_c(&td, arg2.key_ref), "arg2");
+  EXPECT_EQ(trace_data_get_string(&td, arg2.key_ref), "arg2");
   EXPECT_EQ(arg2.val_double, 99.0);
 
   const trace_arg_persisted_t& arg3 = td_args[p.args_offset + 2];
-  EXPECT_EQ(trace_data_get_string_c(&td, arg3.key_ref), "arg3");
-  EXPECT_EQ(trace_data_get_string_c(&td, arg3.val_ref), "val3");
+  EXPECT_EQ(trace_data_get_string(&td, arg3.key_ref), "arg3");
+  EXPECT_EQ(trace_data_get_string(&td, arg3.val_ref), "val3");
 
   trace_event_matcher_deinit(&matcher, a);
   trace_data_deinit(&td, a);

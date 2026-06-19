@@ -113,12 +113,8 @@ void trace_data_add_event(trace_data_t* td, const theme_t* theme,
 void trace_data_update_event_color(trace_data_t* td, uint32_t event_idx,
                                    const theme_t* theme);
 
-// Internal helper to get a string from a reference.
-// TODO: Rename trace_data_get_string_c to trace_data_get_string once the C++
-// compatibility wrappers are removed after the entire project has been fully
-// migrated to C23.
-static inline string_t trace_data_get_string_c(const trace_data_t* td,
-                                               string_ref_t ref) {
+static inline string_t trace_data_get_string(const trace_data_t* td,
+                                             string_ref_t ref) {
   string_t result = {};
   if (ref > 0 && ref <= td->string_table.len) {
     const string_entry_t* table = (const string_entry_t*)td->string_table.ptr;
@@ -129,12 +125,6 @@ static inline string_t trace_data_get_string_c(const trace_data_t* td,
   return result;
 }
 
-#ifndef __cplusplus
-static inline string_t trace_data_get_string(const trace_data_t* td,
-                                             string_ref_t ref) {
-  return trace_data_get_string_c(td, ref);
-}
-#endif
 
 /**
  * Performs a binary search (lower bound) over an array of event indices.

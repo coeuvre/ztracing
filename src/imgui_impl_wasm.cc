@@ -26,7 +26,7 @@ EM_JS(bool, js_is_software_renderer, (), {
 });
 
 struct BackendData {
-  Allocator allocator;
+  allocator_t allocator;
   char* canvas_selector;
   double last_time;
   int frames_to_render;
@@ -525,7 +525,7 @@ bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t allocator) {
 
 void imgui_impl_wasm_shutdown() {
   BackendData* bd = get_backend_data();
-  Allocator allocator = bd->allocator;
+  allocator_t allocator = bd->allocator;
   allocator_free(allocator, bd->canvas_selector,
                  strlen(bd->canvas_selector) + 1);
   allocator_free(allocator, bd, sizeof(BackendData));

@@ -253,10 +253,10 @@ static void trace_data_merge_args(trace_data_t* td,
 
       td_args = (trace_arg_persisted_t*)td->args.ptr;
 
-      for (uint32_t j = 0; j < old_count; j++) {
-        *array_list_push(&td->args, trace_arg_persisted_t, a) =
-            td_args[old_offset + j];
-      }
+      memcpy((trace_arg_persisted_t*)td->args.ptr + new_offset,
+             td_args + old_offset, old_count * sizeof(trace_arg_persisted_t));
+      td->args.len += old_count;
+
 
       td_args = (trace_arg_persisted_t*)td->args.ptr;
 

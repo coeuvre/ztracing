@@ -9,23 +9,22 @@
 #include "src/track.h"
 #include "src/track_renderer.h"
 
-// C/C++ Concurrency Compatibility Layer
+#include <pthread.h>
 #ifdef __cplusplus
 #include <atomic>
-#include <condition_variable>
-#include <mutex>
-typedef std::mutex tv_mutex_t;
-typedef std::condition_variable tv_cond_t;
-#define tv_atomic_bool std::atomic<bool>
-#define tv_atomic_uint32 std::atomic<uint32_t>
+#ifndef _Atomic
+#define _Atomic(T) std::atomic<T>
+#endif
 #else
-#include <pthread.h>
 #include <stdatomic.h>
+#endif
+
 typedef pthread_mutex_t tv_mutex_t;
 typedef pthread_cond_t tv_cond_t;
-#define tv_atomic_bool _Atomic bool
-#define tv_atomic_uint32 _Atomic uint32_t
-#endif
+#define tv_atomic_bool _Atomic(bool)
+#define tv_atomic_uint32 _Atomic(uint32_t)
+
+
 
 constexpr int DURATION_HISTOGRAM_MAX_BINS = 32;
 

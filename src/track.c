@@ -142,10 +142,15 @@ static int sort_key_compare(const void* a, const void* b) {
   } else {
     if (sk1->dur != sk2->dur) {
       result = sk1->dur > sk2->dur ? -1 : 1;
+    } else {
+      if (sk1->idx != sk2->idx) {
+        result = sk1->idx < sk2->idx ? -1 : 1;
+      }
     }
   }
   return result;
 }
+
 
 static int counter_sort_key_compare(const void* a, const void* b) {
   const counter_sort_key_t* sk1 = (const counter_sort_key_t*)a;
@@ -384,7 +389,7 @@ void track_update_colors(array_list_t* tracks, const trace_data_t* td,
       string_ref_t* counter_series = (string_ref_t*)t->counter_series.ptr;
       uint32_t* counter_colors = (uint32_t*)t->counter_colors.ptr;
       for (size_t s_idx = 0; s_idx < t->counter_series.len; s_idx++) {
-        string_t key_str = trace_data_get_string_c(td, counter_series[s_idx]);
+        string_t key_str = trace_data_get_string(td, counter_series[s_idx]);
         uint32_t hash = 2166136261u;
         for (size_t char_idx = 0; char_idx < key_str.len; ++char_idx) {
           hash ^= (uint8_t)key_str.ptr[char_idx];
@@ -483,13 +488,13 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
 
       // Check for metadata events
       if (is_metadata) {
-        string_t name_str = trace_data_get_string_c(td, e->name_ref);
+        string_t name_str = trace_data_get_string(td, e->name_ref);
         if (string_eq(name_str, string_lit("thread_name"))) {
           const trace_arg_persisted_t* args =
               (const trace_arg_persisted_t*)td->args.ptr;
           for (size_t k = 0; k < e->args_count; k++) {
             const trace_arg_persisted_t* arg = &args[e->args_offset + k];
-            string_t key_str = trace_data_get_string_c(td, arg->key_ref);
+            string_t key_str = trace_data_get_string(td, arg->key_ref);
             if (string_eq(key_str, string_lit("name"))) {
               t->name_ref = arg->val_ref;
               break;
@@ -500,9 +505,9 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
               (const trace_arg_persisted_t*)td->args.ptr;
           for (size_t k = 0; k < e->args_count; k++) {
             const trace_arg_persisted_t* arg = &args[e->args_offset + k];
-            string_t key_str = trace_data_get_string_c(td, arg->key_ref);
+            string_t key_str = trace_data_get_string(td, arg->key_ref);
             if (string_eq(key_str, string_lit("sort_index"))) {
-              string_t val = trace_data_get_string_c(td, arg->val_ref);
+              string_t val = trace_data_get_string(td, arg->val_ref);
               t->sort_index = to_int32(val);
               break;
             }
@@ -613,7 +618,7 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
         for (size_t s_idx = 0; s_idx < t->counter_series.len; s_idx++) {
           counter_keys[s_idx].ref = counter_series_data[s_idx];
           counter_keys[s_idx].str =
-              trace_data_get_string_c(td, counter_series_data[s_idx]);
+              trace_data_get_string(td, counter_series_data[s_idx]);
         }
 
         qsort(counter_keys, t->counter_series.len, sizeof(counter_sort_key_t),
@@ -653,8 +658,8 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
     for (size_t i = 0; i < out_tracks->len; i++) {
       keys[i].track = &tracks_data[i];
       if (tracks_data[i].type == TRACK_TYPE_COUNTER) {
-        keys[i].name = trace_data_get_string_c(td, tracks_data[i].name_ref);
-        keys[i].id = trace_data_get_string_c(td, tracks_data[i].id_ref);
+        keys[i].name = trace_data_get_string(td, tracks_data[i].name_ref);
+        keys[i].id = trace_data_get_string(td, tracks_data[i].id_ref);
       } else {
         keys[i].name = (string_t){};
         keys[i].id = (string_t){};

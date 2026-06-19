@@ -129,10 +129,9 @@ static inline void* array_list_append_(array_list_t* al, size_t count,
   return (char*)al->ptr + old_len * elem_size;
 }
 
-#ifndef __cplusplus
 #define array_list_append(al, count, type_t, a) \
   ((type_t*)array_list_append_((al), (count), sizeof(type_t), (a)))
-#endif
+
 
 static inline void* array_list_get_(const array_list_t* al, size_t elem_size,
                                     size_t index) {

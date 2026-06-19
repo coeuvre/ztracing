@@ -409,7 +409,7 @@ TEST(track_test, organize_tracks_metadata_only) {
 
   EXPECT_EQ(tracks.len, 1u);
   const track_t* tracks_data = (const track_t*)tracks.ptr;
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[0].name_ref), "Meta Only");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[0].name_ref), "Meta Only");
   EXPECT_EQ(tracks_data[0].event_indices.len, 0u);
 
   // Viewport range should not be updated by metadata
@@ -464,7 +464,7 @@ TEST(track_test, organize_tracks_mixed_order) {
 
   // Sorted by PID (both have sort_index 0)
   EXPECT_EQ(tracks_data[0].pid, 1);
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[0].name_ref), "Mixed");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[0].name_ref), "Mixed");
   EXPECT_EQ(tracks_data[0].event_indices.len, 1u);
   const size_t* event_indices_0 =
       (const size_t*)tracks_data[0].event_indices.ptr;
@@ -531,7 +531,7 @@ TEST(track_test, organize_tracks_counters) {
   EXPECT_EQ(tracks_data[0].pid, 1);
   EXPECT_EQ(tracks_data[0].tid, -1);
   EXPECT_EQ(tracks_data[0].type, TRACK_TYPE_COUNTER);
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[0].name_ref),
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[0].name_ref),
             "my_counter");
   EXPECT_EQ(tracks_data[0].id_ref, 0u);
 
@@ -539,9 +539,9 @@ TEST(track_test, organize_tracks_counters) {
   EXPECT_EQ(tracks_data[1].pid, 1);
   EXPECT_EQ(tracks_data[1].tid, -1);
   EXPECT_EQ(tracks_data[1].type, TRACK_TYPE_COUNTER);
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[1].name_ref),
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[1].name_ref),
             "my_counter");
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[1].id_ref), "1");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[1].id_ref), "1");
 
   // Thread track - Type 1
   EXPECT_EQ(tracks_data[2].pid, 1);
@@ -597,16 +597,16 @@ TEST(track_test, organize_tracks_counters_sorting) {
   // 2. apple (id 1)
   // 3. apple (id 2)
   // 4. zebra
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[0].name_ref), "apple");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[0].name_ref), "apple");
   EXPECT_EQ(tracks_data[0].id_ref, 0u);
 
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[1].name_ref), "apple");
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[1].id_ref), "1");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[1].name_ref), "apple");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[1].id_ref), "1");
 
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[2].name_ref), "apple");
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[2].id_ref), "2");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[2].name_ref), "apple");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[2].id_ref), "2");
 
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[3].name_ref), "zebra");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[3].name_ref), "zebra");
 
   for (size_t i = 0; i < tracks.len; i++) {
     track_deinit(&((track_t*)tracks.ptr)[i], a);
@@ -650,9 +650,9 @@ TEST(track_test, organize_tracks_counters_sorting_ignore_case) {
   // 1. APPLE (case-insensitive 'a' comes before 'z')
   // 2. apple (id 1)
   // 3. zebra
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[0].name_ref), "APPLE");
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[1].name_ref), "apple");
-  EXPECT_EQ(trace_data_get_string_c(&td, tracks_data[2].name_ref), "zebra");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[0].name_ref), "APPLE");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[1].name_ref), "apple");
+  EXPECT_EQ(trace_data_get_string(&td, tracks_data[2].name_ref), "zebra");
 
   for (size_t i = 0; i < tracks.len; i++) {
     track_deinit(&((track_t*)tracks.ptr)[i], a);

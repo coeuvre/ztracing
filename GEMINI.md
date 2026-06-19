@@ -3,7 +3,7 @@
 ## Project Mandates
 
 - **Language**: C-style C++. Avoid complex C++ abstractions.
-- **C++ Standard**: C++20 (required for `__VA_OPT__` and other features).
+- **Standards**: C23 for the production codebase (compiled as pure C without C++ dependencies), C++20 for unit tests and browser platform integration.
 - **Style**: Google C++ Style (modified: snake_case for all functions, SCREAMING_CASE for constants).
 - **Include Guards**: Must follow the pattern `ZTRACING_SRC_<FILE>_H_`.
 - **Warnings**: Strict warnings are enabled for all local code (`-Wall -Wextra -Werror` etc.) via macros in `src/defs.bzl`. Includes `-Wno-missing-field-initializers` (GCC) and `-Wno-missing-designated-field-initializers` (Clang) to support the project's concise ZII style.
@@ -33,8 +33,8 @@
     - **CountingAllocator**: A thread-safe decorator that tracks total allocated bytes using `std::atomic<size_t>`. It utilizes `memory_order_relaxed` for high-performance counter updates across the main UI thread and background parser threads.
     - **ImGui Integration**: Dear ImGui is configured to use the `CountingAllocator` for all internal allocations. A specialized wrapper handles the size-tracking requirement by prepending a 16-byte header to every ImGui-requested block, ensuring accurate memory reporting in the UI.
 - `src/str`: (Removed) Migrated to `std::string_view`. String-to-number utilities have been moved to their respective usage locations (e.g., `src/trace_parser.cc`) and now utilize `std::from_chars` for improved performance.
-- `src/array_list`: Generic `ArrayList<T>` (vector) with explicit allocation and ZII support via `{}`.
-- `src/hash_table`: Generic `HashTable<K, V>` with open addressing and linear probing. 
+- `src/array_list`: C-style `array_list_t` with explicit allocation, macro-based type safety, and ZII support via `{}`.
+- `src/hash_table`: C-style `hash_table_t` with open addressing and linear probing. 
     - **ZII Support**: Fully Zero-Is-Initialization compatible. Internal storage is lazily allocated upon the first `put` operation.
     - **Hash Caching**: Stores the precomputed hash in each entry to accelerate lookups by avoiding equality checks when hashes differ.
     - **Fast Resizing**: Uses cached hashes during table expansion to eliminate redundant recomputations.
@@ -68,7 +68,7 @@
     - **Thread Safety**: Access to `TraceData` from the main thread is strictly prohibited while `loading.active` is true. Background jobs (loading, search) are synchronized via session-based signaling in `app_begin_session` to ensure `TraceData` is not cleared while being accessed.
 - `src/trace_viewer`: Logic for rendering the trace viewer scene, including tracks, ruler, and the "Details" window (event properties and arguments).
     - **Architecture**: Decouples interaction and layout logic from ImGui rendering via a pure `trace_viewer_step` function and a `TraceViewerInput` struct. This enables comprehensive unit testing of viewport navigation, hit-testing, selection, and layout without an ImGui context. Search filtering operations, multi-selections processing, and computations are dispatched to background worker threads and cached into structured staging buffers before results validation.
-    - **Independent States**: Maintains a single `focused_event_idx` (for single clicks) and an `ArrayList<int64_t> selected_event_indices` (for multi-selection) as independent states, allowing a focused event to exist within or outside of a box selection.
+    - **Independent States**: Maintains a single `focused_event_idx` (for single clicks) and an `array_list_t selected_event_indices` (containing `int64_t` indices) as independent states, allowing a focused event to exist within or outside of a box selection.
     - **Unified Inspection UI**: Centralizes parameter rendering into a single 3-column ImGui table structure (`Label` | `Value` | `Action`) supporting inline Copy actions for focused event properties. Sizing adjusts contextual needs: in Details Panel, Value stretches with wrapped lines; in Tooltip windows, fields size strictly matching text bounds without stretching.
     - **Table-Based Layout**: Utilizes structured ImGui tables for all multi-key data (Counter series, Event arguments), providing perfect vertical alignment and high legibility.
     - **Zero-Redundancy Logic**: Automatically filters and hides redundant fields (e.g., hiding track names in tooltips, hiding internal PH codes, hiding duration for instant events) to maintain a high signal-to-noise ratio.
@@ -94,7 +94,7 @@
 - `src/welcome_screen`: Initial "drop file" landing scene.
 - `src/colors`: Theme management system. Defines a `Theme` struct and provides standard Dark and Light theme implementations.
 - `src/track`: Logic for organizing events into tracks, sorting, and depth calculation. Supports ZII.
-    - **Track Organization**: Implements a high-performance two-pass organization algorithm (`track_organize`) that uses a `HashTable` for $O(1)$ track discovery and a sequential cache for consecutive events. Decoupled from `App` for modularity and unit testing.
+    - **Track Organization**: Implements a high-performance two-pass organization algorithm (`track_organize`) that uses a `hash_table_t` for $O(1)$ track discovery and a sequential cache for consecutive events. Decoupled from `App` for modularity and unit testing.
     - **Coloring**: Provides `track_update_colors` to update counter track colors based on the current theme. This is used both during initial organization and when switching themes dynamically.
     - **Event Sorting**: Optimized for massive tracks using a cache-friendly temporary `SortKey` array to minimize cache misses during indirect data lookups.
     - **Block Summaries**: Computes `block_max_durs` for each track, storing the maximum event duration for every 1024 events. This enables efficient skipping of invisible events during rendering.

@@ -1,7 +1,12 @@
 #ifndef ZTRACING_SRC_ALLOCATOR_H_
 #define ZTRACING_SRC_ALLOCATOR_H_
 
-#ifndef __cplusplus
+#ifdef __cplusplus
+#include <atomic>
+#ifndef _Atomic
+#define _Atomic(T) std::atomic<T>
+#endif
+#else
 #include <stdatomic.h>
 #endif
 #include <stddef.h>
@@ -55,15 +60,20 @@ allocator_t allocator_get_default();
 
 typedef struct counting_allocator {
   allocator_t parent;
-#ifdef __cplusplus
-  size_t allocated_bytes;
-#else
-  _Atomic size_t allocated_bytes;
-#endif
+  _Atomic(size_t) allocated_bytes;
 } counting_allocator_t;
 
+
 // Returns an initialized counting allocator that wraps a parent allocator.
+#ifdef __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreturn-type-c-linkage"
+#endif
 counting_allocator_t counting_allocator_init(allocator_t parent);
+#ifdef __clang__
+#pragma clang diagnostic pop
+#endif
+
 
 // Returns the allocator_t interface for the given counting allocator.
 allocator_t counting_allocator_get_allocator(counting_allocator_t* ca);
@@ -75,10 +85,5 @@ size_t counting_allocator_get_allocated_bytes(counting_allocator_t* ca);
 }
 #endif
 
-// C++ Compatibility aliases to allow incremental migration of other files
-#ifdef __cplusplus
-typedef allocator_t Allocator;
-typedef counting_allocator_t CountingAllocator;
-#endif
-
 #endif  // ZTRACING_SRC_ALLOCATOR_H_
+

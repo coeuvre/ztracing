@@ -50,19 +50,6 @@ cc_library(
     deps = [":allocator"],
 )
 
-cc_library(
-    name = "test_helper",
-    hdrs = ["test_helper.h"],
-    deps = [
-        ":array_list",
-        ":colors",
-        ":trace_data",
-        ":track",
-        ":track_renderer",
-        ":trace_viewer",
-    ],
-    testonly = True,
-)
 
 
 cc_test(
@@ -226,7 +213,6 @@ cc_test(
     srcs = ["track_renderer_test.cc"],
     deps = [
         ":track_renderer",
-        ":test_helper",
         "@googletest//:gtest_main",
     ],
 )
@@ -264,7 +250,6 @@ cc_test(
     srcs = ["trace_viewer_test.cc"],
     deps = [
         ":trace_viewer",
-        ":test_helper",
         "@googletest//:gtest_main",
     ],
 )

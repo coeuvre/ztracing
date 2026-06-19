@@ -76,26 +76,6 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a);
 }
 #endif
 
-// ============================================================================
-// C++ Source-Level Compatibility Wrapper
-// ============================================================================
-#ifdef __cplusplus
 
-using TraceArg = trace_arg_t;
-using TraceEvent = trace_event_t;
-using TraceParserState = trace_parser_state_t;
-using TraceParser = trace_parser_t;
-
-inline size_t trace_parser_feed(trace_parser_t* p, allocator_t a,
-                                const char* buf, size_t len, bool is_eof) {
-  return trace_parser_feed(p, buf, len, is_eof, a);
-}
-
-inline bool trace_parser_next(trace_parser_t* p, allocator_t a,
-                              trace_event_t* event) {
-  return trace_parser_next(p, event, a);
-}
-
-#endif  // __cplusplus
 
 #endif  // ZTRACING_SRC_TRACE_PARSER_H_

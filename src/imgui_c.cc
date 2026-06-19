@@ -1,6 +1,8 @@
 #include "src/imgui_c.h"
 
 #include <stdarg.h>
+#include <new>
+
 
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"
@@ -350,12 +352,18 @@ ig_sort_direction_t ig_table_sort_specs_get_sort_direction(
 
 // List Clipper
 ig_list_clipper_t* ig_list_clipper_create(void) {
-  return reinterpret_cast<ig_list_clipper_t*>(new ImGuiListClipper());
+  void* mem = ImGui::MemAlloc(sizeof(ImGuiListClipper));
+  return reinterpret_cast<ig_list_clipper_t*>(new (mem) ImGuiListClipper());
 }
 
 void ig_list_clipper_destroy(ig_list_clipper_t* clipper) {
-  delete reinterpret_cast<ImGuiListClipper*>(clipper);
+  if (clipper) {
+    ImGuiListClipper* c = reinterpret_cast<ImGuiListClipper*>(clipper);
+    c->~ImGuiListClipper();
+    ImGui::MemFree(c);
+  }
 }
+
 
 void ig_list_clipper_begin(ig_list_clipper_t* clipper, int items_count,
                            float items_height) {
