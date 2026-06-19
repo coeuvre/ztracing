@@ -1,5 +1,4 @@
 #include "src/track.h"
-#include "src/cpp_compat.h"
 
 #include <gtest/gtest.h>
 

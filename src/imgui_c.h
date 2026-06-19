@@ -15,6 +15,9 @@ typedef struct ig_font ig_font_t;
 typedef struct ig_table_sort_specs ig_table_sort_specs_t;
 typedef struct ig_input_text_callback_data ig_input_text_callback_data_t;
 typedef struct ig_list_clipper ig_list_clipper_t;
+typedef struct ig_viewport ig_viewport_t;
+typedef struct ig_dock_node ig_dock_node_t;
+typedef struct ig_draw_data ig_draw_data_t;
 
 // Basic structures
 typedef struct ig_vec2 {
@@ -53,8 +56,11 @@ constexpr ig_table_column_flags_t IG_TABLE_COLUMN_FLAGS_WIDTH_FIXED = 16;
 constexpr ig_table_column_flags_t IG_TABLE_COLUMN_FLAGS_WIDTH_STRETCH = 8;
 
 constexpr ig_window_flags_t IG_WINDOW_FLAGS_NONE = 0;
-constexpr ig_window_flags_t IG_WINDOW_FLAGS_NO_SCROLLBAR = 8;
+constexpr ig_window_flags_t IG_WINDOW_FLAGS_NO_TITLE_BAR = 1;
+constexpr ig_window_flags_t IG_WINDOW_FLAGS_NO_RESIZE = 2;
 constexpr ig_window_flags_t IG_WINDOW_FLAGS_NO_MOVE = 4;
+constexpr ig_window_flags_t IG_WINDOW_FLAGS_NO_SCROLLBAR = 8;
+constexpr ig_window_flags_t IG_WINDOW_FLAGS_NO_COLLAPSE = 32;
 constexpr ig_window_flags_t IG_WINDOW_FLAGS_NO_SCROLL_WITH_MOUSE = 16;
 constexpr ig_window_flags_t IG_WINDOW_FLAGS_NO_FOCUS_ON_APPEARING = 4096;
 
@@ -64,6 +70,12 @@ constexpr ig_input_text_flags_t IG_INPUT_TEXT_FLAGS_CALLBACK_RESIZE = 4194304;
 constexpr ig_style_var_t IG_STYLE_VAR_WINDOW_PADDING = 2;
 
 constexpr ig_key_t IG_KEY_ENTER = 525;
+constexpr ig_key_t IG_KEY_SLASH = 600;
+constexpr ig_key_t IG_KEY_F = 551;
+
+typedef int ig_cond_t;
+constexpr ig_cond_t IG_COND_NONE = 0;
+constexpr ig_cond_t IG_COND_APPEARING = 1 << 3;
 
 constexpr ig_mouse_cursor_t IG_MOUSE_CURSOR_RESIZE_EW = 4;
 
@@ -83,7 +95,42 @@ typedef int ig_hovered_flags_t;
 constexpr ig_hovered_flags_t IG_HOVERED_FLAGS_NONE = 0;
 constexpr ig_hovered_flags_t IG_HOVERED_FLAGS_CHILD_WINDOWS = 1 << 0;
 
+typedef int ig_dock_node_flags_t;
+typedef int ig_dir_t;
+typedef int ig_col_t;
+typedef int ig_popup_flags_t;
+
+constexpr ig_dock_node_flags_t IG_DOCK_NODE_FLAGS_NONE = 0;
+constexpr ig_dock_node_flags_t IG_DOCK_NODE_FLAGS_DOCKSPACE = 1 << 10;
+constexpr ig_dock_node_flags_t IG_DOCK_NODE_FLAGS_NO_TAB_BAR = 1 << 12;
+constexpr ig_dock_node_flags_t IG_DOCK_NODE_FLAGS_NO_DOCKING_OVER_ME = 1 << 20;
+
+constexpr ig_dir_t IG_DIR_RIGHT = 1;
+
+constexpr ig_col_t IG_COL_POPUP_BG = 4;
+
+constexpr ig_popup_flags_t IG_POPUP_FLAGS_NONE = 0;
+
+constexpr ig_style_var_t IG_STYLE_VAR_WINDOW_ROUNDING = 3;
+constexpr ig_style_var_t IG_STYLE_VAR_WINDOW_BORDER_SIZE = 4;
+
+typedef int ig_config_flags_t;
+constexpr ig_config_flags_t IG_CONFIG_FLAGS_NAV_ENABLE_KEYBOARD = 1 << 0;
+constexpr ig_config_flags_t IG_CONFIG_FLAGS_DOCKING_ENABLE = 128;
+
 // Context, IO, Style & Fonts
+void ig_create_context(void);
+void ig_set_allocator_functions(void* (*alloc_func)(size_t sz, void* user_data),
+                                void (*free_func)(void* ptr, void* user_data),
+                                void* user_data);
+void ig_io_add_config_flags(int flags);
+ig_vec2_t ig_get_io_display_size(void);
+ig_vec2_t ig_get_io_display_framebuffer_scale(void);
+void ig_set_font_data(const void* font_data, int font_size, float dpi_scale);
+void ig_new_frame(void);
+void ig_render(void);
+ig_draw_data_t* ig_get_draw_data(void);
+
 ig_draw_list_t* ig_get_window_draw_list(void);
 ig_vec2_t ig_get_cursor_screen_pos(void);
 ig_vec2_t ig_get_content_region_avail(void);
@@ -108,6 +155,9 @@ ig_vec2_t ig_get_io_mouse_clicked_pos(int button);
 ig_vec2_t ig_get_io_mouse_delta(void);
 float ig_get_io_mouse_drag_threshold(void);
 ig_vec2_t ig_get_io_mouse_pos(void);
+bool ig_get_io_key_shift(void);
+bool ig_get_io_key_ctrl(void);
+bool ig_get_io_want_text_input(void);
 
 // Style getters
 ig_vec2_t ig_get_style_window_padding(void);
@@ -123,10 +173,53 @@ void ig_end_tooltip(void);
 bool ig_is_window_hovered(ig_hovered_flags_t flags);
 ig_vec2_t ig_get_window_pos(void);
 ig_vec2_t ig_get_window_size(void);
+void ig_set_next_window_pos(ig_vec2_t pos, ig_cond_t cond, ig_vec2_t pivot);
+void ig_set_next_window_size(ig_vec2_t size, ig_cond_t cond);
+
+void ig_show_metrics_window(bool* p_open);
+void ig_show_about_window(bool* p_open);
+
+// Popups
+void ig_open_popup(const char* str_id, ig_popup_flags_t flags);
+bool ig_begin_popup_modal(const char* name, bool* p_open, ig_window_flags_t flags);
+void ig_end_popup(void);
+void ig_close_current_popup(void);
+
+// Menu Bar
+bool ig_begin_main_menu_bar(void);
+void ig_end_main_menu_bar(void);
+bool ig_begin_menu(const char* label, bool enabled);
+void ig_end_menu(void);
+bool ig_menu_item(const char* label, const char* shortcut, bool selected, bool enabled);
+bool ig_menu_item_ptr(const char* label, const char* shortcut, bool* p_selected, bool enabled);
+
+// Docking & Viewport
+uint32_t ig_dock_space_over_viewport(uint32_t unused_id, const ig_viewport_t* viewport, ig_dock_node_flags_t flags);
+const ig_viewport_t* ig_get_main_viewport(void);
+ig_vec2_t ig_viewport_get_size(const ig_viewport_t* viewport);
+ig_vec2_t ig_viewport_get_center(const ig_viewport_t* viewport);
+void ig_dock_builder_remove_node(uint32_t node_id);
+void ig_dock_builder_add_node(uint32_t node_id, ig_dock_node_flags_t flags);
+void ig_dock_builder_set_node_size(uint32_t node_id, ig_vec2_t size);
+uint32_t ig_dock_builder_split_node(uint32_t node_id, ig_dir_t split_dir, float size_ratio_for_child_at_op_dir, uint32_t* out_id_at_dir, uint32_t* out_id_at_op_dir);
+void ig_dock_builder_dock_window(const char* window_name, uint32_t node_id);
+void ig_dock_builder_finish(uint32_t node_id);
+ig_dock_node_t* ig_dock_builder_get_node(uint32_t node_id);
+void ig_dock_node_add_local_flags(ig_dock_node_t* node, ig_dock_node_flags_t flags);
+
+// Groups
+void ig_begin_group(void);
+void ig_end_group(void);
 
 // Style push/pop
+void ig_push_style_color(ig_col_t idx, ig_vec4_t col);
+void ig_pop_style_color(int count);
 void ig_push_style_var(ig_style_var_t idx, ig_vec2_t val);
+void ig_push_style_var_float(ig_style_var_t idx, float val);
 void ig_pop_style_var(int count);
+
+void ig_style_colors_dark(void);
+void ig_style_colors_light(void);
 
 // Layout & Spacing
 void ig_same_line(float offset_from_start_x, float spacing);

@@ -3,7 +3,9 @@
 
 #include <emscripten.h>
 
+#ifdef __cplusplus
 extern "C" {
+#endif
 // IMPORTANT: ztracing_init must be called before any other ztracing_*
 // functions.
 
@@ -42,6 +44,8 @@ EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_size();
 // Notifies the application that the system theme has changed.
 EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed();
 
-}  // extern "C"
+#ifdef __cplusplus
+}
+#endif
 
 #endif  // ZTRACING_SRC_ZTRACING_H_

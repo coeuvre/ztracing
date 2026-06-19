@@ -1,43 +1,43 @@
 #include <GLES3/gl3.h>
 #include <emscripten.h>
 #include <emscripten/html5.h>
-
-#include <cassert>
-#include <cstdio>
-#include <cstring>
+#include <stdatomic.h>
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "src/app.h"
 #include "src/imgui_impl_wasm.h"
 #include "src/imgui_impl_webgl.h"
 #include "src/logging.h"
 #include "src/ztracing.h"
-#include "third_party/imgui/imgui.h"
+#include "src/imgui_c.h"
 
 static array_list_t g_canvas_selector;
-static App* g_app = nullptr;
+static app_t* g_app = NULL;
 static array_list_t g_font_data;
 
 static void* imgui_alloc(size_t sz, void* user_data) {
-  Allocator* a = (Allocator*)user_data;
+  allocator_t* a = (allocator_t*)user_data;
   size_t header_size = 16;  // Ensure 16-byte alignment
   size_t total_size = sz + header_size;
   void* ptr = allocator_alloc(*a, total_size);
-  if (!ptr) return nullptr;
+  if (!ptr) return NULL;
   *(size_t*)ptr = total_size;
   return (char*)ptr + header_size;
 }
 
 static void imgui_free(void* ptr, void* user_data) {
   if (!ptr) return;
-  Allocator* a = (Allocator*)user_data;
+  allocator_t* a = (allocator_t*)user_data;
   size_t header_size = 16;
   void* real_ptr = (char*)ptr - header_size;
   allocator_free(*a, real_ptr, *(size_t*)real_ptr);
 }
 
 static void main_loop() {
-  if (g_app->loading.request_update.exchange(false) ||
-      g_app->trace_viewer.search.request_update.exchange(false)) {
+  if (atomic_exchange(&g_app->loading.request_update, false) ||
+      atomic_exchange(&g_app->trace_viewer.search.request_update, false)) {
     imgui_impl_wasm_request_update();
   }
 
@@ -47,40 +47,37 @@ static void main_loop() {
 
   imgui_impl_webgl_new_frame();
   imgui_impl_wasm_new_frame();
-  ImGui::NewFrame();
+  ig_new_frame();
 
-  ImGuiIO& io = ImGui::GetIO();
   app_update(g_app);
 
-  ImGui::Render();
+  ig_render();
 
-  glViewport(0, 0, (int)(io.DisplaySize.x * io.DisplayFramebufferScale.x),
-             (int)(io.DisplaySize.y * io.DisplayFramebufferScale.y));
+  ig_vec2_t display_size = ig_get_io_display_size();
+  ig_vec2_t fb_scale = ig_get_io_display_framebuffer_scale();
+  glViewport(0, 0, (int)(display_size.x * fb_scale.x),
+             (int)(display_size.y * fb_scale.y));
   glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
   glClear(GL_COLOR_BUFFER_BIT);
 
-  imgui_impl_webgl_render_draw_data(ImGui::GetDrawData());
+  imgui_impl_webgl_render_draw_data(ig_get_draw_data());
 }
 
-extern "C" {
 EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
-  Allocator default_allocator = allocator_get_default();
-  g_app = (App*)allocator_alloc(default_allocator, sizeof(App));
-  new (g_app) App(app_init(default_allocator));
+  allocator_t default_allocator = allocator_get_default();
+  g_app = (app_t*)allocator_alloc(default_allocator, sizeof(app_t));
+  app_init(g_app, default_allocator);
   trace_viewer_init(&g_app->trace_viewer);
 
-  static Allocator imgui_allocator;
+  static allocator_t imgui_allocator;
   imgui_allocator =
       counting_allocator_get_allocator(&g_app->counting_allocator);
-  ImGui::SetAllocatorFunctions(imgui_alloc, imgui_free, &imgui_allocator);
+  ig_set_allocator_functions(imgui_alloc, imgui_free, &imgui_allocator);
 
-  IMGUI_CHECKVERSION();
-  ImGui::CreateContext();
-  ImGuiIO& io = ImGui::GetIO();
-  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-  io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+  ig_create_context();
+  ig_io_add_config_flags(IG_CONFIG_FLAGS_NAV_ENABLE_KEYBOARD | IG_CONFIG_FLAGS_DOCKING_ENABLE);
 
-  Allocator allocator = imgui_allocator;
+  allocator_t allocator = imgui_allocator;
   array_list_clear(&g_canvas_selector);
   size_t len = strlen(canvas_selector) + 1;
   char* dest = (char*)array_list_append_(&g_canvas_selector, len,
@@ -125,22 +122,15 @@ EMSCRIPTEN_KEEPALIVE void ztracing_start() {
 EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
                                                  int font_size) {
   array_list_clear(&g_font_data);
-  Allocator allocator =
+  allocator_t allocator =
       counting_allocator_get_allocator(&g_app->counting_allocator);
   size_t len = (size_t)font_size;
   unsigned char* dest = (unsigned char*)array_list_append_(
       &g_font_data, len, sizeof(unsigned char), allocator);
   memcpy(dest, font_data, len);
 
-  ImGuiIO& io = ImGui::GetIO();
   float dpi_scale = imgui_impl_wasm_get_dpi_scale();
-  io.Fonts->Clear();
-  ImFontConfig font_cfg;
-  font_cfg.FontDataOwnedByAtlas = false;
-  io.Fonts->AddFontFromMemoryTTF(g_font_data.ptr, (int)g_font_data.len,
-                                 16.0f * dpi_scale, &font_cfg);
-  io.Fonts->Build();
-  io.FontGlobalScale = 1.0f / dpi_scale;
+  ig_set_font_data(g_font_data.ptr, (int)g_font_data.len, dpi_scale);
   imgui_impl_webgl_destroy_fonts_texture();
   imgui_impl_webgl_create_fonts_texture();
 
@@ -148,15 +138,14 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
 }
 
 EMSCRIPTEN_KEEPALIVE void* ztracing_malloc(int size) {
-  assert(g_app != nullptr);
-  // Use default allocator if app is not initialized yet.
-  Allocator a = counting_allocator_get_allocator(&g_app->counting_allocator);
+  assert(g_app != NULL);
+  allocator_t a = counting_allocator_get_allocator(&g_app->counting_allocator);
   return allocator_alloc(a, (size_t)size);
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_free(void* ptr, int size) {
-  assert(g_app != nullptr);
-  Allocator a = counting_allocator_get_allocator(&g_app->counting_allocator);
+  assert(g_app != NULL);
+  allocator_t a = counting_allocator_get_allocator(&g_app->counting_allocator);
   allocator_free(a, ptr, (size_t)size);
 }
 
@@ -182,5 +171,4 @@ EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_size() {
 EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed() {
   app_on_theme_changed(g_app);
   imgui_impl_wasm_request_update();
-}
 }

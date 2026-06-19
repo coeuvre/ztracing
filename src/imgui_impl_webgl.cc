@@ -1,4 +1,5 @@
 #include "src/imgui_impl_webgl.h"
+#include "third_party/imgui/imgui.h"
 
 #include <GLES3/gl3.h>
 #include <stddef.h>
@@ -80,7 +81,8 @@ static void setup_render_state(ImDrawData* draw_data, int fb_width,
   glEnableVertexAttribArray((GLuint)bd->attrib_location_color);
 }
 
-void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
+void imgui_impl_webgl_render_draw_data(struct ig_draw_data* draw_data_opaque) {
+  ImDrawData* draw_data = reinterpret_cast<ImDrawData*>(draw_data_opaque);
   int fb_width =
       (int)(draw_data->DisplaySize.x * draw_data->FramebufferScale.x);
   int fb_height =
@@ -168,7 +170,7 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
   }
 }
 
-bool imgui_impl_webgl_init(Allocator allocator) {
+bool imgui_impl_webgl_init(allocator_t allocator) {
   ImGuiIO& io = ImGui::GetIO();
   BackendData* bd =
       (BackendData*)allocator_alloc(allocator, sizeof(BackendData));

@@ -1,5 +1,5 @@
 #include "src/track_renderer.h"
-#include "src/cpp_compat.h"
+#include "src/test_helper.h"
 
 #include <gtest/gtest.h>
 

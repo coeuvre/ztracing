@@ -1,4 +1,5 @@
 #include "src/imgui_impl_wasm.h"
+#include "third_party/imgui/imgui.h"
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
@@ -467,7 +468,7 @@ static EM_BOOL on_resize(int event_type, const EmscriptenUiEvent* ui_event,
   return EM_TRUE;
 }
 
-bool imgui_impl_wasm_init(const char* canvas_selector, Allocator allocator) {
+bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t allocator) {
   ImGuiIO& io = ImGui::GetIO();
 
   BackendData* bd =

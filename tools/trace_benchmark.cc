@@ -7,7 +7,6 @@
 #include "src/trace_data.h"
 #include "src/trace_parser.h"
 #include "src/track.h"
-#include "src/cpp_compat.h"
 
 int main(int argc, char** argv) {
   if (argc != 2) {
@@ -26,16 +25,16 @@ int main(int argc, char** argv) {
   size_t file_size = (size_t)ftell(f);
   fseek(f, 0, SEEK_SET);
 
-  CountingAllocator ca = counting_allocator_init(allocator_get_default());
-  Allocator a = counting_allocator_get_allocator(&ca);
+  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
+  allocator_t a = counting_allocator_get_allocator(&ca);
 
-  TraceParser p = {};
-  TraceData td = {};
-  TraceEventMatcher matcher = {};
+  trace_parser_t p = {};
+  trace_data_t td = {};
+  trace_event_matcher_t matcher = {};
 
   char buf[65536];
   size_t event_count = 0;
-  TraceEvent event;
+  trace_event_t event;
 
   // 1. Benchmark Parsing + Ingestion
   auto ingest_start = std::chrono::high_resolution_clock::now();
@@ -43,10 +42,10 @@ int main(int argc, char** argv) {
   while (true) {
     size_t n = fread(buf, 1, sizeof(buf), f);
     bool is_eof = n < sizeof(buf);
-    trace_parser_feed(&p, a, buf, n, is_eof);
+    trace_parser_feed(&p, buf, n, is_eof, a);
 
-    while (trace_parser_next(&p, a, &event)) {
-      trace_data_add_event(&td, a, theme_get_dark(), &event, &matcher);
+    while (trace_parser_next(&p, &event, a)) {
+      trace_data_add_event(&td, theme_get_dark(), &event, &matcher, a);
       event_count++;
     }
 
@@ -59,9 +58,9 @@ int main(int argc, char** argv) {
   // 2. Benchmark Track Organization
   auto organize_start = std::chrono::high_resolution_clock::now();
 
-  ArrayList<Track> tracks = {};
+  array_list_t tracks = {};
   int64_t min_ts, max_ts;
-  track_organize(&td, a, theme_get_dark(), &tracks, &min_ts, &max_ts);
+  track_organize(&td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
 
   auto organize_end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> organize_diff = organize_end - organize_start;
@@ -78,7 +77,7 @@ int main(int argc, char** argv) {
   printf("----------------------------------------\n");
   printf("File Size:             %.2f MB\n", (double)file_size / (1024.0 * 1024.0));
   printf("Total Events:          %zu\n", event_count);
-  printf("Total Tracks:          %zu\n", tracks.size);
+  printf("Total Tracks:          %zu\n", tracks.len);
   printf("----------------------------------------\n");
   printf("Ingest Time (Parse+Add): %.3f s (%.2f MB/s, %.2f ev/s)\n",
          ingest_diff.count(), ingest_speed_mb_s, ingest_speed_events_s);
@@ -91,14 +90,15 @@ int main(int argc, char** argv) {
   printf("----------------------------------------\n");
 
   // Deinit
-  for (size_t i = 0; i < tracks.size; i++) {
-    track_deinit(&tracks[i], a);
+  track_t* track_array = (track_t*)tracks.ptr;
+  for (size_t i = 0; i < tracks.len; i++) {
+    track_deinit(&track_array[i], a);
   }
   array_list_deinit(&tracks, a);
   trace_event_matcher_deinit(&matcher, a);
   trace_data_deinit(&td, a);
   trace_parser_deinit(&p, a);
-  fclose(f);
 
+  fclose(f);
   return 0;
 }
