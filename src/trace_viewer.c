@@ -21,6 +21,23 @@ static void trace_viewer_draw_selection_overlay(trace_viewer_t* tv,
 static void trace_viewer_draw_search_section(trace_viewer_t* tv,
                                              allocator_t allocator);
 void trace_viewer_search_job(void* user_data);
+static void trace_viewer_stop_search_job(trace_viewer_t* tv) {
+  atomic_store(&tv->search.jobs_should_abort, true);
+
+  pthread_mutex_lock(&tv->search.quit_mutex);
+  while (atomic_load(&tv->search.is_active)) {
+    pthread_cond_wait(&tv->search.quit_cv, &tv->search.quit_mutex);
+  }
+  pthread_mutex_unlock(&tv->search.quit_mutex);
+  atomic_store(&tv->search.jobs_should_abort, false);
+}
+
+void trace_viewer_submit_search_job(trace_viewer_t* tv) {
+  trace_viewer_stop_search_job(tv);
+  atomic_store(&tv->search.is_active, true);
+  platform_submit_job(trace_viewer_search_job, &tv->search);
+}
+
 static void trace_viewer_step_vertical_minimap(
     trace_viewer_t* tv, const trace_viewer_input_t* input);
 static void trace_viewer_draw_vertical_minimap(const trace_viewer_t* tv,
@@ -158,6 +175,13 @@ static bool trace_viewer_selection_is_mouse_inside(const trace_viewer_t* tv,
 const double TRACE_VIEWER_MAX_ZOOM_FACTOR = 1.2;
 const double TRACE_VIEWER_MIN_ZOOM_DURATION = 1000.0;  // 1ms = 1000us
 
+void trace_viewer_init(trace_viewer_t* tv) {
+  *tv = (trace_viewer_t){};
+  pthread_mutex_init(&tv->search.mutex, nullptr);
+  pthread_mutex_init(&tv->search.quit_mutex, nullptr);
+  pthread_cond_init(&tv->search.quit_cv, nullptr);
+}
+
 void trace_viewer_deinit(trace_viewer_t* tv, allocator_t allocator) {
   track_t* tracks = (track_t*)tv->tracks.ptr;
   for (size_t i = 0; i < tv->tracks.len; i++) {
@@ -175,22 +199,15 @@ void trace_viewer_deinit(trace_viewer_t* tv, allocator_t allocator) {
   array_list_deinit(&tv->vertical_minimap.track_has_selected, allocator);
   array_list_deinit(&tv->vertical_minimap.track_heatmap_densities, allocator);
   array_list_deinit(&tv->search_query, allocator);
-  atomic_store(&tv->search.jobs_should_abort, true);
-  {
-    pthread_mutex_lock(&tv->search.mutex);
-    pthread_cond_broadcast(&tv->search.quit_cv);
-    pthread_mutex_unlock(&tv->search.mutex);
-  }
-  if (atomic_load(&tv->search.is_searching)) {
-    pthread_mutex_lock(&tv->search.quit_mutex);
-    while (atomic_load(&tv->search.is_searching)) {
-      pthread_cond_wait(&tv->search.quit_cv, &tv->search.quit_mutex);
-    }
-    pthread_mutex_unlock(&tv->search.quit_mutex);
-  }
+  trace_viewer_stop_search_job(tv);
   array_list_deinit(&tv->search.pending_query, allocator);
   array_list_deinit(&tv->search.pending_results, allocator);
+
+  pthread_mutex_destroy(&tv->search.mutex);
+  pthread_mutex_destroy(&tv->search.quit_mutex);
+  pthread_cond_destroy(&tv->search.quit_cv);
 }
+
 
 static void trace_viewer_draw_time_ruler(trace_viewer_t* tv,
                                          ig_draw_list_t* draw_list,
@@ -954,7 +971,7 @@ static void trace_viewer_box_select_update(trace_viewer_t* tv, trace_data_t* td,
   }
 
   tv->selected_events_dirty = true;
-  platform_submit_job(trace_viewer_search_job, &tv->search);
+  trace_viewer_submit_search_job(tv);
 }
 
 static void trace_viewer_zoom_to_event(trace_viewer_t* tv,
@@ -2471,7 +2488,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
                 atomic_store(&tv->search.new_sort_specs_available, true);
                 pthread_mutex_unlock(&tv->search.mutex);
 
-                platform_submit_job(trace_viewer_search_job, &tv->search);
+                trace_viewer_submit_search_job(tv);
               }
               ig_table_sort_specs_clear_dirty(specs);
             }
@@ -2788,9 +2805,17 @@ void trace_viewer_search_job(void* user_data) {
   trace_data_t* td = s->td;
   allocator_t allocator = s->allocator;
 
-  if (atomic_load(&s->jobs_should_abort)) return;
+  if (atomic_load(&s->jobs_should_abort)) {
+    pthread_mutex_lock(&s->quit_mutex);
+    atomic_store(&s->is_active, false);
+    pthread_cond_broadcast(&s->quit_cv);
+    pthread_mutex_unlock(&s->quit_mutex);
+    return;
+  }
+
 
   atomic_store(&s->is_searching, true);
+
 
   array_list_t query = {};
   bool do_search = false;
@@ -2959,10 +2984,13 @@ void trace_viewer_search_job(void* user_data) {
 
   {
     pthread_mutex_lock(&s->quit_mutex);
+    atomic_store(&s->is_active, false);
     pthread_cond_broadcast(&s->quit_cv);
     pthread_mutex_unlock(&s->quit_mutex);
   }
+
 }
+
 
 struct InputTextCallback_UserData {
   array_list_t* al;
@@ -3060,7 +3088,7 @@ static void trace_viewer_draw_search_section(trace_viewer_t* tv,
       atomic_store(&tv->search.results_ready, false);
       tv->has_selected_histogram_bucket = false;
       tv->search_histogram_dirty = true;
-      platform_submit_job(trace_viewer_search_job, &tv->search);
+      trace_viewer_submit_search_job(tv);
     }
     pthread_mutex_unlock(&tv->search.mutex);
   }

@@ -55,6 +55,7 @@ struct search_state {
   tv_atomic_bool jobs_should_abort;
   tv_atomic_bool results_ready;
   tv_atomic_bool is_searching;
+  tv_atomic_bool is_active;
   tv_atomic_bool request_update;
   pthread_mutex_t quit_mutex;
   pthread_cond_t quit_cv;
@@ -260,6 +261,7 @@ typedef struct trace_viewer trace_viewer_t;
 extern "C" {
 #endif
 
+void trace_viewer_init(trace_viewer_t* tv);
 void trace_viewer_deinit(trace_viewer_t* tv, allocator_t allocator);
 void trace_viewer_reset_view(trace_viewer_t* tv);
 void trace_viewer_precompute_minimap_heatmap(trace_viewer_t* tv,
@@ -276,6 +278,7 @@ void trace_viewer_calculate_histogram(const array_list_t* results,
                                       duration_histogram_t* h);
 
 void trace_viewer_search_job(void* user_data);
+void trace_viewer_submit_search_job(trace_viewer_t* tv);
 
 #ifdef __cplusplus
 }

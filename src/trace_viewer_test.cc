@@ -25,6 +25,7 @@ class TraceViewerTest : public ::testing::Test {
     allocator = allocator_get_default();
     tv.~trace_viewer_t();
     new (&tv) trace_viewer_t();
+    trace_viewer_init(&tv);
     tv.search.allocator = allocator;
     td.~trace_data_t();
     new (&td) trace_data_t();
@@ -36,6 +37,7 @@ class TraceViewerTest : public ::testing::Test {
     trace_data_deinit(&td, allocator);
     platform_teardown_workers();
   }
+
 };
 
 TEST_F(TraceViewerTest, ZoomInAroundMouse) {
@@ -2345,3 +2347,114 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
   EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_NEAR(tv.target_scroll_y, 121.0f, 0.5f);
 }
+
+#include <chrono>
+#include <thread>
+
+static void run_race_condition_helper(allocator_t allocator) {
+  // 1. Initialize trace viewer and data on the stack
+  trace_viewer_t tv = {};
+  trace_data_t td = {};
+
+  trace_viewer_init(&tv);
+
+  tv.search.td = &td;
+  tv.search.allocator = allocator;
+
+  // Push a query so the search actually runs
+  char* q = (char*)array_list_append(&tv.search.pending_query, 2, char, allocator);
+  q[0] = 'a';
+  q[1] = '\0';
+
+  // Trigger search
+  tv.search.new_query_available.store(true);
+  tv.search.is_searching.store(false);
+
+  trace_viewer_submit_search_job(&tv);
+
+  // 2. Call deinit immediately!
+  // With the fix, this will safely block and wait for the job to finish.
+  // Without the fix, it returns immediately, leading to use-after-free.
+  trace_viewer_deinit(&tv, allocator);
+
+  // tv and td go out of scope here and their stack memory becomes invalid!
+}
+
+
+static void pollute_stack() {
+  volatile char garbage[4096];
+  for (size_t i = 0; i < sizeof(garbage); i++) {
+    garbage[i] = 0x55;
+  }
+}
+
+TEST(trace_viewer_test, search_deinit_race_condition) {
+  allocator_t allocator = allocator_get_default();
+
+  // Run the helper which submits search and immediately deinits/destroys the state.
+  // With the fix, this blocks until the search job is 100% finished.
+  run_race_condition_helper(allocator);
+
+  // Pollute the stack. If the bug is present, the job is still queued/running and
+  // will crash when it runs on this polluted stack. If fixed, the job is already
+  // finished, so this is 100% safe.
+  pollute_stack();
+
+  // Sleep to let any rogue worker threads run (should not happen if fixed)
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+}
+
+static void run_multiple_race_condition_helper(allocator_t allocator) {
+  // 1. Initialize trace viewer and data on the stack
+  trace_viewer_t tv = {};
+  trace_data_t td = {};
+
+  trace_viewer_init(&tv);
+
+  tv.search.td = &td;
+  tv.search.allocator = allocator;
+
+  // Add many dummy events to make the search take some time
+  for (int i = 0; i < 100000; i++) {
+    trace_event_persisted_t e = {};
+    e.ts = i;
+    e.dur = 10;
+    *array_list_push(&td.events, trace_event_persisted_t, allocator) = e;
+  }
+
+  // Push a query so the search actually runs
+  char* q = (char*)array_list_append(&tv.search.pending_query, 2, char, allocator);
+  q[0] = 'a';
+  q[1] = '\0';
+
+  // Trigger search 1
+  tv.search.new_query_available.store(true);
+  trace_viewer_submit_search_job(&tv);
+
+  // Trigger search 2 immediately (simulating rapid typing)
+  tv.search.new_query_available.store(true);
+  trace_viewer_submit_search_job(&tv);
+
+  // 2. Call deinit immediately!
+  // If the bug is present, this might not wait for the second job because
+  // the first job finishing might set is_active to false, causing deinit to
+  // return early while the second job is still running.
+  trace_viewer_deinit(&tv, allocator);
+
+  // tv and td go out of scope here and their stack memory becomes invalid!
+  // The second job might still be running and will access this invalid memory.
+}
+
+
+TEST(trace_viewer_test, multiple_search_deinit_race_condition) {
+  allocator_t allocator = allocator_get_default();
+
+  run_multiple_race_condition_helper(allocator);
+
+  // Pollute the stack.
+  pollute_stack();
+
+  // Sleep to let the rogue second worker thread run and hopefully crash if it's still running.
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+}
+

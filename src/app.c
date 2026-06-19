@@ -220,6 +220,8 @@ void app_init(app_t* app, allocator_t parent) {
   pthread_cond_init(&app->loading.chunk_queue.cv, nullptr);
   pthread_mutex_init(&app->loading.quit_mutex, nullptr);
   pthread_cond_init(&app->loading.quit_cv, nullptr);
+
+  trace_viewer_init(&app->trace_viewer);
 }
 
 void app_deinit(app_t* app) {
@@ -235,6 +237,7 @@ void app_deinit(app_t* app) {
   pthread_cond_destroy(&app->loading.chunk_queue.cv);
   pthread_mutex_destroy(&app->loading.quit_mutex);
   pthread_cond_destroy(&app->loading.quit_cv);
+
 
   pthread_mutex_lock(&app->loading.chunk_queue.mutex);
   trace_chunk_node_t* curr = app->loading.chunk_queue.head;
