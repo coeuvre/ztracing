@@ -18,8 +18,7 @@ static void trace_loading_job(void* user_data) {
   int my_session_id = loading->session_id;
   Allocator allocator = loading->allocator;
 
-  LOG_DEBUG("trace_loading_job started (session_id: %d)",
-            my_session_id);
+  LOG_DEBUG("trace_loading_job started (session_id: %d)", my_session_id);
 
   size_t total_discarded_bytes = 0;
   TraceEventMatcher matcher = {};
@@ -44,24 +43,23 @@ static void trace_loading_job(void* user_data) {
 
     if (chunk.data) {
       total_discarded_bytes += trace_parser_feed(
-          &loading->parser, allocator, chunk.data, chunk.size,
-          chunk.is_eof);
+          &loading->parser, allocator, chunk.data, chunk.size, chunk.is_eof);
       allocator_free(allocator, chunk.data, chunk.size);
 
       loading->input_consumed_bytes.store(chunk.input_consumed_bytes,
-                                            std::memory_order_relaxed);
+                                          std::memory_order_relaxed);
 
       {
         std::lock_guard<std::mutex> lock(loading->chunk_queue.mutex);
-        loading->chunk_queue.queue_size_bytes.fetch_sub(chunk.size,
-                                                          std::memory_order_relaxed);
+        loading->chunk_queue.queue_size_bytes.fetch_sub(
+            chunk.size, std::memory_order_relaxed);
       }
     }
 
     TraceEvent event;
     while (trace_parser_next(&loading->parser, allocator, &event)) {
-      trace_data_add_event(loading->trace_data, allocator,
-                           loading->theme, &event, &matcher);
+      trace_data_add_event(loading->trace_data, allocator, loading->theme,
+                           &event, &matcher);
       loading->event_count.fetch_add(1, std::memory_order_relaxed);
       loading->total_bytes.store(total_discarded_bytes + loading->parser.pos,
                                  std::memory_order_relaxed);
@@ -74,7 +72,8 @@ static void trace_loading_job(void* user_data) {
 
   if (!loading->jobs_should_abort.load() &&
       loading->session_id == my_session_id) {
-    double duration_ms = platform_get_now() - loading->start_time;
+    double parse_end_time = platform_get_now();
+    double duration_ms = parse_end_time - loading->start_time;
     double duration_s = duration_ms / 1000.0;
     double speed_mb_s =
         duration_s > 0.0
@@ -84,16 +83,20 @@ static void trace_loading_job(void* user_data) {
     LOG_INFO("parsed %zu events (total) in %.3f ms (%.2f mb/s)",
              loading->event_count.load(), duration_ms, speed_mb_s);
 
+    double organize_start_time = platform_get_now();
     int64_t min_ts, max_ts;
     track_organize(loading->trace_data, allocator, loading->theme,
                    &loading->trace_viewer->tracks, &min_ts, &max_ts);
+    double organize_end_time = platform_get_now();
+    LOG_INFO("organize track in %.3f ms",
+             organize_end_time - organize_start_time);
     loading->trace_viewer->viewport.min_ts = min_ts;
     loading->trace_viewer->viewport.max_ts = max_ts;
     trace_viewer_reset_view(loading->trace_viewer);
-    trace_viewer_precompute_minimap_heatmap(loading->trace_viewer, loading->trace_data, allocator);
+    trace_viewer_precompute_minimap_heatmap(loading->trace_viewer,
+                                            loading->trace_data, allocator);
     loading->request_update.store(true, std::memory_order_relaxed);
-    LOG_DEBUG("trace_loading_job finished (session_id: %d)",
-              my_session_id);
+    LOG_DEBUG("trace_loading_job finished (session_id: %d)", my_session_id);
   } else {
     LOG_DEBUG("trace_loading_job aborted/superseded (session_id: %d)",
               my_session_id);
@@ -138,7 +141,8 @@ static void app_stop_jobs(App* app) {
 
   if (app->loading.active.load()) {
     std::unique_lock<std::mutex> lock(app->loading.quit_mutex);
-    app->loading.quit_cv.wait(lock, [app] { return !app->loading.active.load(); });
+    app->loading.quit_cv.wait(lock,
+                              [app] { return !app->loading.active.load(); });
   }
 }
 
@@ -153,7 +157,8 @@ App app_init(Allocator parent) {
 void app_deinit(App* app) {
   app_stop_jobs(app);
 
-  Allocator allocator = counting_allocator_get_allocator(&app->counting_allocator);
+  Allocator allocator =
+      counting_allocator_get_allocator(&app->counting_allocator);
   trace_data_deinit(&app->trace_data, allocator);
   array_list_deinit(&app->loading.filename, allocator);
   trace_viewer_deinit(&app->trace_viewer, allocator);
@@ -169,19 +174,23 @@ void app_update(App* app) {
       ImGui::Separator();
 
       ImGui::MenuItem("Power-save Mode", nullptr, &app->power_save_mode);
-      ImGui::MenuItem("Details Panel", nullptr, &app->trace_viewer.show_details_panel);
+      ImGui::MenuItem("Details Panel", nullptr,
+                      &app->trace_viewer.show_details_panel);
 
       ImGui::Separator();
       if (ImGui::BeginMenu("Theme")) {
-        if (ImGui::MenuItem("Auto", nullptr, app->theme_mode == THEME_MODE_AUTO)) {
+        if (ImGui::MenuItem("Auto", nullptr,
+                            app->theme_mode == THEME_MODE_AUTO)) {
           app->theme_mode = THEME_MODE_AUTO;
           app_on_theme_changed(app);
         }
-        if (ImGui::MenuItem("Dark", nullptr, app->theme_mode == THEME_MODE_DARK)) {
+        if (ImGui::MenuItem("Dark", nullptr,
+                            app->theme_mode == THEME_MODE_DARK)) {
           app->theme_mode = THEME_MODE_DARK;
           app_apply_theme(app, theme_get_dark());
         }
-        if (ImGui::MenuItem("Light", nullptr, app->theme_mode == THEME_MODE_LIGHT)) {
+        if (ImGui::MenuItem("Light", nullptr,
+                            app->theme_mode == THEME_MODE_LIGHT)) {
           app->theme_mode = THEME_MODE_LIGHT;
           app_apply_theme(app, theme_get_light());
         }
@@ -229,7 +238,7 @@ void app_update(App* app) {
     app->first_frame = false;
     ImGui::DockBuilderRemoveNode(dockspace_id);
     ImGui::DockBuilderAddNode(dockspace_id,
-                               dockspace_flags | ImGuiDockNodeFlags_DockSpace);
+                              dockspace_flags | ImGuiDockNodeFlags_DockSpace);
     ImGui::DockBuilderSetNodeSize(dockspace_id, ImGui::GetMainViewport()->Size);
 
     ImGuiID dock_id_main = dockspace_id;
@@ -248,14 +257,17 @@ void app_update(App* app) {
     ImGui::DockBuilderFinish(dockspace_id);
   }
 
-  if (app->show_metrics_window) ImGui::ShowMetricsWindow(&app->show_metrics_window);
+  if (app->show_metrics_window)
+    ImGui::ShowMetricsWindow(&app->show_metrics_window);
   if (app->show_about_window) ImGui::ShowAboutWindow(&app->show_about_window);
 
-  if (ImGui::IsKeyPressed(ImGuiKey_Slash) && ImGui::GetIO().KeyShift && !ImGui::GetIO().WantTextInput) {
+  if (ImGui::IsKeyPressed(ImGuiKey_Slash) && ImGui::GetIO().KeyShift &&
+      !ImGui::GetIO().WantTextInput) {
     app->show_shortcuts_window = !app->show_shortcuts_window;
   }
 
-  if (ImGui::IsKeyPressed(ImGuiKey_F) && ImGui::GetIO().KeyCtrl && !ImGui::GetIO().WantTextInput) {
+  if (ImGui::IsKeyPressed(ImGuiKey_F) && ImGui::GetIO().KeyCtrl &&
+      !ImGui::GetIO().WantTextInput) {
     app->trace_viewer.show_details_panel = true;
     app->trace_viewer.focus_search_input = true;
   }
@@ -263,42 +275,54 @@ void app_update(App* app) {
   ImVec2 center = ImGui::GetMainViewport()->GetCenter();
   ImVec2 viewport_size = ImGui::GetMainViewport()->Size;
   ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-  ImGui::SetNextWindowSize(ImVec2(viewport_size.x * 0.7f, viewport_size.y * 0.7f), ImGuiCond_Appearing);
+  ImGui::SetNextWindowSize(
+      ImVec2(viewport_size.x * 0.7f, viewport_size.y * 0.7f),
+      ImGuiCond_Appearing);
 
   if (app->show_shortcuts_window) {
     ImGui::OpenPopup("Shortcuts");
   }
 
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, ImGui::ColorConvertU32ToFloat4(app->theme->viewport_bg));
-  if (ImGui::BeginPopupModal("Shortcuts", &app->show_shortcuts_window, 
-                             ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, ImGui::ColorConvertU32ToFloat4(
+                                              app->theme->viewport_bg));
+  if (ImGui::BeginPopupModal(
+          "Shortcuts", &app->show_shortcuts_window,
+          ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
     // Close when clicking outside
     if (ImGui::IsMouseClicked(0)) {
-        ImVec2 mouse_pos = ImGui::GetMousePos();
-        ImVec2 window_pos = ImGui::GetWindowPos();
-        ImVec2 window_size = ImGui::GetWindowSize();
-        bool inside = mouse_pos.x >= window_pos.x && mouse_pos.x <= window_pos.x + window_size.x &&
-                     mouse_pos.y >= window_pos.y && mouse_pos.y <= window_pos.y + window_size.y;
-        if (!inside) {
-            app->show_shortcuts_window = false;
-            app->trace_viewer.ignore_next_release = true;
-            ImGui::CloseCurrentPopup();
-        }
+      ImVec2 mouse_pos = ImGui::GetMousePos();
+      ImVec2 window_pos = ImGui::GetWindowPos();
+      ImVec2 window_size = ImGui::GetWindowSize();
+      bool inside = mouse_pos.x >= window_pos.x &&
+                    mouse_pos.x <= window_pos.x + window_size.x &&
+                    mouse_pos.y >= window_pos.y &&
+                    mouse_pos.y <= window_pos.y + window_size.y;
+      if (!inside) {
+        app->show_shortcuts_window = false;
+        app->trace_viewer.ignore_next_release = true;
+        ImGui::CloseCurrentPopup();
+      }
     }
 
-    if (ImGui::BeginChild("CheatsheetContent", ImVec2(0, 0), false, ImGuiWindowFlags_NoScrollbar)) {
+    if (ImGui::BeginChild("CheatsheetContent", ImVec2(0, 0), false,
+                          ImGuiWindowFlags_NoScrollbar)) {
       auto add_section = [&](const char* title, auto content_func) {
         ImGui::BeginGroup();
         ImGui::Spacing();
-        ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(app->theme->track_text), "%s", title);
+        ImGui::TextColored(
+            ImGui::ColorConvertU32ToFloat4(app->theme->track_text), "%s",
+            title);
         ImGui::Separator();
         ImGui::Spacing();
-        
-        if (ImGui::BeginTable(title, 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
-            ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 150.0f);
-            ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthStretch);
-            content_func();
-            ImGui::EndTable();
+
+        if (ImGui::BeginTable(
+                title, 2,
+                ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingFixedFit)) {
+          ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed,
+                                  150.0f);
+          ImGui::TableSetupColumn("Key", ImGuiTableColumnFlags_WidthStretch);
+          content_func();
+          ImGui::EndTable();
         }
         ImGui::EndGroup();
       };
@@ -308,7 +332,9 @@ void app_update(App* app) {
         ImGui::TableNextColumn();
         ImGui::TextUnformatted(action);
         ImGui::TableNextColumn();
-        ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(app->theme->ruler_text), "%s", shortcut);
+        ImGui::TextColored(
+            ImGui::ColorConvertU32ToFloat4(app->theme->ruler_text), "%s",
+            shortcut);
       };
 
       float width = ImGui::GetContentRegionAvail().x;
@@ -318,7 +344,8 @@ void app_update(App* app) {
       bool is_mac = platform_is_mac();
 
       // Left Column
-      ImGui::BeginChild("LeftCol", ImVec2(col_w, 0), false, ImGuiWindowFlags_NoScrollbar);
+      ImGui::BeginChild("LeftCol", ImVec2(col_w, 0), false,
+                        ImGuiWindowFlags_NoScrollbar);
       add_section("GENERAL", [&]() {
         add_row("Toggle Shortcuts", "?");
         add_row("Search Events", is_mac ? "Cmd + F" : "Ctrl + F");
@@ -337,7 +364,8 @@ void app_update(App* app) {
       ImGui::SameLine(0, gap);
 
       // Right Column
-      ImGui::BeginChild("RightCol", ImVec2(col_w, 0), false, ImGuiWindowFlags_NoScrollbar);
+      ImGui::BeginChild("RightCol", ImVec2(col_w, 0), false,
+                        ImGuiWindowFlags_NoScrollbar);
       add_section("SELECTION", [&]() {
         add_row("Timeline Selection", "Drag on Ruler");
         add_row("Rectangle Select", "Shift + Drag");
@@ -370,9 +398,11 @@ void app_update(App* app) {
       loading_screen_draw(filename, (size_t)app->loading.event_count.load(),
                           (size_t)app->loading.total_bytes.load(),
                           (size_t)app->loading.input_consumed_bytes.load(),
-                          (size_t)app->loading.input_total_bytes.load(), app->theme);
+                          (size_t)app->loading.input_total_bytes.load(),
+                          app->theme);
     } else if (app->trace_data.events.size > 0 && !app->loading.active.load()) {
-      Allocator allocator = counting_allocator_get_allocator(&app->counting_allocator);
+      Allocator allocator =
+          counting_allocator_get_allocator(&app->counting_allocator);
       trace_viewer_draw(&app->trace_viewer, &app->trace_data, allocator,
                         app->theme);
     } else {
@@ -396,8 +426,9 @@ void app_begin_session(App* app, int session_id, const char* filename,
 
   app->loading.trace_data = &app->trace_data;
   app->loading.trace_viewer = &app->trace_viewer;
-  app->loading.allocator = counting_allocator_get_allocator(&app->counting_allocator);
-  
+  app->loading.allocator =
+      counting_allocator_get_allocator(&app->counting_allocator);
+
   app->trace_viewer.search.td = &app->trace_data;
   app->trace_viewer.search.allocator = app->loading.allocator;
 
@@ -406,7 +437,8 @@ void app_begin_session(App* app, int session_id, const char* filename,
   trace_data_clear(&app->trace_data, allocator);
   app->loading.event_count.store(0, std::memory_order_relaxed);
   app->loading.total_bytes.store(0, std::memory_order_relaxed);
-  app->loading.input_total_bytes.store(input_total_bytes, std::memory_order_relaxed);
+  app->loading.input_total_bytes.store(input_total_bytes,
+                                       std::memory_order_relaxed);
   app->loading.input_consumed_bytes.store(0, std::memory_order_relaxed);
   app->loading.start_time = platform_get_now();
   app->loading.active.store(true, std::memory_order_relaxed);
@@ -426,7 +458,8 @@ void app_begin_session(App* app, int session_id, const char* filename,
       }
       app->loading.chunk_queue.queue.pop();
     }
-    app->loading.chunk_queue.queue_size_bytes.store(0, std::memory_order_relaxed);
+    app->loading.chunk_queue.queue_size_bytes.store(0,
+                                                    std::memory_order_relaxed);
     app->loading.chunk_queue.closed = false;
   }
 
@@ -444,16 +477,17 @@ void app_begin_session(App* app, int session_id, const char* filename,
   platform_submit_job((PlatformJobFn)trace_loading_job, &app->loading);
 }
 
-size_t app_handle_file_chunk(App* app, int session_id, char* data,
-                           size_t size, size_t input_consumed_bytes,
-                           bool is_eof) {
+size_t app_handle_file_chunk(App* app, int session_id, char* data, size_t size,
+                             size_t input_consumed_bytes, bool is_eof) {
   if (session_id != app->loading.session_id) {
     // If this is an old session, free the data immediately.
     if (data && size > 0) {
-      Allocator allocator = counting_allocator_get_allocator(&app->counting_allocator);
+      Allocator allocator =
+          counting_allocator_get_allocator(&app->counting_allocator);
       allocator_free(allocator, data, size);
     }
-    return app->loading.chunk_queue.queue_size_bytes.load(std::memory_order_relaxed);
+    return app->loading.chunk_queue.queue_size_bytes.load(
+        std::memory_order_relaxed);
   }
 
   TraceChunk chunk = {
@@ -466,14 +500,17 @@ size_t app_handle_file_chunk(App* app, int session_id, char* data,
   {
     std::lock_guard<std::mutex> lock(app->loading.chunk_queue.mutex);
     app->loading.chunk_queue.queue.push(chunk);
-    app->loading.chunk_queue.queue_size_bytes.fetch_add(size, std::memory_order_relaxed);
+    app->loading.chunk_queue.queue_size_bytes.fetch_add(
+        size, std::memory_order_relaxed);
     if (is_eof) app->loading.chunk_queue.closed = true;
     app->loading.chunk_queue.cv.notify_all();
   }
 
-  return app->loading.chunk_queue.queue_size_bytes.load(std::memory_order_relaxed);
+  return app->loading.chunk_queue.queue_size_bytes.load(
+      std::memory_order_relaxed);
 }
 
 size_t app_get_queue_size(App* app) {
-  return app->loading.chunk_queue.queue_size_bytes.load(std::memory_order_relaxed);
+  return app->loading.chunk_queue.queue_size_bytes.load(
+      std::memory_order_relaxed);
 }
