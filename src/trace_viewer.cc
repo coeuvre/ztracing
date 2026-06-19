@@ -960,8 +960,10 @@ void trace_viewer_calculate_histogram(const ArrayList<int64_t>& results,
   }
 }
 
-void trace_viewer_step(TraceViewer* tv, TraceData* td,
-                       const TraceViewerInput& input, Allocator allocator) {
+extern "C" void trace_viewer_step(TraceViewer* tv, TraceData* td,
+                                  const TraceViewerInput* input_ptr,
+                                  Allocator allocator) {
+  const TraceViewerInput& input = *input_ptr;
   // 0. Handle focus requests
   if (tv->target_focused_event_idx != -1) {
     size_t event_idx = (size_t)tv->target_focused_event_idx;
@@ -2336,6 +2338,23 @@ void trace_viewer_draw(TraceViewer* tv, TraceData* td, Allocator allocator,
     ImGui::End();
     ImGui::PopStyleVar();
   }
+}
+
+extern "C" void trace_viewer_init(trace_viewer_t* tv) {
+  tv->focused_event_idx = -1;
+  tv->target_focused_event_idx = -1;
+  tv->target_scroll_y = -1.0f;
+  tv->selected_histogram_bucket = -1;
+  tv->search_thread_events = true;
+  tv->search_counter_events = true;
+
+  // Initialize SearchState sort fields
+  tv->search.sort_column = 0;
+  tv->search.sort_ascending = true;
+  tv->search.sort_none = true;
+
+  tv->search.include_thread_events.store(true);
+  tv->search.include_counter_events.store(true);
 }
 
 void trace_viewer_reset_view(TraceViewer* tv) {

@@ -1,8 +1,8 @@
 #include <GLES3/gl3.h>
-#include <cassert>
 #include <emscripten.h>
 #include <emscripten/html5.h>
 
+#include <cassert>
 #include <cstdio>
 #include <cstring>
 
@@ -67,9 +67,11 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   Allocator default_allocator = allocator_get_default();
   g_app = (App*)allocator_alloc(default_allocator, sizeof(App));
   new (g_app) App(app_init(default_allocator));
+  trace_viewer_init(&g_app->trace_viewer);
 
   static Allocator imgui_allocator;
-  imgui_allocator = counting_allocator_get_allocator(&g_app->counting_allocator);
+  imgui_allocator =
+      counting_allocator_get_allocator(&g_app->counting_allocator);
   ImGui::SetAllocatorFunctions(imgui_alloc, imgui_free, &imgui_allocator);
 
   IMGUI_CHECKVERSION();
@@ -121,9 +123,9 @@ EMSCRIPTEN_KEEPALIVE void ztracing_start() {
 EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
                                                  int font_size) {
   array_list_clear(&g_font_data);
-  Allocator allocator = counting_allocator_get_allocator(&g_app->counting_allocator);
-  array_list_append(&g_font_data, allocator, font_data,
-                    (size_t)font_size);
+  Allocator allocator =
+      counting_allocator_get_allocator(&g_app->counting_allocator);
+  array_list_append(&g_font_data, allocator, font_data, (size_t)font_size);
 
   ImGuiIO& io = ImGui::GetIO();
   float dpi_scale = imgui_impl_wasm_get_dpi_scale();
@@ -160,10 +162,10 @@ EMSCRIPTEN_KEEPALIVE void ztracing_begin_session(int session_id,
   imgui_impl_wasm_request_update();
 }
 
-EMSCRIPTEN_KEEPALIVE int ztracing_handle_file_chunk(int session_id,
-                                                     char* data, int size,
-                                                     double input_consumed_bytes,
-                                                     bool is_eof) {
+EMSCRIPTEN_KEEPALIVE int ztracing_handle_file_chunk(int session_id, char* data,
+                                                    int size,
+                                                    double input_consumed_bytes,
+                                                    bool is_eof) {
   return (int)app_handle_file_chunk(g_app, session_id, data, (size_t)size,
                                     (size_t)input_consumed_bytes, is_eof);
 }
