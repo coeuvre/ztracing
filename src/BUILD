@@ -134,7 +134,7 @@ cc_library(
 
 cc_library(
     name = "colors",
-    srcs = ["colors.cc"],
+    srcs = ["colors.c"],
     hdrs = ["colors.h"],
     deps = [
         "@imgui",
