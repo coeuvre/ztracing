@@ -170,11 +170,12 @@ cc_test(
 
 cc_library(
     name = "track",
-    srcs = ["track.cc"],
+    srcs = ["track.c"],
     hdrs = ["track.h"],
     deps = [
         ":allocator",
         ":array_list",
+        ":colors",
         ":hash_table",
         ":trace_data",
     ],
