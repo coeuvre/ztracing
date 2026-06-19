@@ -47,16 +47,6 @@ typedef struct thread_bucket_state {
 } thread_bucket_state_t;
 
 typedef struct track_renderer_state {
-#ifdef __cplusplus
-  ArrayList<thread_bucket_state_t> thread_bucket_states;
-  ArrayList<int64_t> thread_depth_blocked_until;
-  ArrayList<double> counter_current_values;
-  ArrayList<double> counter_bucket_max_values;
-  ArrayList<uint8_t> counter_series_updated;
-  ArrayList<double> counter_peaks;
-  ArrayList<float> counter_visual_offsets;
-  ArrayList<uint8_t> selected_events_bitset;
-#else
   array_list_t thread_bucket_states;
   array_list_t thread_depth_blocked_until;
   array_list_t counter_current_values;
@@ -65,7 +55,6 @@ typedef struct track_renderer_state {
   array_list_t counter_peaks;
   array_list_t counter_visual_offsets;
   array_list_t selected_events_bitset;
-#endif
 } track_renderer_state_t;
 
 static inline void track_renderer_state_deinit(track_renderer_state_t* state,
@@ -114,40 +103,6 @@ void track_compute_counter_render_blocks(
     allocator_t a);
 
 #ifdef __cplusplus
-}
-#endif
-
-#ifdef __cplusplus
-using TrackRenderBlock = track_render_block_t;
-using CounterRenderBlock = counter_render_block_t;
-using TrackRendererState = track_renderer_state_t;
-
-inline void track_renderer_update_selection_bitset(
-    track_renderer_state_t* state, const trace_data_t* trace_data,
-    const ArrayList<int64_t>& selected_event_indices, allocator_t a) {
-  track_renderer_update_selection_bitset(state, trace_data, (const array_list_t*)&selected_event_indices, a);
-}
-
-inline void track_compute_render_blocks(
-    const track_t* track, const trace_data_t* trace_data, double viewport_start,
-    double viewport_end, float inner_width, float tracks_canvas_pos_x,
-    int64_t focused_event_idx,
-    track_renderer_state_t* state, ArrayList<track_render_block_t>* out_blocks,
-    allocator_t a) {
-  track_compute_render_blocks(track, trace_data, viewport_start, viewport_end,
-                              inner_width, tracks_canvas_pos_x, focused_event_idx,
-                              state, (array_list_t*)out_blocks, a);
-}
-
-inline void track_compute_counter_render_blocks(
-    const track_t* track, const trace_data_t* trace_data, double viewport_start,
-    double viewport_end, float inner_width, float tracks_canvas_pos_x,
-    int64_t focused_event_idx,
-    track_renderer_state_t* state, ArrayList<counter_render_block_t>* out_blocks,
-    allocator_t a) {
-  track_compute_counter_render_blocks(track, trace_data, viewport_start, viewport_end,
-                                      inner_width, tracks_canvas_pos_x, focused_event_idx,
-                                      state, (array_list_t*)out_blocks, a);
 }
 #endif
 

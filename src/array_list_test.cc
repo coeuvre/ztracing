@@ -1,4 +1,5 @@
 #include "src/array_list.h"
+#include "src/cpp_compat.h"
 
 #include <gtest/gtest.h>
 

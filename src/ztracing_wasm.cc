@@ -13,9 +13,9 @@
 #include "src/ztracing.h"
 #include "third_party/imgui/imgui.h"
 
-static ArrayList<char> g_canvas_selector;
+static array_list_t g_canvas_selector;
 static App* g_app = nullptr;
-static ArrayList<unsigned char> g_font_data;
+static array_list_t g_font_data;
 
 static void* imgui_alloc(size_t sz, void* user_data) {
   Allocator* a = (Allocator*)user_data;
@@ -82,8 +82,10 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
 
   Allocator allocator = imgui_allocator;
   array_list_clear(&g_canvas_selector);
-  array_list_append(&g_canvas_selector, allocator, canvas_selector,
-                    strlen(canvas_selector) + 1);
+  size_t len = strlen(canvas_selector) + 1;
+  char* dest = (char*)array_list_append_(&g_canvas_selector, len,
+                                         sizeof(char), allocator);
+  memcpy(dest, canvas_selector, len);
 
   EmscriptenWebGLContextAttributes attrs;
   emscripten_webgl_init_context_attributes(&attrs);
@@ -97,15 +99,15 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   attrs.powerPreference = EM_WEBGL_POWER_PREFERENCE_HIGH_PERFORMANCE;
 
   EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx =
-      emscripten_webgl_create_context(g_canvas_selector.data, &attrs);
+      emscripten_webgl_create_context((const char*)g_canvas_selector.ptr, &attrs);
   if (ctx <= 0) {
     LOG_ERROR("failed to create webgl context for selector '%s' (error: %d)",
-              g_canvas_selector.data, (int)ctx);
+              (const char*)g_canvas_selector.ptr, (int)ctx);
     return 1;
   }
   emscripten_webgl_make_context_current(ctx);
 
-  imgui_impl_wasm_init(g_canvas_selector.data, allocator);
+  imgui_impl_wasm_init((const char*)g_canvas_selector.ptr, allocator);
   if (!imgui_impl_webgl_init(allocator)) {
     return 2;
   }
@@ -125,14 +127,17 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
   array_list_clear(&g_font_data);
   Allocator allocator =
       counting_allocator_get_allocator(&g_app->counting_allocator);
-  array_list_append(&g_font_data, allocator, font_data, (size_t)font_size);
+  size_t len = (size_t)font_size;
+  unsigned char* dest = (unsigned char*)array_list_append_(
+      &g_font_data, len, sizeof(unsigned char), allocator);
+  memcpy(dest, font_data, len);
 
   ImGuiIO& io = ImGui::GetIO();
   float dpi_scale = imgui_impl_wasm_get_dpi_scale();
   io.Fonts->Clear();
   ImFontConfig font_cfg;
   font_cfg.FontDataOwnedByAtlas = false;
-  io.Fonts->AddFontFromMemoryTTF(g_font_data.data, (int)g_font_data.size,
+  io.Fonts->AddFontFromMemoryTTF(g_font_data.ptr, (int)g_font_data.len,
                                  16.0f * dpi_scale, &font_cfg);
   io.Fonts->Build();
   io.FontGlobalScale = 1.0f / dpi_scale;

@@ -23,19 +23,11 @@ typedef struct track {
   string_ref_t name_ref;
   string_ref_t id_ref;
   int32_t sort_index;
-#ifdef __cplusplus
-  ArrayList<size_t> event_indices;
-  ArrayList<uint32_t> depths;
-  ArrayList<string_ref_t> counter_series;
-  ArrayList<uint32_t> counter_colors;
-  ArrayList<int64_t> block_max_durs;
-#else
   array_list_t event_indices;   // Element type: size_t
   array_list_t depths;          // Element type: uint32_t
   array_list_t counter_series;  // Element type: string_ref_t
   array_list_t counter_colors;  // Element type: uint32_t
   array_list_t block_max_durs;  // Element type: int64_t
-#endif
   double counter_max_total;
   int64_t max_dur;
   uint32_t max_depth;
@@ -62,22 +54,6 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
 }
 #endif
 
-// C++ Compatibility Wrapper
-#ifdef __cplusplus
-using TrackType = track_type_t;
-using Track = track_t;
 
-inline void track_update_colors(ArrayList<Track>* tracks, const TraceData* td,
-                                const Theme* theme) {
-  track_update_colors((array_list_t*)tracks, td, theme);
-}
-
-inline void track_organize(const TraceData* td, Allocator a, const Theme* theme,
-                           ArrayList<Track>* out_tracks, int64_t* out_min_ts,
-                           int64_t* out_max_ts) {
-  track_organize(td, theme, (array_list_t*)out_tracks, out_min_ts, out_max_ts,
-                 a);
-}
-#endif
 
 #endif  // ZTRACING_SRC_TRACK_H_

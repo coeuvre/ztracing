@@ -1,4 +1,5 @@
 #include "src/hash_table.h"
+#include "src/cpp_compat.h"
 
 #include <gtest/gtest.h>
 

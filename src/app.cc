@@ -1,4 +1,5 @@
 #include "src/app.h"
+#include "src/cpp_compat.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -124,7 +125,8 @@ static void app_apply_theme(App* app, const Theme* theme) {
   if (app->loading.active.load()) return;
 
   // Re-compute all event colors when theme changes
-  for (size_t i = 0; i < app->trace_data.events.size; i++) {
+  auto& events = AS_ARRAY_LIST(app->trace_data.events, trace_event_persisted_t);
+  for (size_t i = 0; i < events.size; i++) {
     trace_data_update_event_color(&app->trace_data, (uint32_t)i, app->theme);
   }
 
@@ -394,13 +396,13 @@ void app_update(App* app) {
   if (ImGui::Begin("Main Viewport", nullptr, viewport_flags)) {
     if (app->loading.active.load()) {
       const char* filename =
-          app->loading.filename.size > 0 ? app->loading.filename.data : "";
+          app->loading.filename.len > 0 ? (const char*)app->loading.filename.ptr : "";
       loading_screen_draw(filename, (size_t)app->loading.event_count.load(),
                           (size_t)app->loading.total_bytes.load(),
                           (size_t)app->loading.input_consumed_bytes.load(),
                           (size_t)app->loading.input_total_bytes.load(),
                           app->theme);
-    } else if (app->trace_data.events.size > 0 && !app->loading.active.load()) {
+    } else if (AS_ARRAY_LIST(app->trace_data.events, trace_event_persisted_t).size > 0 && !app->loading.active.load()) {
       Allocator allocator =
           counting_allocator_get_allocator(&app->counting_allocator);
       trace_viewer_draw(&app->trace_viewer, &app->trace_data, allocator,
@@ -465,8 +467,10 @@ void app_begin_session(App* app, int session_id, const char* filename,
 
   array_list_clear(&app->loading.filename);
   if (filename) {
-    array_list_append(&app->loading.filename, allocator, filename,
-                      strlen(filename) + 1);
+    size_t len = strlen(filename) + 1;
+    char* dest = (char*)array_list_append_(&app->loading.filename, len,
+                                           sizeof(char), allocator);
+    memcpy(dest, filename, len);
   }
 
   {

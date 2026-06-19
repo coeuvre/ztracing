@@ -17,8 +17,8 @@ struct BackendData {
   GLuint font_texture;
   GLint attrib_location_pos, attrib_location_uv, attrib_location_color;
   GLint attrib_location_proj_mtx;
-  ArrayList<ImDrawVert> vtx_staging;
-  ArrayList<ImDrawIdx> idx_staging;
+  array_list_t vtx_staging;
+  array_list_t idx_staging;
 };
 
 static BackendData* get_backend_data() {
@@ -99,8 +99,10 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
     total_idx_count += (size_t)cmd_list->IdxBuffer.Size;
   }
 
-  array_list_resize(&bd->vtx_staging, allocator, total_vtx_count);
-  array_list_resize(&bd->idx_staging, allocator, total_idx_count);
+  array_list_resize(&bd->vtx_staging, total_vtx_count, sizeof(ImDrawVert),
+                    allocator);
+  array_list_resize(&bd->idx_staging, total_idx_count, sizeof(ImDrawIdx),
+                    allocator);
 
   // 2. Concatenate data
   size_t vtx_dst_offset = 0;
@@ -110,10 +112,10 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
     size_t vtx_count = (size_t)cmd_list->VtxBuffer.Size;
     size_t idx_count = (size_t)cmd_list->IdxBuffer.Size;
 
-    memcpy(bd->vtx_staging.data + vtx_dst_offset, cmd_list->VtxBuffer.Data,
-           vtx_count * sizeof(ImDrawVert));
-    memcpy(bd->idx_staging.data + idx_dst_offset, cmd_list->IdxBuffer.Data,
-           idx_count * sizeof(ImDrawIdx));
+    memcpy((ImDrawVert*)bd->vtx_staging.ptr + vtx_dst_offset,
+           cmd_list->VtxBuffer.Data, vtx_count * sizeof(ImDrawVert));
+    memcpy((ImDrawIdx*)bd->idx_staging.ptr + idx_dst_offset,
+           cmd_list->IdxBuffer.Data, idx_count * sizeof(ImDrawIdx));
 
     vtx_dst_offset += vtx_count;
     idx_dst_offset += idx_count;
@@ -123,12 +125,12 @@ void imgui_impl_webgl_render_draw_data(ImDrawData* draw_data) {
   glBindBuffer(GL_ARRAY_BUFFER, bd->vbo);
   glBufferData(GL_ARRAY_BUFFER,
                (GLsizeiptr)(total_vtx_count * sizeof(ImDrawVert)),
-               bd->vtx_staging.data, GL_STREAM_DRAW);
+               bd->vtx_staging.ptr, GL_STREAM_DRAW);
 
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bd->ebo);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER,
                (GLsizeiptr)(total_idx_count * sizeof(ImDrawIdx)),
-               bd->idx_staging.data, GL_STREAM_DRAW);
+               bd->idx_staging.ptr, GL_STREAM_DRAW);
 
   // 4. Setup state and render
   setup_render_state(draw_data, fb_width, fb_height);

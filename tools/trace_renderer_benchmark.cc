@@ -10,6 +10,7 @@
 #include "src/trace_parser.h"
 #include "src/track.h"
 #include "src/track_renderer.h"
+#include "src/cpp_compat.h"
 
 int main(int argc, char** argv) {
   if (argc != 2) {
@@ -66,7 +67,7 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i <= tracks.size - VIEWPORT_TRACKS; i++) {
       size_t sum_events = 0;
       for (size_t j = 0; j < VIEWPORT_TRACKS; j++) {
-        sum_events += tracks[i + j].event_indices.size;
+        sum_events += AS_ARRAY_LIST(tracks[i + j].event_indices, size_t).size;
       }
       if (sum_events > max_viewport_events) {
         max_viewport_events = sum_events;
@@ -76,7 +77,7 @@ int main(int argc, char** argv) {
   } else {
     best_track_start = 0;
     for (size_t i = 0; i < tracks.size; i++) {
-      max_viewport_events += tracks[i].event_indices.size;
+      max_viewport_events += AS_ARRAY_LIST(tracks[i].event_indices, size_t).size;
     }
   }
 

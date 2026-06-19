@@ -14,11 +14,11 @@
 #include "src/trace_parser.h"
 #include "src/trace_viewer.h"
 
-enum ThemeMode {
+typedef enum ThemeMode {
   THEME_MODE_AUTO = 0,
   THEME_MODE_DARK = 1,
   THEME_MODE_LIGHT = 2,
-};
+} theme_mode_t;
 
 struct TraceChunk {
   char* data;
@@ -46,7 +46,7 @@ struct TraceLoadingState {
   double start_time;
   std::atomic<bool> active;
   int session_id;
-  ArrayList<char> filename;
+  array_list_t filename;
 
   std::atomic<bool> request_update;
   ChunkQueue chunk_queue;
@@ -56,21 +56,21 @@ struct TraceLoadingState {
   std::mutex quit_mutex;
   std::condition_variable quit_cv;
 
-  TraceParser parser;
+  trace_parser_t parser;
 
   // Dependencies for background processing
-  Allocator allocator;
-  TraceData* trace_data;
-  const Theme* theme;
-  TraceViewer* trace_viewer;
+  allocator_t allocator;
+  trace_data_t* trace_data;
+  const theme_t* theme;
+  trace_viewer_t* trace_viewer;
 };
 
 struct App {
-  CountingAllocator counting_allocator;
+  counting_allocator_t counting_allocator;
 
   // UI & Config
-  ThemeMode theme_mode;
-  const Theme* theme;
+  theme_mode_t theme_mode;
+  const theme_t* theme;
   bool power_save_mode;
   bool first_frame;
   bool show_metrics_window;
@@ -82,8 +82,8 @@ struct App {
   TraceLoadingState loading;
 
   // Data & Viewer
-  TraceData trace_data;
-  TraceViewer trace_viewer;
+  trace_data_t trace_data;
+  trace_viewer_t trace_viewer;
 };
 
 // Returns an initialized application state.

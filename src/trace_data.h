@@ -70,19 +70,11 @@ typedef struct string_lookup_table {
 } string_lookup_table_t;
 
 typedef struct trace_data {
-#ifdef __cplusplus
-  ArrayList<char> string_buffer;
-  ArrayList<string_entry_t> string_table;
-  string_lookup_table_t string_lookup;
-  ArrayList<trace_event_persisted_t> events;
-  ArrayList<trace_arg_persisted_t> args;
-#else
   array_list_t string_buffer;  // Element type: char
   array_list_t string_table;   // Element type: string_entry_t
   string_lookup_table_t string_lookup;
   array_list_t events;  // Element type: trace_event_persisted_t
   array_list_t args;    // Element type: trace_arg_persisted_t
-#endif
 
   // Temporary storage for hashing during push
   struct {
@@ -177,38 +169,6 @@ static inline size_t trace_data_events_lower_bound(
 }
 
 #ifdef __cplusplus
-}
-#endif
-
-// C++ Compatibility Wrapper
-#ifdef __cplusplus
-#include <string_view>
-
-using StringRef = string_ref_t;
-using TraceArgPersisted = trace_arg_persisted_t;
-using TraceEventPersisted = trace_event_persisted_t;
-using StringEntry = string_entry_t;
-using TraceData = trace_data_t;
-using ActiveEventB = active_event_b_t;
-using ThreadStack = thread_stack_t;
-using TraceEventMatcher = trace_event_matcher_t;
-using Theme = theme_t;
-
-inline StringRef trace_data_push_string(TraceData* td, allocator_t a,
-                                        std::string_view s) {
-  return trace_data_push_string(td, string_t(s), a);
-}
-
-inline void trace_data_add_event(TraceData* td, allocator_t a,
-                                 const Theme* theme, const trace_event_t* event,
-                                 TraceEventMatcher* matcher) {
-  trace_data_add_event(td, theme, event, matcher, a);
-}
-
-inline std::string_view trace_data_get_string(const TraceData* td,
-                                              StringRef ref) {
-  string_t s = trace_data_get_string_c(td, ref);
-  return std::string_view(s.ptr, s.len);
 }
 #endif
 

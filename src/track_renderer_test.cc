@@ -1,4 +1,5 @@
 #include "src/track_renderer.h"
+#include "src/cpp_compat.h"
 
 #include <gtest/gtest.h>
 
@@ -39,6 +40,7 @@ class TrackRendererTest : public ::testing::Test {
 
 TEST_F(TrackRendererTest, CoalesceSameColor) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   trace_event_t e1 = {}; e1.name = "e"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 5;
   trace_event_t e2 = {}; e2.name = "e"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 105; e2.dur = 5;
   trace_event_t e3 = {}; e3.name = "e"; e3.cat = "cat"; e3.ph = "B"; e3.ts = 110; e3.dur = 5;
@@ -51,8 +53,8 @@ TEST_F(TrackRendererTest, CoalesceSameColor) {
   array_list_push_back(&t.event_indices, allocator, (size_t)1);
   array_list_push_back(&t.event_indices, allocator, (size_t)2);
 
-  array_list_resize(&t.depths, allocator, 3);
-  t.depths[0] = 0; t.depths[1] = 0; t.depths[2] = 0;
+  array_list_resize(&depths, allocator, 3);
+  depths[0] = 0; depths[1] = 0; depths[2] = 0;
   t.max_depth = 0;
 
   ArrayList<int64_t> selected = {};
@@ -71,6 +73,7 @@ TEST_F(TrackRendererTest, CoalesceSameColor) {
 
 TEST_F(TrackRendererTest, ThreadBucketingStability) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   // e0: ts=85, dur=20 (85 to 105). Ends after 90 (start of first bucket when panned to 95).
   // e1, e2, e3: ts=100, 105, 110, dur=1. Tiny events.
   trace_event_t e0 = {}; e0.name = "e0"; e0.ts = 85; e0.dur = 20;
@@ -84,8 +87,8 @@ TEST_F(TrackRendererTest, ThreadBucketingStability) {
   trace_data_add_event(&td, allocator, theme_get_dark(), &e3);
 
   for (size_t i = 0; i < 4; ++i) array_list_push_back(&t.event_indices, allocator, i);
-  array_list_resize(&t.depths, allocator, 4);
-  for (size_t i = 0; i < 4; ++i) t.depths[i] = 0;
+  array_list_resize(&depths, allocator, 4);
+  for (size_t i = 0; i < 4; ++i) depths[i] = 0;
   t.max_depth = 0;
   t.max_dur = 20;
 
@@ -125,18 +128,19 @@ TEST_F(TrackRendererTest, ThreadBucketingStability) {
 
 TEST_F(TrackRendererTest, CoalesceDifferentColors) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   trace_event_t e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 5;
   trace_event_t e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 105; e2.dur = 5;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
-  td.events[0].color = 0xFF0000FF;
-  td.events[1].color = 0x00FF00FF;
+  AS_ARRAY_LIST(td.events, trace_event_persisted_t)[0].color = 0xFF0000FF;
+  AS_ARRAY_LIST(td.events, trace_event_persisted_t)[1].color = 0x00FF00FF;
 
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
   array_list_push_back(&t.event_indices, allocator, (size_t)1);
-  array_list_resize(&t.depths, allocator, 2);
-  t.depths[0] = 0; t.depths[1] = 0;
+  array_list_resize(&depths, allocator, 2);
+  depths[0] = 0; depths[1] = 0;
   t.max_depth = 0;
 
   ArrayList<int64_t> selected = {};
@@ -150,6 +154,7 @@ TEST_F(TrackRendererTest, CoalesceDifferentColors) {
 
 TEST_F(TrackRendererTest, MultipleBlocksCloseTogether) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   trace_event_t e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 5;
   trace_event_t e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 111; e2.dur = 5;
 
@@ -158,8 +163,8 @@ TEST_F(TrackRendererTest, MultipleBlocksCloseTogether) {
 
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
   array_list_push_back(&t.event_indices, allocator, (size_t)1);
-  array_list_resize(&t.depths, allocator, 2);
-  t.depths[0] = 0; t.depths[1] = 0;
+  array_list_resize(&depths, allocator, 2);
+  depths[0] = 0; depths[1] = 0;
   t.max_depth = 0;
 
   ArrayList<int64_t> selected = {};
@@ -173,6 +178,7 @@ TEST_F(TrackRendererTest, MultipleBlocksCloseTogether) {
 
 TEST_F(TrackRendererTest, CullingAfterMergeFlush) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   trace_event_t e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 1;
   trace_event_t e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 101; e2.dur = 1;
   trace_event_t e3 = {}; e3.name = "e3"; e3.cat = "cat"; e3.ph = "B"; e3.ts = 130; e3.dur = 1;
@@ -186,8 +192,8 @@ TEST_F(TrackRendererTest, CullingAfterMergeFlush) {
   trace_data_add_event(&td, allocator, theme_get_dark(), &e5);
 
   for (size_t i = 0; i < 5; i++) array_list_push_back(&t.event_indices, allocator, i);
-  array_list_resize(&t.depths, allocator, 5);
-  for (size_t i = 0; i < 5; i++) t.depths[i] = 0;
+  array_list_resize(&depths, allocator, 5);
+  for (size_t i = 0; i < 5; i++) depths[i] = 0;
   t.max_depth = 0;
 
   ArrayList<int64_t> selected = {};
@@ -201,18 +207,19 @@ TEST_F(TrackRendererTest, CullingAfterMergeFlush) {
 
 TEST_F(TrackRendererTest, SelectedEventNeverSkipped) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   trace_event_t e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 10;
   trace_event_t e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 101; e2.dur = 10;
 
   trace_data_add_event(&td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
-  td.events[0].color = 0xFF0000FF;
-  td.events[1].color = 0xFF0000FF;
+  AS_ARRAY_LIST(td.events, trace_event_persisted_t)[0].color = 0xFF0000FF;
+  AS_ARRAY_LIST(td.events, trace_event_persisted_t)[1].color = 0xFF0000FF;
 
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
   array_list_push_back(&t.event_indices, allocator, (size_t)1);
-  array_list_resize(&t.depths, allocator, 2);
-  t.depths[0] = 0; t.depths[1] = 0;
+  array_list_resize(&depths, allocator, 2);
+  depths[0] = 0; depths[1] = 0;
   t.max_depth = 0;
 
   ArrayList<int64_t> selected = {};
@@ -229,6 +236,7 @@ TEST_F(TrackRendererTest, SelectedEventNeverSkipped) {
 
 TEST_F(TrackRendererTest, SameLaneOverlap) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   trace_event_t e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 100;
   trace_event_t e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 150; e2.dur = 100;
 
@@ -236,8 +244,8 @@ TEST_F(TrackRendererTest, SameLaneOverlap) {
   trace_data_add_event(&td, allocator, theme_get_dark(), &e2);
 
   for (size_t i = 0; i < 2; i++) array_list_push_back(&t.event_indices, allocator, i);
-  array_list_resize(&t.depths, allocator, 2);
-  t.depths[0] = 0; t.depths[1] = 0;
+  array_list_resize(&depths, allocator, 2);
+  depths[0] = 0; depths[1] = 0;
   t.max_depth = 0;
 
   ArrayList<int64_t> selected = {};
@@ -253,6 +261,7 @@ TEST_F(TrackRendererTest, SameLaneOverlap) {
 
 TEST_F(TrackRendererTest, SelectedEventOverlap) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   trace_event_t e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 1;
   trace_event_t e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 101; e2.dur = 1;
   trace_event_t e3 = {}; e3.name = "e3"; e3.cat = "cat"; e3.ph = "B"; e3.ts = 102; e3.dur = 1;
@@ -262,8 +271,8 @@ TEST_F(TrackRendererTest, SelectedEventOverlap) {
   trace_data_add_event(&td, allocator, theme_get_dark(), &e3);
 
   for (size_t i = 0; i < 3; i++) array_list_push_back(&t.event_indices, allocator, i);
-  array_list_resize(&t.depths, allocator, 3);
-  for (size_t i = 0; i < 3; i++) t.depths[i] = 0;
+  array_list_resize(&depths, allocator, 3);
+  for (size_t i = 0; i < 3; i++) depths[i] = 0;
   t.max_depth = 0;
 
   ArrayList<int64_t> selected = {};
@@ -279,6 +288,7 @@ TEST_F(TrackRendererTest, SelectedEventOverlap) {
 
 TEST_F(TrackRendererTest, SelectedEventNoOverlap) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   trace_event_t e1 = {}; e1.name = "e1"; e1.cat = "cat"; e1.ph = "B"; e1.ts = 100; e1.dur = 1;
   trace_event_t e2 = {}; e2.name = "e2"; e2.cat = "cat"; e2.ph = "B"; e2.ts = 110; e2.dur = 1;
   trace_event_t e3 = {}; e3.name = "e3"; e3.cat = "cat"; e3.ph = "B"; e3.ts = 120; e3.dur = 1;
@@ -288,8 +298,8 @@ TEST_F(TrackRendererTest, SelectedEventNoOverlap) {
   trace_data_add_event(&td, allocator, theme_get_dark(), &e3);
 
   for (size_t i = 0; i < 3; i++) array_list_push_back(&t.event_indices, allocator, i);
-  array_list_resize(&t.depths, allocator, 3);
-  for (size_t i = 0; i < 3; i++) t.depths[i] = 0;
+  array_list_resize(&depths, allocator, 3);
+  for (size_t i = 0; i < 3; i++) depths[i] = 0;
   t.max_depth = 0;
 
   ArrayList<int64_t> selected = {};
@@ -305,6 +315,7 @@ TEST_F(TrackRendererTest, SelectedEventNoOverlap) {
 
 TEST_F(TrackRendererTest, ExtremeZoomOut) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   for (int i = 0; i < 1000; i++) {
     char name[16];
     snprintf(name, sizeof(name), "e%d", i);
@@ -313,8 +324,8 @@ TEST_F(TrackRendererTest, ExtremeZoomOut) {
     trace_data_add_event(&td, allocator, theme_get_dark(), &e);
     array_list_push_back(&t.event_indices, allocator, (size_t)i);
   }
-  array_list_resize(&t.depths, allocator, 1000);
-  for (size_t i = 0; i < 1000; i++) t.depths[i] = 0;
+  array_list_resize(&depths, allocator, 1000);
+  for (size_t i = 0; i < 1000; i++) depths[i] = 0;
   t.max_depth = 0;
 
   track_compute_render_blocks(&t, &td, 0, 1000000, 1000.0f, 0.0f, -1, &state,
@@ -761,7 +772,7 @@ TEST_F(TrackRendererTest, CounterPeakPreservation) {
   bool found_bucket = false;
   for (size_t i = 0; i < c_blocks.size; i++) {
     if (c_blocks[i].x1 >= 9.0f - 0.001f && c_blocks[i].x2 <= 12.0f + 0.001f) {
-      EXPECT_DOUBLE_EQ(((double*)state.counter_peaks.ptr)[i * t.counter_series.size + 0], 10.0); // Peak preserved!
+      EXPECT_DOUBLE_EQ(((double*)state.counter_peaks.ptr)[i * AS_ARRAY_LIST(t.counter_series, string_ref_t).size + 0], 10.0); // Peak preserved!
       found_bucket = true;
     }
   }
@@ -962,7 +973,7 @@ TEST_F(TrackRendererTest, CounterDropStubFix) {
   bool found_b4 = false;
   for (size_t i = 0; i < counter_blocks.size; i++) {
     if (counter_blocks[i].x1 >= 9.0f - 0.001f && counter_blocks[i].x2 <= 12.0f + 0.001f) {
-      EXPECT_DOUBLE_EQ(((double*)state.counter_peaks.ptr)[i * t.counter_series.size + 0], 10.0); // No more stub!
+      EXPECT_DOUBLE_EQ(((double*)state.counter_peaks.ptr)[i * AS_ARRAY_LIST(t.counter_series, string_ref_t).size + 0], 10.0); // No more stub!
       found_b4 = true;
     }
   }
@@ -974,6 +985,7 @@ TEST_F(TrackRendererTest, CounterDropStubFix) {
 
 TEST_F(TrackRendererTest, ThreadBucketingStabilityPanned) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   // e0: ts=85, dur=20 (85 to 105)
   // e1: ts=100, dur=1
   // e2: ts=105, dur=1
@@ -989,8 +1001,8 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityPanned) {
   trace_data_add_event(&td, allocator, theme_get_dark(), &e3);
 
   for (size_t i = 0; i < 4; ++i) array_list_push_back(&t.event_indices, allocator, i);
-  array_list_resize(&t.depths, allocator, 4);
-  for (size_t i = 0; i < 4; ++i) t.depths[i] = 0;
+  array_list_resize(&depths, allocator, 4);
+  for (size_t i = 0; i < 4; ++i) depths[i] = 0;
   t.max_depth = 0;
   t.max_dur = 20;
 
@@ -1026,14 +1038,15 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityPanned) {
 
 TEST_F(TrackRendererTest, ThreadBucketingStabilityThreshold) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   // Bucket size = 30us. e0 dur = 30us.
   // At inv_duration = 0.1, e0 width = 3.0px.
   trace_event_t e0 = {}; e0.name = "e0"; e0.ts = 100; e0.dur = 30;
   trace_data_add_event(&td, allocator, theme_get_dark(), &e0);
   
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
-  array_list_resize(&t.depths, allocator, 1);
-  t.depths[0] = 0;
+  array_list_resize(&depths, allocator, 1);
+  depths[0] = 0;
   t.max_depth = 0;
   t.max_dur = 30;
 
@@ -1068,6 +1081,7 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityThreshold) {
 
 TEST_F(TrackRendererTest, ZoomedInSpanningEvent) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   // 1,000,000 events.
   // Event 0: starts at 0, dur 60s (60,000,000us).
   // Other 999,999 events: 10us each, starting at 60s+.
@@ -1089,8 +1103,8 @@ TEST_F(TrackRendererTest, ZoomedInSpanningEvent) {
     array_list_push_back(&t.event_indices, allocator, i);
   }
 
-  array_list_resize(&t.depths, allocator, 1000000);
-  for (size_t i = 0; i < 1000000; i++) t.depths[i] = 0;
+  array_list_resize(&depths, allocator, 1000000);
+  for (size_t i = 0; i < 1000000; i++) depths[i] = 0;
   t.max_depth = 0;
 
   // This will calculate block_max_durs.
@@ -1132,6 +1146,7 @@ TEST_F(TrackRendererTest, ZoomedInSpanningEvent) {
 
 TEST_F(TrackRendererTest, CorrectnessSpanningAndCoalesced) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   // Block size is 1024.
   // Block 0:
   // Event 0: 0 to 2000. (Spanning)
@@ -1155,9 +1170,9 @@ TEST_F(TrackRendererTest, CorrectnessSpanningAndCoalesced) {
     array_list_push_back(&t.event_indices, allocator, (size_t)(1024 + i));
   }
 
-  array_list_resize(&t.depths, allocator, 2048);
-  for (size_t i = 0; i < 1024; i++) t.depths[i] = 0; // Spanning is depth 0
-  for (size_t i = 1024; i < 2048; i++) t.depths[i] = 1; // Tiny vis are depth 1
+  array_list_resize(&depths, allocator, 2048);
+  for (size_t i = 0; i < 1024; i++) depths[i] = 0; // Spanning is depth 0
+  for (size_t i = 1024; i < 2048; i++) depths[i] = 1; // Tiny vis are depth 1
   t.max_depth = 1;
 
   track_update_max_dur(&t, &td, allocator);
@@ -1188,6 +1203,7 @@ TEST_F(TrackRendererTest, CorrectnessSpanningAndCoalesced) {
 
 TEST_F(TrackRendererTest, FocusedEventNeverSkipped) {
   track_t t = {};
+  auto& depths = AS_ARRAY_LIST(t.depths, uint32_t);
   // Create two very small events that would normally be bucketed
   trace_event_t e1 = {}; e1.name = "e1"; e1.ts = 100; e1.dur = 1;
   trace_event_t e2 = {}; e2.name = "e2"; e2.ts = 101; e2.dur = 1;
@@ -1197,8 +1213,8 @@ TEST_F(TrackRendererTest, FocusedEventNeverSkipped) {
 
   array_list_push_back(&t.event_indices, allocator, (size_t)0);
   array_list_push_back(&t.event_indices, allocator, (size_t)1);
-  array_list_resize(&t.depths, allocator, 2);
-  t.depths[0] = 0; t.depths[1] = 0;
+  array_list_resize(&depths, allocator, 2);
+  depths[0] = 0; depths[1] = 0;
   t.max_depth = 0;
 
   // Viewport where events are tiny (1px each, bucket is 3px)

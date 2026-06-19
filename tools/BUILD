@@ -11,6 +11,7 @@ cc_binary(
         "//src:trace_data",
         "//src:track",
         "//src:colors",
+        "//src:cpp_compat",
     ],
 )
 
@@ -24,5 +25,6 @@ cc_binary(
         "//src:track",
         "//src:colors",
         "//src:track_renderer",
+        "//src:cpp_compat",
     ],
 )

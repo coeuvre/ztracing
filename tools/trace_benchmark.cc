@@ -7,6 +7,7 @@
 #include "src/trace_data.h"
 #include "src/trace_parser.h"
 #include "src/track.h"
+#include "src/cpp_compat.h"
 
 int main(int argc, char** argv) {
   if (argc != 2) {

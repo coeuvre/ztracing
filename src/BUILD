@@ -73,6 +73,7 @@ cc_test(
     srcs = ["array_list_test.cc"],
     deps = [
         ":array_list",
+        ":cpp_compat",
         "@googletest//:gtest_main",
     ],
 )
@@ -93,6 +94,7 @@ cc_test(
     srcs = ["trace_parser_test.cc"],
     deps = [
         ":trace_parser",
+        ":cpp_compat",
         "@googletest//:gtest_main",
     ],
 )
@@ -161,6 +163,7 @@ cc_test(
     srcs = ["trace_data_test.cc"],
     deps = [
         ":trace_data",
+        ":cpp_compat",
         "@googletest//:gtest_main",
     ],
 )
@@ -176,7 +179,21 @@ cc_test(
     srcs = ["hash_table_test.cc"],
     deps = [
         ":hash_table",
+        ":cpp_compat",
         "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "cpp_compat",
+    hdrs = ["cpp_compat.h"],
+    deps = [
+        ":array_list",
+        ":hash_table",
+        ":trace_data",
+        ":track",
+        ":track_renderer",
+        ":trace_viewer",
     ],
 )
 
@@ -209,6 +226,7 @@ cc_test(
     srcs = ["track_renderer_test.cc"],
     deps = [
         ":track_renderer",
+        ":cpp_compat",
         "@googletest//:gtest_main",
     ],
 )
@@ -218,6 +236,7 @@ cc_test(
     srcs = ["track_test.cc"],
     deps = [
         ":track",
+        ":cpp_compat",
         "@googletest//:gtest_main",
     ],
 )
@@ -246,6 +265,7 @@ cc_test(
     srcs = ["trace_viewer_test.cc"],
     deps = [
         ":trace_viewer",
+        ":cpp_compat",
         "@googletest//:gtest_main",
     ],
 )
@@ -279,6 +299,7 @@ cc_library(
         ":allocator",
         ":array_list",
         ":colors",
+        ":cpp_compat",
         ":format",
         ":loading_screen",
         ":logging",

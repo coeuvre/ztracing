@@ -52,13 +52,8 @@ typedef struct duration_histogram duration_histogram_t;
 
 struct search_state {
   tv_mutex_t mutex;
-#ifdef __cplusplus
-  ArrayList<char> pending_query;
-  ArrayList<int64_t> pending_results;
-#else
   array_list_t pending_query;
   array_list_t pending_results;
-#endif
   trace_data_t* td;
   allocator_t allocator;
   tv_atomic_bool new_query_available;
@@ -82,18 +77,6 @@ struct search_state {
 };
 typedef struct search_state search_state_t;
 
-#ifdef __cplusplus
-enum class InteractionDragMode {
-  NONE,
-  RULER_NEW,
-  RULER_START,
-  RULER_END,
-  TRACKS_START,
-  TRACKS_END,
-  BOX_SELECT
-};
-typedef InteractionDragMode ig_interaction_drag_mode_t;
-#else
 typedef enum {
   INTERACTION_DRAG_MODE_NONE,
   INTERACTION_DRAG_MODE_RULER_NEW,
@@ -103,7 +86,6 @@ typedef enum {
   INTERACTION_DRAG_MODE_TRACKS_END,
   INTERACTION_DRAG_MODE_BOX_SELECT
 } ig_interaction_drag_mode_t;
-#endif
 
 struct hover_match {
   size_t track_idx;
@@ -203,13 +185,8 @@ typedef struct vertical_minimap_layout vertical_minimap_layout_t;
 struct vertical_minimap_state {
   bool is_dragging;
   float drag_offset_y;
-#ifdef __cplusplus
-  ArrayList<bool> track_has_selected;
-  ArrayList<track_heatmap_t> track_heatmap_densities;
-#else
   array_list_t track_has_selected;
   array_list_t track_heatmap_densities;
-#endif
   vertical_minimap_layout_t layout;
 };
 typedef struct vertical_minimap_state vertical_minimap_state_t;
@@ -229,13 +206,8 @@ struct trace_viewer {
   ig_interaction_drag_mode_t selection_drag_mode;
 
   // Box selection state
-#ifdef __cplusplus
-  ImVec2 box_select_start;
-  ImVec2 box_select_end;
-#else
   ig_vec2_t box_select_start;
   ig_vec2_t box_select_end;
-#endif
 
   // Snapping state
   double snap_best_ts;
@@ -246,34 +218,18 @@ struct trace_viewer {
   float snap_y1;
   float snap_y2;
 
-#ifdef __cplusplus
-  ArrayList<track_t> tracks;
-  ArrayList<track_view_info_t> track_infos;
-  ArrayList<ruler_tick_t> ruler_ticks;
-#else
   array_list_t tracks;
   array_list_t track_infos;
   array_list_t ruler_ticks;
-#endif
   selection_overlay_layout_t selection_layout;
   float total_tracks_height;
 
   track_renderer_state_t track_renderer_state;
-#ifdef __cplusplus
-  ArrayList<track_render_block_t> render_blocks;
-  ArrayList<counter_render_block_t> counter_render_blocks;
-  ArrayList<hover_match_t> hover_matches;
-#else
   array_list_t render_blocks;
   array_list_t counter_render_blocks;
   array_list_t hover_matches;
-#endif
   int64_t focused_event_idx;
-#ifdef __cplusplus
-  ArrayList<int64_t> selected_event_indices;
-#else
   array_list_t selected_event_indices;
-#endif
   bool selected_events_dirty;
   int64_t target_focused_event_idx;
   float target_scroll_y;
@@ -287,11 +243,7 @@ struct trace_viewer {
   float last_lane_height;
   double last_best_snap_ts;
 
-#ifdef __cplusplus
-  ArrayList<char> search_query;
-#else
   array_list_t search_query;
-#endif
   bool focus_search_input;
   bool search_thread_events;
   bool search_counter_events;
@@ -300,11 +252,7 @@ struct trace_viewer {
   bool search_histogram_dirty;
   int selected_histogram_bucket;
   duration_histogram_t histogram;
-#ifdef __cplusplus
-  ArrayList<int64_t> filtered_event_indices;
-#else
   array_list_t filtered_event_indices;
-#endif
   vertical_minimap_state_t vertical_minimap;
 };
 typedef struct trace_viewer trace_viewer_t;
@@ -325,43 +273,14 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
 void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
                        allocator_t allocator, const theme_t* theme);
 
-#ifdef __cplusplus
-void trace_viewer_calculate_histogram(const ArrayList<int64_t>& results,
-                                      const trace_data_t* td,
-                                      duration_histogram_t* h);
-#else
 void trace_viewer_calculate_histogram(const array_list_t* results,
                                       const trace_data_t* td,
                                       duration_histogram_t* h);
-#endif
 
 void trace_viewer_search_job(void* user_data);
 
 #ifdef __cplusplus
 }
-
-inline void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
-                              const trace_viewer_input_t& input,
-                              allocator_t allocator) {
-  trace_viewer_step(tv, td, &input, allocator);
-}
-#endif
-
-#ifdef __cplusplus
-// C++ Type Aliases for backward compatibility with unported C++ files
-typedef duration_histogram_bucket_t DurationHistogramBucket;
-typedef duration_histogram_t DurationHistogram;
-typedef search_state_t SearchState;
-typedef hover_match_t HoverMatch;
-typedef trace_viewer_input_t TraceViewerInput;
-typedef track_view_info_t TrackViewInfo;
-typedef ruler_tick_t RulerTick;
-typedef selection_overlay_layout_t SelectionOverlayLayout;
-typedef track_heatmap_t TrackHeatmap;
-typedef vertical_minimap_layout_t VerticalMinimapLayout;
-typedef vertical_minimap_state_t VerticalMinimapState;
-typedef trace_viewer_t TraceViewer;
-
 #endif
 
 #endif  // ZTRACING_SRC_TRACE_VIEWER_H_
