@@ -98,6 +98,15 @@ cc_test(
 )
 
 cc_library(
+    name = "imgui_c",
+    srcs = ["imgui_c.cc"],
+    hdrs = ["imgui_c.h"],
+    deps = [
+        "@imgui",
+    ],
+)
+
+cc_library(
     name = "imgui_impl_wasm",
     srcs = ["imgui_impl_wasm.cc"],
     hdrs = ["imgui_impl_wasm.h"],
@@ -127,7 +136,10 @@ cc_library(
     name = "colors",
     srcs = ["colors.cc"],
     hdrs = ["colors.h"],
-    deps = ["@imgui"],
+    deps = [
+        "@imgui",
+        ":imgui_c",
+    ],
 )
 
 cc_library(
@@ -183,7 +195,7 @@ cc_library(
 
 cc_library(
     name = "track_renderer",
-    srcs = ["track_renderer.cc"],
+    srcs = ["track_renderer.c"],
     hdrs = ["track_renderer.h"],
     deps = [
         ":array_list",
@@ -240,22 +252,22 @@ cc_test(
 
 cc_library(
     name = "loading_screen",
-    srcs = ["loading_screen.cc"],
+    srcs = ["loading_screen.c"],
     hdrs = ["loading_screen.h"],
     deps = [
         ":colors",
-        "@imgui",
+        ":imgui_c",
     ],
 )
 
 cc_library(
     name = "welcome_screen",
-    srcs = ["welcome_screen.cc"],
+    srcs = ["welcome_screen.c"],
     hdrs = ["welcome_screen.h"],
     deps = [
         ":colors",
         ":platform",
-        "@imgui",
+        ":imgui_c",
     ],
 )
 

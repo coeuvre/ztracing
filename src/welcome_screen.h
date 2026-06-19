@@ -3,6 +3,14 @@
 
 #include "src/colors.h"
 
-void welcome_screen_draw(const Theme* theme);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void welcome_screen_draw(const theme_t* theme);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif  // ZTRACING_SRC_WELCOME_SCREEN_H_

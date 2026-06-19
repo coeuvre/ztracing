@@ -2,14 +2,12 @@
 #define ZTRACING_SRC_COLORS_H_
 
 #include <stdint.h>
+#include "src/imgui_c.h"
 
 #ifdef __cplusplus
 #include "third_party/imgui/imgui.h"
 #else
 typedef uint32_t ImU32;
-typedef struct ImVec4 {
-  float x, y, z, w;
-} ImVec4;
 #endif
 
 struct Theme {
@@ -48,7 +46,7 @@ struct Theme {
   ImU32 box_selection_border;
 
   // Status
-  ImVec4 status_loading;
+  ig_vec4_t status_loading;
 
   // Search Histogram
   ImU32 search_histogram_bg;

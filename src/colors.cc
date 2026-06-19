@@ -37,7 +37,7 @@ const Theme* theme_get_dark() {
       IM_COL32(0, 120, 215, 255),  // box_selection_border
 
       // Status
-      ImVec4(1, 1, 0, 1),  // status_loading
+      {1.0f, 1.0f, 0.0f, 1.0f},  // status_loading
 
       // Search Histogram
       IM_COL32(30, 30, 30, 255),    // search_histogram_bg
@@ -102,7 +102,7 @@ const Theme* theme_get_light() {
       .box_selection_border = IM_COL32(59, 130, 246, 255),        // Blue-500 border (#3B82F6)
 
       // Status
-      .status_loading = ImVec4(0.23f, 0.51f, 0.96f, 1.0f),        // Modern loading blue
+      .status_loading = {0.23f, 0.51f, 0.96f, 1.0f},        // Modern loading blue
 
       // Search Histogram
       .search_histogram_bg = IM_COL32(249, 250, 251, 255),        // Matches viewport_bg (#F9FAFB)
