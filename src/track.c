@@ -52,14 +52,16 @@ static string_ref_t trace_data_find_string_ref_const(const trace_data_t* td,
   if (lt->capacity > 0 && s.ptr != nullptr && s.len > 0) {
     uint32_t h = compute_hash(s);
     size_t idx = h & lt->capacity_mask;
-    const string_entry_t* st_table = (const string_entry_t*)td->string_table.ptr;
+    const string_entry_t* st_table =
+        (const string_entry_t*)td->string_table.ptr;
     const char* st_buffer = (const char*)td->string_buffer.ptr;
 
     while (lt->entries[idx].index != 0) {
       const string_lookup_entry_t* entry = &lt->entries[idx];
       if (entry->hash == h) {
         const string_entry_t* e = &st_table[entry->index - 1];
-        if (s.len == e->len && memcmp(s.ptr, st_buffer + e->offset, s.len) == 0) {
+        if (s.len == e->len &&
+            memcmp(s.ptr, st_buffer + e->offset, s.len) == 0) {
           result = entry->index;
           break;
         }
@@ -151,7 +153,6 @@ static int sort_key_compare(const void* a, const void* b) {
   return result;
 }
 
-
 static int counter_sort_key_compare(const void* a, const void* b) {
   const counter_sort_key_t* sk1 = (const counter_sort_key_t*)a;
   const counter_sort_key_t* sk2 = (const counter_sort_key_t*)b;
@@ -216,6 +217,7 @@ void track_deinit(track_t* t, allocator_t a) {
   array_list_deinit(&t->counter_series, a);
   array_list_deinit(&t->counter_colors, a);
   array_list_deinit(&t->block_max_durs, a);
+  *t = (track_t){};
 }
 
 void track_sort_events(track_t* t, const trace_data_t* td, allocator_t a) {
@@ -434,8 +436,8 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
     array_list_t event_counts = {};
 
     // Allocate temporary array to store resolved track index for each event
-    uint32_t* event_track_indices = (uint32_t*)allocator_alloc(
-        a, td->events.len * sizeof(uint32_t));
+    uint32_t* event_track_indices =
+        (uint32_t*)allocator_alloc(a, td->events.len * sizeof(uint32_t));
 
     // Pass 1: Discovery, Counting, Metadata, and Index Caching!
     for (size_t i = 0; i < td->events.len; i++) {
@@ -444,7 +446,7 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
       bool is_metadata = (e->ph_ref == ph_m_ref);
 
       if (is_metadata) {
-        event_track_indices[i] = (uint32_t)-1; // Sentinel for metadata
+        event_track_indices[i] = (uint32_t)-1;  // Sentinel for metadata
       }
 
       track_key_t key = {};
@@ -669,13 +671,22 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
     qsort(keys, out_tracks->len, sizeof(track_sort_key_t),
           track_sort_key_compare);
 
-    track_t* sorted_tracks =
-        (track_t*)allocator_alloc(a, out_tracks->len * sizeof(track_t));
+    track_t* sorted_tracks = nullptr;
+    track_t stack_sorted_tracks[64];
+    bool use_heap_sorted = out_tracks->len > 64;
+    if (use_heap_sorted) {
+      sorted_tracks =
+          (track_t*)allocator_alloc(a, out_tracks->len * sizeof(track_t));
+    } else {
+      sorted_tracks = stack_sorted_tracks;
+    }
     for (size_t i = 0; i < out_tracks->len; i++) {
       sorted_tracks[i] = *keys[i].track;
     }
     memcpy(out_tracks->ptr, sorted_tracks, out_tracks->len * sizeof(track_t));
-    allocator_free(a, sorted_tracks, out_tracks->len * sizeof(track_t));
+    if (use_heap_sorted) {
+      allocator_free(a, sorted_tracks, out_tracks->len * sizeof(track_t));
+    }
 
     if (out_tracks->len > 128) {
       allocator_free(a, keys, out_tracks->len * sizeof(track_sort_key_t));

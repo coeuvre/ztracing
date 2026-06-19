@@ -231,7 +231,7 @@ static int64_t to_int64(string_t s) {
     neg = true;
     i++;
   }
-  for (; i < s.len; ++i) {
+  for (; i < s.len && s.ptr[i] != '.'; ++i) {
     val = val * 10 + (s.ptr[i] - '0');
   }
   return neg ? -val : val;
@@ -245,7 +245,7 @@ static int32_t to_int32(string_t s) {
     neg = true;
     i++;
   }
-  for (; i < s.len; ++i) {
+  for (; i < s.len && s.ptr[i] != '.'; ++i) {
     val = val * 10 + (s.ptr[i] - '0');
   }
   return neg ? -val : val;

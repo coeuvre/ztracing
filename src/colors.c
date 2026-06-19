@@ -3,58 +3,58 @@
 const theme_t* theme_get_dark() {
   static const theme_t dark_theme = {
       // Main Viewport Backgrounds
-      IG_COL32(0, 0, 0, 255),     // viewport_bg
-      IG_COL32(25, 25, 25, 255),  // track_bg
+      .viewport_bg = IG_COL32(0, 0, 0, 255),
+      .track_bg = IG_COL32(25, 25, 25, 255),
 
       // Time Ruler
-      IG_COL32(40, 40, 40, 255),     // ruler_bg
-      IG_COL32(100, 100, 100, 255),  // ruler_border
-      IG_COL32(150, 150, 150, 255),  // ruler_tick
-      IG_COL32(200, 200, 200, 255),  // ruler_text
+      .ruler_bg = IG_COL32(40, 40, 40, 255),
+      .ruler_border = IG_COL32(100, 100, 100, 255),
+      .ruler_tick = IG_COL32(150, 150, 150, 255),
+      .ruler_text = IG_COL32(200, 200, 200, 255),
 
       // Events
-      IG_COL32(255, 255, 255, 80),   // event_border
-      IG_COL32(255, 255, 255, 255),  // event_border_selected
-      IG_COL32(0, 255, 255, 255),    // event_border_focused (Electric Cyan)
-      IG_COL32(0, 255, 255, 40),     // event_focused_bg
-      IG_COL32(255, 255, 255, 255),  // event_text
-      IG_COL32(255, 255, 255, 255),  // event_text_selected
-      IG_COL32(255, 255, 255, 255),  // event_text_focused
+      .event_border = IG_COL32(255, 255, 255, 80),
+      .event_border_selected = IG_COL32(255, 255, 255, 255),
+      .event_border_focused = IG_COL32(0, 255, 255, 255),  // Electric Cyan
+      .event_focused_bg = IG_COL32(0, 255, 255, 40),
+      .event_text = IG_COL32(255, 255, 255, 255),
+      .event_text_selected = IG_COL32(255, 255, 255, 255),
+      .event_text_focused = IG_COL32(255, 255, 255, 255),
 
       // Tracks
-      IG_COL32(255, 255, 255, 255),  // track_text
-      IG_COL32(35, 35, 35, 255),     // track_header_bg
-      IG_COL32(60, 60, 60, 255),     // track_separator
+      .track_text = IG_COL32(255, 255, 255, 255),
+      .track_header_bg = IG_COL32(35, 35, 35, 255),
+      .track_separator = IG_COL32(60, 60, 60, 255),
 
       // Timeline Selection
-      IG_COL32(0, 0, 0, 100),        // timeline_selection_bg
-      IG_COL32(255, 255, 0, 255),    // timeline_selection_line
-      IG_COL32(255, 255, 255, 255),  // timeline_selection_text
-      IG_COL32(30, 30, 30, 230),     // timeline_selection_text_bg
+      .timeline_selection_bg = IG_COL32(0, 0, 0, 100),
+      .timeline_selection_line = IG_COL32(255, 255, 0, 255),
+      .timeline_selection_text = IG_COL32(255, 255, 255, 255),
+      .timeline_selection_text_bg = IG_COL32(30, 30, 30, 230),
 
       // Box Selection
-      IG_COL32(0, 120, 215, 50),   // box_selection_bg
-      IG_COL32(0, 120, 215, 255),  // box_selection_border
+      .box_selection_bg = IG_COL32(0, 120, 215, 50),
+      .box_selection_border = IG_COL32(0, 120, 215, 255),
 
       // Status
-      {1.0f, 1.0f, 0.0f, 1.0f},  // status_loading
+      .status_loading = {1.0f, 1.0f, 0.0f, 1.0f},
 
       // Search Histogram
-      IG_COL32(30, 30, 30, 255),     // search_histogram_bg
-      IG_COL32(150, 150, 150, 255),  // search_histogram_bar (Mid Grey)
-      IG_COL32(255, 255, 255,
-               255),  // search_histogram_bar_hovered (Solid White)
-      IG_COL32(0, 255, 255,
-               255),  // search_histogram_bar_selected (Electric Cyan)
+      .search_histogram_bg = IG_COL32(30, 30, 30, 255),
+      .search_histogram_bar = IG_COL32(150, 150, 150, 255),  // Mid Grey
+      .search_histogram_bar_hovered =
+          IG_COL32(255, 255, 255, 255),  // Solid White
+      .search_histogram_bar_selected =
+          IG_COL32(0, 255, 255, 255),  // Electric Cyan
 
       // Vertical Minimap
-      IG_COL32(18, 18, 18, 210),    // vertical_minimap_bg
-      IG_COL32(255, 255, 255, 40),  // vertical_minimap_slider_bg
-      IG_COL32(255, 255, 255, 60),  // vertical_minimap_slider_bg_hovered
-      IG_COL32(255, 255, 255, 80),  // vertical_minimap_slider_bg_active
+      .vertical_minimap_bg = IG_COL32(18, 18, 18, 210),
+      .vertical_minimap_slider_bg = IG_COL32(255, 255, 255, 40),
+      .vertical_minimap_slider_bg_hovered = IG_COL32(255, 255, 255, 60),
+      .vertical_minimap_slider_bg_active = IG_COL32(255, 255, 255, 80),
 
       // Event Palette (0xAABBGGRR) - Refined Vibrant (30% darker than previous)
-      {
+      .event_palette = {
           0xFF966D3C,  // Refined Blue
           0xFF7B8D37,  // Refined Green
           0xFF546590,  // Refined Salmon

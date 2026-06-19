@@ -1,6 +1,8 @@
 #ifndef ZTRACING_SRC_TRACE_VIEWER_H_
 #define ZTRACING_SRC_TRACE_VIEWER_H_
 
+#include <pthread.h>
+
 #include "src/allocator.h"
 #include "src/array_list.h"
 #include "src/colors.h"
@@ -8,8 +10,6 @@
 #include "src/trace_data.h"
 #include "src/track.h"
 #include "src/track_renderer.h"
-
-#include <pthread.h>
 #ifdef __cplusplus
 #include <atomic>
 #ifndef _Atomic
@@ -19,12 +19,8 @@
 #include <stdatomic.h>
 #endif
 
-typedef pthread_mutex_t tv_mutex_t;
-typedef pthread_cond_t tv_cond_t;
 #define tv_atomic_bool _Atomic(bool)
 #define tv_atomic_uint32 _Atomic(uint32_t)
-
-
 
 constexpr int DURATION_HISTOGRAM_MAX_BINS = 32;
 
@@ -50,7 +46,7 @@ struct duration_histogram {
 typedef struct duration_histogram duration_histogram_t;
 
 struct search_state {
-  tv_mutex_t mutex;
+  pthread_mutex_t mutex;
   array_list_t pending_query;
   array_list_t pending_results;
   trace_data_t* td;
@@ -60,8 +56,8 @@ struct search_state {
   tv_atomic_bool results_ready;
   tv_atomic_bool is_searching;
   tv_atomic_bool request_update;
-  tv_mutex_t quit_mutex;
-  tv_cond_t quit_cv;
+  pthread_mutex_t quit_mutex;
+  pthread_cond_t quit_cv;
 
   int sort_column;
   bool sort_ascending;

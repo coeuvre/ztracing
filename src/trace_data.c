@@ -13,8 +13,6 @@ static uint32_t compute_hash(string_t s) {
   return hash;
 }
 
-
-
 static uint32_t hash_uint64(const void* key, void* ctx) {
   (void)ctx;
   uint64_t v = *(const uint64_t*)key;
@@ -52,7 +50,8 @@ static void string_lookup_table_resize(string_lookup_table_t* lt,
         new_entries[idx].hash = h;
       }
     }
-    allocator_free(a, lt->entries, lt->capacity * sizeof(string_lookup_entry_t));
+    allocator_free(a, lt->entries,
+                   lt->capacity * sizeof(string_lookup_entry_t));
   }
 
   lt->entries = new_entries;
@@ -69,6 +68,7 @@ void trace_data_deinit(trace_data_t* td, allocator_t a) {
   }
   array_list_deinit(&td->events, a);
   array_list_deinit(&td->args, a);
+  *td = (trace_data_t){};
 }
 
 void trace_data_clear(trace_data_t* td, allocator_t a) {
@@ -216,7 +216,11 @@ static void trace_data_merge_args(trace_data_t* td,
                                   const trace_event_t* e_ev, allocator_t a) {
   if (e_ev->args_count > 0) {
     size_t new_args_count = 0;
-    bool* is_new = (bool*)allocator_alloc(a, e_ev->args_count * sizeof(bool));
+    bool is_new_stack[16];
+    bool* is_new = is_new_stack;
+    if (e_ev->args_count > 16) {
+      is_new = (bool*)allocator_alloc(a, e_ev->args_count * sizeof(bool));
+    }
     memset(is_new, 0, e_ev->args_count * sizeof(bool));
 
     trace_arg_persisted_t* td_args = (trace_arg_persisted_t*)td->args.ptr;
@@ -257,7 +261,6 @@ static void trace_data_merge_args(trace_data_t* td,
              td_args + old_offset, old_count * sizeof(trace_arg_persisted_t));
       td->args.len += old_count;
 
-
       td_args = (trace_arg_persisted_t*)td->args.ptr;
 
       for (size_t i = 0; i < e_ev->args_count; i++) {
@@ -274,7 +277,9 @@ static void trace_data_merge_args(trace_data_t* td,
       b_ev->args_count = new_count;
     }
 
-    allocator_free(a, is_new, e_ev->args_count * sizeof(bool));
+    if (is_new != is_new_stack) {
+      allocator_free(a, is_new, e_ev->args_count * sizeof(bool));
+    }
   }
 }
 

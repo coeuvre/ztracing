@@ -38,27 +38,27 @@ typedef struct ChunkQueue {
   pthread_cond_t cv;
   trace_chunk_node_t* head;
   trace_chunk_node_t* tail;
-  _Atomic size_t queue_size_bytes;
+  _Atomic(size_t) queue_size_bytes;
   bool closed;
 } chunk_queue_t;
 
 typedef struct TraceLoadingState {
-  _Atomic size_t event_count;
-  _Atomic size_t total_bytes;
+  _Atomic(size_t) event_count;
+  _Atomic(size_t) total_bytes;
   // Total expected bytes from the raw input stream (0 if unknown).
-  _Atomic size_t input_total_bytes;
+  _Atomic(size_t) input_total_bytes;
   // Total raw bytes consumed from the input stream so far.
-  _Atomic size_t input_consumed_bytes;
+  _Atomic(size_t) input_consumed_bytes;
   double start_time;
-  _Atomic bool active;
+  _Atomic(bool) active;
   int session_id;
   array_list_t filename;
 
-  _Atomic bool request_update;
+  _Atomic(bool) request_update;
   chunk_queue_t chunk_queue;
 
   // Background job coordination
-  _Atomic bool jobs_should_abort;
+  _Atomic(bool) jobs_should_abort;
   pthread_mutex_t quit_mutex;
   pthread_cond_t quit_cv;
 
@@ -107,7 +107,8 @@ void app_on_theme_changed(app_t* app);
 void app_begin_session(app_t* app, int session_id, const char* filename,
                        size_t input_total_bytes);
 
-// Processes a chunk of trace data. Returns the current total size of chunks in the queue.
+// Processes a chunk of trace data. Returns the current total size of chunks in
+// the queue.
 size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
                              size_t size, size_t input_consumed_bytes,
                              bool is_eof);

@@ -154,3 +154,25 @@ TEST(trace_parser_test, memory_leak) {
 
   EXPECT_EQ(counting_allocator_get_allocated_bytes(&ca), 0u);
 }
+
+TEST(trace_parser_test, float_numbers) {
+  trace_parser_t p = {};
+  allocator_t a = allocator_get_default();
+
+  // "ts", "dur", "pid", "tid" as floating point numbers in JSON
+  const char* json =
+      "[{\"name\":\"foo\",\"cat\":\"bar\",\"ph\":\"B\",\"ts\":123.45,\"dur\":"
+      "12.34,\"pid\":1.0,\"tid\":2.0}]";
+  trace_parser_feed(&p, json, strlen(json), true, a);
+
+  trace_event_t ev;
+  EXPECT_TRUE(trace_parser_next(&p, &ev, a));
+  EXPECT_EQ(ev.name, "foo");
+  EXPECT_EQ(ev.ts, 123);  // Should be truncated to 123, currently corrupts
+  EXPECT_EQ(ev.dur, 12);  // Should be truncated to 12, currently corrupts
+  EXPECT_EQ(ev.pid, 1);   // Should be truncated to 1, currently corrupts
+  EXPECT_EQ(ev.tid, 2);   // Should be truncated to 2, currently corrupts
+
+  EXPECT_FALSE(trace_parser_next(&p, &ev, a));
+  trace_parser_deinit(&p, a);
+}

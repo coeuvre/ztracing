@@ -1,20 +1,20 @@
 #include <GLES3/gl3.h>
+#include <assert.h>
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <stdatomic.h>
-#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "src/app.h"
+#include "src/imgui_c.h"
 #include "src/imgui_impl_wasm.h"
 #include "src/imgui_impl_webgl.h"
 #include "src/logging.h"
 #include "src/ztracing.h"
-#include "src/imgui_c.h"
 
 static array_list_t g_canvas_selector;
-static app_t* g_app = NULL;
+static app_t* g_app = nullptr;
 static array_list_t g_font_data;
 
 static void* imgui_alloc(size_t sz, void* user_data) {
@@ -22,7 +22,7 @@ static void* imgui_alloc(size_t sz, void* user_data) {
   size_t header_size = 16;  // Ensure 16-byte alignment
   size_t total_size = sz + header_size;
   void* ptr = allocator_alloc(*a, total_size);
-  if (!ptr) return NULL;
+  if (!ptr) return nullptr;
   *(size_t*)ptr = total_size;
   return (char*)ptr + header_size;
 }
@@ -75,13 +75,14 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   ig_set_allocator_functions(imgui_alloc, imgui_free, &imgui_allocator);
 
   ig_create_context();
-  ig_io_add_config_flags(IG_CONFIG_FLAGS_NAV_ENABLE_KEYBOARD | IG_CONFIG_FLAGS_DOCKING_ENABLE);
+  ig_io_add_config_flags(IG_CONFIG_FLAGS_NAV_ENABLE_KEYBOARD |
+                         IG_CONFIG_FLAGS_DOCKING_ENABLE);
 
   allocator_t allocator = imgui_allocator;
   array_list_clear(&g_canvas_selector);
   size_t len = strlen(canvas_selector) + 1;
-  char* dest = (char*)array_list_append_(&g_canvas_selector, len,
-                                         sizeof(char), allocator);
+  char* dest = (char*)array_list_append_(&g_canvas_selector, len, sizeof(char),
+                                         allocator);
   memcpy(dest, canvas_selector, len);
 
   EmscriptenWebGLContextAttributes attrs;
@@ -95,8 +96,8 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   attrs.stencil = EM_FALSE;
   attrs.powerPreference = EM_WEBGL_POWER_PREFERENCE_HIGH_PERFORMANCE;
 
-  EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx =
-      emscripten_webgl_create_context((const char*)g_canvas_selector.ptr, &attrs);
+  EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx = emscripten_webgl_create_context(
+      (const char*)g_canvas_selector.ptr, &attrs);
   if (ctx <= 0) {
     LOG_ERROR("failed to create webgl context for selector '%s' (error: %d)",
               (const char*)g_canvas_selector.ptr, (int)ctx);
@@ -138,13 +139,13 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
 }
 
 EMSCRIPTEN_KEEPALIVE void* ztracing_malloc(int size) {
-  assert(g_app != NULL);
+  assert(g_app != nullptr);
   allocator_t a = counting_allocator_get_allocator(&g_app->counting_allocator);
   return allocator_alloc(a, (size_t)size);
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_free(void* ptr, int size) {
-  assert(g_app != NULL);
+  assert(g_app != nullptr);
   allocator_t a = counting_allocator_get_allocator(&g_app->counting_allocator);
   allocator_free(a, ptr, (size_t)size);
 }

@@ -2627,45 +2627,46 @@ void trace_viewer_precompute_minimap_heatmap(trace_viewer_t* tv,
   }
 
   double total_dur = (double)(tv->viewport.max_ts - tv->viewport.min_ts);
-  if (total_dur <= 0) return;
-  double bucket_dur = total_dur / TRACK_HEATMAP_BUCKET_COUNT;
+  if (total_dur > 0) {
+    double bucket_dur = total_dur / TRACK_HEATMAP_BUCKET_COUNT;
 
-  // Duration cache for finding the dominant event color
-  int64_t max_dur[TRACK_HEATMAP_BUCKET_COUNT];
+    // Duration cache for finding the dominant event color
+    int64_t max_dur[TRACK_HEATMAP_BUCKET_COUNT];
 
-  for (size_t i = 0; i < tv->tracks.len; i++) {
-    const track_t* t = &tracks[i];
-    track_heatmap_t* h = &heatmaps[i];
+    for (size_t i = 0; i < tv->tracks.len; i++) {
+      const track_t* t = &tracks[i];
+      track_heatmap_t* h = &heatmaps[i];
 
-    // Initialize buckets to (size_t)-1 (idle)
-    for (int b = 0; b < TRACK_HEATMAP_BUCKET_COUNT; b++) {
-      h->event_indices[b] = (size_t)-1;
-      max_dur[b] = -1;
-    }
-
-    if (t->event_indices.len == 0) continue;
-
-    const size_t* t_event_indices = (const size_t*)t->event_indices.ptr;
-    const int* t_depths = (const int*)t->depths.ptr;
-
-    // Identify dominant event index in each bucket
-    for (size_t k = 0; k < t->event_indices.len; k++) {
-      if (t->type == TRACK_TYPE_THREAD && t_depths[k] != 0) {
-        continue;
+      // Initialize buckets to (size_t)-1 (idle)
+      for (int b = 0; b < TRACK_HEATMAP_BUCKET_COUNT; b++) {
+        h->event_indices[b] = (size_t)-1;
+        max_dur[b] = -1;
       }
 
-      size_t event_idx = t_event_indices[k];
-      const trace_event_persisted_t* e = &events[event_idx];
-      double rel_ts = (double)(e->ts - tv->viewport.min_ts);
-      int b_idx = (int)(rel_ts / bucket_dur);
-      if (b_idx < 0) b_idx = 0;
-      if (b_idx >= TRACK_HEATMAP_BUCKET_COUNT)
-        b_idx = TRACK_HEATMAP_BUCKET_COUNT - 1;
+      if (t->event_indices.len == 0) continue;
 
-      // Pick dominant event index based on longest duration
-      if (e->dur > max_dur[b_idx]) {
-        max_dur[b_idx] = e->dur;
-        h->event_indices[b_idx] = event_idx;
+      const size_t* t_event_indices = (const size_t*)t->event_indices.ptr;
+      const int* t_depths = (const int*)t->depths.ptr;
+
+      // Identify dominant event index in each bucket
+      for (size_t k = 0; k < t->event_indices.len; k++) {
+        if (t->type == TRACK_TYPE_THREAD && t_depths[k] != 0) {
+          continue;
+        }
+
+        size_t event_idx = t_event_indices[k];
+        const trace_event_persisted_t* e = &events[event_idx];
+        double rel_ts = (double)(e->ts - tv->viewport.min_ts);
+        int b_idx = (int)(rel_ts / bucket_dur);
+        if (b_idx < 0) b_idx = 0;
+        if (b_idx >= TRACK_HEATMAP_BUCKET_COUNT)
+          b_idx = TRACK_HEATMAP_BUCKET_COUNT - 1;
+
+        // Pick dominant event index based on longest duration
+        if (e->dur > max_dur[b_idx]) {
+          max_dur[b_idx] = e->dur;
+          h->event_indices[b_idx] = event_idx;
+        }
       }
     }
   }
@@ -2723,57 +2724,63 @@ static void trace_viewer_sort_results(const trace_data_t* td,
                                       array_list_t* results, int sort_column,
                                       bool sort_ascending, bool sort_none,
                                       allocator_t allocator) {
-  if (results->len <= 1) return;
+  if (results->len > 1) {
+    if (sort_none) {
+      qsort(results->ptr, results->len, sizeof(int64_t),
+            trace_viewer_int64_compare);
+    } else {
+      sort_key_t stack_keys[128];
+      sort_key_t* keys_ptr = stack_keys;
+      bool use_heap = results->len > 128;
+      if (use_heap) {
+        keys_ptr = (sort_key_t*)allocator_alloc(
+            allocator, results->len * sizeof(sort_key_t));
+      }
 
-  if (sort_none) {
-    qsort(results->ptr, results->len, sizeof(int64_t),
-          trace_viewer_int64_compare);
-    return;
-  }
+      int64_t* results_ptr = (int64_t*)results->ptr;
 
-  array_list_t keys = {};
-  array_list_resize(&keys, results->len, sizeof(sort_key_t), allocator);
+      for (size_t i = 0; i < results->len; i++) {
+        int64_t idx = results_ptr[i];
+        const trace_event_persisted_t* e = array_list_get(
+            &td->events, const trace_event_persisted_t, (size_t)idx);
 
-  sort_key_t* keys_ptr = (sort_key_t*)keys.ptr;
-  int64_t* results_ptr = (int64_t*)results->ptr;
+        sort_key_t sk;
+        sk.event_idx = idx;
 
-  for (size_t i = 0; i < results->len; i++) {
-    int64_t idx = results_ptr[i];
-    const trace_event_persisted_t* e =
-        array_list_get(&td->events, const trace_event_persisted_t, (size_t)idx);
+        switch (sort_column) {
+          case 0:
+            sk.text = trace_data_get_string(td, e->name_ref);
+            break;
+          case 1:
+            sk.text = trace_data_get_string(td, e->cat_ref);
+            break;
+          case 2:
+            sk.numeric_val = e->ts;
+            break;
+          case 3:
+            sk.numeric_val = e->dur;
+            break;
+          default:
+            sk.numeric_val = 0;
+            break;
+        }
+        keys_ptr[i] = sk;
+      }
 
-    sort_key_t sk;
-    sk.event_idx = idx;
+      g_sort_column = sort_column;
+      g_sort_ascending = sort_ascending;
+      qsort(keys_ptr, results->len, sizeof(sort_key_t),
+            trace_viewer_sort_key_compare);
 
-    switch (sort_column) {
-      case 0:
-        sk.text = trace_data_get_string(td, e->name_ref);
-        break;
-      case 1:
-        sk.text = trace_data_get_string(td, e->cat_ref);
-        break;
-      case 2:
-        sk.numeric_val = e->ts;
-        break;
-      case 3:
-        sk.numeric_val = e->dur;
-        break;
-      default:
-        sk.numeric_val = 0;
-        break;
+      for (size_t i = 0; i < results->len; i++) {
+        results_ptr[i] = keys_ptr[i].event_idx;
+      }
+
+      if (use_heap) {
+        allocator_free(allocator, keys_ptr, results->len * sizeof(sort_key_t));
+      }
     }
-    keys_ptr[i] = sk;
   }
-
-  g_sort_column = sort_column;
-  g_sort_ascending = sort_ascending;
-  qsort(keys.ptr, keys.len, sizeof(sort_key_t), trace_viewer_sort_key_compare);
-
-  for (size_t i = 0; i < results->len; i++) {
-    results_ptr[i] = keys_ptr[i].event_idx;
-  }
-
-  array_list_deinit(&keys, allocator);
 }
 
 void trace_viewer_search_job(void* user_data) {

@@ -1,34 +1,41 @@
 #include "src/app.h"
 
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdatomic.h>
 
 #include "src/colors.h"
+#include "src/imgui_c.h"
 #include "src/loading_screen.h"
 #include "src/logging.h"
 #include "src/platform.h"
 #include "src/welcome_screen.h"
-#include "src/imgui_c.h"
 
 // Helper functions for cheatsheet rendering
-static void cheatsheet_add_row(const theme_t* theme, const char* action, const char* shortcut) {
+static void cheatsheet_add_row(const theme_t* theme, const char* action,
+                               const char* shortcut) {
   ig_table_next_row();
   ig_table_next_column();
-  ig_text_unformatted(action, NULL);
+  ig_text_unformatted(action, nullptr);
   ig_table_next_column();
-  ig_text_colored(ig_color_convert_u32_to_float4(theme->ruler_text), "%s", shortcut);
+  ig_text_colored(ig_color_convert_u32_to_float4(theme->ruler_text), "%s",
+                  shortcut);
 }
 
-static void cheatsheet_add_section(const theme_t* theme, const char* title, void (*content_func)(const theme_t* theme)) {
+static void cheatsheet_add_section(const theme_t* theme, const char* title,
+                                   void (*content_func)(const theme_t* theme)) {
   ig_begin_group();
   ig_spacing();
-  ig_text_colored(ig_color_convert_u32_to_float4(theme->track_text), "%s", title);
+  ig_text_colored(ig_color_convert_u32_to_float4(theme->track_text), "%s",
+                  title);
   ig_separator();
   ig_spacing();
 
-  if (ig_begin_table(title, 2, IG_TABLE_FLAGS_ROW_BG | IG_TABLE_FLAGS_SIZING_FIXED_FIT, (ig_vec2_t){0.0f, 0.0f}, 0.0f)) {
-    ig_table_setup_column("Action", IG_TABLE_COLUMN_FLAGS_WIDTH_FIXED, 150.0f, 0);
+  if (ig_begin_table(title, 2,
+                     IG_TABLE_FLAGS_ROW_BG | IG_TABLE_FLAGS_SIZING_FIXED_FIT,
+                     (ig_vec2_t){0.0f, 0.0f}, 0.0f)) {
+    ig_table_setup_column("Action", IG_TABLE_COLUMN_FLAGS_WIDTH_FIXED, 150.0f,
+                          0);
     ig_table_setup_column("Key", IG_TABLE_COLUMN_FLAGS_WIDTH_STRETCH, 0.0f, 0);
     content_func(theme);
     ig_end_table();
@@ -75,7 +82,7 @@ static void trace_loading_job(void* user_data) {
     bool popped = false;
 
     pthread_mutex_lock(&loading->chunk_queue.mutex);
-    while (loading->chunk_queue.head == NULL &&
+    while (loading->chunk_queue.head == nullptr &&
            !atomic_load(&loading->jobs_should_abort) &&
            loading->session_id == my_session_id) {
       pthread_cond_wait(&loading->chunk_queue.cv, &loading->chunk_queue.mutex);
@@ -87,15 +94,16 @@ static void trace_loading_job(void* user_data) {
       break;
     }
 
-    if (loading->chunk_queue.head != NULL) {
+    if (loading->chunk_queue.head != nullptr) {
       trace_chunk_node_t* node = loading->chunk_queue.head;
       chunk = node->chunk;
       loading->chunk_queue.head = node->next;
-      if (loading->chunk_queue.head == NULL) {
-        loading->chunk_queue.tail = NULL;
+      if (loading->chunk_queue.head == nullptr) {
+        loading->chunk_queue.tail = nullptr;
       }
       allocator_free(allocator, node, sizeof(trace_chunk_node_t));
-      atomic_fetch_sub_explicit(&loading->chunk_queue.queue_size_bytes, chunk.size, memory_order_relaxed);
+      atomic_fetch_sub_explicit(&loading->chunk_queue.queue_size_bytes,
+                                chunk.size, memory_order_relaxed);
       popped = true;
     }
     pthread_mutex_unlock(&loading->chunk_queue.mutex);
@@ -105,8 +113,8 @@ static void trace_loading_job(void* user_data) {
           &loading->parser, chunk.data, chunk.size, chunk.is_eof, allocator);
       allocator_free(allocator, chunk.data, chunk.size);
 
-      atomic_store_explicit(&loading->input_consumed_bytes, chunk.input_consumed_bytes,
-                            memory_order_relaxed);
+      atomic_store_explicit(&loading->input_consumed_bytes,
+                            chunk.input_consumed_bytes, memory_order_relaxed);
     }
 
     trace_event_t event;
@@ -114,7 +122,8 @@ static void trace_loading_job(void* user_data) {
       trace_data_add_event(loading->trace_data, loading->theme, &event,
                            &matcher, allocator);
       atomic_fetch_add_explicit(&loading->event_count, 1, memory_order_relaxed);
-      atomic_store_explicit(&loading->total_bytes, total_discarded_bytes + loading->parser.pos,
+      atomic_store_explicit(&loading->total_bytes,
+                            total_discarded_bytes + loading->parser.pos,
                             memory_order_relaxed);
     }
 
@@ -207,10 +216,10 @@ void app_init(app_t* app, allocator_t parent) {
       .first_frame = true,
   };
 
-  pthread_mutex_init(&app->loading.chunk_queue.mutex, NULL);
-  pthread_cond_init(&app->loading.chunk_queue.cv, NULL);
-  pthread_mutex_init(&app->loading.quit_mutex, NULL);
-  pthread_cond_init(&app->loading.quit_cv, NULL);
+  pthread_mutex_init(&app->loading.chunk_queue.mutex, nullptr);
+  pthread_cond_init(&app->loading.chunk_queue.cv, nullptr);
+  pthread_mutex_init(&app->loading.quit_mutex, nullptr);
+  pthread_cond_init(&app->loading.quit_cv, nullptr);
 }
 
 void app_deinit(app_t* app) {
@@ -244,25 +253,29 @@ void app_update(app_t* app) {
   // 0. Main Menu Bar
   if (ig_begin_main_menu_bar()) {
     if (ig_begin_menu("View", true)) {
-      if (ig_menu_item("Reset View", NULL, false, true)) {
+      if (ig_menu_item("Reset View", nullptr, false, true)) {
         trace_viewer_reset_view(&app->trace_viewer);
       }
       ig_separator();
 
-      ig_menu_item_ptr("Power-save Mode", NULL, &app->power_save_mode, true);
-      ig_menu_item_ptr("Details Panel", NULL, &app->trace_viewer.show_details_panel, true);
+      ig_menu_item_ptr("Power-save Mode", nullptr, &app->power_save_mode, true);
+      ig_menu_item_ptr("Details Panel", nullptr,
+                       &app->trace_viewer.show_details_panel, true);
 
       ig_separator();
       if (ig_begin_menu("Theme", true)) {
-        if (ig_menu_item("Auto", NULL, app->theme_mode == THEME_MODE_AUTO, true)) {
+        if (ig_menu_item("Auto", nullptr, app->theme_mode == THEME_MODE_AUTO,
+                         true)) {
           app->theme_mode = THEME_MODE_AUTO;
           app_on_theme_changed(app);
         }
-        if (ig_menu_item("Dark", NULL, app->theme_mode == THEME_MODE_DARK, true)) {
+        if (ig_menu_item("Dark", nullptr, app->theme_mode == THEME_MODE_DARK,
+                         true)) {
           app->theme_mode = THEME_MODE_DARK;
           app_apply_theme(app, theme_get_dark());
         }
-        if (ig_menu_item("Light", NULL, app->theme_mode == THEME_MODE_LIGHT, true)) {
+        if (ig_menu_item("Light", nullptr, app->theme_mode == THEME_MODE_LIGHT,
+                         true)) {
           app->theme_mode = THEME_MODE_LIGHT;
           app_apply_theme(app, theme_get_light());
         }
@@ -276,14 +289,16 @@ void app_update(app_t* app) {
         app->trace_viewer.show_details_panel = true;
         app->trace_viewer.focus_search_input = true;
       }
-      ig_menu_item_ptr("Metrics/Debugger", NULL, &app->show_metrics_window, true);
+      ig_menu_item_ptr("Metrics/Debugger", nullptr, &app->show_metrics_window,
+                       true);
       ig_end_menu();
     }
     if (ig_begin_menu("Help", true)) {
       if (ig_menu_item("Shortcuts", "?", false, true)) {
         app->show_shortcuts_window = true;
       }
-      ig_menu_item_ptr("About Dear ImGui", NULL, &app->show_about_window, true);
+      ig_menu_item_ptr("About Dear ImGui", nullptr, &app->show_about_window,
+                       true);
       ig_end_menu();
     }
 
@@ -302,22 +317,28 @@ void app_update(app_t* app) {
 
   // 1. Setup DockSpace
   ig_dock_node_flags_t dockspace_flags = IG_DOCK_NODE_FLAGS_NONE;
-  uint32_t dockspace_id = ig_dock_space_over_viewport(0, ig_get_main_viewport(), dockspace_flags);
+  uint32_t dockspace_id =
+      ig_dock_space_over_viewport(0, ig_get_main_viewport(), dockspace_flags);
 
   if (app->first_frame) {
     app->first_frame = false;
     ig_dock_builder_remove_node(dockspace_id);
-    ig_dock_builder_add_node(dockspace_id, dockspace_flags | IG_DOCK_NODE_FLAGS_DOCKSPACE);
-    ig_dock_builder_set_node_size(dockspace_id, ig_viewport_get_size(ig_get_main_viewport()));
+    ig_dock_builder_add_node(dockspace_id,
+                             dockspace_flags | IG_DOCK_NODE_FLAGS_DOCKSPACE);
+    ig_dock_builder_set_node_size(dockspace_id,
+                                  ig_viewport_get_size(ig_get_main_viewport()));
 
     uint32_t dock_id_main = dockspace_id;
     uint32_t dock_id_right;
-    ig_dock_builder_split_node(dock_id_main, IG_DIR_RIGHT, 0.30f, &dock_id_right, &dock_id_main);
+    ig_dock_builder_split_node(dock_id_main, IG_DIR_RIGHT, 0.30f,
+                               &dock_id_right, &dock_id_main);
     ig_dock_builder_dock_window("Details", dock_id_right);
 
     ig_dock_node_t* main_node = ig_dock_builder_get_node(dock_id_main);
     if (main_node) {
-      ig_dock_node_add_local_flags(main_node, IG_DOCK_NODE_FLAGS_NO_TAB_BAR | IG_DOCK_NODE_FLAGS_NO_DOCKING_OVER_ME);
+      ig_dock_node_add_local_flags(main_node,
+                                   IG_DOCK_NODE_FLAGS_NO_TAB_BAR |
+                                       IG_DOCK_NODE_FLAGS_NO_DOCKING_OVER_ME);
     }
 
     ig_dock_builder_dock_window("Main Viewport", dock_id_main);
@@ -326,8 +347,7 @@ void app_update(app_t* app) {
 
   if (app->show_metrics_window)
     ig_show_metrics_window(&app->show_metrics_window);
-  if (app->show_about_window)
-    ig_show_about_window(&app->show_about_window);
+  if (app->show_about_window) ig_show_about_window(&app->show_about_window);
 
   if (ig_is_key_pressed(IG_KEY_SLASH, false) && ig_get_io_key_shift() &&
       !ig_get_io_want_text_input()) {
@@ -342,18 +362,22 @@ void app_update(app_t* app) {
 
   ig_vec2_t center = ig_viewport_get_center(ig_get_main_viewport());
   ig_vec2_t viewport_size = ig_viewport_get_size(ig_get_main_viewport());
-  ig_set_next_window_pos(center, 8, (ig_vec2_t){0.5f, 0.5f}); // ImGuiCond_Appearing = 8
+  ig_set_next_window_pos(center, 8,
+                         (ig_vec2_t){0.5f, 0.5f});  // ImGuiCond_Appearing = 8
   ig_set_next_window_size(
       (ig_vec2_t){viewport_size.x * 0.7f, viewport_size.y * 0.7f},
-      8); // ImGuiCond_Appearing = 8
+      8);  // ImGuiCond_Appearing = 8
 
   if (app->show_shortcuts_window) {
     ig_open_popup("Shortcuts", IG_POPUP_FLAGS_NONE);
   }
 
-  ig_push_style_color(IG_COL_POPUP_BG, ig_color_convert_u32_to_float4(app->theme->viewport_bg));
-  if (ig_begin_popup_modal("Shortcuts", &app->show_shortcuts_window,
-                           IG_WINDOW_FLAGS_NO_MOVE | 8)) { // IG_WINDOW_FLAGS_NO_SCROLLBAR is not needed if we do AutoResize
+  ig_push_style_color(IG_COL_POPUP_BG,
+                      ig_color_convert_u32_to_float4(app->theme->viewport_bg));
+  if (ig_begin_popup_modal(
+          "Shortcuts", &app->show_shortcuts_window,
+          IG_WINDOW_FLAGS_NO_MOVE | 8)) {  // IG_WINDOW_FLAGS_NO_SCROLLBAR is
+                                           // not needed if we do AutoResize
     // Close when clicking outside
     if (ig_is_mouse_clicked(0, false)) {
       ig_vec2_t mouse_pos = ig_get_io_mouse_pos();
@@ -371,23 +395,24 @@ void app_update(app_t* app) {
     }
 
     if (ig_begin_child("CheatsheetContent", (ig_vec2_t){0, 0}, false,
-                          IG_WINDOW_FLAGS_NO_SCROLLBAR)) {
+                       IG_WINDOW_FLAGS_NO_SCROLLBAR)) {
       float width = ig_get_content_region_avail().x;
       float gap = 40.0f;
       float col_w = (width - gap) * 0.5f;
 
       // Left Column
       ig_begin_child("LeftCol", (ig_vec2_t){col_w, 0}, false,
-                        IG_WINDOW_FLAGS_NO_SCROLLBAR);
+                     IG_WINDOW_FLAGS_NO_SCROLLBAR);
       cheatsheet_add_section(app->theme, "GENERAL", draw_general_shortcuts);
-      cheatsheet_add_section(app->theme, "NAVIGATION", draw_navigation_shortcuts);
+      cheatsheet_add_section(app->theme, "NAVIGATION",
+                             draw_navigation_shortcuts);
       ig_end_child();
 
       ig_same_line(0.0f, gap);
 
       // Right Column
       ig_begin_child("RightCol", (ig_vec2_t){col_w, 0}, false,
-                        IG_WINDOW_FLAGS_NO_SCROLLBAR);
+                     IG_WINDOW_FLAGS_NO_SCROLLBAR);
       cheatsheet_add_section(app->theme, "SELECTION", draw_selection_shortcuts);
       ig_end_child();
 
@@ -407,16 +432,18 @@ void app_update(app_t* app) {
   ig_push_style_var_float(IG_STYLE_VAR_WINDOW_BORDER_SIZE, 0.0f);
   ig_push_style_var(IG_STYLE_VAR_WINDOW_PADDING, (ig_vec2_t){0.0f, 0.0f});
 
-  if (ig_begin("Main Viewport", NULL, viewport_flags)) {
+  if (ig_begin("Main Viewport", nullptr, viewport_flags)) {
     if (atomic_load(&app->loading.active)) {
-      const char* filename =
-          app->loading.filename.len > 0 ? (const char*)app->loading.filename.ptr : "";
-      loading_screen_draw(filename, (size_t)atomic_load(&app->loading.event_count),
-                          (size_t)atomic_load(&app->loading.total_bytes),
-                          (size_t)atomic_load(&app->loading.input_consumed_bytes),
-                          (size_t)atomic_load(&app->loading.input_total_bytes),
-                          app->theme);
-    } else if (app->trace_data.events.len > 0 && !atomic_load(&app->loading.active)) {
+      const char* filename = app->loading.filename.len > 0
+                                 ? (const char*)app->loading.filename.ptr
+                                 : "";
+      loading_screen_draw(
+          filename, (size_t)atomic_load(&app->loading.event_count),
+          (size_t)atomic_load(&app->loading.total_bytes),
+          (size_t)atomic_load(&app->loading.input_consumed_bytes),
+          (size_t)atomic_load(&app->loading.input_total_bytes), app->theme);
+    } else if (app->trace_data.events.len > 0 &&
+               !atomic_load(&app->loading.active)) {
       allocator_t allocator =
           counting_allocator_get_allocator(&app->counting_allocator);
       trace_viewer_draw(&app->trace_viewer, &app->trace_data, allocator,
@@ -454,8 +481,9 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
   atomic_store_explicit(&app->loading.event_count, 0, memory_order_relaxed);
   atomic_store_explicit(&app->loading.total_bytes, 0, memory_order_relaxed);
   atomic_store_explicit(&app->loading.input_total_bytes, input_total_bytes,
-                                       memory_order_relaxed);
-  atomic_store_explicit(&app->loading.input_consumed_bytes, 0, memory_order_relaxed);
+                        memory_order_relaxed);
+  atomic_store_explicit(&app->loading.input_consumed_bytes, 0,
+                        memory_order_relaxed);
   app->loading.start_time = platform_get_now();
   atomic_store_explicit(&app->loading.active, true, memory_order_relaxed);
   app->loading.session_id = session_id;
@@ -464,7 +492,8 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
   app->trace_viewer.request_scroll_to_focused_event = false;
   array_list_clear(&app->trace_viewer.selected_event_indices);
 
-  atomic_store_explicit(&app->loading.jobs_should_abort, false, memory_order_relaxed);
+  atomic_store_explicit(&app->loading.jobs_should_abort, false,
+                        memory_order_relaxed);
   {
     pthread_mutex_lock(&app->loading.chunk_queue.mutex);
     trace_chunk_node_t* curr = app->loading.chunk_queue.head;
@@ -476,10 +505,10 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
       allocator_free(allocator, curr, sizeof(trace_chunk_node_t));
       curr = next;
     }
-    app->loading.chunk_queue.head = NULL;
-    app->loading.chunk_queue.tail = NULL;
+    app->loading.chunk_queue.head = nullptr;
+    app->loading.chunk_queue.tail = nullptr;
     atomic_store_explicit(&app->loading.chunk_queue.queue_size_bytes, 0,
-                                                    memory_order_relaxed);
+                          memory_order_relaxed);
     app->loading.chunk_queue.closed = false;
     pthread_mutex_unlock(&app->loading.chunk_queue.mutex);
   }
@@ -499,8 +528,9 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
   platform_submit_job((platform_job_fn_t)trace_loading_job, &app->loading);
 }
 
-size_t app_handle_file_chunk(app_t* app, int session_id, char* data, size_t size,
-                             size_t input_consumed_bytes, bool is_eof) {
+size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
+                             size_t size, size_t input_consumed_bytes,
+                             bool is_eof) {
   if (session_id != app->loading.session_id) {
     if (data && size > 0) {
       allocator_t allocator =
@@ -508,7 +538,7 @@ size_t app_handle_file_chunk(app_t* app, int session_id, char* data, size_t size
       allocator_free(allocator, data, size);
     }
     return atomic_load_explicit(&app->loading.chunk_queue.queue_size_bytes,
-        memory_order_relaxed);
+                                memory_order_relaxed);
   }
 
   trace_chunk_t chunk = {
@@ -522,28 +552,30 @@ size_t app_handle_file_chunk(app_t* app, int session_id, char* data, size_t size
       counting_allocator_get_allocator(&app->counting_allocator);
 
   pthread_mutex_lock(&app->loading.chunk_queue.mutex);
-  trace_chunk_node_t* node = (trace_chunk_node_t*)allocator_alloc(allocator, sizeof(trace_chunk_node_t));
+  trace_chunk_node_t* node = (trace_chunk_node_t*)allocator_alloc(
+      allocator, sizeof(trace_chunk_node_t));
   if (node) {
     node->chunk = chunk;
-    node->next = NULL;
+    node->next = nullptr;
     if (app->loading.chunk_queue.tail) {
       app->loading.chunk_queue.tail->next = node;
     } else {
       app->loading.chunk_queue.head = node;
     }
     app->loading.chunk_queue.tail = node;
-    
-    atomic_fetch_add_explicit(&app->loading.chunk_queue.queue_size_bytes, size, memory_order_relaxed);
+
+    atomic_fetch_add_explicit(&app->loading.chunk_queue.queue_size_bytes, size,
+                              memory_order_relaxed);
     if (is_eof) app->loading.chunk_queue.closed = true;
     pthread_cond_broadcast(&app->loading.chunk_queue.cv);
   }
   pthread_mutex_unlock(&app->loading.chunk_queue.mutex);
 
   return atomic_load_explicit(&app->loading.chunk_queue.queue_size_bytes,
-      memory_order_relaxed);
+                              memory_order_relaxed);
 }
 
 size_t app_get_queue_size(app_t* app) {
   return atomic_load_explicit(&app->loading.chunk_queue.queue_size_bytes,
-      memory_order_relaxed);
+                              memory_order_relaxed);
 }
