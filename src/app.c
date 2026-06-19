@@ -467,16 +467,19 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
                        size_t input_total_bytes) {
   app_stop_jobs(app);
 
+  allocator_t allocator =
+      counting_allocator_get_allocator(&app->counting_allocator);
+  trace_viewer_deinit(&app->trace_viewer, allocator);
+  app->trace_viewer = (trace_viewer_t){};
+
   app->loading.trace_data = &app->trace_data;
   app->loading.trace_viewer = &app->trace_viewer;
-  app->loading.allocator =
-      counting_allocator_get_allocator(&app->counting_allocator);
+  app->loading.allocator = allocator;
 
   app->trace_viewer.search.td = &app->trace_data;
-  app->trace_viewer.search.allocator = app->loading.allocator;
+  app->trace_viewer.search.allocator = allocator;
 
   app->loading.parser = (trace_parser_t){};
-  allocator_t allocator = app->loading.allocator;
   trace_data_clear(&app->trace_data, allocator);
   atomic_store_explicit(&app->loading.event_count, 0, memory_order_relaxed);
   atomic_store_explicit(&app->loading.total_bytes, 0, memory_order_relaxed);
@@ -488,9 +491,6 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
   atomic_store_explicit(&app->loading.active, true, memory_order_relaxed);
   app->loading.session_id = session_id;
   app->loading.theme = app->theme;
-  app->trace_viewer.focused_event_idx = -1;
-  app->trace_viewer.request_scroll_to_focused_event = false;
-  array_list_clear(&app->trace_viewer.selected_event_indices);
 
   atomic_store_explicit(&app->loading.jobs_should_abort, false,
                         memory_order_relaxed);

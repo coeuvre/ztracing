@@ -67,7 +67,6 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   allocator_t default_allocator = allocator_get_default();
   g_app = (app_t*)allocator_alloc(default_allocator, sizeof(app_t));
   app_init(g_app, default_allocator);
-  trace_viewer_init(&g_app->trace_viewer);
 
   static allocator_t imgui_allocator;
   imgui_allocator =

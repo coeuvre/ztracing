@@ -60,13 +60,13 @@ struct search_state {
   pthread_cond_t quit_cv;
 
   int sort_column;
-  bool sort_ascending;
-  bool sort_none;
+  bool sort_descending;
+  bool sort_active;
   tv_atomic_bool new_sort_specs_available;
   tv_atomic_bool new_box_selection_available;
 
-  tv_atomic_bool include_thread_events;
-  tv_atomic_bool include_counter_events;
+  tv_atomic_bool exclude_thread_events;
+  tv_atomic_bool exclude_counter_events;
 
   duration_histogram_t pending_histogram;
 };
@@ -223,10 +223,13 @@ struct trace_viewer {
   array_list_t render_blocks;
   array_list_t counter_render_blocks;
   array_list_t hover_matches;
-  int64_t focused_event_idx;
+  bool has_focused_event;
+  size_t focused_event_idx;
   array_list_t selected_event_indices;
   bool selected_events_dirty;
-  int64_t target_focused_event_idx;
+  bool has_target_focused_event;
+  size_t target_focused_event_idx;
+  bool has_target_scroll_y;
   float target_scroll_y;
   bool request_scroll_to_focused_event;
   bool show_details_panel;
@@ -240,12 +243,13 @@ struct trace_viewer {
 
   array_list_t search_query;
   bool focus_search_input;
-  bool search_thread_events;
-  bool search_counter_events;
+  bool exclude_thread_events;
+  bool exclude_counter_events;
   search_state_t search;
 
   bool search_histogram_dirty;
-  int selected_histogram_bucket;
+  bool has_selected_histogram_bucket;
+  size_t selected_histogram_bucket;
   duration_histogram_t histogram;
   array_list_t filtered_event_indices;
   vertical_minimap_state_t vertical_minimap;
@@ -256,7 +260,6 @@ typedef struct trace_viewer trace_viewer_t;
 extern "C" {
 #endif
 
-void trace_viewer_init(trace_viewer_t* tv);
 void trace_viewer_deinit(trace_viewer_t* tv, allocator_t allocator);
 void trace_viewer_reset_view(trace_viewer_t* tv);
 void trace_viewer_precompute_minimap_heatmap(trace_viewer_t* tv,

@@ -190,6 +190,8 @@ static json_token_t json_reader_next(json_reader_t* r) {
           if (json_reader_read_number(r, &s)) {
             tok = (json_token_t){JSON_TOKEN_NUMBER, s};
           }
+        } else {
+          json_reader_advance(r);
         }
         break;
     }
@@ -221,34 +223,6 @@ size_t trace_parser_feed(trace_parser_t* p, const char* buf, size_t len,
 
   p->is_eof = is_eof;
   return discarded;
-}
-
-static int64_t to_int64(string_t s) {
-  int64_t val = 0;
-  size_t i = 0;
-  bool neg = false;
-  if (s.len > 0 && s.ptr[0] == '-') {
-    neg = true;
-    i++;
-  }
-  for (; i < s.len && s.ptr[i] != '.'; ++i) {
-    val = val * 10 + (s.ptr[i] - '0');
-  }
-  return neg ? -val : val;
-}
-
-static int32_t to_int32(string_t s) {
-  int32_t val = 0;
-  size_t i = 0;
-  bool neg = false;
-  if (s.len > 0 && s.ptr[0] == '-') {
-    neg = true;
-    i++;
-  }
-  for (; i < s.len && s.ptr[i] != '.'; ++i) {
-    val = val * 10 + (s.ptr[i] - '0');
-  }
-  return neg ? -val : val;
 }
 
 static double to_double(string_t s) {
@@ -294,6 +268,58 @@ static double to_double(string_t s) {
     }
   }
   return val;
+}
+
+static int64_t to_int64(string_t s) {
+  int64_t val = 0;
+  size_t i = 0;
+  bool neg = false;
+  if (s.len > 0 && s.ptr[0] == '-') {
+    neg = true;
+    i++;
+  }
+  for (; i < s.len; ++i) {
+    char c = s.ptr[i];
+    if (c == '.') {
+      for (size_t j = i + 1; j < s.len; ++j) {
+        if (s.ptr[j] == 'e' || s.ptr[j] == 'E') {
+          return (int64_t)to_double(s);
+        }
+      }
+      break;
+    }
+    if (c == 'e' || c == 'E') {
+      return (int64_t)to_double(s);
+    }
+    val = val * 10 + (c - '0');
+  }
+  return neg ? -val : val;
+}
+
+static int32_t to_int32(string_t s) {
+  int32_t val = 0;
+  size_t i = 0;
+  bool neg = false;
+  if (s.len > 0 && s.ptr[0] == '-') {
+    neg = true;
+    i++;
+  }
+  for (; i < s.len; ++i) {
+    char c = s.ptr[i];
+    if (c == '.') {
+      for (size_t j = i + 1; j < s.len; ++j) {
+        if (s.ptr[j] == 'e' || s.ptr[j] == 'E') {
+          return (int32_t)to_double(s);
+        }
+      }
+      break;
+    }
+    if (c == 'e' || c == 'E') {
+      return (int32_t)to_double(s);
+    }
+    val = val * 10 + (c - '0');
+  }
+  return neg ? -val : val;
 }
 
 static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,

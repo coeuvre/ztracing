@@ -927,7 +927,7 @@ static void trace_viewer_box_select_update(trace_viewer_t* tv, trace_data_t* td,
       "indices",
       tv->tracks.len, tv->selected_event_indices.len);
 
-  tv->selected_histogram_bucket = -1;
+  tv->has_selected_histogram_bucket = false;
 
   array_list_clear(&tv->filtered_event_indices);
   if (tv->selected_event_indices.len > 0) {
@@ -1107,17 +1107,18 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
                        const trace_viewer_input_t* input,
                        allocator_t allocator) {
   // 0. Handle focus requests
-  if (tv->target_focused_event_idx != -1) {
-    size_t event_idx = (size_t)tv->target_focused_event_idx;
+  if (tv->has_target_focused_event) {
+    size_t event_idx = tv->target_focused_event_idx;
     if (event_idx < td->events.len) {
       const trace_event_persisted_t* events =
           (const trace_event_persisted_t*)td->events.ptr;
       const trace_event_persisted_t* e = &events[event_idx];
-      tv->focused_event_idx = (int64_t)event_idx;
+      tv->focused_event_idx = event_idx;
+      tv->has_focused_event = true;
       tv->show_details_panel = true;
       trace_viewer_zoom_to_event(tv, e);
     }
-    tv->target_focused_event_idx = -1;
+    tv->has_target_focused_event = false;
   }
 
   double current_duration = tv->viewport.end_time - tv->viewport.start_time;
@@ -1358,13 +1359,14 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
 
     const size_t* event_indices_ptr = (const size_t*)t->event_indices.ptr;
 
-    if (tv->request_scroll_to_focused_event) {
+    if (tv->request_scroll_to_focused_event && tv->has_focused_event) {
       for (size_t j = 0; j < t->event_indices.len; j++) {
-        if (event_indices_ptr[j] == (size_t)tv->focused_event_idx) {
+        if (event_indices_ptr[j] == tv->focused_event_idx) {
           float track_top = tv->total_tracks_height;
           float viewport_height = input->canvas_height - input->ruler_height;
           tv->target_scroll_y =
               track_top - (viewport_height - vi->height) * 0.5f;
+          tv->has_target_scroll_y = true;
           tv->request_scroll_to_focused_event = false;
           break;
         }
@@ -1400,7 +1402,8 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
       if (t->type == TRACK_TYPE_THREAD) {
         track_compute_render_blocks(
             t, td, tv->viewport.start_time, tv->viewport.end_time,
-            tracks_inner_width, tracks_origin_x, tv->focused_event_idx,
+            tracks_inner_width, tracks_origin_x,
+            tv->has_focused_event ? (int64_t)tv->focused_event_idx : -1,
             &tv->track_renderer_state, &tv->render_blocks, allocator);
 
         const track_render_block_t* rblocks =
@@ -1436,7 +1439,8 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
         // Counter hit-testing
         track_compute_counter_render_blocks(
             t, td, tv->viewport.start_time, tv->viewport.end_time,
-            tracks_inner_width, tracks_origin_x, tv->focused_event_idx,
+            tracks_inner_width, tracks_origin_x,
+            tv->has_focused_event ? (int64_t)tv->focused_event_idx : -1,
             &tv->track_renderer_state, &tv->counter_render_blocks, allocator);
 
         float track_content_y = vi->y + input->lane_height;
@@ -1502,7 +1506,8 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
         const trace_event_persisted_t* events =
             (const trace_event_persisted_t*)td->events.ptr;
         const trace_event_persisted_t* e = &events[hm->rb.event_idx];
-        tv->focused_event_idx = (int64_t)hm->rb.event_idx;
+        tv->focused_event_idx = hm->rb.event_idx;
+        tv->has_focused_event = true;
         tv->show_details_panel = true;
         tv->ignore_next_release = true;
         trace_viewer_zoom_to_event(tv, e);
@@ -1512,21 +1517,22 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
     if (tv->hover_matches.len > 0) {
       const hover_match_t* hm = &hover_matches_ptr[tv->hover_matches.len - 1];
       if (hm->rb.event_idx != (size_t)-1) {
-        tv->focused_event_idx = (int64_t)hm->rb.event_idx;
+        tv->focused_event_idx = hm->rb.event_idx;
+        tv->has_focused_event = true;
         tv->show_details_panel = true;
       }
     } else if (input->tracks_hovered && mouse_in_tracks_content) {
       if (tv->selection_active && mouse_in_selection && !proximity.near_start &&
           !proximity.near_end) {
         // Click inside selection: clear focused event, keep timeline range.
-        tv->focused_event_idx = -1;
+        tv->has_focused_event = false;
       } else if (tv->selection_active && !mouse_in_selection) {
         // Click outside selection: clear timeline range and focused event.
         tv->selection_active = false;
-        tv->focused_event_idx = -1;
+        tv->has_focused_event = false;
       } else {
         // No selection active, or click on background: clear focused event.
-        tv->focused_event_idx = -1;
+        tv->has_focused_event = false;
       }
     }
   }
@@ -1604,7 +1610,7 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
     array_list_clear(&tv->filtered_event_indices);
     const int64_t* selected_ptr =
         (const int64_t*)tv->selected_event_indices.ptr;
-    if (tv->selected_histogram_bucket == -1) {
+    if (!tv->has_selected_histogram_bucket) {
       for (size_t i = 0; i < tv->selected_event_indices.len; i++) {
         size_t idx = (size_t)selected_ptr[i];
         if (idx < td->events.len) {
@@ -1612,8 +1618,9 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
               (int64_t)idx;
         }
       }
-    } else if (tv->selected_histogram_bucket >= 0 &&
-               tv->selected_histogram_bucket < tv->histogram.num_buckets) {
+    } else if (tv->has_selected_histogram_bucket &&
+               tv->selected_histogram_bucket <
+                   (size_t)tv->histogram.num_buckets) {
       const duration_histogram_bucket_t* b =
           &tv->histogram.buckets[tv->selected_histogram_bucket];
       const trace_event_persisted_t* events =
@@ -1641,7 +1648,7 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
     array_list_clear(&tv->filtered_event_indices);
     const int64_t* selected_ptr =
         (const int64_t*)tv->selected_event_indices.ptr;
-    if (tv->selected_histogram_bucket == -1) {
+    if (!tv->has_selected_histogram_bucket) {
       for (size_t i = 0; i < tv->selected_event_indices.len; i++) {
         size_t idx = (size_t)selected_ptr[i];
         if (idx < td->events.len) {
@@ -1649,8 +1656,9 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
               (int64_t)idx;
         }
       }
-    } else if (tv->selected_histogram_bucket >= 0 &&
-               tv->selected_histogram_bucket < tv->histogram.num_buckets) {
+    } else if (tv->has_selected_histogram_bucket &&
+               tv->selected_histogram_bucket <
+                   (size_t)tv->histogram.num_buckets) {
       const duration_histogram_bucket_t* b =
           &tv->histogram.buckets[tv->selected_histogram_bucket];
       const trace_event_persisted_t* events =
@@ -1742,6 +1750,7 @@ static void trace_viewer_step_vertical_minimap(
           const track_view_info_t* vi = &track_infos[clicked_track_idx];
           float target_scroll = vi->y_rel - (visible_h - vi->height) * 0.5f;
           tv->target_scroll_y = clamp(target_scroll, 0.0f, total_h - visible_h);
+          tv->has_target_scroll_y = true;
         }
       }
       // Set sentinel to calculate offset in next frame after scroll applies
@@ -1775,6 +1784,7 @@ static void trace_viewer_step_vertical_minimap(
       pct = clamp(slider_y1_target / max_slider_y, 0.0f, 1.0f);
     }
     tv->target_scroll_y = pct * (total_h - visible_h);
+    tv->has_target_scroll_y = true;
   }
 
   // Layout Projections
@@ -2040,9 +2050,9 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
                        (ig_vec2_t){canvas_size.x - VERTICAL_MINIMAP_WIDTH,
                                    canvas_size.y - input.ruler_height},
                        false, child_flags)) {
-      if (tv->target_scroll_y != -1.0f) {
+      if (tv->has_target_scroll_y) {
         ig_set_scroll_y(max(0.0f, tv->target_scroll_y));
-        tv->target_scroll_y = -1.0f;
+        tv->has_target_scroll_y = false;
       }
 
       // Handle vertical scroll if dragging tracks
@@ -2134,7 +2144,8 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
         if (t->type == TRACK_TYPE_THREAD) {
           track_compute_render_blocks(
               t, td, tv->viewport.start_time, tv->viewport.end_time,
-              inner_width, tracks_canvas_pos.x, tv->focused_event_idx,
+              inner_width, tracks_canvas_pos.x,
+              tv->has_focused_event ? (int64_t)tv->focused_event_idx : -1,
               &tv->track_renderer_state, &tv->render_blocks, allocator);
 
           const track_render_block_t* rblocks =
@@ -2162,7 +2173,8 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
               inner_width, vi->height - input.lane_height,
               tv->viewport.start_time, tv->viewport.end_time, theme,
               (ig_vec2_t){input.mouse_x, input.mouse_y}, mouse_in_sel,
-              tv->focused_event_idx, allocator);
+              tv->has_focused_event ? (int64_t)tv->focused_event_idx : -1,
+              allocator);
         }
       }
 
@@ -2240,7 +2252,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
       trace_viewer_draw_search_section(tv, allocator);
       ig_separator();
 
-      bool has_focus = (tv->focused_event_idx != -1);
+      bool has_focus = tv->has_focused_event;
       bool has_selection = (tv->selected_event_indices.len > 0);
 
       if (has_selection) {
@@ -2250,7 +2262,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
         if (ig_small_button("Clear")) {
           array_list_clear(&tv->selected_event_indices);
           array_list_clear(&tv->filtered_event_indices);
-          tv->selected_histogram_bucket = -1;
+          tv->has_selected_histogram_bucket = false;
           tv->search_histogram_dirty = true;
           tv->selected_events_dirty = true;
         }
@@ -2310,7 +2322,8 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
               hovered_bucket = i;
             }
 
-            bool is_selected = (tv->selected_histogram_bucket == i);
+            bool is_selected = (tv->has_selected_histogram_bucket &&
+                                tv->selected_histogram_bucket == (size_t)i);
 
             uint32_t bar_col;
             if (is_selected) {
@@ -2409,10 +2422,12 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
             ig_end_tooltip();
 
             if (ig_is_mouse_clicked(0, false) && b->count > 0) {
-              if (tv->selected_histogram_bucket == hovered_bucket) {
-                tv->selected_histogram_bucket = -1;
+              if (tv->has_selected_histogram_bucket &&
+                  tv->selected_histogram_bucket == (size_t)hovered_bucket) {
+                tv->has_selected_histogram_bucket = false;
               } else {
-                tv->selected_histogram_bucket = hovered_bucket;
+                tv->selected_histogram_bucket = (size_t)hovered_bucket;
+                tv->has_selected_histogram_bucket = true;
               }
               tv->search_histogram_dirty = true;
             }
@@ -2449,9 +2464,10 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
 
                 pthread_mutex_lock(&tv->search.mutex);
                 tv->search.sort_column = column_index;
-                tv->search.sort_ascending =
-                    (direction == IG_SORT_DIRECTION_ASCENDING);
-                tv->search.sort_none = (direction == IG_SORT_DIRECTION_NONE);
+                tv->search.sort_descending =
+                    (direction != IG_SORT_DIRECTION_ASCENDING &&
+                     direction != IG_SORT_DIRECTION_NONE);
+                tv->search.sort_active = (direction != IG_SORT_DIRECTION_NONE);
                 atomic_store(&tv->search.new_sort_specs_available, true);
                 pthread_mutex_unlock(&tv->search.mutex);
 
@@ -2480,7 +2496,8 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
                 ig_table_next_row();
                 ig_table_next_column();
 
-                bool is_focused = (tv->focused_event_idx == (int64_t)event_idx);
+                bool is_focused = (tv->has_focused_event &&
+                                   tv->focused_event_idx == event_idx);
                 char label[256];
                 snprintf(label, sizeof(label), "%.*s##%zu", (int)name.len,
                          name.ptr, event_idx);
@@ -2488,7 +2505,8 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
                                   IG_SELECTABLE_FLAGS_SPAN_ALL_COLUMNS |
                                       IG_SELECTABLE_FLAGS_ALLOW_OVERLAP,
                                   (ig_vec2_t){0.0f, 0.0f})) {
-                  tv->target_focused_event_idx = (int64_t)event_idx;
+                  tv->target_focused_event_idx = event_idx;
+                  tv->has_target_focused_event = true;
                 }
 
                 ig_table_next_column();
@@ -2514,7 +2532,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
             ig_end_table();
           }
 
-          if (tv->selected_histogram_bucket != -1) {
+          if (tv->has_selected_histogram_bucket) {
             ig_text_disabled("Filtered results: %zu / %zu events",
                              tv->filtered_event_indices.len,
                              tv->selected_event_indices.len);
@@ -2529,8 +2547,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
       if (has_focus) {
         const trace_event_persisted_t* events =
             (const trace_event_persisted_t*)td->events.ptr;
-        const trace_event_persisted_t* e =
-            &events[(size_t)tv->focused_event_idx];
+        const trace_event_persisted_t* e = &events[tv->focused_event_idx];
         string_t ph = trace_data_get_string(td, e->ph_ref);
         const track_t* target_track = nullptr;
 
@@ -2571,23 +2588,6 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
     ig_end();
     ig_pop_style_var(1);
   }
-}
-
-void trace_viewer_init(trace_viewer_t* tv) {
-  tv->focused_event_idx = -1;
-  tv->target_focused_event_idx = -1;
-  tv->target_scroll_y = -1.0f;
-  tv->selected_histogram_bucket = -1;
-  tv->search_thread_events = true;
-  tv->search_counter_events = true;
-
-  // Initialize SearchState sort fields
-  tv->search.sort_column = 0;
-  tv->search.sort_ascending = true;
-  tv->search.sort_none = true;
-
-  atomic_store(&tv->search.include_thread_events, true);
-  atomic_store(&tv->search.include_counter_events, true);
 }
 
 void trace_viewer_reset_view(trace_viewer_t* tv) {
@@ -2825,8 +2825,8 @@ void trace_viewer_search_job(void* user_data) {
     }
 
     sort_column = s->sort_column;
-    sort_ascending = s->sort_ascending;
-    sort_none = s->sort_none;
+    sort_ascending = !s->sort_descending;
+    sort_none = !s->sort_active;
     pthread_mutex_unlock(&s->mutex);
   }
 
@@ -2837,8 +2837,8 @@ void trace_viewer_search_job(void* user_data) {
       size_t query_len = strlen(query_ptr);
       size_t n_events = td->events.len;
 
-      bool include_threads = atomic_load(&s->include_thread_events);
-      bool include_counters = atomic_load(&s->include_counter_events);
+      bool include_threads = !atomic_load(&s->exclude_thread_events);
+      bool include_counters = !atomic_load(&s->exclude_counter_events);
 
       for (size_t i = 0; i < n_events; i++) {
         if (atomic_load(&s->new_query_available) ||
@@ -3010,9 +3010,19 @@ static void trace_viewer_draw_search_section(trace_viewer_t* tv,
 
   ig_spacing();
   bool filter_changed = false;
-  filter_changed |= ig_checkbox("Threads", &tv->search_thread_events);
+  bool include_threads = !tv->exclude_thread_events;
+  bool include_counters = !tv->exclude_counter_events;
+  bool local_filter_changed = false;
+  if (ig_checkbox("Threads", &include_threads)) {
+    tv->exclude_thread_events = !include_threads;
+    local_filter_changed = true;
+  }
   ig_same_line(0.0f, -1.0f);
-  filter_changed |= ig_checkbox("Counters", &tv->search_counter_events);
+  if (ig_checkbox("Counters", &include_counters)) {
+    tv->exclude_counter_events = !include_counters;
+    local_filter_changed = true;
+  }
+  filter_changed |= local_filter_changed;
 
   if (search_input_changed || enter_pressed || filter_changed) {
     pthread_mutex_lock(&tv->search.mutex);
@@ -3041,13 +3051,14 @@ static void trace_viewer_draw_search_section(trace_viewer_t* tv,
                                         char, allocator);
       memcpy(dest_pq, tv->search_query.ptr, query_len * sizeof(char));
 
-      atomic_store(&tv->search.include_thread_events, tv->search_thread_events);
-      atomic_store(&tv->search.include_counter_events,
-                   tv->search_counter_events);
+      atomic_store(&tv->search.exclude_thread_events,
+                   tv->exclude_thread_events);
+      atomic_store(&tv->search.exclude_counter_events,
+                   tv->exclude_counter_events);
 
       atomic_store(&tv->search.new_query_available, true);
       atomic_store(&tv->search.results_ready, false);
-      tv->selected_histogram_bucket = -1;
+      tv->has_selected_histogram_bucket = false;
       tv->search_histogram_dirty = true;
       platform_submit_job(trace_viewer_search_job, &tv->search);
     }

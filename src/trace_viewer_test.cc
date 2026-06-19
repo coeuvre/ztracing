@@ -25,7 +25,6 @@ class TraceViewerTest : public ::testing::Test {
     allocator = allocator_get_default();
     tv.~trace_viewer_t();
     new (&tv) trace_viewer_t();
-    trace_viewer_init(&tv);
     tv.search.allocator = allocator;
     td.~trace_data_t();
     new (&td) trace_data_t();
@@ -95,7 +94,8 @@ TEST_F(TraceViewerTest, HitTestingThreadEvent) {
   // Add a track
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   track_update_max_dur(&t, &td, allocator);
   track_calculate_depths(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -142,7 +142,8 @@ TEST_F(TraceViewerTest, ClickToFocusAndCenter) {
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
     t.tid = i;
-    *array_list_push(&t.event_indices, decltype(event_idx), allocator) = event_idx;
+    *array_list_push(&t.event_indices, decltype(event_idx), allocator) =
+        event_idx;
     track_update_max_dur(&t, &td, allocator);
     track_calculate_depths(&t, &td, allocator);
     *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -163,11 +164,13 @@ TEST_F(TraceViewerTest, ClickToFocusAndCenter) {
 
   // Focus on event in the second track (index 1)
   tv.target_focused_event_idx = 1;
+  tv.has_target_focused_event = true;
 
   // First step: Handles focus request, zooms, and calculates scroll to center
   trace_viewer_step(&tv, &td, &input, allocator);
 
-  EXPECT_EQ(tv.focused_event_idx, 1);
+  EXPECT_TRUE(tv.has_focused_event);
+  EXPECT_EQ(tv.focused_event_idx, 1u);
   EXPECT_TRUE(tv.selection_active);
   EXPECT_EQ(tv.selection_start_time, 5000.0);
   EXPECT_EQ(tv.selection_end_time, 6000.0);
@@ -183,6 +186,7 @@ TEST_F(TraceViewerTest, ClickToFocusAndCenter) {
   // Center scroll = track_top - (viewport_height - track_height) * 0.5
   //               = 40 - (180 - 40) * 0.5
   //               = 40 - 70 = -30
+  EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_NEAR(tv.target_scroll_y, -30.0f, 0.1f);
 }
 
@@ -195,7 +199,8 @@ TEST_F(TraceViewerTest, SelectionOnClick) {
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   track_update_max_dur(&t, &td, allocator);
   track_calculate_depths(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -219,7 +224,8 @@ TEST_F(TraceViewerTest, SelectionOnClick) {
 
   trace_viewer_step(&tv, &td, &input, allocator);
 
-  EXPECT_EQ(tv.focused_event_idx, 0);
+  EXPECT_TRUE(tv.has_focused_event);
+  EXPECT_EQ(tv.focused_event_idx, 0u);
   EXPECT_TRUE(tv.show_details_panel);
 }
 
@@ -347,7 +353,8 @@ TEST_F(TraceViewerTest, TimelineSnapping) {
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   track_update_max_dur(&t, &td, allocator);
   track_calculate_depths(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -396,7 +403,8 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
   tv.selection_start_time = 400.0;
   tv.selection_end_time = 600.0;
   tv.last_inner_width = 1000.0f;
-  *array_list_push(&tv.selected_event_indices, decltype((int64_t)123), allocator) = (int64_t)123;
+  *array_list_push(&tv.selected_event_indices, decltype((int64_t)123),
+                   allocator) = (int64_t)123;
   int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   std::sort(selected_event_indices,
@@ -410,7 +418,8 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   track_update_max_dur(&t, &td, allocator);
   track_calculate_depths(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -446,7 +455,8 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
   tv.selection_start_time = 400.0;
   tv.selection_end_time = 600.0;
   tv.last_inner_width = 1000.0f;
-  *array_list_push(&tv.selected_event_indices, decltype((int64_t)123), allocator) = (int64_t)123;
+  *array_list_push(&tv.selected_event_indices, decltype((int64_t)123),
+                   allocator) = (int64_t)123;
   int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   std::sort(selected_event_indices,
@@ -472,9 +482,12 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) = (size_t)1;
-  *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) = (string_ref_t)1;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
+      (size_t)1;
+  *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) =
+      (string_ref_t)1;
   t.counter_max_total = 1.0;
   track_update_max_dur(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -516,7 +529,8 @@ TEST_F(TraceViewerTest, TimelineClickOutsideToClearTracks) {
   tv.last_tracks_y = 0.0f;
 
   // Add a dummy box selection
-  *array_list_push(&tv.selected_event_indices, decltype((int64_t)123), allocator) = (int64_t)123;
+  *array_list_push(&tv.selected_event_indices, decltype((int64_t)123),
+                   allocator) = (int64_t)123;
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -606,9 +620,12 @@ TEST_F(TraceViewerTest, CounterInteractionInsideSelectionWorks) {
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) = (size_t)1;
-  *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) = (string_ref_t)1;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
+      (size_t)1;
+  *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) =
+      (string_ref_t)1;
   t.counter_max_total = 1.0;
   track_update_max_dur(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -627,7 +644,8 @@ TEST_F(TraceViewerTest, CounterInteractionInsideSelectionWorks) {
   trace_viewer_step(&tv, &td, &input, allocator);
 
   EXPECT_EQ(tv.hover_matches.len, 1u);
-  EXPECT_EQ(tv.focused_event_idx, 0);
+  EXPECT_TRUE(tv.has_focused_event);
+  EXPECT_EQ(tv.focused_event_idx, 0u);
 }
 
 TEST_F(TraceViewerTest, SnappingOnlyInVisibleTracks) {
@@ -645,7 +663,8 @@ TEST_F(TraceViewerTest, SnappingOnlyInVisibleTracks) {
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   track_update_max_dur(&t, &td, allocator);
   track_calculate_depths(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -698,7 +717,8 @@ TEST_F(TraceViewerTest, SnappingDisabledWhenNotDragging) {
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   track_update_max_dur(&t, &td, allocator);
   track_calculate_depths(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -845,7 +865,8 @@ TEST_F(TraceViewerTest, TimelineSnappedBoundaryDragTracks) {
   *array_list_push(&td.events, decltype(e), allocator) = e;
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   track_update_max_dur(&t, &td, allocator);
   track_calculate_depths(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -905,12 +926,14 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
     *array_list_push(&td.events, decltype(e2), allocator) = e2;
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
-    *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
-    *array_list_push(&t.event_indices, decltype((size_t)1), allocator) = (size_t)1;
+    *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+        (size_t)0;
+    *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
+        (size_t)1;
     uint32_t* depths = (uint32_t*)t.depths.ptr;
-  (void)depths;
+    (void)depths;
     array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
-  depths = (uint32_t*)t.depths.ptr;
+    depths = (uint32_t*)t.depths.ptr;
     depths[0] = 0;
     depths[1] = 0;
     track_update_max_dur(&t, &td, allocator);
@@ -924,11 +947,12 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
     *array_list_push(&td.events, decltype(e3), allocator) = e3;
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
-    *array_list_push(&t.event_indices, decltype((size_t)2), allocator) = (size_t)2;
+    *array_list_push(&t.event_indices, decltype((size_t)2), allocator) =
+        (size_t)2;
     uint32_t* depths = (uint32_t*)t.depths.ptr;
-  (void)depths;
+    (void)depths;
     array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
-  depths = (uint32_t*)t.depths.ptr;
+    depths = (uint32_t*)t.depths.ptr;
     depths[0] = 1;
     track_update_max_dur(&t, &td, allocator);
     t.max_depth = 1;
@@ -947,10 +971,10 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
   // First frame: Start box select
   // Box covers TS [120, 180] and Y [30, 70]
   // track_t 1: vi.y = 20, vi.height = 40 (lane 0: [40, 60], header: [20, 40])
-  // track_t 2: vi.y = 60, vi.height = 60 (lane 0: [80, 100], lane 1: [100, 120],
-  // header: [60, 80]) Wait, track height = (max_depth + 2) * lane_height track_t
-  // 1: max_depth=0, height=40. y=20. Header=[20,40], Lane0=[40,60]. track_t 2:
-  // max_depth=1, height=60. y=60. Header=[60,80], Lane0=[80,100],
+  // track_t 2: vi.y = 60, vi.height = 60 (lane 0: [80, 100], lane 1: [100,
+  // 120], header: [60, 80]) Wait, track height = (max_depth + 2) * lane_height
+  // track_t 1: max_depth=0, height=40. y=20. Header=[20,40], Lane0=[40,60].
+  // track_t 2: max_depth=1, height=60. y=60. Header=[60,80], Lane0=[80,100],
   // Lane1=[100,120].
 
   trace_viewer_input_t input = {};
@@ -1002,7 +1026,8 @@ TEST_F(TraceViewerTest, BoxSelectLongEvent) {
   *array_list_push(&td.events, decltype(e), allocator) = e;
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   uint32_t* depths = (uint32_t*)t.depths.ptr;
   (void)depths;
   array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
@@ -1063,8 +1088,10 @@ TEST_F(TraceViewerTest, BoxSelectCounterHeaderIgnored) {
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
-  *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) = (string_ref_t)1;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
+  *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) =
+      (string_ref_t)1;
   t.counter_max_total = 1.0;
   track_update_max_dur(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -1148,8 +1175,10 @@ TEST_F(TraceViewerTest, TrackHeaderNameFormatting) {
   *array_list_push(&tv.tracks, decltype(t2), allocator) = t2;
 
   // 3. Counter with name and ID
-  string_ref_t c_name_ref = trace_data_push_string(&td_local, string_lit("Memory"), allocator);
-  string_ref_t c_id_ref = trace_data_push_string(&td_local, string_lit("0x1"), allocator);
+  string_ref_t c_name_ref =
+      trace_data_push_string(&td_local, string_lit("Memory"), allocator);
+  string_ref_t c_id_ref =
+      trace_data_push_string(&td_local, string_lit("0x1"), allocator);
   track_t t3 = {};
   t3.type = TRACK_TYPE_COUNTER;
   t3.name_ref = c_name_ref;
@@ -1198,7 +1227,8 @@ TEST_F(TraceViewerTest, TrackLayoutAndCulling) {
   (void)track_infos;
   ASSERT_EQ(tv.track_infos.len, 3u);
 
-  // track_t 0: y = 100 + 20 + 0 - 0 = 120. Height 40. Range [120, 160]. Visible.
+  // track_t 0: y = 100 + 20 + 0 - 0 = 120. Height 40. Range [120, 160].
+  // Visible.
   EXPECT_FLOAT_EQ(track_infos[0].y, 120.0f);
   EXPECT_TRUE(track_infos[0].visible);
 
@@ -1280,7 +1310,8 @@ TEST_F(TraceViewerTest, DoubleClickToZoomEdgeStability) {
   trace_data_add_event(&td, allocator, theme, &ev);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   track_update_max_dur(&t, &td, allocator);
   track_calculate_depths(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -1350,7 +1381,8 @@ TEST_F(TraceViewerTest, DoubleClickToZoomSameFrameRelease) {
   trace_data_add_event(&td, allocator, theme, &ev);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   track_update_max_dur(&t, &td, allocator);
   track_calculate_depths(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -1407,8 +1439,10 @@ TEST_F(TraceViewerTest, DoubleClickEventOutsideCurrentSelection) {
   trace_data_add_event(&td, allocator, theme, &ev2);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) = (size_t)1;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
+      (size_t)1;
   track_update_max_dur(&t, &td, allocator);
   track_calculate_depths(&t, &td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
@@ -1447,7 +1481,8 @@ TEST_F(TraceViewerTest, DoubleClickEventOutsideCurrentSelection) {
   EXPECT_TRUE(tv.selection_active);
   EXPECT_DOUBLE_EQ(tv.selection_start_time, 8000.0);
   EXPECT_DOUBLE_EQ(tv.selection_end_time, 9000.0);
-  EXPECT_EQ(tv.focused_event_idx, 1);
+  EXPECT_TRUE(tv.has_focused_event);
+  EXPECT_EQ(tv.focused_event_idx, 1u);
 }
 
 TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
@@ -1463,8 +1498,10 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) = (size_t)1;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
+      (size_t)1;
   uint32_t* depths = (uint32_t*)t.depths.ptr;
   (void)depths;
   array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
@@ -1508,7 +1545,7 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   (void)selected_event_indices;
   EXPECT_EQ(tv.selected_event_indices.len, 1u);
   EXPECT_EQ(selected_event_indices[0], 0);
-  EXPECT_EQ(tv.focused_event_idx, -1);
+  EXPECT_FALSE(tv.has_focused_event);
 
   // 2. Click e2 to focus it
   input.is_shift_down = false;
@@ -1525,7 +1562,8 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   input.is_mouse_released = true;
   trace_viewer_step(&tv, &td, &input, allocator);
 
-  EXPECT_EQ(tv.focused_event_idx, 1);
+  EXPECT_TRUE(tv.has_focused_event);
+  EXPECT_EQ(tv.focused_event_idx, 1u);
   EXPECT_EQ(tv.selected_event_indices.len, 1u);
   EXPECT_EQ(selected_event_indices[0], 0);
 
@@ -1541,7 +1579,7 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   input.is_mouse_released = true;
   trace_viewer_step(&tv, &td, &input, allocator);
 
-  EXPECT_EQ(tv.focused_event_idx, -1);
+  EXPECT_FALSE(tv.has_focused_event);
   EXPECT_EQ(tv.selected_event_indices.len, 1u);
 }
 
@@ -1554,7 +1592,8 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   uint32_t* depths = (uint32_t*)t.depths.ptr;
   (void)depths;
   array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
@@ -1576,7 +1615,8 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
   tv.selection_end_time = 600.0;
 
   // 2. Add an event to box selection manually
-  *array_list_push(&tv.selected_event_indices, decltype((int64_t)0), allocator) = (int64_t)0;
+  *array_list_push(&tv.selected_event_indices, decltype((int64_t)0),
+                   allocator) = (int64_t)0;
 
   // 3. Click empty space inside timeline selection [500]
   trace_viewer_input_t input = {};
@@ -1592,7 +1632,7 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
 
   EXPECT_TRUE(tv.selection_active);  // Timeline range kept
   EXPECT_EQ(tv.selected_event_indices.len, 1u);
-  EXPECT_EQ(tv.focused_event_idx, -1);
+  EXPECT_FALSE(tv.has_focused_event);
 }
 
 TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
@@ -1600,7 +1640,8 @@ TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
   trace_event_persisted_t e = {.ts = 5000, .dur = 0, .pid = 1, .tid = 1};
   *array_list_push(&td.events, decltype(e), allocator) = e;
   track_t t = {.type = TRACK_TYPE_COUNTER, .pid = 1, .tid = -1};
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
+      (size_t)0;
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   tv.viewport.start_time = 0;
@@ -1611,6 +1652,7 @@ TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
 
   // Simulate click on the event in the details panel
   tv.target_focused_event_idx = 0;
+  tv.has_target_focused_event = true;
   trace_viewer_input_t input = {};
   trace_viewer_step(&tv, &td, &input, allocator);
 
@@ -1621,6 +1663,7 @@ TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
   tv.viewport.start_time = 8000;
   tv.viewport.end_time = 18000;
   tv.target_focused_event_idx = 0;
+  tv.has_target_focused_event = true;
   trace_viewer_step(&tv, &td, &input, allocator);
 
   // Centered on 5000 with duration 10000 -> [0, 10000]
@@ -1653,9 +1696,12 @@ TEST_F(TraceViewerTest, SearchHistogramCalculation) {
 
   // Setup input index list
   array_list_t selected_indices = {};
-  *array_list_push(&selected_indices, decltype((int64_t)0), allocator) = (int64_t)0;
-  *array_list_push(&selected_indices, decltype((int64_t)1), allocator) = (int64_t)1;
-  *array_list_push(&selected_indices, decltype((int64_t)2), allocator) = (int64_t)2;
+  *array_list_push(&selected_indices, decltype((int64_t)0), allocator) =
+      (int64_t)0;
+  *array_list_push(&selected_indices, decltype((int64_t)1), allocator) =
+      (int64_t)1;
+  *array_list_push(&selected_indices, decltype((int64_t)2), allocator) =
+      (int64_t)2;
 
   duration_histogram_t h = {};
   trace_viewer_calculate_histogram(&selected_indices, &td, &h);
@@ -1756,7 +1802,8 @@ TEST_F(TraceViewerTest, SearchFilteringWithOptions) {
   e1.ts = 1000;
   e1.dur = 100;
   e1.name_ref = name_ref;
-  e1.ph_ref = trace_data_push_string(&td, string_lit("X"), allocator);  // Phase 'X' (Complete thread event)
+  e1.ph_ref = trace_data_push_string(
+      &td, string_lit("X"), allocator);  // Phase 'X' (Complete thread event)
   *array_list_push(&td.events, decltype(e1), allocator) = e1;
 
   // 2. Add counter event
@@ -1764,15 +1811,17 @@ TEST_F(TraceViewerTest, SearchFilteringWithOptions) {
   e2.ts = 2000;
   e2.dur = 0;
   e2.name_ref = name_ref;
-  e2.ph_ref =
-      trace_data_push_string(&td, string_lit("C"), allocator);  // Phase 'C' (Counter event)
+  e2.ph_ref = trace_data_push_string(&td, string_lit("C"),
+                                     allocator);  // Phase 'C' (Counter event)
   *array_list_push(&td.events, decltype(e2), allocator) = e2;
 
-  tv.search.include_thread_events.store(true);
-  tv.search.include_counter_events.store(true);
+  tv.search.exclude_thread_events.store(false);
+  tv.search.exclude_counter_events.store(false);
 
   // Simulate search query triggered
-  memcpy(array_list_append(&tv.search.pending_query, strlen("searchable_item") + 1, char, allocator), "searchable_item", strlen("searchable_item") + 1);
+  memcpy(array_list_append(&tv.search.pending_query,
+                           strlen("searchable_item") + 1, char, allocator),
+         "searchable_item", strlen("searchable_item") + 1);
   tv.search.new_query_available.store(true);
   tv.search.results_ready.store(false);
 
@@ -1787,8 +1836,8 @@ TEST_F(TraceViewerTest, SearchFilteringWithOptions) {
   EXPECT_EQ(pending_results[1], 1);
 
   // Scenario B: Exclude counters
-  tv.search.include_thread_events.store(true);
-  tv.search.include_counter_events.store(false);
+  tv.search.exclude_thread_events.store(false);
+  tv.search.exclude_counter_events.store(true);
   tv.search.new_query_available.store(true);
   tv.search.results_ready.store(false);
 
@@ -1800,8 +1849,8 @@ TEST_F(TraceViewerTest, SearchFilteringWithOptions) {
   EXPECT_EQ(pending_results[0], 0);
 
   // Scenario C: Exclude threads
-  tv.search.include_thread_events.store(false);
-  tv.search.include_counter_events.store(true);
+  tv.search.exclude_thread_events.store(true);
+  tv.search.exclude_counter_events.store(false);
   tv.search.new_query_available.store(true);
   tv.search.results_ready.store(false);
 
@@ -1885,6 +1934,7 @@ TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
   trace_viewer_step(&tv, &td, &input, allocator);
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   // Should jump to center track_t 7: 280 - (180 - 40)*0.5 = 210
+  EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_NEAR(tv.target_scroll_y, 210.0f, 0.5f);
 
   // 4. Simulate scroll update and transition to drag (mouse still at 15px)
@@ -1903,6 +1953,7 @@ TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
   // slider_y1_target = 10 - 4.5 = 5.5
   // pct = 5.5 / 10 = 0.55
   // target_scroll_y = 0.55 * 220 = 121
+  EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_NEAR(tv.target_scroll_y, 121.0f, 0.5f);
 
   // 6. Test Release
@@ -1977,6 +2028,7 @@ TEST_F(TraceViewerTest, VerticalMinimapScrollingLayoutAndDragScroll) {
   trace_viewer_step(&tv, &td, &input, allocator);
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   // Should jump to center track_t 45: 45 * 40 - (180 - 40)*0.5 = 1730
+  EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_NEAR(tv.target_scroll_y, 1730.0f, 0.5f);
 
   // 2. Simulate scroll update and transition to drag (mouse still at 90px)
@@ -1995,6 +2047,7 @@ TEST_F(TraceViewerTest, VerticalMinimapScrollingLayoutAndDragScroll) {
   // slider_y1_target = 80 - 12.5576 = 67.4424
   // pct = 67.4424 / 170 = 0.39672
   // target_scroll_y = 0.39672 * 3820 = 1515.47
+  EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_NEAR(tv.target_scroll_y, 1515.47f, 0.5f);
 }
 
@@ -2038,25 +2091,30 @@ TEST_F(TraceViewerTest, VerticalMinimap2DHeatmap) {
   track_t t0 = {};
   t0.type = TRACK_TYPE_THREAD;
   *array_list_push(&t0.event_indices, decltype(e1_idx), allocator) = e1_idx;
-  *array_list_push(&t0.depths, decltype((uint32_t)0), allocator) = (uint32_t)0;  // Event A
+  *array_list_push(&t0.depths, decltype((uint32_t)0), allocator) =
+      (uint32_t)0;  // Event A
   *array_list_push(&t0.event_indices, decltype(e2_idx), allocator) = e2_idx;
-  *array_list_push(&t0.depths, decltype((uint32_t)0), allocator) = (uint32_t)0;  // Event B
+  *array_list_push(&t0.depths, decltype((uint32_t)0), allocator) =
+      (uint32_t)0;  // Event B
   *array_list_push(&t0.event_indices, decltype(e4_idx), allocator) = e4_idx;
-  *array_list_push(&t0.depths, decltype((uint32_t)1), allocator) = (uint32_t)1;  // Event D (ignored)
+  *array_list_push(&t0.depths, decltype((uint32_t)1), allocator) =
+      (uint32_t)1;  // Event D (ignored)
   *array_list_push(&tv.tracks, decltype(t0), allocator) = t0;
 
   // track_t 1: holds Event C
   track_t t1 = {};
   t1.type = TRACK_TYPE_THREAD;
   *array_list_push(&t1.event_indices, decltype(e3_idx), allocator) = e3_idx;
-  *array_list_push(&t1.depths, decltype((uint32_t)0), allocator) = (uint32_t)0;  // Event C
+  *array_list_push(&t1.depths, decltype((uint32_t)0), allocator) =
+      (uint32_t)0;  // Event C
   *array_list_push(&tv.tracks, decltype(t1), allocator) = t1;
 
   // 4. Run precompute heatmap function
   trace_viewer_precompute_minimap_heatmap(&tv, &td, allocator);
 
   // 5. Verify cached 2D densities
-  track_heatmap_t* track_heatmap_densities = (track_heatmap_t*)tv.vertical_minimap.track_heatmap_densities.ptr;
+  track_heatmap_t* track_heatmap_densities =
+      (track_heatmap_t*)tv.vertical_minimap.track_heatmap_densities.ptr;
   (void)track_heatmap_densities;
   ASSERT_EQ(tv.vertical_minimap.track_heatmap_densities.len, 2u);
 
@@ -2084,7 +2142,8 @@ TEST_F(TraceViewerTest, VerticalMinimapHeatmapZeroDuration) {
 
   trace_viewer_precompute_minimap_heatmap(&tv, &td, allocator);
 
-  track_heatmap_t* track_heatmap_densities = (track_heatmap_t*)tv.vertical_minimap.track_heatmap_densities.ptr;
+  track_heatmap_t* track_heatmap_densities =
+      (track_heatmap_t*)tv.vertical_minimap.track_heatmap_densities.ptr;
   (void)track_heatmap_densities;
   ASSERT_EQ(tv.vertical_minimap.track_heatmap_densities.len, 1u);
   const track_heatmap_t& h0 = track_heatmap_densities[0];
@@ -2164,6 +2223,7 @@ TEST_F(TraceViewerTest, VerticalMinimapSliderFixedSizeAndBoundaryAlignment) {
   trace_viewer_step(&tv, &td, &input, allocator);
   // slider_y1_target = 0 - 5 = -5
   // pct clamped to 0
+  EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_FLOAT_EQ(tv.target_scroll_y, 0.0f);
 
   // Drag to bottom boundary (minimap_y + minimap_draw_h = 200)
@@ -2172,6 +2232,7 @@ TEST_F(TraceViewerTest, VerticalMinimapSliderFixedSizeAndBoundaryAlignment) {
   // slider_y1_target = 180 - 5 = 175
   // max_slider_y = 170
   // pct clamped to 1.0
+  EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_FLOAT_EQ(tv.target_scroll_y, max_scroll);
 
   // 3. Test Monotonicity
@@ -2180,6 +2241,7 @@ TEST_F(TraceViewerTest, VerticalMinimapSliderFixedSizeAndBoundaryAlignment) {
   for (float my = 40.0f; my <= 160.0f; my += 20.0f) {
     input.mouse_y = expected_minimap_y + my;
     trace_viewer_step(&tv, &td, &input, allocator);
+    EXPECT_TRUE(tv.has_target_scroll_y);
     EXPECT_GT(tv.target_scroll_y, last_scroll);
     last_scroll = tv.target_scroll_y;
   }
@@ -2222,7 +2284,7 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
   // Slider is [20.0f, 30.0f] (since scroll = 0, slider_h = 10.0f)
 
   // --- Case 1: Click Inside Slider ---
-  tv.target_scroll_y = -999.0f;  // Set to sentinel to check if it changes
+  tv.has_target_scroll_y = false;  // Clear target scroll
   input.mouse_x = expected_minimap_x + 5.0f;
   input.mouse_y = expected_minimap_y + 5.0f;  // 25.0f (inside [20, 30])
   input.is_mouse_clicked = true;
@@ -2231,6 +2293,7 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
 
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   EXPECT_FLOAT_EQ(tv.vertical_minimap.drag_offset_y, 5.0f);  // 25 - 20
+  EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_FLOAT_EQ(tv.target_scroll_y,
                   0.0f);  // No jump (calculates to current scroll 0)
 
@@ -2241,6 +2304,7 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
   // slider_y1_target = 8 - 5 = 3
   // pct = 3 / 10 = 0.3
   // target_scroll_y = 0.3 * (400 - 180) = 66
+  EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_NEAR(tv.target_scroll_y, 66.0f, 0.5f);
 
   // Release
@@ -2261,6 +2325,7 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
 
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   // Should jump to center track_t 7 (300px): 280 - (180 - 40)*0.5 = 210
+  EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_NEAR(tv.target_scroll_y, 210.0f, 0.5f);
   EXPECT_FLOAT_EQ(tv.vertical_minimap.drag_offset_y, -1.0f);  // Sentinel set
 
@@ -2277,5 +2342,6 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
   // slider_y1_target = 10 - 4.5 = 5.5
   // pct = 5.5 / 10 = 0.55
   // target_scroll_y = 0.55 * 220 = 121
+  EXPECT_TRUE(tv.has_target_scroll_y);
   EXPECT_NEAR(tv.target_scroll_y, 121.0f, 0.5f);
 }
