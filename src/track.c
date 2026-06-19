@@ -420,11 +420,21 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
     string_ref_t ph_m_ref =
         trace_data_find_string_ref_const(td, string_lit("M"));
 
-    // Single Pass: Discovery, Grouping, and Metadata!
+    array_list_t event_counts = {};
+
+    // Allocate temporary array to store resolved track index for each event
+    uint32_t* event_track_indices = (uint32_t*)allocator_alloc(
+        a, td->events.len * sizeof(uint32_t));
+
+    // Pass 1: Discovery, Counting, Metadata, and Index Caching!
     for (size_t i = 0; i < td->events.len; i++) {
       const trace_event_persisted_t* e = &events[i];
       bool is_counter = (e->ph_ref == ph_c_ref);
       bool is_metadata = (e->ph_ref == ph_m_ref);
+
+      if (is_metadata) {
+        event_track_indices[i] = (uint32_t)-1; // Sentinel for metadata
+      }
 
       track_key_t key = {};
       if (is_counter) {
@@ -454,6 +464,7 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
           *array_list_push(out_tracks, track_t, a) = t;
           track_idx = out_tracks->len - 1;
           *(size_t*)hash_table_put(&track_map, &key, a) = track_idx;
+          *array_list_push(&event_counts, size_t, a) = 0;
         } else {
           track_idx = *track_idx_ptr;
         }
@@ -492,7 +503,10 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
           }
         }
       } else {
-        *array_list_push(&t->event_indices, size_t, a) = i;
+        event_track_indices[i] = (uint32_t)track_idx;
+        size_t* counts_data = (size_t*)event_counts.ptr;
+        counts_data[track_idx]++;
+
         if (first_event) {
           min_ts = e->ts;
           max_ts = e->ts + e->dur;
@@ -508,10 +522,29 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
       }
     }
 
+    // Pre-allocate event_indices for all tracks
+    size_t* counts_data = (size_t*)event_counts.ptr;
+    track_t* tracks_data = (track_t*)out_tracks->ptr;
+    for (size_t i = 0; i < out_tracks->len; i++) {
+      array_list_reserve(&tracks_data[i].event_indices, counts_data[i],
+                         sizeof(size_t), a);
+    }
+
+    // Pass 2: Grouping (Zero reallocations, zero lookups, zero cache checks!)
+    for (size_t i = 0; i < td->events.len; i++) {
+      uint32_t track_idx = event_track_indices[i];
+      if (track_idx != (uint32_t)-1) {
+        track_t* t = &tracks_data[track_idx];
+        *array_list_push(&t->event_indices, size_t, a) = i;
+      }
+    }
+
     hash_table_deinit(&track_map, a);
+    array_list_deinit(&event_counts, a);
+    allocator_free(a, event_track_indices, td->events.len * sizeof(uint32_t));
 
     // Sort events, calculate depths
-    track_t* tracks_data = (track_t*)out_tracks->ptr;
+    tracks_data = (track_t*)out_tracks->ptr;
     for (size_t i = 0; i < out_tracks->len; i++) {
       track_t* t = &tracks_data[i];
       track_sort_events(t, td, a);

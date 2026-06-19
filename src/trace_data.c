@@ -86,45 +86,46 @@ void trace_data_clear(trace_data_t* td, allocator_t a) {
 string_ref_t trace_data_push_string(trace_data_t* td, string_t s,
                                     allocator_t a) {
   string_ref_t result = 0;
-  if (s.ptr != nullptr) {
-    if (td->string_lookup.hash_fn == nullptr) {
-      td->string_lookup = hash_table_init(
-          uint32_t, uint32_t, trace_data_string_hash, trace_data_string_eq, td);
-    }
+  if (s.ptr == nullptr || s.len == 0) {
+    return result;
+  }
 
-    td->tmp.current_str = s;
-    uint32_t h = compute_hash(s);
-    td->tmp.current_hash = h;
+  if (td->string_lookup.hash_fn == nullptr) {
+    td->string_lookup = hash_table_init(
+        uint32_t, uint32_t, trace_data_string_hash, trace_data_string_eq, td);
+  }
 
-    uint32_t sentinel = 0;
-    uint32_t* existing_index =
-        (uint32_t*)hash_table_get_with_hash(&td->string_lookup, &sentinel, h);
-    if (existing_index != nullptr) {
-      result = *existing_index;
-    } else {
-      string_entry_t entry = {};
-      entry.offset = (uint32_t)td->string_buffer.len;
-      entry.len = (uint32_t)s.len;
-      entry.hash = h;
+  td->tmp.current_str = s;
+  uint32_t h = compute_hash(s);
+  td->tmp.current_hash = h;
 
-      array_list_ensure(&td->string_buffer, s.len, char, a);
-      memcpy((char*)td->string_buffer.ptr + td->string_buffer.len, s.ptr,
-             s.len);
-      td->string_buffer.len += s.len;
+  uint32_t sentinel = 0;
+  uint32_t* existing_index =
+      (uint32_t*)hash_table_get_with_hash(&td->string_lookup, &sentinel, h);
+  if (existing_index != nullptr) {
+    result = *existing_index;
+  } else {
+    string_entry_t entry = {};
+    entry.offset = (uint32_t)td->string_buffer.len;
+    entry.len = (uint32_t)s.len;
+    entry.hash = h;
 
-      char null_terminator = '\0';
-      *array_list_push(&td->string_buffer, char, a) = null_terminator;
+    array_list_ensure(&td->string_buffer, s.len, char, a);
+    memcpy((char*)td->string_buffer.ptr + td->string_buffer.len, s.ptr,
+           s.len);
+    td->string_buffer.len += s.len;
 
-      *array_list_push(&td->string_table, string_entry_t, a) = entry;
-      uint32_t new_index = (uint32_t)td->string_table.len;
+    char null_terminator = '\0';
+    *array_list_push(&td->string_buffer, char, a) = null_terminator;
 
-      hash_table_put_with_hash(&td->string_lookup, &new_index, h, a);
-      uint32_t* val_slot = (uint32_t*)hash_table_get_with_hash(
-          &td->string_lookup, &new_index, h);
-      *val_slot = new_index;
+    *array_list_push(&td->string_table, string_entry_t, a) = entry;
+    uint32_t new_index = (uint32_t)td->string_table.len;
 
-      result = new_index;
-    }
+    uint32_t* val_slot = (uint32_t*)hash_table_put_with_hash(
+        &td->string_lookup, &new_index, h, a);
+    *val_slot = new_index;
+
+    result = new_index;
   }
   return result;
 }
@@ -316,9 +317,8 @@ void trace_data_add_event(trace_data_t* td, const theme_t* theme,
         (thread_stack_t*)hash_table_get(&matcher->active_b_events, &thread_id);
     if (ts_stack_ptr == nullptr) {
       thread_stack_t ts_stack = {};
-      hash_table_put(&matcher->active_b_events, &thread_id, a);
-      thread_stack_t* val_slot = (thread_stack_t*)hash_table_get(
-          &matcher->active_b_events, &thread_id);
+      thread_stack_t* val_slot = (thread_stack_t*)hash_table_put(
+          &matcher->active_b_events, &thread_id, a);
       *val_slot = ts_stack;
       ts_stack_ptr = val_slot;
     }
