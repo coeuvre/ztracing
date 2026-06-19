@@ -57,17 +57,29 @@ typedef struct string_entry {
   uint32_t hash;
 } string_entry_t;
 
+typedef struct string_lookup_entry {
+  uint32_t index;
+  uint32_t hash;
+} string_lookup_entry_t;
+
+typedef struct string_lookup_table {
+  string_lookup_entry_t* entries;
+  size_t capacity;
+  size_t size;
+  size_t capacity_mask;
+} string_lookup_table_t;
+
 typedef struct trace_data {
 #ifdef __cplusplus
   ArrayList<char> string_buffer;
   ArrayList<string_entry_t> string_table;
-  hash_table_t string_lookup;
+  string_lookup_table_t string_lookup;
   ArrayList<trace_event_persisted_t> events;
   ArrayList<trace_arg_persisted_t> args;
 #else
   array_list_t string_buffer;  // Element type: char
   array_list_t string_table;   // Element type: string_entry_t
-  hash_table_t string_lookup;
+  string_lookup_table_t string_lookup;
   array_list_t events;  // Element type: trace_event_persisted_t
   array_list_t args;    // Element type: trace_arg_persisted_t
 #endif

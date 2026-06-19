@@ -13,47 +13,7 @@ static uint32_t compute_hash(string_t s) {
   return hash;
 }
 
-static uint32_t trace_data_string_hash(const void* key, void* ctx) {
-  uint32_t index = *(const uint32_t*)key;
-  const trace_data_t* td = (const trace_data_t*)ctx;
-  uint32_t hash = 0;
-  if (index == 0) {
-    hash = td->tmp.current_hash;
-  } else {
-    const string_entry_t* table = (const string_entry_t*)td->string_table.ptr;
-    hash = table[index - 1].hash;
-  }
-  return hash;
-}
 
-static bool trace_data_string_eq(const void* a, const void* b, void* ctx) {
-  uint32_t idx_a = *(const uint32_t*)a;
-  uint32_t idx_b = *(const uint32_t*)b;
-  const trace_data_t* td = (const trace_data_t*)ctx;
-
-  string_t sa = {};
-  string_t sb = {};
-
-  if (idx_a == 0) {
-    sa = td->tmp.current_str;
-  } else {
-    const string_entry_t* table = (const string_entry_t*)td->string_table.ptr;
-    const string_entry_t* e = &table[idx_a - 1];
-    sa = string_from_parts((const char*)td->string_buffer.ptr + e->offset,
-                           e->len);
-  }
-
-  if (idx_b == 0) {
-    sb = td->tmp.current_str;
-  } else {
-    const string_entry_t* table = (const string_entry_t*)td->string_table.ptr;
-    const string_entry_t* e = &table[idx_b - 1];
-    sb = string_from_parts((const char*)td->string_buffer.ptr + e->offset,
-                           e->len);
-  }
-
-  return string_eq(sa, sb);
-}
 
 static uint32_t hash_uint64(const void* key, void* ctx) {
   (void)ctx;
@@ -66,10 +26,47 @@ static bool eq_uint64(const void* a, const void* b, void* ctx) {
   return *(const uint64_t*)a == *(const uint64_t*)b;
 }
 
+static void string_lookup_table_resize(string_lookup_table_t* lt,
+                                       size_t new_capacity, allocator_t a) {
+  size_t cap = 16;
+  while (cap < new_capacity) {
+    cap <<= 1;
+  }
+
+  string_lookup_entry_t* new_entries = (string_lookup_entry_t*)allocator_alloc(
+      a, cap * sizeof(string_lookup_entry_t));
+  memset(new_entries, 0, cap * sizeof(string_lookup_entry_t));
+
+  size_t mask = cap - 1;
+
+  if (lt->entries != nullptr) {
+    for (size_t i = 0; i < lt->capacity; i++) {
+      uint32_t index = lt->entries[i].index;
+      if (index != 0) {
+        uint32_t h = lt->entries[i].hash;
+        size_t idx = h & mask;
+        while (new_entries[idx].index != 0) {
+          idx = (idx + 1) & mask;
+        }
+        new_entries[idx].index = index;
+        new_entries[idx].hash = h;
+      }
+    }
+    allocator_free(a, lt->entries, lt->capacity * sizeof(string_lookup_entry_t));
+  }
+
+  lt->entries = new_entries;
+  lt->capacity = cap;
+  lt->capacity_mask = mask;
+}
+
 void trace_data_deinit(trace_data_t* td, allocator_t a) {
   array_list_deinit(&td->string_buffer, a);
   array_list_deinit(&td->string_table, a);
-  hash_table_deinit(&td->string_lookup, a);
+  if (td->string_lookup.entries != nullptr) {
+    allocator_free(a, td->string_lookup.entries,
+                   td->string_lookup.capacity * sizeof(string_lookup_entry_t));
+  }
   array_list_deinit(&td->events, a);
   array_list_deinit(&td->args, a);
 }
@@ -78,7 +75,11 @@ void trace_data_clear(trace_data_t* td, allocator_t a) {
   (void)a;
   array_list_clear(&td->string_buffer);
   array_list_clear(&td->string_table);
-  hash_table_clear(&td->string_lookup);
+  if (td->string_lookup.entries != nullptr) {
+    memset(td->string_lookup.entries, 0,
+           td->string_lookup.capacity * sizeof(string_lookup_entry_t));
+  }
+  td->string_lookup.size = 0;
   array_list_clear(&td->events);
   array_list_clear(&td->args);
 }
@@ -90,44 +91,53 @@ string_ref_t trace_data_push_string(trace_data_t* td, string_t s,
     return result;
   }
 
-  if (td->string_lookup.hash_fn == nullptr) {
-    td->string_lookup = hash_table_init(
-        uint32_t, uint32_t, trace_data_string_hash, trace_data_string_eq, td);
+  string_lookup_table_t* lt = &td->string_lookup;
+  if (lt->capacity == 0) {
+    string_lookup_table_resize(lt, 16, a);
   }
 
-  td->tmp.current_str = s;
   uint32_t h = compute_hash(s);
-  td->tmp.current_hash = h;
 
-  uint32_t sentinel = 0;
-  uint32_t* existing_index =
-      (uint32_t*)hash_table_get_with_hash(&td->string_lookup, &sentinel, h);
-  if (existing_index != nullptr) {
-    result = *existing_index;
-  } else {
-    string_entry_t entry = {};
-    entry.offset = (uint32_t)td->string_buffer.len;
-    entry.len = (uint32_t)s.len;
-    entry.hash = h;
+  size_t idx = h & lt->capacity_mask;
+  const string_entry_t* st_table = (const string_entry_t*)td->string_table.ptr;
+  const char* st_buffer = (const char*)td->string_buffer.ptr;
 
-    array_list_ensure(&td->string_buffer, s.len, char, a);
-    memcpy((char*)td->string_buffer.ptr + td->string_buffer.len, s.ptr,
-           s.len);
-    td->string_buffer.len += s.len;
-
-    char null_terminator = '\0';
-    *array_list_push(&td->string_buffer, char, a) = null_terminator;
-
-    *array_list_push(&td->string_table, string_entry_t, a) = entry;
-    uint32_t new_index = (uint32_t)td->string_table.len;
-
-    uint32_t* val_slot = (uint32_t*)hash_table_put_with_hash(
-        &td->string_lookup, &new_index, h, a);
-    *val_slot = new_index;
-
-    result = new_index;
+  while (lt->entries[idx].index != 0) {
+    string_lookup_entry_t* entry = &lt->entries[idx];
+    if (entry->hash == h) {
+      const string_entry_t* e = &st_table[entry->index - 1];
+      if (s.len == e->len && memcmp(s.ptr, st_buffer + e->offset, s.len) == 0) {
+        return entry->index;
+      }
+    }
+    idx = (idx + 1) & lt->capacity_mask;
   }
-  return result;
+
+  string_entry_t entry = {
+      .offset = (uint32_t)td->string_buffer.len,
+      .len = (uint32_t)s.len,
+      .hash = h,
+  };
+
+  array_list_ensure(&td->string_buffer, s.len, char, a);
+  memcpy((char*)td->string_buffer.ptr + td->string_buffer.len, s.ptr, s.len);
+  td->string_buffer.len += s.len;
+
+  char null_terminator = '\0';
+  *array_list_push(&td->string_buffer, char, a) = null_terminator;
+
+  *array_list_push(&td->string_table, string_entry_t, a) = entry;
+  uint32_t new_index = (uint32_t)td->string_table.len;
+
+  lt->entries[idx].index = new_index;
+  lt->entries[idx].hash = h;
+  lt->size++;
+
+  if (lt->size * 2 > lt->capacity) {
+    string_lookup_table_resize(lt, lt->capacity * 2, a);
+  }
+
+  return new_index;
 }
 
 static uint32_t compute_event_color(const theme_t* theme,

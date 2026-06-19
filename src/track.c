@@ -48,17 +48,23 @@ static uint32_t compute_hash(string_t s) {
 static string_ref_t trace_data_find_string_ref_const(const trace_data_t* td,
                                                      string_t s) {
   string_ref_t result = 0;
-  if (td->string_lookup.hash_fn != nullptr && s.ptr != nullptr) {
-    trace_data_t* mutable_td = (trace_data_t*)td;
-    mutable_td->tmp.current_str = s;
+  const string_lookup_table_t* lt = &td->string_lookup;
+  if (lt->capacity > 0 && s.ptr != nullptr && s.len > 0) {
     uint32_t h = compute_hash(s);
-    mutable_td->tmp.current_hash = h;
+    size_t idx = h & lt->capacity_mask;
+    const string_entry_t* st_table = (const string_entry_t*)td->string_table.ptr;
+    const char* st_buffer = (const char*)td->string_buffer.ptr;
 
-    uint32_t sentinel = 0;
-    const uint32_t* existing_index = (const uint32_t*)hash_table_get_with_hash(
-        &td->string_lookup, &sentinel, h);
-    if (existing_index != nullptr) {
-      result = *existing_index;
+    while (lt->entries[idx].index != 0) {
+      const string_lookup_entry_t* entry = &lt->entries[idx];
+      if (entry->hash == h) {
+        const string_entry_t* e = &st_table[entry->index - 1];
+        if (s.len == e->len && memcmp(s.ptr, st_buffer + e->offset, s.len) == 0) {
+          result = entry->index;
+          break;
+        }
+      }
+      idx = (idx + 1) & lt->capacity_mask;
     }
   }
   return result;
