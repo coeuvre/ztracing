@@ -224,20 +224,20 @@ cc_test(
 
 cc_library(
     name = "trace_viewer",
-    srcs = ["trace_viewer.cc"],
+    srcs = ["trace_viewer.c"],
     hdrs = ["trace_viewer.h"],
     deps = [
         ":allocator",
         ":array_list",
         ":colors",
         ":format",
+        ":imgui_c",
         ":logging",
         ":platform",
         ":trace_data",
         ":trace_parser",
         ":track",
         ":track_renderer",
-        "@imgui",
     ],
 )
 

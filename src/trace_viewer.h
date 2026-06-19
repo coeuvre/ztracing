@@ -59,7 +59,7 @@ struct search_state {
   array_list_t pending_query;
   array_list_t pending_results;
 #endif
-  TraceData* td;
+  trace_data_t* td;
   allocator_t allocator;
   tv_atomic_bool new_query_available;
   tv_atomic_bool jobs_should_abort;
@@ -95,13 +95,13 @@ enum class InteractionDragMode {
 typedef InteractionDragMode ig_interaction_drag_mode_t;
 #else
 typedef enum {
-  IG_INTERACTION_DRAG_MODE_NONE,
-  IG_INTERACTION_DRAG_MODE_RULER_NEW,
-  IG_INTERACTION_DRAG_MODE_RULER_START,
-  IG_INTERACTION_DRAG_MODE_RULER_END,
-  IG_INTERACTION_DRAG_MODE_TRACKS_START,
-  IG_INTERACTION_DRAG_MODE_TRACKS_END,
-  IG_INTERACTION_DRAG_MODE_BOX_SELECT
+  INTERACTION_DRAG_MODE_NONE,
+  INTERACTION_DRAG_MODE_RULER_NEW,
+  INTERACTION_DRAG_MODE_RULER_START,
+  INTERACTION_DRAG_MODE_RULER_END,
+  INTERACTION_DRAG_MODE_TRACKS_START,
+  INTERACTION_DRAG_MODE_TRACKS_END,
+  INTERACTION_DRAG_MODE_BOX_SELECT
 } ig_interaction_drag_mode_t;
 #endif
 
@@ -109,7 +109,7 @@ struct hover_match {
   size_t track_idx;
   size_t block_idx;
   float y1, y2;
-  TrackRenderBlock rb;
+  track_render_block_t rb;
 };
 typedef struct hover_match hover_match_t;
 
@@ -258,7 +258,7 @@ struct trace_viewer {
   selection_overlay_layout_t selection_layout;
   float total_tracks_height;
 
-  TrackRendererState track_renderer_state;
+  track_renderer_state_t track_renderer_state;
 #ifdef __cplusplus
   ArrayList<track_render_block_t> render_blocks;
   ArrayList<counter_render_block_t> counter_render_blocks;
@@ -317,21 +317,21 @@ void trace_viewer_init(trace_viewer_t* tv);
 void trace_viewer_deinit(trace_viewer_t* tv, allocator_t allocator);
 void trace_viewer_reset_view(trace_viewer_t* tv);
 void trace_viewer_precompute_minimap_heatmap(trace_viewer_t* tv,
-                                             const TraceData* td,
+                                             const trace_data_t* td,
                                              allocator_t allocator);
-void trace_viewer_step(trace_viewer_t* tv, TraceData* td,
+void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
                        const trace_viewer_input_t* input,
                        allocator_t allocator);
-void trace_viewer_draw(trace_viewer_t* tv, TraceData* td, allocator_t allocator,
-                       const theme_t* theme);
+void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
+                       allocator_t allocator, const theme_t* theme);
 
 #ifdef __cplusplus
 void trace_viewer_calculate_histogram(const ArrayList<int64_t>& results,
-                                      const TraceData* td,
+                                      const trace_data_t* td,
                                       duration_histogram_t* h);
 #else
 void trace_viewer_calculate_histogram(const array_list_t* results,
-                                      const TraceData* td,
+                                      const trace_data_t* td,
                                       duration_histogram_t* h);
 #endif
 
@@ -340,7 +340,7 @@ void trace_viewer_search_job(void* user_data);
 #ifdef __cplusplus
 }
 
-inline void trace_viewer_step(trace_viewer_t* tv, TraceData* td,
+inline void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
                               const trace_viewer_input_t& input,
                               allocator_t allocator) {
   trace_viewer_step(tv, td, &input, allocator);

@@ -39,12 +39,17 @@ static inline size_t array_list_calculate_new_capacity(size_t current_capacity,
   return new_capacity;
 }
 
-static inline void array_list_reserve(array_list_t* al, size_t new_capacity,
-                                      size_t elem_size, allocator_t a) {
+static inline void array_list_ensure_elem_size(array_list_t* al,
+                                               size_t elem_size) {
   if (al->elem_size == 0) {
     al->elem_size = elem_size;
   }
   assert(al->elem_size == elem_size);
+}
+
+static inline void array_list_reserve(array_list_t* al, size_t new_capacity,
+                                      size_t elem_size, allocator_t a) {
+  array_list_ensure_elem_size(al, elem_size);
   if (new_capacity > al->cap) {
     // Check for overflow in size calculation
     if (new_capacity > (size_t)-1 / al->elem_size) {
@@ -60,10 +65,7 @@ static inline void array_list_reserve(array_list_t* al, size_t new_capacity,
 
 static inline void* array_list_push_(array_list_t* al, size_t elem_size,
                                      allocator_t a) {
-  if (al->elem_size == 0) {
-    al->elem_size = elem_size;
-  }
-  assert(al->elem_size == elem_size);
+  array_list_ensure_elem_size(al, elem_size);
   if (al->len == al->cap) {
     size_t new_capacity =
         array_list_calculate_new_capacity(al->cap, al->len + 1);
@@ -79,10 +81,7 @@ static inline void* array_list_push_(array_list_t* al, size_t elem_size,
 
 static inline void array_list_ensure_(array_list_t* al, size_t count,
                                       size_t elem_size, allocator_t a) {
-  if (al->elem_size == 0) {
-    al->elem_size = elem_size;
-  }
-  assert(al->elem_size == elem_size);
+  array_list_ensure_elem_size(al, elem_size);
   if (al->len + count > al->cap) {
     size_t new_capacity =
         array_list_calculate_new_capacity(al->cap, al->len + count);
@@ -108,10 +107,7 @@ static inline void array_list_clear(array_list_t* al) { al->len = 0; }
 
 static inline void array_list_resize(array_list_t* al, size_t new_size,
                                      size_t elem_size, allocator_t a) {
-  if (al->elem_size == 0) {
-    al->elem_size = elem_size;
-  }
-  assert(al->elem_size == elem_size);
+  array_list_ensure_elem_size(al, elem_size);
   if (new_size > al->cap) {
     array_list_reserve(al, new_size, al->elem_size, a);
   }
@@ -126,10 +122,28 @@ static inline void array_list_deinit(array_list_t* al, allocator_t a) {
   *al = empty;
 }
 
-static inline void* array_list_get(const array_list_t* al, size_t index) {
-  void* result = (char*)al->ptr + index * al->elem_size;
-  return result;
+static inline void* array_list_append_(array_list_t* al, size_t count,
+                                       size_t elem_size, allocator_t a) {
+  size_t old_len = al->len;
+  array_list_resize(al, al->len + count, elem_size, a);
+  return (char*)al->ptr + old_len * elem_size;
 }
+
+#ifndef __cplusplus
+#define array_list_append(al, count, type_t, a) \
+  ((type_t*)array_list_append_((al), (count), sizeof(type_t), (a)))
+#endif
+
+static inline void* array_list_get_(const array_list_t* al, size_t elem_size,
+                                    size_t index) {
+  (void)elem_size;
+  assert(al->elem_size == elem_size);
+  assert(index < al->len);
+  return (void*)((char*)al->ptr + index * al->elem_size);
+}
+
+#define array_list_get(al, type_t, index) \
+  ((type_t*)array_list_get_((al), sizeof(type_t), (index)))
 
 #ifdef __cplusplus
 }

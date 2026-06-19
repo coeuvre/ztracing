@@ -166,7 +166,9 @@ void ig_begin_tooltip(void) { ImGui::BeginTooltip(); }
 
 void ig_end_tooltip(void) { ImGui::EndTooltip(); }
 
-bool ig_is_window_hovered(void) { return ImGui::IsWindowHovered(); }
+bool ig_is_window_hovered(ig_hovered_flags_t flags) {
+  return ImGui::IsWindowHovered(flags);
+}
 
 ig_vec2_t ig_get_window_pos(void) {
   ImVec2 pos = ImGui::GetWindowPos();
@@ -252,6 +254,33 @@ ig_sort_direction_t ig_table_sort_specs_get_sort_direction(
           .SortDirection);
 }
 
+// List Clipper
+ig_list_clipper_t* ig_list_clipper_create(void) {
+  return reinterpret_cast<ig_list_clipper_t*>(new ImGuiListClipper());
+}
+
+void ig_list_clipper_destroy(ig_list_clipper_t* clipper) {
+  delete reinterpret_cast<ImGuiListClipper*>(clipper);
+}
+
+void ig_list_clipper_begin(ig_list_clipper_t* clipper, int items_count,
+                           float items_height) {
+  reinterpret_cast<ImGuiListClipper*>(clipper)->Begin(items_count,
+                                                      items_height);
+}
+
+bool ig_list_clipper_step(ig_list_clipper_t* clipper) {
+  return reinterpret_cast<ImGuiListClipper*>(clipper)->Step();
+}
+
+int ig_list_clipper_get_display_start(const ig_list_clipper_t* clipper) {
+  return reinterpret_cast<const ImGuiListClipper*>(clipper)->DisplayStart;
+}
+
+int ig_list_clipper_get_display_end(const ig_list_clipper_t* clipper) {
+  return reinterpret_cast<const ImGuiListClipper*>(clipper)->DisplayEnd;
+}
+
 // Widgets
 bool ig_button(const char* label, ig_vec2_t size) {
   return ImGui::Button(label, ImVec2(size.x, size.y));
@@ -267,8 +296,8 @@ bool ig_checkbox(const char* label, bool* v) {
   return ImGui::Checkbox(label, v);
 }
 
-bool ig_selectable(const char* label, bool selected, int flags,
-                   ig_vec2_t size) {
+bool ig_selectable(const char* label, bool selected,
+                   ig_selectable_flags_t flags, ig_vec2_t size) {
   return ImGui::Selectable(label, selected, flags, ImVec2(size.x, size.y));
 }
 

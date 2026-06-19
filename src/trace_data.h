@@ -144,6 +144,38 @@ static inline string_t trace_data_get_string(const trace_data_t* td,
 }
 #endif
 
+/**
+ * Performs a binary search (lower bound) over an array of event indices.
+ *
+ * This function searches for the first event index in `event_indices` whose
+ * corresponding trace event has a timestamp greater than or equal to
+ * `target_ts`. The events pointed to by `event_indices` must be sorted in
+ * ascending order of their timestamps (i.e., `events[event_indices[i]].ts <=
+ * events[event_indices[i+1]].ts`).
+ *
+ * @param event_indices An array of indices into the trace data events array.
+ * @param size The number of elements in the `event_indices` array.
+ * @param events The array of persisted trace events.
+ * @param target_ts The target timestamp to search for.
+ * @return The index of the first element in `event_indices` with a timestamp >=
+ * `target_ts`. Returns `size` if all events have timestamps < `target_ts`.
+ */
+static inline size_t trace_data_events_lower_bound(
+    const size_t* event_indices, size_t size,
+    const trace_event_persisted_t* events, int64_t target_ts) {
+  size_t low = 0;
+  size_t high = size;
+  while (low < high) {
+    size_t mid = low + (high - low) / 2;
+    if (events[event_indices[mid]].ts < target_ts) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
 #ifdef __cplusplus
 }
 #endif

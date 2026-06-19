@@ -14,6 +14,7 @@ typedef struct ig_draw_list ig_draw_list_t;
 typedef struct ig_font ig_font_t;
 typedef struct ig_table_sort_specs ig_table_sort_specs_t;
 typedef struct ig_input_text_callback_data ig_input_text_callback_data_t;
+typedef struct ig_list_clipper ig_list_clipper_t;
 
 // Basic structures
 typedef struct ig_vec2 {
@@ -71,6 +72,17 @@ constexpr ig_sort_direction_t IG_SORT_DIRECTION_ASCENDING = 1;
 
 constexpr ig_draw_list_flags_t IG_DRAW_LIST_FLAGS_ANTI_ALIASED_LINES = 1;
 
+typedef int ig_mod_flags_t;
+constexpr ig_mod_flags_t IG_MOD_NONE = 0;
+constexpr ig_mod_flags_t IG_MOD_CTRL = 1 << 12;
+constexpr ig_mod_flags_t IG_MOD_SHIFT = 1 << 13;
+constexpr ig_mod_flags_t IG_MOD_ALT = 1 << 14;
+constexpr ig_mod_flags_t IG_MOD_SUPER = 1 << 15;
+
+typedef int ig_hovered_flags_t;
+constexpr ig_hovered_flags_t IG_HOVERED_FLAGS_NONE = 0;
+constexpr ig_hovered_flags_t IG_HOVERED_FLAGS_CHILD_WINDOWS = 1 << 0;
+
 // Context, IO, Style & Fonts
 ig_draw_list_t* ig_get_window_draw_list(void);
 ig_vec2_t ig_get_cursor_screen_pos(void);
@@ -108,7 +120,7 @@ bool ig_begin_child(const char* str_id, ig_vec2_t size, bool border,
 void ig_end_child(void);
 void ig_begin_tooltip(void);
 void ig_end_tooltip(void);
-bool ig_is_window_hovered(void);
+bool ig_is_window_hovered(ig_hovered_flags_t flags);
 ig_vec2_t ig_get_window_pos(void);
 ig_vec2_t ig_get_window_size(void);
 
@@ -143,12 +155,31 @@ int ig_table_sort_specs_get_column_index(const ig_table_sort_specs_t* specs,
 ig_sort_direction_t ig_table_sort_specs_get_sort_direction(
     const ig_table_sort_specs_t* specs, int index);
 
+// List Clipper
+ig_list_clipper_t* ig_list_clipper_create(void);
+void ig_list_clipper_destroy(ig_list_clipper_t* clipper);
+void ig_list_clipper_begin(ig_list_clipper_t* clipper, int items_count,
+                           float items_height);
+bool ig_list_clipper_step(ig_list_clipper_t* clipper);
+int ig_list_clipper_get_display_start(const ig_list_clipper_t* clipper);
+int ig_list_clipper_get_display_end(const ig_list_clipper_t* clipper);
+
 // Widgets
 bool ig_button(const char* label, ig_vec2_t size);
 bool ig_small_button(const char* label);
 bool ig_invisible_button(const char* str_id, ig_vec2_t size);
 bool ig_checkbox(const char* label, bool* v);
-bool ig_selectable(const char* label, bool selected, int flags, ig_vec2_t size);
+typedef int ig_selectable_flags_t;
+constexpr ig_selectable_flags_t IG_SELECTABLE_FLAGS_NONE = 0;
+constexpr ig_selectable_flags_t IG_SELECTABLE_FLAGS_DONT_CLOSE_POPUPS = 1 << 0;
+constexpr ig_selectable_flags_t IG_SELECTABLE_FLAGS_SPAN_ALL_COLUMNS = 1 << 1;
+constexpr ig_selectable_flags_t IG_SELECTABLE_FLAGS_ALLOW_DOUBLE_CLICKS = 1
+                                                                          << 2;
+constexpr ig_selectable_flags_t IG_SELECTABLE_FLAGS_DISABLED = 1 << 3;
+constexpr ig_selectable_flags_t IG_SELECTABLE_FLAGS_ALLOW_OVERLAP = 1 << 4;
+
+bool ig_selectable(const char* label, bool selected,
+                   ig_selectable_flags_t flags, ig_vec2_t size);
 void ig_progress_bar(float fraction, ig_vec2_t size_arg, const char* overlay);
 
 // InputText with Callback support
@@ -226,6 +257,10 @@ void ig_text_wrapped(const char* fmt, ...)
 // Color helpers
 uint32_t ig_color_convert_float4_to_u32(ig_vec4_t in);
 ig_vec4_t ig_color_convert_u32_to_float4(uint32_t in);
+
+#define IG_COL32(R, G, B, A)                                              \
+  (((uint32_t)(A) << 24) | ((uint32_t)(B) << 16) | ((uint32_t)(G) << 8) | \
+   ((uint32_t)(R) << 0))
 
 #ifdef __cplusplus
 }

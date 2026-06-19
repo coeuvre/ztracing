@@ -23,7 +23,7 @@ TEST(array_list_test, zii) {
   EXPECT_GE(al.cap, 1u);
   EXPECT_EQ(al.elem_size, sizeof(int));
 
-  EXPECT_EQ(*(int*)array_list_get(&al, 0), 42);
+  EXPECT_EQ(*array_list_get(&al, int, 0), 42);
 
   array_list_deinit(&al, a);
 }
