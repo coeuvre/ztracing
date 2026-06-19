@@ -8,5 +8,8 @@ cc_binary(
     deps = [
         "//src:allocator",
         "//src:trace_parser",
+        "//src:trace_data",
+        "//src:track",
+        "//src:colors",
     ],
 )
