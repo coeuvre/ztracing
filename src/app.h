@@ -14,6 +14,10 @@
 #include "src/trace_parser.h"
 #include "src/trace_viewer.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef enum ThemeMode {
   THEME_MODE_AUTO = 0,
   THEME_MODE_DARK = 1,
@@ -101,7 +105,7 @@ void app_deinit(app_t* app);
 void app_update(app_t* app);
 
 // Notifies the application that the system theme has changed.
-void app_on_theme_changed(app_t* app);
+void app_on_theme_changed(app_t* app, bool is_dark);
 
 // Begins a new loading session.
 void app_begin_session(app_t* app, int session_id, const char* filename,
@@ -113,7 +117,15 @@ size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
                              size_t size, size_t input_consumed_bytes,
                              bool is_eof);
 
+// Stops and aborts all active background jobs (loading, search, etc.) on the
+// app.
+void app_stop_jobs(app_t* app);
+
 // Returns the current total size of chunks in the queue.
 size_t app_get_queue_size(app_t* app);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif  // ZTRACING_SRC_APP_H_

@@ -432,12 +432,6 @@ static EM_BOOL on_key(int event_type, const EmscriptenKeyboardEvent* key_event,
   imgui_impl_wasm_request_update();
 
   bool wants = imgui_wants_key(key, key_event);
-  LOG_DEBUG("on_key: event=%s, code=%s, key=%s, ctrl=%d, shift=%d, alt=%d, meta=%d, imgui_key=%d, wants=%d",
-            event_type == EMSCRIPTEN_EVENT_KEYDOWN ? "DOWN" : "UP",
-            key_event->code, key_event->key, key_event->ctrlKey,
-            key_event->shiftKey, key_event->altKey, key_event->metaKey,
-            (int)key, wants);
-
   if (wants) {
     return EM_TRUE;
   }

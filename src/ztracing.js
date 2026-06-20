@@ -200,8 +200,8 @@ Module['ztracing_start'] = async function(options) {
 
   if (window.matchMedia) {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
-    media.addEventListener('change', () => {
-      Module.ccall('ztracing_on_theme_changed', null, [], []);
+    media.addEventListener('change', (e) => {
+      Module.ccall('ztracing_on_theme_changed', null, ['number'], [e.matches ? 1 : 0]);
     });
   }
 

@@ -11,6 +11,7 @@
 #include "src/imgui_impl_wasm.h"
 #include "src/imgui_impl_webgl.h"
 #include "src/logging.h"
+#include "src/platform.h"
 #include "src/ztracing.h"
 
 static array_list_t g_canvas_selector;
@@ -109,7 +110,7 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
     return 2;
   }
 
-  app_on_theme_changed(g_app);
+  app_on_theme_changed(g_app, platform_is_dark_mode());
   imgui_impl_wasm_request_update();
   LOG_DEBUG("ztracing initialized successfully.");
   return 0;
@@ -168,7 +169,23 @@ EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_size() {
   return (int)app_get_queue_size(g_app);
 }
 
-EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed() {
-  app_on_theme_changed(g_app);
+EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed(bool is_dark) {
+  app_on_theme_changed(g_app, is_dark);
   imgui_impl_wasm_request_update();
+}
+
+EMSCRIPTEN_KEEPALIVE void ztracing_update(void) { main_loop(); }
+
+EMSCRIPTEN_KEEPALIVE void ztracing_deinit(void) {
+  // Stub on WASM
+}
+
+EMSCRIPTEN_KEEPALIVE bool ztracing_is_loading_active(void) {
+  return g_app ? atomic_load(&g_app->loading.active) : false;
+}
+
+EMSCRIPTEN_KEEPALIVE size_t ztracing_get_allocated_bytes(void) {
+  return g_app ? counting_allocator_get_allocated_bytes(
+                     &g_app->counting_allocator)
+               : 0;
 }

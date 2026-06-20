@@ -3,7 +3,7 @@
 ## Project Mandates
 
 - **Language**: C-style C++. Avoid complex C++ abstractions.
-- **Standards**: C23 for the production codebase (compiled as pure C without C++ dependencies), C++20 for unit tests and browser platform integration.
+- **Standards**: C23 for the production codebase and headless runner (compiled as pure C without C++ dependencies), C++20 for unit tests and browser platform integration.
 - **Style**: Google C++ Style (modified: snake_case for all functions, SCREAMING_CASE for constants).
 - **Include Guards**: Must follow the pattern `ZTRACING_SRC_<FILE>_H_`.
 - **Warnings**: Strict warnings are enabled for all local code (`-Wall -Wextra -Werror` etc.) via macros in `src/defs.bzl`. Includes `-Wno-missing-field-initializers` (GCC) and `-Wno-missing-designated-field-initializers` (Clang) to support the project's concise ZII style.
@@ -99,9 +99,11 @@
     - **Event Sorting**: Optimized for massive tracks using a cache-friendly temporary `SortKey` array to minimize cache misses during indirect data lookups.
     - **Block Summaries**: Computes `block_max_durs` for each track, storing the maximum event duration for every 1024 events. This enables efficient skipping of invisible events during rendering.
 - `src/format`: Human-readable time formatting (s, ms, us) and tick interval calculation.
-- `src/ztracing_wasm.cc`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
+- `src/ztracing_wasm.c`: WASM-specific entry points, explicit lifecycle control, and platform orchestration.
     - **Performance Attributes**: Configures WebGL context with `alpha: false`, `antialias: false`, `depth: false`, and `premultipliedAlpha: false` to minimize compositor workload.
-- `src/ztracing.h`: Clean C API for the WASM-to-JS bridge.
+- `src/ztracing_headless.c`: Headless runner entry points, managing the ImGui context, inputs, and frame loop in pure C for automated headless testing.
+- `src/headless_gl`: Custom surfaceless EGL/GL context setup in pure C for Linux sandboxed test environments.
+- `src/ztracing.h`: Clean C API for the WASM-to-JS bridge and headless runners.
 - `src/logging`: Simple logging utility with WASM console and native stdout integration.
 - `src/platform`: Platform abstraction layer (e.g., high-resolution timestamps). Provides `platform_submit_job` for background processing. Supports both WASM and native (for tests).
     - **Background Jobs**: Utilizes a persistent worker pool (defined in `src/platform_common.cc`) to serialize background tasks. This avoids frequent thread spawning and addresses thread pool exhaustion in Emscripten.
@@ -249,7 +251,7 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - **Dynamic Switching**: Themes can be toggled via the global menu bar, automatically updating both application-specific colors and ImGui's built-in styles.
     - **Color Updates**: Switching themes triggers a full re-computation of counter track series colors (`track_update_colors`) to maintain visual consistency.
     - **Auto Mode (Default)**: Tracks the system's preferred color scheme.
-    - **Event-Driven Updates**: Uses `matchMedia.addEventListener` in `ztracing.js` to notify the application of system theme changes via the `ztracing_on_theme_changed` WASM export, avoiding unnecessary polling.
+    - **Event-Driven Updates**: Uses `matchMedia.addEventListener` in `ztracing.js` to notify the application of system theme changes via the `ztracing_on_theme_changed(is_dark)` WASM export (passing a boolean theme state), avoiding unnecessary polling and decoupling theme switching from platform-specific queries.
 - **Event Coloring**:
     - **cname Support**: Standard Chrome Trace `cname` values are mapped to specific theme-appropriate colors.
     - **Name Hashing**: Consistent fallback coloring using FNV-1a hash of the event name to select from a balanced palette.

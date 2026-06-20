@@ -1,8 +1,8 @@
 #include "src/imgui_c.h"
 
 #include <stdarg.h>
-#include <new>
 
+#include <new>
 
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"
@@ -81,29 +81,46 @@ static_assert(IG_DRAW_LIST_FLAGS_ANTI_ALIASED_LINES ==
                   ImDrawListFlags_AntiAliasedLines,
               "ImDrawListFlags mismatch");
 
-static_assert(IG_DOCK_NODE_FLAGS_NONE == ImGuiDockNodeFlags_None, "ImGuiDockNodeFlags mismatch");
-static_assert(IG_DOCK_NODE_FLAGS_DOCKSPACE == ImGuiDockNodeFlags_DockSpace, "ImGuiDockNodeFlags mismatch");
-static_assert(IG_DOCK_NODE_FLAGS_NO_TAB_BAR == ImGuiDockNodeFlags_NoTabBar, "ImGuiDockNodeFlags mismatch");
-static_assert(IG_DOCK_NODE_FLAGS_NO_DOCKING_OVER_ME == ImGuiDockNodeFlags_NoDockingOverMe, "ImGuiDockNodeFlags mismatch");
+static_assert(IG_DOCK_NODE_FLAGS_NONE == ImGuiDockNodeFlags_None,
+              "ImGuiDockNodeFlags mismatch");
+static_assert(IG_DOCK_NODE_FLAGS_DOCKSPACE == ImGuiDockNodeFlags_DockSpace,
+              "ImGuiDockNodeFlags mismatch");
+static_assert(IG_DOCK_NODE_FLAGS_NO_TAB_BAR == ImGuiDockNodeFlags_NoTabBar,
+              "ImGuiDockNodeFlags mismatch");
+static_assert(IG_DOCK_NODE_FLAGS_NO_DOCKING_OVER_ME ==
+                  ImGuiDockNodeFlags_NoDockingOverMe,
+              "ImGuiDockNodeFlags mismatch");
 
 static_assert(IG_DIR_RIGHT == ImGuiDir_Right, "ImGuiDir mismatch");
 
 static_assert(IG_COL_POPUP_BG == ImGuiCol_PopupBg, "ImGuiCol mismatch");
 
-static_assert(IG_POPUP_FLAGS_NONE == ImGuiPopupFlags_None, "ImGuiPopupFlags mismatch");
+static_assert(IG_POPUP_FLAGS_NONE == ImGuiPopupFlags_None,
+              "ImGuiPopupFlags mismatch");
 
-static_assert(IG_STYLE_VAR_WINDOW_ROUNDING == ImGuiStyleVar_WindowRounding, "ImGuiStyleVar mismatch");
-static_assert(IG_STYLE_VAR_WINDOW_BORDER_SIZE == ImGuiStyleVar_WindowBorderSize, "ImGuiStyleVar mismatch");
+static_assert(IG_STYLE_VAR_WINDOW_ROUNDING == ImGuiStyleVar_WindowRounding,
+              "ImGuiStyleVar mismatch");
+static_assert(IG_STYLE_VAR_WINDOW_BORDER_SIZE == ImGuiStyleVar_WindowBorderSize,
+              "ImGuiStyleVar mismatch");
 
-static_assert(IG_CONFIG_FLAGS_NAV_ENABLE_KEYBOARD == ImGuiConfigFlags_NavEnableKeyboard, "ImGuiConfigFlags mismatch");
-static_assert(IG_CONFIG_FLAGS_DOCKING_ENABLE == ImGuiConfigFlags_DockingEnable, "ImGuiConfigFlags mismatch");
+static_assert(IG_CONFIG_FLAGS_NAV_ENABLE_KEYBOARD ==
+                  ImGuiConfigFlags_NavEnableKeyboard,
+              "ImGuiConfigFlags mismatch");
+static_assert(IG_CONFIG_FLAGS_DOCKING_ENABLE == ImGuiConfigFlags_DockingEnable,
+              "ImGuiConfigFlags mismatch");
 
 extern "C" {
 
 // Context, IO, Style & Fonts
-void ig_create_context(void) {
-  ImGui::CreateContext();
+void ig_create_context(void) { ImGui::CreateContext(); }
+
+void ig_destroy_context(void) { ImGui::DestroyContext(); }
+
+void ig_io_set_display_size(ig_vec2_t size) {
+  ImGui::GetIO().DisplaySize = ImVec2(size.x, size.y);
 }
+
+void ig_io_set_delta_time(float dt) { ImGui::GetIO().DeltaTime = dt; }
 
 void ig_set_allocator_functions(void* (*alloc_func)(size_t sz, void* user_data),
                                 void (*free_func)(void* ptr, void* user_data),
@@ -111,9 +128,7 @@ void ig_set_allocator_functions(void* (*alloc_func)(size_t sz, void* user_data),
   ImGui::SetAllocatorFunctions(alloc_func, free_func, user_data);
 }
 
-void ig_io_add_config_flags(int flags) {
-  ImGui::GetIO().ConfigFlags |= flags;
-}
+void ig_io_add_config_flags(int flags) { ImGui::GetIO().ConfigFlags |= flags; }
 
 ig_vec2_t ig_get_io_display_size(void) {
   ImVec2 size = ImGui::GetIO().DisplaySize;
@@ -136,13 +151,9 @@ void ig_set_font_data(const void* font_data, int font_size, float dpi_scale) {
   io.FontGlobalScale = 1.0f / dpi_scale;
 }
 
-void ig_new_frame(void) {
-  ImGui::NewFrame();
-}
+void ig_new_frame(void) { ImGui::NewFrame(); }
 
-void ig_render(void) {
-  ImGui::Render();
-}
+void ig_render(void) { ImGui::Render(); }
 
 ig_draw_data_t* ig_get_draw_data(void) {
   return reinterpret_cast<ig_draw_data_t*>(ImGui::GetDrawData());
@@ -218,17 +229,11 @@ ig_vec2_t ig_get_io_mouse_pos(void) {
   return {pos.x, pos.y};
 }
 
-bool ig_get_io_key_shift(void) {
-  return ImGui::GetIO().KeyShift;
-}
+bool ig_get_io_key_shift(void) { return ImGui::GetIO().KeyShift; }
 
-bool ig_get_io_key_ctrl(void) {
-  return ImGui::GetIO().KeyCtrl;
-}
+bool ig_get_io_key_ctrl(void) { return ImGui::GetIO().KeyCtrl; }
 
-bool ig_get_io_want_text_input(void) {
-  return ImGui::GetIO().WantTextInput;
-}
+bool ig_get_io_want_text_input(void) { return ImGui::GetIO().WantTextInput; }
 
 // Style getters
 ig_vec2_t ig_get_style_window_padding(void) {
@@ -363,7 +368,6 @@ void ig_list_clipper_destroy(ig_list_clipper_t* clipper) {
     ImGui::MemFree(c);
   }
 }
-
 
 void ig_list_clipper_begin(ig_list_clipper_t* clipper, int items_count,
                            float items_height) {
@@ -628,59 +632,51 @@ ig_vec4_t ig_color_convert_u32_to_float4(uint32_t in) {
   return {val.x, val.y, val.z, val.w};
 }
 
-void ig_show_metrics_window(bool* p_open) {
-  ImGui::ShowMetricsWindow(p_open);
-}
+void ig_show_metrics_window(bool* p_open) { ImGui::ShowMetricsWindow(p_open); }
 
-void ig_show_about_window(bool* p_open) {
-  ImGui::ShowAboutWindow(p_open);
-}
+void ig_show_about_window(bool* p_open) { ImGui::ShowAboutWindow(p_open); }
 
 // Popups
 void ig_open_popup(const char* str_id, ig_popup_flags_t flags) {
   ImGui::OpenPopup(str_id, flags);
 }
 
-bool ig_begin_popup_modal(const char* name, bool* p_open, ig_window_flags_t flags) {
+bool ig_begin_popup_modal(const char* name, bool* p_open,
+                          ig_window_flags_t flags) {
   return ImGui::BeginPopupModal(name, p_open, flags);
 }
 
-void ig_end_popup(void) {
-  ImGui::EndPopup();
-}
+void ig_end_popup(void) { ImGui::EndPopup(); }
 
-void ig_close_current_popup(void) {
-  ImGui::CloseCurrentPopup();
-}
+void ig_close_current_popup(void) { ImGui::CloseCurrentPopup(); }
 
 // Menu Bar
-bool ig_begin_main_menu_bar(void) {
-  return ImGui::BeginMainMenuBar();
-}
+bool ig_begin_main_menu_bar(void) { return ImGui::BeginMainMenuBar(); }
 
-void ig_end_main_menu_bar(void) {
-  ImGui::EndMainMenuBar();
-}
+void ig_end_main_menu_bar(void) { ImGui::EndMainMenuBar(); }
 
 bool ig_begin_menu(const char* label, bool enabled) {
   return ImGui::BeginMenu(label, enabled);
 }
 
-void ig_end_menu(void) {
-  ImGui::EndMenu();
-}
+void ig_end_menu(void) { ImGui::EndMenu(); }
 
-bool ig_menu_item(const char* label, const char* shortcut, bool selected, bool enabled) {
+bool ig_menu_item(const char* label, const char* shortcut, bool selected,
+                  bool enabled) {
   return ImGui::MenuItem(label, shortcut, selected, enabled);
 }
 
-bool ig_menu_item_ptr(const char* label, const char* shortcut, bool* p_selected, bool enabled) {
+bool ig_menu_item_ptr(const char* label, const char* shortcut, bool* p_selected,
+                      bool enabled) {
   return ImGui::MenuItem(label, shortcut, p_selected, enabled);
 }
 
 // Docking & Viewport
-uint32_t ig_dock_space_over_viewport(uint32_t unused_id, const ig_viewport_t* viewport, ig_dock_node_flags_t flags) {
-  return ImGui::DockSpaceOverViewport(unused_id, reinterpret_cast<const ImGuiViewport*>(viewport), flags);
+uint32_t ig_dock_space_over_viewport(uint32_t unused_id,
+                                     const ig_viewport_t* viewport,
+                                     ig_dock_node_flags_t flags) {
+  return ImGui::DockSpaceOverViewport(
+      unused_id, reinterpret_cast<const ImGuiViewport*>(viewport), flags);
 }
 
 const ig_viewport_t* ig_get_main_viewport(void) {
@@ -711,8 +707,13 @@ void ig_dock_builder_set_node_size(uint32_t node_id, ig_vec2_t size) {
   ImGui::DockBuilderSetNodeSize(node_id, ImVec2(size.x, size.y));
 }
 
-uint32_t ig_dock_builder_split_node(uint32_t node_id, ig_dir_t split_dir, float size_ratio_for_child_at_op_dir, uint32_t* out_id_at_dir, uint32_t* out_id_at_op_dir) {
-  return ImGui::DockBuilderSplitNode(node_id, static_cast<ImGuiDir>(split_dir), size_ratio_for_child_at_op_dir, out_id_at_dir, out_id_at_op_dir);
+uint32_t ig_dock_builder_split_node(uint32_t node_id, ig_dir_t split_dir,
+                                    float size_ratio_for_child_at_op_dir,
+                                    uint32_t* out_id_at_dir,
+                                    uint32_t* out_id_at_op_dir) {
+  return ImGui::DockBuilderSplitNode(node_id, static_cast<ImGuiDir>(split_dir),
+                                     size_ratio_for_child_at_op_dir,
+                                     out_id_at_dir, out_id_at_op_dir);
 }
 
 void ig_dock_builder_dock_window(const char* window_name, uint32_t node_id) {
@@ -727,40 +728,31 @@ ig_dock_node_t* ig_dock_builder_get_node(uint32_t node_id) {
   return reinterpret_cast<ig_dock_node_t*>(ImGui::DockBuilderGetNode(node_id));
 }
 
-void ig_dock_node_add_local_flags(ig_dock_node_t* node, ig_dock_node_flags_t flags) {
+void ig_dock_node_add_local_flags(ig_dock_node_t* node,
+                                  ig_dock_node_flags_t flags) {
   if (node) {
     reinterpret_cast<ImGuiDockNode*>(node)->LocalFlags |= flags;
   }
 }
 
 // Groups
-void ig_begin_group(void) {
-  ImGui::BeginGroup();
-}
+void ig_begin_group(void) { ImGui::BeginGroup(); }
 
-void ig_end_group(void) {
-  ImGui::EndGroup();
-}
+void ig_end_group(void) { ImGui::EndGroup(); }
 
 // Style push/pop
 void ig_push_style_color(ig_col_t idx, ig_vec4_t col) {
   ImGui::PushStyleColor(idx, ImVec4(col.x, col.y, col.z, col.w));
 }
 
-void ig_pop_style_color(int count) {
-  ImGui::PopStyleColor(count);
-}
+void ig_pop_style_color(int count) { ImGui::PopStyleColor(count); }
 
 void ig_push_style_var_float(ig_style_var_t idx, float val) {
   ImGui::PushStyleVar(idx, val);
 }
 
-void ig_style_colors_dark(void) {
-  ImGui::StyleColorsDark();
-}
+void ig_style_colors_dark(void) { ImGui::StyleColorsDark(); }
 
-void ig_style_colors_light(void) {
-  ImGui::StyleColorsLight();
-}
+void ig_style_colors_light(void) { ImGui::StyleColorsLight(); }
 
 }  // extern "C"

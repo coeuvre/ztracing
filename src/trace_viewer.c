@@ -208,7 +208,6 @@ void trace_viewer_deinit(trace_viewer_t* tv, allocator_t allocator) {
   pthread_cond_destroy(&tv->search.quit_cv);
 }
 
-
 static void trace_viewer_draw_time_ruler(trace_viewer_t* tv,
                                          ig_draw_list_t* draw_list,
                                          ig_vec2_t pos, ig_vec2_t size,
@@ -699,13 +698,8 @@ static void trace_viewer_draw_tooltip(trace_viewer_t* tv, trace_data_t* td,
     ig_push_style_var(IG_STYLE_VAR_WINDOW_PADDING, (ig_vec2_t){10.0f, 10.0f});
     ig_begin_tooltip();
 
-    if (t->type == TRACK_TYPE_COUNTER) {
-      trace_viewer_draw_event_properties(td, e, (double)tv->viewport.min_ts,
-                                         false, t, allocator);
-    } else {
-      trace_viewer_draw_event_properties(td, e, (double)tv->viewport.min_ts,
-                                         false, t, allocator);
-    }
+    trace_viewer_draw_event_properties(td, e, (double)tv->viewport.min_ts,
+                                       false, t, allocator);
     ig_end_tooltip();
     ig_pop_style_var(1);
   } else if (rb->count > 1) {
@@ -938,11 +932,6 @@ static void trace_viewer_box_select_update(trace_viewer_t* tv, trace_data_t* td,
     qsort(tv->selected_event_indices.ptr, tv->selected_event_indices.len,
           sizeof(int64_t), trace_viewer_int64_compare);
   }
-
-  LOG_INFO(
-      "SYNC BOX SELECT COMPLETED! track size = %zu, found %zu selected event "
-      "indices",
-      tv->tracks.len, tv->selected_event_indices.len);
 
   tv->has_selected_histogram_bucket = false;
 
@@ -1230,24 +1219,6 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
       }
     }
 
-    if (tv->selection_drag_mode == INTERACTION_DRAG_MODE_TRACKS_START ||
-        tv->selection_drag_mode == INTERACTION_DRAG_MODE_TRACKS_END) {
-      if (!input->is_mouse_down) {
-        tv->selection_drag_mode = INTERACTION_DRAG_MODE_NONE;
-      }
-    }
-
-    if (tv->selection_drag_mode == INTERACTION_DRAG_MODE_BOX_SELECT) {
-      tv->box_select_end = (ig_vec2_t){input->mouse_x, input->mouse_y};
-      if (!input->is_mouse_down) {
-        trace_viewer_box_select_update(tv, td, allocator);
-        tv->selection_drag_mode = INTERACTION_DRAG_MODE_NONE;
-        if (tv->selected_event_indices.len > 0) {
-          tv->show_details_panel = true;
-        }
-      }
-    }
-
     // Zooming
     if (input->mouse_wheel != 0.0f && input->is_ctrl_down) {
       double mouse_x_rel = (double)(input->mouse_x - tracks_origin_x) /
@@ -1307,6 +1278,26 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
           tv->viewport.start_time = t2 - current_duration;
       }
       tv->viewport.end_time = tv->viewport.start_time + current_duration;
+    }
+  }
+
+  // Update and complete drag interactions (even if mouse goes outside tracks
+  // area!)
+  if (tv->selection_drag_mode == INTERACTION_DRAG_MODE_TRACKS_START ||
+      tv->selection_drag_mode == INTERACTION_DRAG_MODE_TRACKS_END) {
+    if (!input->is_mouse_down) {
+      tv->selection_drag_mode = INTERACTION_DRAG_MODE_NONE;
+    }
+  }
+
+  if (tv->selection_drag_mode == INTERACTION_DRAG_MODE_BOX_SELECT) {
+    tv->box_select_end = (ig_vec2_t){input->mouse_x, input->mouse_y};
+    if (!input->is_mouse_down) {
+      trace_viewer_box_select_update(tv, td, allocator);
+      tv->selection_drag_mode = INTERACTION_DRAG_MODE_NONE;
+      if (tv->selected_event_indices.len > 0) {
+        tv->show_details_panel = true;
+      }
     }
   }
 
@@ -1452,6 +1443,7 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
             *array_list_push(&tv->hover_matches, hover_match_t, allocator) = hm;
           }
         }
+
       } else {
         // Counter hit-testing
         track_compute_counter_render_blocks(
@@ -1607,11 +1599,6 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
 
   if (atomic_exchange(&tv->search.results_ready, false)) {
     pthread_mutex_lock(&tv->search.mutex);
-    LOG_INFO(
-        "MAIN THREAD RESULTS READY EXCHANGED! pending_results size = %zu, "
-        "histogram buckets = %d",
-        tv->search.pending_results.len,
-        tv->search.pending_histogram.num_buckets);
     array_list_clear(&tv->selected_event_indices);
     if (tv->search.pending_results.len > 0) {
       int64_t* dest_selections =
@@ -2813,9 +2800,7 @@ void trace_viewer_search_job(void* user_data) {
     return;
   }
 
-
   atomic_store(&s->is_searching, true);
-
 
   array_list_t query = {};
   bool do_search = false;
@@ -2919,10 +2904,6 @@ void trace_viewer_search_job(void* user_data) {
           trace_viewer_calculate_histogram(&results, td, &hist);
 
           pthread_mutex_lock(&s->mutex);
-          LOG_INFO(
-              "BACKGROUND SEARCH JOB COMPLETED! results size = %zu, histogram "
-              "buckets = %d",
-              results.len, hist.num_buckets);
           array_list_clear(&s->pending_results);
           if (results.len > 0) {
             int64_t* dest_results = array_list_append(
@@ -2988,9 +2969,7 @@ void trace_viewer_search_job(void* user_data) {
     pthread_cond_broadcast(&s->quit_cv);
     pthread_mutex_unlock(&s->quit_mutex);
   }
-
 }
-
 
 struct InputTextCallback_UserData {
   array_list_t* al;
@@ -3041,10 +3020,12 @@ static void trace_viewer_draw_search_section(trace_viewer_t* tv,
   bool include_threads = !tv->exclude_thread_events;
   bool include_counters = !tv->exclude_counter_events;
   bool local_filter_changed = false;
+
   if (ig_checkbox("Threads", &include_threads)) {
     tv->exclude_thread_events = !include_threads;
     local_filter_changed = true;
   }
+
   ig_same_line(0.0f, -1.0f);
   if (ig_checkbox("Counters", &include_counters)) {
     tv->exclude_counter_events = !include_counters;

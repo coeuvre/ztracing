@@ -120,6 +120,9 @@ constexpr ig_config_flags_t IG_CONFIG_FLAGS_DOCKING_ENABLE = 128;
 
 // Context, IO, Style & Fonts
 void ig_create_context(void);
+void ig_destroy_context(void);
+void ig_io_set_display_size(ig_vec2_t size);
+void ig_io_set_delta_time(float dt);
 void ig_set_allocator_functions(void* (*alloc_func)(size_t sz, void* user_data),
                                 void (*free_func)(void* ptr, void* user_data),
                                 void* user_data);
@@ -181,7 +184,8 @@ void ig_show_about_window(bool* p_open);
 
 // Popups
 void ig_open_popup(const char* str_id, ig_popup_flags_t flags);
-bool ig_begin_popup_modal(const char* name, bool* p_open, ig_window_flags_t flags);
+bool ig_begin_popup_modal(const char* name, bool* p_open,
+                          ig_window_flags_t flags);
 void ig_end_popup(void);
 void ig_close_current_popup(void);
 
@@ -190,22 +194,30 @@ bool ig_begin_main_menu_bar(void);
 void ig_end_main_menu_bar(void);
 bool ig_begin_menu(const char* label, bool enabled);
 void ig_end_menu(void);
-bool ig_menu_item(const char* label, const char* shortcut, bool selected, bool enabled);
-bool ig_menu_item_ptr(const char* label, const char* shortcut, bool* p_selected, bool enabled);
+bool ig_menu_item(const char* label, const char* shortcut, bool selected,
+                  bool enabled);
+bool ig_menu_item_ptr(const char* label, const char* shortcut, bool* p_selected,
+                      bool enabled);
 
 // Docking & Viewport
-uint32_t ig_dock_space_over_viewport(uint32_t unused_id, const ig_viewport_t* viewport, ig_dock_node_flags_t flags);
+uint32_t ig_dock_space_over_viewport(uint32_t unused_id,
+                                     const ig_viewport_t* viewport,
+                                     ig_dock_node_flags_t flags);
 const ig_viewport_t* ig_get_main_viewport(void);
 ig_vec2_t ig_viewport_get_size(const ig_viewport_t* viewport);
 ig_vec2_t ig_viewport_get_center(const ig_viewport_t* viewport);
 void ig_dock_builder_remove_node(uint32_t node_id);
 void ig_dock_builder_add_node(uint32_t node_id, ig_dock_node_flags_t flags);
 void ig_dock_builder_set_node_size(uint32_t node_id, ig_vec2_t size);
-uint32_t ig_dock_builder_split_node(uint32_t node_id, ig_dir_t split_dir, float size_ratio_for_child_at_op_dir, uint32_t* out_id_at_dir, uint32_t* out_id_at_op_dir);
+uint32_t ig_dock_builder_split_node(uint32_t node_id, ig_dir_t split_dir,
+                                    float size_ratio_for_child_at_op_dir,
+                                    uint32_t* out_id_at_dir,
+                                    uint32_t* out_id_at_op_dir);
 void ig_dock_builder_dock_window(const char* window_name, uint32_t node_id);
 void ig_dock_builder_finish(uint32_t node_id);
 ig_dock_node_t* ig_dock_builder_get_node(uint32_t node_id);
-void ig_dock_node_add_local_flags(ig_dock_node_t* node, ig_dock_node_flags_t flags);
+void ig_dock_node_add_local_flags(ig_dock_node_t* node,
+                                  ig_dock_node_flags_t flags);
 
 // Groups
 void ig_begin_group(void);

@@ -194,7 +194,7 @@ static void app_apply_theme(app_t* app, const theme_t* theme) {
   track_update_colors(&app->trace_viewer.tracks, &app->trace_data, app->theme);
 }
 
-static void app_stop_jobs(app_t* app) {
+void app_stop_jobs(app_t* app) {
   atomic_store(&app->loading.jobs_should_abort, true);
   pthread_mutex_lock(&app->loading.chunk_queue.mutex);
   pthread_cond_broadcast(&app->loading.chunk_queue.cv);
@@ -238,7 +238,6 @@ void app_deinit(app_t* app) {
   pthread_mutex_destroy(&app->loading.quit_mutex);
   pthread_cond_destroy(&app->loading.quit_cv);
 
-
   pthread_mutex_lock(&app->loading.chunk_queue.mutex);
   trace_chunk_node_t* curr = app->loading.chunk_queue.head;
   while (curr) {
@@ -270,7 +269,7 @@ void app_update(app_t* app) {
         if (ig_menu_item("Auto", nullptr, app->theme_mode == THEME_MODE_AUTO,
                          true)) {
           app->theme_mode = THEME_MODE_AUTO;
-          app_on_theme_changed(app);
+          app_on_theme_changed(app, platform_is_dark_mode());
         }
         if (ig_menu_item("Dark", nullptr, app->theme_mode == THEME_MODE_DARK,
                          true)) {
@@ -459,10 +458,9 @@ void app_update(app_t* app) {
   ig_pop_style_var(3);
 }
 
-void app_on_theme_changed(app_t* app) {
+void app_on_theme_changed(app_t* app, bool is_dark) {
   if (app->theme_mode == THEME_MODE_AUTO) {
-    app_apply_theme(
-        app, platform_is_dark_mode() ? theme_get_dark() : theme_get_light());
+    app_apply_theme(app, is_dark ? theme_get_dark() : theme_get_light());
   }
 }
 

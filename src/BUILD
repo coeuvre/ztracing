@@ -8,10 +8,23 @@ config_setting(
     constraint_values = ["@@platforms//os:emscripten"],
 )
 
+config_setting(
+    name = "headless_build",
+    values = {"define": "headless=true"},
+)
+
+config_setting(
+    name = "wasm_and_headless_build",
+    constraint_values = ["@@platforms//os:emscripten"],
+    values = {"define": "headless=true"},
+)
+
 cc_library(
     name = "platform",
     srcs = ["platform_common.c"] + select({
         ":wasm_build": ["platform_wasm.c"],
+        ":wasm_and_headless_build": ["platform_wasm.c"],
+        ":headless_build": ["platform_headless.c"],
         "//conditions:default": ["platform_native.c"],
     }),
     hdrs = ["platform.h"],
@@ -24,6 +37,16 @@ cc_library(
         "//conditions:default": ["logging_native.c"],
     }),
     hdrs = ["logging.h"],
+)
+
+cc_library(
+    name = "headless_gl",
+    srcs = ["headless_gl_linux.c"],
+    hdrs = ["headless_gl.h"],
+    linkopts = ["-lEGL", "-lGLESv2"],
+    deps = [
+        ":logging",
+    ],
 )
 
 cc_library(
@@ -125,7 +148,6 @@ cc_library(
     name = "imgui_impl_webgl",
     srcs = ["imgui_impl_webgl.cc"],
     hdrs = ["imgui_impl_webgl.h"],
-    tags = ["wasm"],
     deps = [
         ":allocator",
         ":array_list",
@@ -337,6 +359,36 @@ wasm_cc_binary(
     name = "ztracing_wasm",
     cc_target = ":ztracing",
     tags = ["wasm"],
+)
+
+cc_library(
+    name = "ztracing_headless",
+    srcs = [
+        "ztracing_headless.c",
+    ],
+    hdrs = [
+        "ztracing.h",
+    ],
+    deps = [
+        ":app",
+        ":headless_gl",
+        ":imgui_c",
+        ":imgui_impl_webgl",
+        ":logging",
+        ":platform",
+        "@imgui",
+    ],
+)
+
+cc_test(
+    name = "ztracing_test",
+    srcs = ["ztracing_test.cc"],
+    data = glob(["testdata/*.bmp"]),
+    deps = [
+        ":ztracing_headless",
+        "@googletest//:gtest_main",
+        "@imgui",
+    ],
 )
 
 exports_files([
