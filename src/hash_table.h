@@ -29,6 +29,11 @@ typedef struct hash_table {
   void* ctx;
 } hash_table_t;
 
+#define HASH_TABLE_ASSERT_INITIALIZED(ht)                                 \
+  assert((ht)->key_size > 0 && (ht)->entry_size > 0 &&                    \
+         (ht)->hash_fn != nullptr && (ht)->eq_fn != nullptr &&            \
+         "HashTable must be initialized before use!")
+
 static inline void hash_table_calculate_layout(hash_table_t* ht) {
   size_t offset = ht->key_size;
 
@@ -110,8 +115,7 @@ static inline void hash_table_resize(hash_table_t* ht, size_t new_capacity,
 
 static inline void* hash_table_put_with_hash(hash_table_t* ht, const void* key,
                                              uint32_t h, allocator_t a) {
-  assert(ht->key_size > 0 && ht->entry_size > 0 && ht->hash_fn != nullptr &&
-         ht->eq_fn != nullptr && "HashTable must be initialized before use!");
+  HASH_TABLE_ASSERT_INITIALIZED(ht);
   if (ht->capacity == 0 || ht->size * 2 > ht->capacity) {
     size_t new_capacity = ht->capacity == 0 ? 16 : ht->capacity * 2;
     hash_table_resize(ht, new_capacity, a);
@@ -144,6 +148,7 @@ static inline void* hash_table_put_with_hash(hash_table_t* ht, const void* key,
 
 static inline void* hash_table_put(hash_table_t* ht, const void* key,
                                    allocator_t a) {
+  HASH_TABLE_ASSERT_INITIALIZED(ht);
   uint32_t h = ht->hash_fn(key, ht->ctx);
   void* result = hash_table_put_with_hash(ht, key, h, a);
   return result;
@@ -151,8 +156,7 @@ static inline void* hash_table_put(hash_table_t* ht, const void* key,
 
 static inline void* hash_table_get_with_hash(const hash_table_t* ht,
                                              const void* key, uint32_t h) {
-  assert(ht->key_size > 0 && ht->entry_size > 0 && ht->hash_fn != nullptr &&
-         ht->eq_fn != nullptr && "HashTable must be initialized before use!");
+  HASH_TABLE_ASSERT_INITIALIZED(ht);
   void* result_value = nullptr;
   if (ht->capacity > 0) {
     size_t idx = h & ht->capacity_mask;
@@ -172,6 +176,7 @@ static inline void* hash_table_get_with_hash(const hash_table_t* ht,
 }
 
 static inline void* hash_table_get(const hash_table_t* ht, const void* key) {
+  HASH_TABLE_ASSERT_INITIALIZED(ht);
   void* result = nullptr;
   if (ht->capacity > 0) {
     uint32_t h = ht->hash_fn(key, ht->ctx);
@@ -189,8 +194,7 @@ static inline void hash_table_clear(hash_table_t* ht) {
 
 static inline void hash_table_resize(hash_table_t* ht, size_t new_capacity,
                                      allocator_t a) {
-  assert(ht->key_size > 0 && ht->entry_size > 0 && ht->hash_fn != nullptr &&
-         ht->eq_fn != nullptr && "HashTable must be initialized before use!");
+  HASH_TABLE_ASSERT_INITIALIZED(ht);
   if (new_capacity < 4) {
     new_capacity = 4;
   }
