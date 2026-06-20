@@ -17,6 +17,15 @@ jobs:
       - name: Setup Bazel
         uses: bazelbuild/setup-bazelisk@v3
 
+      - name: Install GCC 14 and GL Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-14 g++-14 libegl-dev libgles-dev
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 --slave /usr/bin/g++ g++ /usr/bin/g++-14
+
       - name: Run Tests
+        env:
+          CC: gcc-14
+          CXX: g++-14
         run: |
           bazel test //...
