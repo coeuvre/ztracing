@@ -99,7 +99,8 @@ static void trace_load_run(void* arg) {
     trace_data_release(td, allocator);
 
     // Notify App UI thread that loading was aborted
-    app_send_load_aborted(task->app_channel);
+    app_send_load_aborted(task->app_channel, task->trace_load_channel,
+                          allocator);
   } else {
     double size_mb =
         (double)(total_discarded_bytes + parser.pos) / (1024.0 * 1024.0);
@@ -132,7 +133,7 @@ static void trace_load_run(void* arg) {
     // If the send fails, app_send_load_complete AUTOMATICALLY cleans up td and
     // tracks!
     app_send_load_complete(task->app_channel, td, tracks, min_ts, max_ts,
-                           allocator);
+                           task->trace_load_channel, allocator);
   }
 
   // Clean up parser and matcher local allocations

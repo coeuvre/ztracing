@@ -170,7 +170,7 @@ void ztracing_on_theme_changed(bool is_dark) {
 }
 
 bool ztracing_is_loading_active(void) {
-  return g_app ? atomic_load(&g_app->loading.active) : false;
+  return g_app ? g_app->loading.active : false;
 }
 
 size_t ztracing_get_allocated_bytes(void) {

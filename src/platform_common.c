@@ -95,6 +95,8 @@ void platform_submit_job(platform_job_fn_t fn, void* user_data) {
 void platform_teardown_workers() {
   pthread_mutex_lock(&g_job_mutex);
   if (g_worker_started) {
+    g_worker_started = false;  // Mark as stopped immediately under lock to
+                               // prevent concurrent double-join UB!
     g_worker_should_exit = true;
     g_job_queue.head = 0;
     g_job_queue.tail = 0;
@@ -107,7 +109,6 @@ void platform_teardown_workers() {
     }
 
     pthread_mutex_lock(&g_job_mutex);
-    g_worker_started = false;
     g_worker_should_exit = false;
   }
   pthread_mutex_unlock(&g_job_mutex);

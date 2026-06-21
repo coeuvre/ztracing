@@ -48,7 +48,8 @@ TEST(trace_load_task_test, safe_send_helper_load_complete_cleanup_on_failure) {
     // App channel
     channel_t* chan = channel_create(app_msg_t, 5, a);
 
-    // Create trace data shell on the heap using the lifecycle API (ref_count = 1)
+    // Create trace data shell on the heap using the lifecycle API (ref_count =
+    // 1)
     trace_data_t* td = trace_data_create(a);
 
     array_list_t tracks = {};  // Empty list requires no heap allocation, but
@@ -58,7 +59,7 @@ TEST(trace_load_task_test, safe_send_helper_load_complete_cleanup_on_failure) {
     channel_close_and_drain(chan, app_msg_t, app_msg_deinit, a);
 
     // Send should fail and AUTOMATICALLY deinit and free both td and tracks!
-    EXPECT_FALSE(app_send_load_complete(chan, td, tracks, 0, 0, a));
+    EXPECT_FALSE(app_send_load_complete(chan, td, tracks, 0, 0, nullptr, a));
 
     channel_destroy(chan, a);
   }

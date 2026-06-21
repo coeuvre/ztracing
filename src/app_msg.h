@@ -33,7 +33,13 @@ typedef struct {
   array_list_t tracks;  // Organized tracks (value instance, heap array list)
   int64_t min_ts;
   int64_t max_ts;
+  channel_t* task_channel;  // Mailbox channel of the loader task
 } app_msg_load_result_t;
+
+// Ingestion aborted payload (Value-semantic)
+typedef struct {
+  channel_t* task_channel;  // Mailbox channel of the loader task
+} app_msg_load_aborted_t;
 
 // === 2. Search Task Payloads ===
 
@@ -48,8 +54,8 @@ typedef struct {
 
 // Search aborted payload (Value-semantic)
 typedef struct {
-  trace_data_t* trace_data;         // The trace data used by the search
-  channel_t* task_channel;  // Mailbox channel of the aborted task
+  trace_data_t* trace_data;  // The trace data used by the search
+  channel_t* task_channel;   // Mailbox channel of the aborted task
 } app_msg_search_aborted_t;
 
 // === 3. Message Types (Received by the App UI Thread) ===
@@ -70,6 +76,7 @@ typedef struct {
   union {
     app_msg_load_progress_t load_progress;
     app_msg_load_result_t load_result;
+    app_msg_load_aborted_t load_aborted;
     app_msg_search_result_t search_result;
     app_msg_search_aborted_t search_aborted;
   } as;
@@ -88,10 +95,11 @@ bool app_send_load_progress(channel_t* app_channel, size_t event_count,
 // heap memory if the send fails.
 bool app_send_load_complete(channel_t* app_channel, trace_data_t* trace_data,
                             array_list_t tracks, int64_t min_ts, int64_t max_ts,
-                            allocator_t allocator);
+                            channel_t* task_channel, allocator_t allocator);
 
 // Sends load aborted signal.
-bool app_send_load_aborted(channel_t* app_channel);
+bool app_send_load_aborted(channel_t* app_channel, channel_t* task_channel,
+                           allocator_t allocator);
 
 // Sends search completion, transferring ownership. AUTOMATICALLY cleans up
 // results and histogram if the send fails.

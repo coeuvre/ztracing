@@ -195,6 +195,7 @@ cc_test(
     deps = [
         ":app_msg",
         ":channel",
+        ":trace_load_task",
         ":trace_search_task",
         ":trace_viewer",
         "@googletest//:gtest_main",
@@ -207,6 +208,7 @@ cc_test(
     deps = [
         ":app_msg",
         ":channel",
+        ":trace_load_task",
         "@googletest//:gtest_main",
     ],
 )

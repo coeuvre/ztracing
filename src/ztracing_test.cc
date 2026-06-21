@@ -1144,28 +1144,33 @@ TEST_F(ztracing_test, regression_rapid_session_restart_with_active_search) {
   ASSERT_NE(app->trace_search_channel, nullptr);
 
   // 3. IMMEDIATELY start a new session (loading a different trace)
-  // This will close the old search channel, triggering the search task to abort.
-  // It will also release the main thread's reference to the old trace data.
+  // This will close the old search channel, triggering the search task to
+  // abort. It will also release the main thread's reference to the old trace
+  // data.
   const char* MOCK_NEW_TRACE =
       "["
-      "{\"name\":\"process_name\",\"ph\":\"M\",\"pid\":2,\"args\":{\"name\":\"NewProcess\"}},"
-      "{\"name\":\"EventNew\",\"cat\":\"ui\",\"ph\":\"X\",\"pid\":2,\"tid\":1,\"ts\":1000,\"dur\":100}"
+      "{\"name\":\"process_name\",\"ph\":\"M\",\"pid\":2,\"args\":{\"name\":"
+      "\"NewProcess\"}},"
+      "{\"name\":\"EventNew\",\"cat\":\"ui\",\"ph\":\"X\",\"pid\":2,\"tid\":1,"
+      "\"ts\":1000,\"dur\":100}"
       "]";
-  
-  // Start the new session using the same load_trace helper (which handles chunks and waits for completion)
+
+  // Start the new session using the same load_trace helper (which handles
+  // chunks and waits for completion)
   load_trace(MOCK_NEW_TRACE, "new_trace.json");
 
   // 4. Verify that the new trace is loaded and active
   ASSERT_FALSE(ztracing_is_loading_active());
   ASSERT_NE(app->trace_data, nullptr);
-  
+
   // The new trace should have pid 2, and one of the events should be EventNew
   ASSERT_EQ(app->trace_data->events.len, 2u);
   const trace_event_persisted_t* events =
       (const trace_event_persisted_t*)app->trace_data->events.ptr;
   bool found_new_event = false;
   for (size_t i = 0; i < 2; ++i) {
-    if (trace_data_get_string(app->trace_data, events[i].name_ref) == "EventNew") {
+    if (trace_data_get_string(app->trace_data, events[i].name_ref) ==
+        "EventNew") {
       found_new_event = true;
       break;
     }
@@ -1174,6 +1179,68 @@ TEST_F(ztracing_test, regression_rapid_session_restart_with_active_search) {
 
   // 5. Verify that the old search is no longer active
   EXPECT_FALSE(app->trace_viewer.search.is_searching);
+}
+
+// Regression test: loader channel destruction race condition during
+// rapid session restarts. Verifies that starting a new session while a loader
+// task is actively running does not crash the background thread due to
+// premature channel destruction.
+TEST_F(ztracing_test, regression_rapid_loader_session_restart_race) {
+  // 1. Start loading a trace, but do NOT wait for it to finish.
+  const char* MOCK_TRACE_1 =
+      "["
+      "{\"name\":\"Event1\",\"cat\":\"ui\",\"ph\":\"B\",\"pid\":1,\"tid\":1,"
+      "\"ts\":100}"
+      "]";
+  size_t size = strlen(MOCK_TRACE_1);
+  ztracing_begin_session(1, "trace1.json", (double)size);
+
+  char* buf = (char*)ztracing_malloc((int)size + 1);
+  memcpy(buf, MOCK_TRACE_1, size + 1);
+
+  // Send the chunk (takes ownership and wakes up worker)
+  // We set is_eof = false to keep the loader thread in its loop
+  ztracing_handle_file_chunk(1, buf, (int)size, (double)size, false);
+
+  // 2. IMMEDIATELY start a new session (simulating rapid drag-and-drop before
+  // the first one finishes).
+  // Without the fix, this call will close and immediately destroy the old
+  // loader channel while the background loader thread is still running and
+  // about to wake up, causing a Use-After-Free/crash in the worker thread.
+  const char* MOCK_TRACE_2 =
+      "["
+      "{\"name\":\"Event2\",\"cat\":\"ui\",\"ph\":\"X\",\"pid\":1,\"tid\":1,"
+      "\"ts\":200,\"dur\":50}"
+      "]";
+  size_t size2 = strlen(MOCK_TRACE_2);
+  ztracing_begin_session(2, "trace2.json", (double)size2);
+
+  // Feed the second trace chunk and complete it (is_eof = true)
+  char* buf2 = (char*)ztracing_malloc((int)size2 + 1);
+  memcpy(buf2, MOCK_TRACE_2, size2 + 1);
+  ztracing_handle_file_chunk(2, buf2, (int)size2, (double)size2, true);
+
+  // 3. Wait for the second trace to finish loading
+  double start = platform_get_now();
+  while (ztracing_is_loading_active()) {
+    ztracing_update();
+    usleep(1000);
+    if (platform_get_now() - start > 5000.0) {
+      FAIL() << "Timeout waiting for second trace to load";
+      break;
+    }
+  }
+
+  // 4. Verify that the second trace was loaded successfully
+  app_t* app = get_app();
+  ASSERT_FALSE(ztracing_is_loading_active());
+  ASSERT_NE(app->trace_data, nullptr);
+  ASSERT_EQ(app->trace_data->events.len, 1u);
+
+  const trace_event_persisted_t* events =
+      (const trace_event_persisted_t*)app->trace_data->events.ptr;
+  EXPECT_EQ(trace_data_get_string(app->trace_data, events[0].name_ref),
+            "Event2");
 }
 
 }  // namespace

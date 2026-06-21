@@ -93,10 +93,11 @@ static void app_apply_theme(app_t* app, const theme_t* theme) {
 }
 
 void app_stop_jobs(app_t* app) {
-  if (app->loading.active) {
+  if (app->trace_load_channel != nullptr) {
     // Send abort request to the loader task mailbox.
     // Asynchronous and 100% non-blocking!
     trace_load_send_abort(app->trace_load_channel);
+    app->trace_load_channel = nullptr;
   }
 
   // Abort active search task (if any)
@@ -118,7 +119,7 @@ void app_init(app_t* app, allocator_t parent) {
 
   // Initialize the actor mailboxes
   app->ui_channel = channel_create(app_msg_t, 128, allocator);
-  app->trace_load_channel = channel_create(trace_load_msg_t, 1024, allocator);
+  app->trace_load_channel = nullptr;
   app->trace_search_channel = nullptr;
 
   trace_viewer_init(&app->trace_viewer);
@@ -132,19 +133,11 @@ void app_deinit(app_t* app) {
       counting_allocator_get_allocator(&app->counting_allocator);
 
   // 2. Safe Channel Teardown: Automated, leak-free draining and destruction
+  // Draining ui_channel is guaranteed to destroy any active loader or search
+  // channels carried in their terminal abort/complete messages.
   channel_close_and_drain(app->ui_channel, app_msg_t, app_msg_deinit,
                           allocator);
   channel_destroy(app->ui_channel, allocator);
-
-  channel_close_and_drain(app->trace_load_channel, trace_load_msg_t,
-                          trace_load_msg_deinit, allocator);
-  channel_destroy(app->trace_load_channel, allocator);
-
-  if (app->trace_search_channel != nullptr) {
-    channel_close_and_drain(app->trace_search_channel, trace_search_msg_t,
-                            nullptr, allocator);
-    channel_destroy(app->trace_search_channel, allocator);
-  }
 
   // 5. Deallocate structures
   trace_data_release(app->trace_data, allocator);
@@ -176,9 +169,17 @@ void app_poll_messages(app_t* app) {
         app->trace_viewer.viewport.min_ts = result.min_ts;
         app->trace_viewer.viewport.max_ts = result.max_ts;
 
-        // Clear pointers in the message envelope so app_msg_deinit doesn't free/release them!
+        // Clear pointers in the message envelope so app_msg_deinit doesn't
+        // free/release them!
         msg.as.load_result.trace_data = nullptr;
         msg.as.load_result.tracks = (array_list_t){};
+
+        // The loader channel has been sent back and will be destroyed by
+        // app_msg_deinit. We set the app pointer to null to prevent dangling
+        // references or double-free.
+        if (app->trace_load_channel == result.task_channel) {
+          app->trace_load_channel = nullptr;
+        }
 
         app->loading.active = false;
         trace_viewer_reset_view(&app->trace_viewer);
@@ -187,9 +188,14 @@ void app_poll_messages(app_t* app) {
         break;
       }
 
-      case MSG_TRACE_LOAD_ABORTED:
+      case MSG_TRACE_LOAD_ABORTED: {
+        app_msg_load_aborted_t aborted = msg.as.load_aborted;
+        if (app->trace_load_channel == aborted.task_channel) {
+          app->trace_load_channel = nullptr;
+        }
         app->loading.active = false;
         break;
+      }
 
       case MSG_TRACE_SEARCH_COMPLETE: {
         app_msg_search_result_t result = msg.as.search_result;
@@ -453,7 +459,8 @@ void app_update(app_t* app) {
                           app->loading.total_bytes,
                           app->loading.input_consumed_bytes,
                           app->loading.input_total_bytes, app->theme);
-    } else if (app->trace_data != nullptr && app->trace_data->events.len > 0 && !app->loading.active) {
+    } else if (app->trace_data != nullptr && app->trace_data->events.len > 0 &&
+               !app->loading.active) {
       trace_viewer_draw(&app->trace_viewer, app->trace_data, allocator,
                         app->theme);
     } else {
@@ -505,10 +512,11 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
     memcpy(dest, filename, len);
   }
 
-  // 6. Reset the loader channel so it starts completely fresh!
-  channel_close_and_drain(app->trace_load_channel, trace_load_msg_t,
-                          trace_load_msg_deinit, allocator);
-  channel_destroy(app->trace_load_channel, allocator);
+  // 6. Reset the loader channel: since the old channel (if active) was aborted
+  // and set to null in app_stop_jobs, its ownership has been transferred to the
+  // exiting worker thread. It will be safely destroyed inside app_msg_deinit
+  // when the main thread processes the final abort message. We simply create a
+  // fresh channel for the new loader task.
   app->trace_load_channel = channel_create(trace_load_msg_t, 1024, allocator);
 
   // 7. Spawn the background loader worker task!
@@ -527,7 +535,9 @@ size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
     if (data && size > 0) {
       allocator_free(allocator, data, size);
     }
-    return channel_get_size(app->trace_load_channel);
+    return app->trace_load_channel != nullptr
+               ? channel_get_size(app->trace_load_channel)
+               : 0;
   }
 
   // 2. Track consumed bytes for progress bar display
@@ -536,13 +546,23 @@ size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
   // 3. Push raw chunk through the safe helper.
   // If the loader queue is full or closed, trace_load_send_chunk AUTOMATICALLY
   // frees 'data'!
-  trace_load_send_chunk(app->trace_load_channel, data, size,
-                        input_consumed_bytes, is_eof, allocator);
+  if (app->trace_load_channel != nullptr) {
+    trace_load_send_chunk(app->trace_load_channel, data, size,
+                          input_consumed_bytes, is_eof, allocator);
+  } else {
+    if (data && size > 0) {
+      allocator_free(allocator, data, size);
+    }
+  }
 
   // 4. Return current queue size (in item count) to trigger backpressure
-  return channel_get_size(app->trace_load_channel);
+  return app->trace_load_channel != nullptr
+             ? channel_get_size(app->trace_load_channel)
+             : 0;
 }
 
 size_t app_get_queue_size(app_t* app) {
-  return channel_get_size(app->trace_load_channel);
+  return app->trace_load_channel != nullptr
+             ? channel_get_size(app->trace_load_channel)
+             : 0;
 }
