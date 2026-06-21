@@ -3,53 +3,51 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "src/allocator.h"
 #include "src/channel.h"
-#include "src/colors.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// === 1. Input Payloads ===
+// === 1. Loader Channel Messages ===
+typedef enum {
+  MSG_TRACE_LOAD_CHUNK,
+  MSG_TRACE_LOAD_ABORT,
+} trace_load_msg_type_t;
 
-// Chunk data payload (Value-semantic, transfers raw buffer ownership)
+// Chunk payload (Value-semantic, transfers ownership of data buffer)
 typedef struct {
-  char* data;  // Heap-allocated raw chunk buffer
+  char* data;
   size_t size;
   size_t input_consumed_bytes;
   bool is_eof;
 } trace_load_chunk_t;
 
-// === 2. Input Message Types ===
-typedef enum {
-  MSG_TRACE_LOAD_CHUNK,  // Stream a raw chunk to the loader
-  MSG_TRACE_LOAD_ABORT,  // Signal the loader task to abort execution
-} trace_load_msg_type_t;
-
-// === 3. Input Message Envelope ===
+// Loader message envelope
 typedef struct {
   trace_load_msg_type_t type;
+  allocator_t allocator;  // The allocator used to allocate the chunk data
   union {
     trace_load_chunk_t chunk;
   } as;
 } trace_load_msg_t;
 
-// === 4. Public Task API ===
+// === 2. Message Destructor (Single Source of Truth Cleanup) ===
+void trace_load_msg_deinit(trace_load_msg_t* msg);
+
+// === 3. Public Task API ===
 // Minimalist functional entry point to spawn the background loading task.
 // app_channel: Output channel of app_msg_t (Task -> UI)
 // trace_load_channel: Input mailbox channel of trace_load_msg_t (UI -> Task)
 void trace_load_start(channel_t* app_channel, channel_t* trace_load_channel,
                       allocator_t allocator);
 
-// === 5. Message Destructor (Single Source of Truth Cleanup) ===
-void trace_load_msg_deinit(trace_load_msg_t* msg, allocator_t allocator);
+// === 4. Safe Input Sending APIs ===
 
-// === 6. Safe Input Sending APIs (With automatic heap cleanup on failure) ===
-
-// Sends a file chunk to the loader task. AUTOMATICALLY cleans up raw data heap
-// buffer if the send fails.
+// Sends a file chunk to the loader task.
 bool trace_load_send_chunk(channel_t* trace_load_channel, char* data,
                            size_t size, size_t input_consumed_bytes,
                            bool is_eof, allocator_t allocator);

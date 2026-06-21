@@ -10,7 +10,7 @@ TEST(app_msg_test, app_send_load_progress_packaging) {
   allocator_t a = allocator_get_default();
 
   {
-    channel_t* chan = channel_create(app_msg_t, 2, a);
+    channel_t* chan = channel_create(app_msg_t, 2, app_msg_deinit, a);
 
     EXPECT_TRUE(app_send_load_progress(chan, 1234, 5678));
 
@@ -20,7 +20,7 @@ TEST(app_msg_test, app_send_load_progress_packaging) {
     EXPECT_EQ(popped_msg.as.load_progress.event_count, 1234u);
     EXPECT_EQ(popped_msg.as.load_progress.total_bytes, 5678u);
 
-    channel_destroy(chan, a);
+    channel_destroy(chan);
   }
 }
 
@@ -30,7 +30,7 @@ TEST(app_msg_test, app_send_load_aborted_packaging) {
   allocator_t a = allocator_get_default();
 
   {
-    channel_t* chan = channel_create(app_msg_t, 2, a);
+    channel_t* chan = channel_create(app_msg_t, 2, app_msg_deinit, a);
 
     EXPECT_TRUE(app_send_load_aborted(chan, nullptr, a));
 
@@ -39,7 +39,7 @@ TEST(app_msg_test, app_send_load_aborted_packaging) {
     EXPECT_EQ(popped_msg.type, MSG_TRACE_LOAD_ABORTED);
     EXPECT_EQ(popped_msg.as.load_aborted.task_channel, nullptr);
 
-    channel_destroy(chan, a);
+    channel_destroy(chan);
   }
 }
 
@@ -49,7 +49,7 @@ TEST(app_msg_test, app_send_search_aborted_packaging) {
   allocator_t a = allocator_get_default();
 
   {
-    channel_t* chan = channel_create(app_msg_t, 2, a);
+    channel_t* chan = channel_create(app_msg_t, 2, app_msg_deinit, a);
 
     EXPECT_TRUE(app_send_search_aborted(chan, nullptr, nullptr, a));
 
@@ -59,6 +59,6 @@ TEST(app_msg_test, app_send_search_aborted_packaging) {
     EXPECT_EQ(popped_msg.as.search_aborted.trace_data, nullptr);
     EXPECT_EQ(popped_msg.as.search_aborted.task_channel, nullptr);
 
-    channel_destroy(chan, a);
+    channel_destroy(chan);
   }
 }

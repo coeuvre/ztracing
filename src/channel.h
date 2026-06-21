@@ -14,19 +14,20 @@ extern "C" {
 // Internal fields are hidden in the .c file.
 typedef struct channel channel_t;
 
+// Destructor function pointer type for channel items.
+typedef void (*channel_item_destructor_t)(void* item);
+
 // 1. Underlying Generic API (Marked with trailing underscore, do not call
 // directly)
 channel_t* channel_create_(size_t item_size, size_t capacity,
+                           channel_item_destructor_t destructor,
                            allocator_t allocator);
-void channel_destroy(channel_t* chan, allocator_t allocator);
-bool channel_send_(channel_t* chan, const void* item, size_t item_size);
+void channel_destroy(channel_t* chan);
+bool channel_send_(channel_t* chan, void* item, size_t item_size);
 bool channel_recv_(channel_t* chan, void* out_item, size_t item_size);
-bool channel_try_send_(channel_t* chan, const void* item, size_t item_size);
+bool channel_try_send_(channel_t* chan, void* item, size_t item_size);
 bool channel_try_recv_(channel_t* chan, void* out_item, size_t item_size);
-void channel_close_and_drain_(channel_t* chan,
-                              void (*destructor)(void* item,
-                                                 allocator_t allocator),
-                              allocator_t allocator);
+void channel_close(channel_t* chan);
 size_t channel_get_size(const channel_t* chan);
 bool channel_is_closed(const channel_t* chan);
 
@@ -34,13 +35,19 @@ bool channel_is_closed(const channel_t* chan);
 // extraction)
 
 // Creates a channel for a specific type.
-// Example: channel_t* chan = channel_create(msg_t, 64, allocator);
-#define channel_create(type_t, capacity, allocator) \
-  channel_create_(sizeof(type_t), (capacity), (allocator))
+// If destructor is non-null, it will be used to clean up items:
+// 1. When channel_destroy is called on a non-empty channel.
+// 2. When a send operation (blocking or non-blocking) fails (returns false).
+// Example: channel_t* chan = channel_create(msg_t, 64, msg_deinit, allocator);
+#define channel_create(type_t, capacity, destructor, allocator) \
+  channel_create_(sizeof(type_t), (capacity),                   \
+                  (channel_item_destructor_t)(destructor), (allocator))
 
 // BLOCKING Send. Blocks if the channel is full.
 // CRITICAL: FORBIDDEN on the WebAssembly UI/Main thread! Use only in background
 // tasks.
+// If the channel is closed and the send fails, the registered destructor is
+// automatically called on the item.
 #define channel_send(chan, item_ptr) \
   channel_send_((chan), (item_ptr), sizeof(*(item_ptr)))
 
@@ -50,8 +57,11 @@ bool channel_is_closed(const channel_t* chan);
 #define channel_recv(chan, out_item_ptr) \
   channel_recv_((chan), (out_item_ptr), sizeof(*(out_item_ptr)))
 
-// NON-BLOCKING Send. Returns immediately. Returns false if the channel is full.
+// NON-BLOCKING Send. Returns immediately. Returns false if the channel is full
+// or closed.
 // Safe for use on the WebAssembly UI/Main thread.
+// If the send fails, the registered destructor is automatically called on the
+// item.
 #define channel_try_send(chan, item_ptr) \
   channel_try_send_((chan), (item_ptr), sizeof(*(item_ptr)))
 
@@ -59,11 +69,6 @@ bool channel_is_closed(const channel_t* chan);
 // empty. Safe for use on the WebAssembly UI/Main thread.
 #define channel_try_recv(chan, out_item_ptr) \
   channel_try_recv_((chan), (out_item_ptr), sizeof(*(out_item_ptr)))
-
-// Closes and drains all remaining items in a channel using a destructor.
-#define channel_close_and_drain(chan, type_t, destructor, allocator)           \
-  channel_close_and_drain_((chan), (void (*)(void*, allocator_t))(destructor), \
-                           (allocator))
 
 #ifdef __cplusplus
 }

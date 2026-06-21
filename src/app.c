@@ -105,7 +105,7 @@ void app_init(app_t* app, allocator_t parent) {
       counting_allocator_get_allocator(&app->counting_allocator);
 
   // Initialize the actor mailboxes
-  app->ui_channel = channel_create(app_msg_t, 128, allocator);
+  app->ui_channel = channel_create(app_msg_t, 128, app_msg_deinit, allocator);
   app->trace_load_channel = nullptr;
   app->trace_search_channel = nullptr;
 
@@ -113,20 +113,15 @@ void app_init(app_t* app, allocator_t parent) {
 }
 
 void app_deinit(app_t* app) {
-  // 1. Signal background jobs to cancel and close channels
+  // Signal background jobs to cancel and close channels
   app_stop_jobs(app);
 
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
-  // 2. Safe Channel Teardown: Automated, leak-free draining and destruction
-  // Draining ui_channel is guaranteed to destroy any active loader or search
-  // channels carried in their terminal abort/complete messages.
-  channel_close_and_drain(app->ui_channel, app_msg_t, app_msg_deinit,
-                          allocator);
-  channel_destroy(app->ui_channel, allocator);
+  channel_destroy(app->ui_channel);
 
-  // 5. Deallocate structures
+  // Deallocate structures
   trace_data_release(app->trace_data, allocator);
   array_list_deinit(&app->loading.filename, allocator);
   trace_viewer_deinit(&app->trace_viewer, allocator);
@@ -216,7 +211,7 @@ void app_poll_messages(app_t* app) {
     }
 
     // Centralized message resource cleanup!
-    app_msg_deinit(&msg, allocator);
+    app_msg_deinit(&msg);
   }
 }
 
@@ -228,16 +223,16 @@ void app_update(app_t* app) {
   if (app->trace_viewer.search_query_dirty) {
     app->trace_viewer.search_query_dirty = false;
 
-    // 1. Abort the previous running search task (if any)
+    // Abort the previous running search task (if any)
     if (app->trace_search_channel != nullptr) {
       trace_search_send_abort(app->trace_search_channel);
     }
 
-    // 2. Create a NEW channel for the new search task.
+    // Create a NEW channel for the new search task.
     // The old channel remains alive and will be cleanly destroyed
     // by the UI thread when it receives the aborted message.
     app->trace_search_channel =
-        channel_create(trace_search_msg_t, 8, allocator);
+        channel_create(trace_search_msg_t, 8, nullptr, allocator);
 
     const char* query = (const char*)app->trace_viewer.search_query.ptr;
     if (query && query[0] != '\0' && app->trace_data != nullptr) {
@@ -466,21 +461,21 @@ void app_on_theme_changed(app_t* app, bool is_dark) {
 
 void app_begin_session(app_t* app, int session_id, const char* filename,
                        size_t input_total_bytes) {
-  // 1. Stop any active running session (non-blocking abort)
+  // Stop any active running session (non-blocking abort)
   app_stop_jobs(app);
 
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
-  // 2. Reset the trace viewer state
+  // Reset the trace viewer state
   trace_viewer_deinit(&app->trace_viewer, allocator);
   app->trace_viewer = (trace_viewer_t){};
 
-  // 3. Clear old trace data
+  // Clear old trace data
   trace_data_release(app->trace_data, allocator);
   app->trace_data = nullptr;
 
-  // 4. Initialize progress counters
+  // Initialize progress counters
   app->loading.event_count = 0;
   app->loading.total_bytes = 0;
   app->loading.input_total_bytes = input_total_bytes;
@@ -490,7 +485,7 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
   app->loading.session_id = session_id;
   app->loading.request_update = false;
 
-  // 5. Cache the trace filename
+  // Cache the trace filename
   array_list_clear(&app->loading.filename);
   if (filename) {
     size_t len = strlen(filename) + 1;
@@ -499,14 +494,14 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
     memcpy(dest, filename, len);
   }
 
-  // 6. Reset the loader channel: since the old channel (if active) was aborted
+  // Reset the loader channel: since the old channel (if active) was aborted
   // and set to null in app_stop_jobs, its ownership has been transferred to the
   // exiting worker thread. It will be safely destroyed inside app_msg_deinit
   // when the main thread processes the final abort message. We simply create a
   // fresh channel for the new loader task.
-  app->trace_load_channel = channel_create(trace_load_msg_t, 1024, allocator);
+  app->trace_load_channel = channel_create(trace_load_msg_t, 1024, trace_load_msg_deinit, allocator);
 
-  // 7. Spawn the background loader worker task!
+  // Spawn the background loader worker task!
   trace_load_start(app->ui_channel, app->trace_load_channel, allocator);
 }
 
@@ -516,7 +511,7 @@ size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
-  // 1. Stale session safety check: immediately clean up chunk and discard
+  // Stale session safety check: immediately clean up chunk and discard
   if (session_id != app->loading.session_id) {
     if (data && size > 0) {
       allocator_free(allocator, data, size);
@@ -526,10 +521,10 @@ size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
                : 0;
   }
 
-  // 2. Track consumed bytes for progress bar display
+  // Track consumed bytes for progress bar display
   app->loading.input_consumed_bytes = input_consumed_bytes;
 
-  // 3. Push raw chunk through the safe helper.
+  // Push raw chunk through the safe helper.
   // If the loader queue is full or closed, trace_load_send_chunk AUTOMATICALLY
   // frees 'data'!
   if (app->trace_load_channel != nullptr) {
@@ -541,7 +536,7 @@ size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
     }
   }
 
-  // 4. Return current queue size (in item count) to trigger backpressure
+  // Return current queue size (in item count) to trigger backpressure
   return app->trace_load_channel != nullptr
              ? channel_get_size(app->trace_load_channel)
              : 0;

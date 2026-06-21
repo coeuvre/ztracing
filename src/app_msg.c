@@ -7,11 +7,9 @@
 #include "src/trace_data.h"
 #include "src/trace_viewer.h"
 
-// Forward declaration to break circular dependency in BUILD target dependencies
-void trace_load_msg_deinit(void* msg, allocator_t allocator);
-
-void app_msg_deinit(app_msg_t* msg, allocator_t allocator) {
+void app_msg_deinit(app_msg_t* msg) {
   CHECK(msg != nullptr);
+  allocator_t allocator = msg->allocator;
 
   switch (msg->type) {
     case MSG_TRACE_LOAD_COMPLETE: {
@@ -21,10 +19,7 @@ void app_msg_deinit(app_msg_t* msg, allocator_t allocator) {
       }
       array_list_deinit(&res->tracks, allocator);
       if (res->task_channel != nullptr) {
-        channel_close_and_drain_(
-            res->task_channel,
-            (void (*)(void*, allocator_t))trace_load_msg_deinit, allocator);
-        channel_destroy(res->task_channel, allocator);
+        channel_destroy(res->task_channel);
       }
       break;
     }
@@ -32,10 +27,7 @@ void app_msg_deinit(app_msg_t* msg, allocator_t allocator) {
     case MSG_TRACE_LOAD_ABORTED: {
       app_msg_load_aborted_t* aborted = &msg->as.load_aborted;
       if (aborted->task_channel != nullptr) {
-        channel_close_and_drain_(
-            aborted->task_channel,
-            (void (*)(void*, allocator_t))trace_load_msg_deinit, allocator);
-        channel_destroy(aborted->task_channel, allocator);
+        channel_destroy(aborted->task_channel);
       }
       break;
     }
@@ -48,9 +40,7 @@ void app_msg_deinit(app_msg_t* msg, allocator_t allocator) {
         allocator_free(allocator, res->histogram, sizeof(duration_histogram_t));
       }
       if (res->task_channel != nullptr) {
-        channel_close_and_drain(res->task_channel, trace_search_msg_t, nullptr,
-                                allocator);
-        channel_destroy(res->task_channel, allocator);
+        channel_destroy(res->task_channel);
       }
       break;
     }
@@ -59,9 +49,7 @@ void app_msg_deinit(app_msg_t* msg, allocator_t allocator) {
       app_msg_search_aborted_t* aborted = &msg->as.search_aborted;
       trace_data_release(aborted->trace_data, allocator);
       if (aborted->task_channel != nullptr) {
-        channel_close_and_drain(aborted->task_channel, trace_search_msg_t,
-                                nullptr, allocator);
-        channel_destroy(aborted->task_channel, allocator);
+        channel_destroy(aborted->task_channel);
       }
       break;
     }
@@ -73,8 +61,6 @@ void app_msg_deinit(app_msg_t* msg, allocator_t allocator) {
 
 bool app_send_load_progress(channel_t* app_channel, size_t event_count,
                             size_t total_bytes) {
-  CHECK(app_channel != nullptr);
-
   app_msg_t msg = {.type = MSG_TRACE_LOAD_PROGRESS,
                    .as = {.load_progress = {.event_count = event_count,
                                             .total_bytes = total_bytes}}};
@@ -84,66 +70,50 @@ bool app_send_load_progress(channel_t* app_channel, size_t event_count,
 bool app_send_load_complete(channel_t* app_channel, trace_data_t* trace_data,
                             array_list_t tracks, int64_t min_ts, int64_t max_ts,
                             channel_t* task_channel, allocator_t allocator) {
-  CHECK(app_channel != nullptr);
   CHECK(trace_data != nullptr);
 
   app_msg_t msg = {.type = MSG_TRACE_LOAD_COMPLETE,
+                   .allocator = allocator,
                    .as = {.load_result = {.trace_data = trace_data,
                                           .tracks = tracks,
                                           .min_ts = min_ts,
                                           .max_ts = max_ts,
                                           .task_channel = task_channel}}};
 
-  bool ok = channel_send(app_channel, &msg);
-  if (!ok) {
-    app_msg_deinit(&msg, allocator);
-  }
-  return ok;
+  return channel_send(app_channel, &msg);
 }
 
 bool app_send_load_aborted(channel_t* app_channel, channel_t* task_channel,
                            allocator_t allocator) {
-  CHECK(app_channel != nullptr);
   app_msg_t msg = {.type = MSG_TRACE_LOAD_ABORTED,
+                   .allocator = allocator,
                    .as = {.load_aborted = {.task_channel = task_channel}}};
-  bool ok = channel_send(app_channel, &msg);
-  if (!ok) {
-    app_msg_deinit(&msg, allocator);
-  }
-  return ok;
+  return channel_send(app_channel, &msg);
 }
 
 bool app_send_search_complete(channel_t* app_channel, trace_data_t* trace_data,
                               array_list_t results,
                               duration_histogram_t* histogram,
                               channel_t* task_channel, allocator_t allocator) {
-  CHECK(app_channel != nullptr);
   CHECK(trace_data != nullptr);
   CHECK(histogram != nullptr);
 
   app_msg_t msg = {.type = MSG_TRACE_SEARCH_COMPLETE,
+                   .allocator = allocator,
                    .as = {.search_result = {.trace_data = trace_data,
                                             .results = results,
                                             .histogram = histogram,
                                             .task_channel = task_channel}}};
 
-  bool ok = channel_send(app_channel, &msg);
-  if (!ok) {
-    app_msg_deinit(&msg, allocator);
-  }
-  return ok;
+  return channel_send(app_channel, &msg);
 }
 
 bool app_send_search_aborted(channel_t* app_channel, trace_data_t* trace_data,
                              channel_t* task_channel, allocator_t allocator) {
-  CHECK(app_channel != nullptr);
   app_msg_t msg = {.type = MSG_TRACE_SEARCH_ABORTED,
+                   .allocator = allocator,
                    .as = {.search_aborted = {.trace_data = trace_data,
                                              .task_channel = task_channel}}};
 
-  bool ok = channel_send(app_channel, &msg);
-  if (!ok) {
-    app_msg_deinit(&msg, allocator);
-  }
-  return ok;
+  return channel_send(app_channel, &msg);
 }

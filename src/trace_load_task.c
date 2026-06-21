@@ -69,15 +69,15 @@ static void trace_load_run(void* arg) {
     if (msg.type == MSG_TRACE_LOAD_CHUNK) {
       trace_load_chunk_t chunk = msg.as.chunk;
 
-      // 1. Feed raw chunk into parser
+      // Feed raw chunk into parser
       total_discarded_bytes += trace_parser_feed(
           &parser, chunk.data, chunk.size, chunk.is_eof, allocator);
 
-      // 2. Release the raw chunk buffer immediately after feeding to keep
+      // Release the raw chunk buffer immediately after feeding to keep
       // memory footprint low
       allocator_free(allocator, chunk.data, chunk.size);
 
-      // 3. Parse all available events in this chunk
+      // Parse all available events in this chunk
       trace_event_t event;
       while (trace_parser_next(&parser, &event, allocator)) {
         trace_data_add_event(td, &event, &matcher, allocator);
@@ -85,7 +85,7 @@ static void trace_load_run(void* arg) {
         // Periodically check for abort signals mid-parse at chunk boundaries
       }
 
-      // 4. Throttled progress updates: notify UI thread every 5000 events
+      // Throttled progress updates: notify UI thread every 5000 events
       size_t current_count = td->events.len;
       if (current_count - last_report_event_count >= 5000) {
         last_report_event_count = current_count;
@@ -93,7 +93,7 @@ static void trace_load_run(void* arg) {
                                total_discarded_bytes + parser.pos);
       }
 
-      // 5. Break if EOF chunk parsed successfully
+      // Break if EOF chunk parsed successfully
       if (chunk.is_eof) {
         break;
       }
@@ -125,7 +125,7 @@ static void trace_load_run(void* arg) {
     LOG_DEBUG("trace_load_run completed parsing, starting track organization");
     double organize_start_time = platform_get_now();
 
-    // 1. Organize events into tracks
+    // Organize events into tracks
     array_list_t tracks = {};  // ZII
     int64_t min_ts = 0;
     int64_t max_ts = 0;
@@ -135,7 +135,7 @@ static void trace_load_run(void* arg) {
     LOG_INFO("organized %zu tracks in %.3f ms", tracks.len,
              organize_duration_ms);
 
-    // 2. Transmit complete results.
+    // Transmit complete results.
     // If the send fails, app_send_load_complete AUTOMATICALLY cleans up td and
     // tracks!
     app_send_load_complete(task->app_channel, td, tracks, min_ts, max_ts,
@@ -169,8 +169,9 @@ void trace_load_start(channel_t* app_channel, channel_t* trace_load_channel,
   platform_submit_job(trace_load_run, task);
 }
 
-void trace_load_msg_deinit(trace_load_msg_t* msg, allocator_t allocator) {
+void trace_load_msg_deinit(trace_load_msg_t* msg) {
   CHECK(msg != nullptr);
+  allocator_t allocator = msg->allocator;
   if (msg->type == MSG_TRACE_LOAD_CHUNK) {
     if (msg->as.chunk.data != nullptr && msg->as.chunk.size > 0) {
       allocator_free(allocator, msg->as.chunk.data, msg->as.chunk.size);
@@ -187,16 +188,13 @@ bool trace_load_send_chunk(channel_t* trace_load_channel, char* data,
 
   trace_load_msg_t msg = {
       .type = MSG_TRACE_LOAD_CHUNK,
+      .allocator = allocator,
       .as = {.chunk = {.data = data,
                        .size = size,
                        .input_consumed_bytes = input_consumed_bytes,
                        .is_eof = is_eof}}};
 
-  bool ok = channel_try_send(trace_load_channel, &msg);
-  if (!ok) {
-    trace_load_msg_deinit(&msg, allocator);
-  }
-  return ok;
+  return channel_try_send(trace_load_channel, &msg);
 }
 
 bool trace_load_send_abort(channel_t* trace_load_channel) {

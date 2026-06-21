@@ -17,7 +17,7 @@ TEST(channel_test, basic_fifo_int) {
   allocator_t allocator = allocator_get_default();
 
   // Create channel for int
-  channel_t* chan = channel_create(int, 10, allocator);
+  channel_t* chan = channel_create(int, 10, nullptr, allocator);
   EXPECT_EQ(channel_get_size(chan), 0u);
 
   // Push sequential values
@@ -34,14 +34,14 @@ TEST(channel_test, basic_fifo_int) {
     EXPECT_EQ(channel_get_size(chan), (size_t)(4 - i));
   }
 
-  channel_destroy(chan, allocator);
+  channel_destroy(chan);
 }
 
 TEST(channel_test, basic_fifo_double) {
   allocator_t allocator = allocator_get_default();
 
   // Create channel for double
-  channel_t* chan = channel_create(double, 5, allocator);
+  channel_t* chan = channel_create(double, 5, nullptr, allocator);
 
   double val1 = 3.14;
   double val2 = 2.718;
@@ -56,14 +56,14 @@ TEST(channel_test, basic_fifo_double) {
   EXPECT_TRUE(channel_recv(chan, &out));
   EXPECT_DOUBLE_EQ(out, 2.718);
 
-  channel_destroy(chan, allocator);
+  channel_destroy(chan);
 }
 
 TEST(channel_test, basic_fifo_struct) {
   allocator_t allocator = allocator_get_default();
 
   // Create channel for generic 64-byte struct
-  channel_t* chan = channel_create(mock_64_byte_t, 3, allocator);
+  channel_t* chan = channel_create(mock_64_byte_t, 3, nullptr, allocator);
 
   mock_64_byte_t msg1 = {.fields = {1, 2, 3, 4, 5, 6, 7, 8}};
   mock_64_byte_t msg2 = {.fields = {9, 10, 11, 12, 13, 14, 15, 16}};
@@ -81,14 +81,14 @@ TEST(channel_test, basic_fifo_struct) {
   EXPECT_EQ(out.fields[0], 9u);
   EXPECT_EQ(out.fields[7], 16u);
 
-  channel_destroy(chan, allocator);
+  channel_destroy(chan);
 }
 
 TEST(channel_test, boundary_conditions) {
   allocator_t allocator = allocator_get_default();
 
   // Saturated bounded channel of size 2
-  channel_t* chan = channel_create(int, 2, allocator);
+  channel_t* chan = channel_create(int, 2, nullptr, allocator);
 
   int val = 42;
   EXPECT_TRUE(channel_try_send(chan, &val));
@@ -107,12 +107,12 @@ TEST(channel_test, boundary_conditions) {
   // Receiving from an empty channel must fail instantly (non-blocking)
   EXPECT_FALSE(channel_try_recv(chan, &out));
 
-  channel_destroy(chan, allocator);
+  channel_destroy(chan);
 }
 
 TEST(channel_test, thread_blocking_recv) {
   allocator_t allocator = allocator_get_default();
-  channel_t* chan = channel_create(int, 5, allocator);
+  channel_t* chan = channel_create(int, 5, nullptr, allocator);
 
   std::atomic<bool> thread_started{false};
   std::atomic<int> received_val{-1};
@@ -140,13 +140,13 @@ TEST(channel_test, thread_blocking_recv) {
   t.join();
   EXPECT_EQ(received_val, 100);
 
-  channel_destroy(chan, allocator);
+  channel_destroy(chan);
 }
 
 TEST(channel_test, thread_blocking_send) {
   allocator_t allocator = allocator_get_default();
   // Bounded channel of size 1
-  channel_t* chan = channel_create(int, 1, allocator);
+  channel_t* chan = channel_create(int, 1, nullptr, allocator);
 
   int fill = 99;
   EXPECT_TRUE(channel_send(chan, &fill));
@@ -182,12 +182,12 @@ TEST(channel_test, thread_blocking_send) {
   EXPECT_TRUE(channel_recv(chan, &out));
   EXPECT_EQ(out, 200);
 
-  channel_destroy(chan, allocator);
+  channel_destroy(chan);
 }
 
 TEST(channel_test, thread_wakeup_close_recv) {
   allocator_t allocator = allocator_get_default();
-  channel_t* chan = channel_create(int, 5, allocator);
+  channel_t* chan = channel_create(int, 5, nullptr, allocator);
 
   std::atomic<bool> thread_started{false};
   std::atomic<bool> recv_returned_false{false};
@@ -209,18 +209,18 @@ TEST(channel_test, thread_wakeup_close_recv) {
   EXPECT_FALSE(recv_returned_false);
 
   // Close channel to wake up and cancel the blocked receiver
-  channel_close_and_drain(chan, int, nullptr, allocator);
+  channel_close(chan);
 
   t.join();
   EXPECT_TRUE(recv_returned_false);
 
-  channel_destroy(chan, allocator);
+  channel_destroy(chan);
 }
 
 TEST(channel_test, thread_wakeup_close_send) {
   allocator_t allocator = allocator_get_default();
   // Bounded channel of size 1
-  channel_t* chan = channel_create(int, 1, allocator);
+  channel_t* chan = channel_create(int, 1, nullptr, allocator);
 
   int fill = 50;
   EXPECT_TRUE(channel_send(chan, &fill));
@@ -245,18 +245,18 @@ TEST(channel_test, thread_wakeup_close_send) {
   EXPECT_FALSE(send_returned_false);
 
   // Close channel to wake up and cancel the blocked writer
-  channel_close_and_drain(chan, int, nullptr, allocator);
+  channel_close(chan);
 
   t.join();
   EXPECT_TRUE(send_returned_false);
 
-  channel_destroy(chan, allocator);
+  channel_destroy(chan);
 }
 
 TEST(channel_test, concurrent_producers_consumers) {
   allocator_t allocator = allocator_get_default();
   // Bounded channel with high contention
-  channel_t* chan = channel_create(int, 10, allocator);
+  channel_t* chan = channel_create(int, 10, nullptr, allocator);
 
   const int num_producers = 4;
   const int num_consumers = 4;
@@ -299,7 +299,7 @@ TEST(channel_test, concurrent_producers_consumers) {
   }
 
   // Close the channel to signal consumers that no more items are coming
-  channel_close_and_drain(chan, int, nullptr, allocator);
+  channel_close(chan);
 
   // Wait for consumers to finish draining the channel
   for (auto& t : consumers) {
@@ -309,7 +309,7 @@ TEST(channel_test, concurrent_producers_consumers) {
   // Mathematical validation: no data lost or duplicated!
   EXPECT_EQ(total_sum_received.load(), total_sum_sent.load());
 
-  channel_destroy(chan, allocator);
+  channel_destroy(chan);
 }
 
 TEST(channel_test, memory_leak_verification) {
@@ -317,7 +317,7 @@ TEST(channel_test, memory_leak_verification) {
   allocator_t a = counting_allocator_get_allocator(&ca);
 
   {
-    channel_t* chan = channel_create(mock_64_byte_t, 100, a);
+    channel_t* chan = channel_create(mock_64_byte_t, 100, nullptr, a);
 
     mock_64_byte_t msg = {};
     for (int i = 0; i < 50; ++i) {
@@ -330,9 +330,87 @@ TEST(channel_test, memory_leak_verification) {
       EXPECT_TRUE(channel_recv(chan, &out));
     }
 
-    channel_destroy(chan, a);
+    channel_destroy(chan);
   }
 
   // Verify that all allocated memory was completely freed
   EXPECT_EQ(counting_allocator_get_allocated_bytes(&ca), 0u);
+}
+
+// === New Safety & Automatic Cleanup Tests ===
+
+struct mock_resource_t {
+  int* ref_count;
+};
+
+static void mock_resource_deinit(void* item) {
+  mock_resource_t* res = (mock_resource_t*)item;
+  if (res->ref_count != nullptr) {
+    (*res->ref_count)--;
+    res->ref_count = nullptr;
+  }
+}
+
+TEST(channel_test, auto_destruction_on_closed_send) {
+  allocator_t a = allocator_get_default();
+
+  channel_t* chan = channel_create(mock_resource_t, 5, mock_resource_deinit, a);
+
+  int ref_count = 1;
+  mock_resource_t res = {&ref_count};
+
+  // Close the channel
+  channel_close(chan);
+
+  // Sending on closed channel must fail and AUTOMATICALLY call
+  // mock_resource_deinit
+  EXPECT_FALSE(channel_send(chan, &res));
+  EXPECT_EQ(ref_count, 0);
+
+  channel_destroy(chan);
+}
+
+TEST(channel_test, auto_destruction_on_full_try_send) {
+  allocator_t a = allocator_get_default();
+
+  channel_t* chan = channel_create(mock_resource_t, 1, mock_resource_deinit, a);
+
+  int ref_count_fill = 1;
+  mock_resource_t res_fill = {&ref_count_fill};
+  EXPECT_TRUE(channel_try_send(chan, &res_fill));
+
+  int ref_count_fail = 1;
+  mock_resource_t res_fail = {&ref_count_fail};
+
+  // Sending on full channel via try_send must fail and AUTOMATICALLY call
+  // mock_resource_deinit
+  EXPECT_FALSE(channel_try_send(chan, &res_fail));
+  EXPECT_EQ(ref_count_fail, 0);
+
+  // Destroying the channel must automatically drain the filling item and deinit
+  // it
+  channel_destroy(chan);
+  EXPECT_EQ(ref_count_fill, 0);
+}
+
+TEST(channel_test, auto_drain_on_destroy) {
+  allocator_t a = allocator_get_default();
+
+  channel_t* chan = channel_create(mock_resource_t, 5, mock_resource_deinit, a);
+
+  int ref1 = 1;
+  int ref2 = 1;
+  mock_resource_t res1 = {&ref1};
+  mock_resource_t res2 = {&ref2};
+
+  EXPECT_TRUE(channel_send(chan, &res1));
+  EXPECT_TRUE(channel_send(chan, &res2));
+  EXPECT_EQ(channel_get_size(chan), 2u);
+
+  // Destroying the channel must automatically drain all remaining items and
+  // call the destructor on each
+  channel_destroy(chan);
+
+  EXPECT_EQ(ref1, 0);
+  EXPECT_EQ(ref2, 0);
 }

@@ -14,24 +14,25 @@ TEST(trace_load_task_test, safe_send_helper_chunk_cleanup_on_failure) {
 
   {
     // Bounded channel of capacity 1
-    channel_t* chan = channel_create(trace_load_msg_t, 1, a);
+    channel_t* chan =
+        channel_create(trace_load_msg_t, 1, trace_load_msg_deinit, a);
 
-    // 1. Send first chunk (Should succeed)
+    // Send first chunk (Should succeed)
     char* data1 = (char*)allocator_alloc(a, 10);
     EXPECT_TRUE(trace_load_send_chunk(chan, data1, 10, 0, false, a));
 
-    // 2. Send second chunk (Should fail due to queue full, and AUTOMATICALLY
+    // Send second chunk (Should fail due to queue full, and AUTOMATICALLY
     // free data2)
     char* data2 = (char*)allocator_alloc(a, 20);
     EXPECT_FALSE(trace_load_send_chunk(chan, data2, 20, 0, false, a));
 
-    // 3. Drain the first chunk to manually free its memory
+    // Drain the first chunk to manually free its memory
     trace_load_msg_t popped_msg;
     EXPECT_TRUE(channel_recv(chan, &popped_msg));
     EXPECT_EQ(popped_msg.type, MSG_TRACE_LOAD_CHUNK);
     allocator_free(a, popped_msg.as.chunk.data, popped_msg.as.chunk.size);
 
-    channel_destroy(chan, a);
+    channel_destroy(chan);
   }
 
   // If data2 was not freed automatically, this check would fail!
@@ -46,7 +47,7 @@ TEST(trace_load_task_test, safe_send_helper_load_complete_cleanup_on_failure) {
 
   {
     // App channel
-    channel_t* chan = channel_create(app_msg_t, 5, a);
+    channel_t* chan = channel_create(app_msg_t, 5, app_msg_deinit, a);
 
     // Create trace data shell on the heap using the lifecycle API (ref_count =
     // 1)
@@ -56,12 +57,12 @@ TEST(trace_load_task_test, safe_send_helper_load_complete_cleanup_on_failure) {
                                // deinit is a safe no-op
 
     // Close channel to force send failure!
-    channel_close_and_drain(chan, app_msg_t, app_msg_deinit, a);
+    channel_close(chan);
 
     // Send should fail and AUTOMATICALLY deinit and free both td and tracks!
     EXPECT_FALSE(app_send_load_complete(chan, td, tracks, 0, 0, nullptr, a));
 
-    channel_destroy(chan, a);
+    channel_destroy(chan);
   }
 
   // If td was not freed automatically, this check would fail!

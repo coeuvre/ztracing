@@ -13,14 +13,13 @@
 extern "C" {
 #endif
 
-// Forward declarations to avoid deep header dependencies and circular
-// compilation.
+// Forward declarations to avoid header coupling
 typedef struct trace_data trace_data_t;
 typedef struct duration_histogram duration_histogram_t;
 
-// === 1. Ingestion (Loader) Task Payloads ===
+// === 1. Loading Task Payloads ===
 
-// Progress update payload (Value-semantic)
+// Ingestion progress payload (Value-semantic)
 typedef struct {
   size_t event_count;
   size_t total_bytes;
@@ -73,6 +72,7 @@ typedef enum {
 // === 4. App Message Envelope ===
 typedef struct {
   app_msg_type_t type;
+  allocator_t allocator;  // The allocator used to allocate the payload
   union {
     app_msg_load_progress_t load_progress;
     app_msg_load_result_t load_result;
@@ -83,16 +83,15 @@ typedef struct {
 } app_msg_t;
 
 // === 5. Message Destructor (Single Source of Truth Cleanup) ===
-void app_msg_deinit(app_msg_t* msg, allocator_t allocator);
+void app_msg_deinit(app_msg_t* msg);
 
-// === 6. Safe Message Sending APIs (With automatic heap cleanup on failure) ===
+// === 6. Safe Message Sending APIs ===
 
 // Sends a progress update from the loader task. (Value-only, no allocation)
 bool app_send_load_progress(channel_t* app_channel, size_t event_count,
                             size_t total_bytes);
 
-// Sends load completion, transferring ownership. AUTOMATICALLY cleans up all
-// heap memory if the send fails.
+// Sends load completion, transferring ownership.
 bool app_send_load_complete(channel_t* app_channel, trace_data_t* trace_data,
                             array_list_t tracks, int64_t min_ts, int64_t max_ts,
                             channel_t* task_channel, allocator_t allocator);
@@ -101,8 +100,7 @@ bool app_send_load_complete(channel_t* app_channel, trace_data_t* trace_data,
 bool app_send_load_aborted(channel_t* app_channel, channel_t* task_channel,
                            allocator_t allocator);
 
-// Sends search completion, transferring ownership. AUTOMATICALLY cleans up
-// results and histogram if the send fails.
+// Sends search completion, transferring ownership.
 bool app_send_search_complete(channel_t* app_channel, trace_data_t* trace_data,
                               array_list_t results,
                               duration_histogram_t* histogram,
