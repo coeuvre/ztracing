@@ -346,6 +346,7 @@ cc_library(
     hdrs = ["track.h"],
     deps = [
         ":allocator",
+        ":arena",
         ":array_list",
         ":colors",
         ":hash_table",
