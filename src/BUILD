@@ -33,10 +33,22 @@ cc_library(
 cc_library(
     name = "logging",
     srcs = select({
-        ":wasm_build": ["logging_wasm.c"],
+        ":wasm_build": ["logging_wasm.cc"],
         "//conditions:default": ["logging_native.c"],
     }),
     hdrs = ["logging.h"],
+    copts = select({
+        ":wasm_build": ["-Wno-dollar-in-identifier-extension"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "assert",
+    hdrs = ["assert.h"],
+    deps = [
+        ":logging",
+    ],
 )
 
 cc_library(
@@ -73,7 +85,61 @@ cc_library(
     deps = [":allocator"],
 )
 
+cc_library(
+    name = "channel",
+    srcs = ["channel.c"],
+    hdrs = ["channel.h"],
+    deps = [
+        ":allocator",
+        ":assert",
+    ],
+)
 
+cc_library(
+    name = "app_msg",
+    srcs = ["app_msg.c"],
+    hdrs = ["app_msg.h"],
+    deps = [
+        ":allocator",
+        ":array_list",
+        ":assert",
+        ":channel",
+        ":trace_data",
+        ":trace_viewer",
+    ],
+)
+
+cc_library(
+    name = "trace_load_task",
+    srcs = ["trace_load_task.c"],
+    hdrs = ["trace_load_task.h"],
+    deps = [
+        ":allocator",
+        ":app_msg",
+        ":array_list",
+        ":assert",
+        ":channel",
+        ":colors",
+        ":platform",
+        ":trace_data",
+        ":trace_parser",
+        ":track",
+    ],
+)
+
+cc_library(
+    name = "trace_search_task",
+    srcs = ["trace_search_task.c"],
+    hdrs = ["trace_search_task.h"],
+    deps = [
+        ":allocator",
+        ":app_msg",
+        ":array_list",
+        ":assert",
+        ":channel",
+        ":platform",
+    ],
+)
 
 cc_test(
     name = "allocator_test",
@@ -101,6 +167,50 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "channel_test",
+    srcs = ["channel_test.cc"],
+    deps = [
+        ":channel",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "trace_load_task_test",
+    srcs = ["trace_load_task_test.cc"],
+    deps = [
+        ":app_msg",
+        ":channel",
+        ":trace_data",
+        ":trace_load_task",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "trace_search_task_test",
+    srcs = ["trace_search_task_test.cc"],
+    deps = [
+        ":app_msg",
+        ":channel",
+        ":trace_search_task",
+        ":trace_viewer",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "app_msg_test",
+    srcs = ["app_msg_test.cc"],
+    deps = [
+        ":app_msg",
+        ":channel",
+        "@googletest//:gtest_main",
+    ],
+)
+
 
 cc_library(
     name = "trace_parser",
@@ -303,7 +413,9 @@ cc_library(
     hdrs = ["app.h"],
     deps = [
         ":allocator",
+        ":app_msg",
         ":array_list",
+        ":channel",
         ":colors",
         ":format",
         ":imgui_c",
@@ -311,7 +423,9 @@ cc_library(
         ":logging",
         ":platform",
         ":trace_data",
+        ":trace_load_task",
         ":trace_parser",
+        ":trace_search_task",
         ":trace_viewer",
         ":track",
         ":welcome_screen",
@@ -347,6 +461,7 @@ cc_binary(
     ],
     deps = [
         ":app",
+        ":assert",
         ":imgui_c",
         ":imgui_impl_wasm",
         ":imgui_impl_webgl",

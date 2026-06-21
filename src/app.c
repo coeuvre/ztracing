@@ -1,14 +1,16 @@
 #include "src/app.h"
 
-#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "src/app_msg.h"
 #include "src/colors.h"
 #include "src/imgui_c.h"
 #include "src/loading_screen.h"
 #include "src/logging.h"
 #include "src/platform.h"
+#include "src/trace_load_task.h"
+#include "src/trace_search_task.h"
 #include "src/welcome_screen.h"
 
 // Helper functions for cheatsheet rendering
@@ -67,112 +69,6 @@ static void draw_selection_shortcuts(const theme_t* theme) {
   cheatsheet_add_row(theme, "Clear Focused", "Click Background");
 }
 
-static void trace_loading_job(void* user_data) {
-  trace_loading_state_t* loading = (trace_loading_state_t*)user_data;
-  int my_session_id = loading->session_id;
-  allocator_t allocator = loading->allocator;
-
-  LOG_DEBUG("trace_loading_job started (session_id: %d)", my_session_id);
-
-  size_t total_discarded_bytes = 0;
-  trace_event_matcher_t matcher = {};
-
-  while (true) {
-    trace_chunk_t chunk = {};
-    bool popped = false;
-
-    pthread_mutex_lock(&loading->chunk_queue.mutex);
-    while (loading->chunk_queue.head == nullptr &&
-           !atomic_load(&loading->jobs_should_abort) &&
-           loading->session_id == my_session_id) {
-      pthread_cond_wait(&loading->chunk_queue.cv, &loading->chunk_queue.mutex);
-    }
-
-    if (atomic_load(&loading->jobs_should_abort) ||
-        loading->session_id != my_session_id) {
-      pthread_mutex_unlock(&loading->chunk_queue.mutex);
-      break;
-    }
-
-    if (loading->chunk_queue.head != nullptr) {
-      trace_chunk_node_t* node = loading->chunk_queue.head;
-      chunk = node->chunk;
-      loading->chunk_queue.head = node->next;
-      if (loading->chunk_queue.head == nullptr) {
-        loading->chunk_queue.tail = nullptr;
-      }
-      allocator_free(allocator, node, sizeof(trace_chunk_node_t));
-      atomic_fetch_sub_explicit(&loading->chunk_queue.queue_size_bytes,
-                                chunk.size, memory_order_relaxed);
-      popped = true;
-    }
-    pthread_mutex_unlock(&loading->chunk_queue.mutex);
-
-    if (popped && chunk.data) {
-      total_discarded_bytes += trace_parser_feed(
-          &loading->parser, chunk.data, chunk.size, chunk.is_eof, allocator);
-      allocator_free(allocator, chunk.data, chunk.size);
-
-      atomic_store_explicit(&loading->input_consumed_bytes,
-                            chunk.input_consumed_bytes, memory_order_relaxed);
-    }
-
-    trace_event_t event;
-    while (trace_parser_next(&loading->parser, &event, allocator)) {
-      trace_data_add_event(loading->trace_data, loading->theme, &event,
-                           &matcher, allocator);
-      atomic_fetch_add_explicit(&loading->event_count, 1, memory_order_relaxed);
-      atomic_store_explicit(&loading->total_bytes,
-                            total_discarded_bytes + loading->parser.pos,
-                            memory_order_relaxed);
-    }
-
-    atomic_store_explicit(&loading->request_update, true, memory_order_relaxed);
-
-    if (popped && chunk.is_eof) break;
-  }
-
-  if (!atomic_load(&loading->jobs_should_abort) &&
-      loading->session_id == my_session_id) {
-    double parse_end_time = platform_get_now();
-    double duration_ms = parse_end_time - loading->start_time;
-    double duration_s = duration_ms / 1000.0;
-    double speed_mb_s =
-        duration_s > 0.0
-            ? ((double)atomic_load(&loading->total_bytes) / (1024.0 * 1024.0)) /
-                  duration_s
-            : 0.0;
-    LOG_INFO("parsed %zu events (total) in %.3f ms (%.2f mb/s)",
-             atomic_load(&loading->event_count), duration_ms, speed_mb_s);
-
-    double organize_start_time = platform_get_now();
-    int64_t min_ts, max_ts;
-    track_organize(loading->trace_data, loading->theme,
-                   &loading->trace_viewer->tracks, &min_ts, &max_ts, allocator);
-    double organize_end_time = platform_get_now();
-    LOG_INFO("organize track in %.3f ms",
-             organize_end_time - organize_start_time);
-    loading->trace_viewer->viewport.min_ts = min_ts;
-    loading->trace_viewer->viewport.max_ts = max_ts;
-    trace_viewer_reset_view(loading->trace_viewer);
-    trace_viewer_precompute_minimap_heatmap(loading->trace_viewer,
-                                            loading->trace_data, allocator);
-    atomic_store_explicit(&loading->request_update, true, memory_order_relaxed);
-    LOG_DEBUG("trace_loading_job finished (session_id: %d)", my_session_id);
-  } else {
-    LOG_DEBUG("trace_loading_job aborted/superseded (session_id: %d)",
-              my_session_id);
-  }
-
-  trace_event_matcher_deinit(&matcher, allocator);
-  trace_parser_deinit(&loading->parser, allocator);
-
-  pthread_mutex_lock(&loading->quit_mutex);
-  atomic_store(&loading->active, false);
-  pthread_cond_broadcast(&loading->quit_cv);
-  pthread_mutex_unlock(&loading->quit_mutex);
-}
-
 static void app_apply_theme(app_t* app, const theme_t* theme) {
   if (app->theme == theme) return;
   app->theme = theme;
@@ -182,7 +78,7 @@ static void app_apply_theme(app_t* app, const theme_t* theme) {
     ig_style_colors_light();
   }
 
-  if (atomic_load(&app->loading.active)) return;
+  if (app->loading.active) return;
 
   // Re-compute all event colors when theme changes
   size_t events_count = app->trace_data.events.len;
@@ -195,17 +91,16 @@ static void app_apply_theme(app_t* app, const theme_t* theme) {
 }
 
 void app_stop_jobs(app_t* app) {
-  atomic_store(&app->loading.jobs_should_abort, true);
-  pthread_mutex_lock(&app->loading.chunk_queue.mutex);
-  pthread_cond_broadcast(&app->loading.chunk_queue.cv);
-  pthread_mutex_unlock(&app->loading.chunk_queue.mutex);
+  if (app->loading.active) {
+    // Send abort request to the loader task mailbox.
+    // Asynchronous and 100% non-blocking!
+    trace_load_send_abort(app->trace_load_channel);
+  }
 
-  if (atomic_load(&app->loading.active)) {
-    pthread_mutex_lock(&app->loading.quit_mutex);
-    while (atomic_load(&app->loading.active)) {
-      pthread_cond_wait(&app->loading.quit_cv, &app->loading.quit_mutex);
-    }
-    pthread_mutex_unlock(&app->loading.quit_mutex);
+  // Abort active search task (if any)
+  if (app->trace_search_channel != nullptr) {
+    trace_search_send_abort(app->trace_search_channel);
+    app->trace_search_channel = nullptr;
   }
 }
 
@@ -216,43 +111,171 @@ void app_init(app_t* app, allocator_t parent) {
       .first_frame = true,
   };
 
-  pthread_mutex_init(&app->loading.chunk_queue.mutex, nullptr);
-  pthread_cond_init(&app->loading.chunk_queue.cv, nullptr);
-  pthread_mutex_init(&app->loading.quit_mutex, nullptr);
-  pthread_cond_init(&app->loading.quit_cv, nullptr);
+  allocator_t allocator =
+      counting_allocator_get_allocator(&app->counting_allocator);
+
+  // Initialize the actor mailboxes
+  app->ui_channel = channel_create(app_msg_t, 128, allocator);
+  app->trace_load_channel = channel_create(trace_load_msg_t, 1024, allocator);
+  app->trace_search_channel = nullptr;
 
   trace_viewer_init(&app->trace_viewer);
 }
 
 void app_deinit(app_t* app) {
+  // 1. Signal background jobs to cancel and close channels
   app_stop_jobs(app);
 
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
+
+  // 2. Safe Channel Teardown: Automated, leak-free draining and destruction
+  channel_close_and_drain(app->ui_channel, app_msg_t, app_msg_deinit,
+                          allocator);
+  channel_destroy(app->ui_channel, allocator);
+
+  channel_close_and_drain(app->trace_load_channel, trace_load_msg_t,
+                          trace_load_msg_deinit, allocator);
+  channel_destroy(app->trace_load_channel, allocator);
+
+  if (app->trace_search_channel != nullptr) {
+    channel_close_and_drain(app->trace_search_channel, trace_search_msg_t,
+                            nullptr, allocator);
+    channel_destroy(app->trace_search_channel, allocator);
+  }
+
+  // 5. Deallocate structures
   trace_data_deinit(&app->trace_data, allocator);
   array_list_deinit(&app->loading.filename, allocator);
   trace_viewer_deinit(&app->trace_viewer, allocator);
+}
 
-  pthread_mutex_destroy(&app->loading.chunk_queue.mutex);
-  pthread_cond_destroy(&app->loading.chunk_queue.cv);
-  pthread_mutex_destroy(&app->loading.quit_mutex);
-  pthread_cond_destroy(&app->loading.quit_cv);
+void app_poll_messages(app_t* app) {
+  allocator_t allocator =
+      counting_allocator_get_allocator(&app->counting_allocator);
 
-  pthread_mutex_lock(&app->loading.chunk_queue.mutex);
-  trace_chunk_node_t* curr = app->loading.chunk_queue.head;
-  while (curr) {
-    trace_chunk_node_t* next = curr->next;
-    if (curr->chunk.data) {
-      allocator_free(allocator, curr->chunk.data, curr->chunk.size);
+  // === Drain the Unified UI Actor Mailbox (Non-blocking loop) ===
+  app_msg_t msg;
+  while (channel_try_recv(app->ui_channel, &msg)) {
+    app->loading.request_update = true;
+    switch (msg.type) {
+      case MSG_TRACE_LOAD_PROGRESS:
+        app->loading.event_count = msg.as.load_progress.event_count;
+        app->loading.total_bytes = msg.as.load_progress.total_bytes;
+        break;
+
+      case MSG_TRACE_LOAD_COMPLETE: {
+        app_msg_load_result_t result = msg.as.load_result;
+
+        // Adopt the completed parsed trace data and organized tracks
+        trace_data_deinit(&app->trace_data, allocator);
+        app->trace_data = *result.trace_data;
+        app->trace_viewer.tracks = result.tracks;
+        app->trace_viewer.viewport.min_ts = result.min_ts;
+        app->trace_viewer.viewport.max_ts = result.max_ts;
+
+        // Free the temporary shell container
+        allocator_free(allocator, result.trace_data, sizeof(trace_data_t));
+
+        app->loading.active = false;
+        trace_viewer_reset_view(&app->trace_viewer);
+        trace_viewer_precompute_minimap_heatmap(&app->trace_viewer,
+                                                &app->trace_data, allocator);
+        break;
+      }
+
+      case MSG_TRACE_LOAD_ABORTED:
+        app->loading.active = false;
+        break;
+
+      case MSG_TRACE_SEARCH_COMPLETE: {
+        app_msg_search_result_t result = msg.as.search_result;
+
+        // Adopt results and histogram synchronously on the UI thread
+        trace_viewer_adopt_search_results(&app->trace_viewer, &app->trace_data,
+                                          result.results, result.histogram,
+                                          allocator);
+
+        // Free the temporary heap-allocated histogram container
+        allocator_free(allocator, result.histogram,
+                       sizeof(duration_histogram_t));
+
+        // If the completed task's channel is still our active channel pointer,
+        // clear it so we don't hold a dangling pointer.
+        if (app->trace_search_channel == result.task_channel) {
+          app->trace_search_channel = nullptr;
+        }
+
+        // Cleanly close and destroy the search task's mailbox channel
+        // now that we are 100% sure the background task has exited!
+        channel_close_and_drain(result.task_channel, trace_search_msg_t,
+                                nullptr, allocator);
+        channel_destroy(result.task_channel, allocator);
+
+        // Mark search task as completed
+        app->trace_viewer.search.is_searching = false;
+        break;
+      }
+
+      case MSG_TRACE_SEARCH_ABORTED: {
+        app_msg_search_aborted_t aborted = msg.as.search_aborted;
+
+        // If the aborted task's channel is still our active channel pointer,
+        // clear it so we don't hold a dangling pointer.
+        if (app->trace_search_channel == aborted.task_channel) {
+          app->trace_search_channel = nullptr;
+        }
+
+        // Cleanly close and destroy the aborted search task's mailbox channel
+        // now that we are 100% sure the background task has exited!
+        channel_close_and_drain(aborted.task_channel, trace_search_msg_t,
+                                nullptr, allocator);
+        channel_destroy(aborted.task_channel, allocator);
+        break;
+      }
+
+      default:
+        break;
     }
-    allocator_free(allocator, curr, sizeof(trace_chunk_node_t));
-    curr = next;
   }
-  pthread_mutex_unlock(&app->loading.chunk_queue.mutex);
 }
 
 void app_update(app_t* app) {
-  // 0. Main Menu Bar
+  allocator_t allocator =
+      counting_allocator_get_allocator(&app->counting_allocator);
+
+  // === 0. Search Coordination (Actor Model Spawning) ===
+  if (app->trace_viewer.search_query_dirty) {
+    app->trace_viewer.search_query_dirty = false;
+
+    // 1. Abort the previous running search task (if any)
+    if (app->trace_search_channel != nullptr) {
+      trace_search_send_abort(app->trace_search_channel);
+    }
+
+    // 2. Create a NEW channel for the new search task.
+    // The old channel remains alive and will be cleanly destroyed
+    // by the UI thread when it receives the aborted message.
+    app->trace_search_channel =
+        channel_create(trace_search_msg_t, 8, allocator);
+
+    const char* query = (const char*)app->trace_viewer.search_query.ptr;
+    if (query && query[0] != '\0') {
+      // Spawn a new background search task!
+      trace_search_start(query, &app->trace_data,
+                         !app->trace_viewer.exclude_thread_events,
+                         !app->trace_viewer.exclude_counter_events,
+                         app->ui_channel, app->trace_search_channel, allocator);
+    } else {
+      // For empty queries, clear the search results synchronously
+      array_list_clear(&app->trace_viewer.selected_event_indices);
+      app->trace_viewer.histogram = (duration_histogram_t){};  // ZII
+      app->trace_viewer.selected_events_dirty = true;
+      app->trace_viewer.search.is_searching = false;
+    }
+  }
+
+  // === 1. Main Menu Bar ===
   if (ig_begin_main_menu_bar()) {
     if (ig_begin_menu("View", true)) {
       if (ig_menu_item("Reset View", nullptr, false, true)) {
@@ -317,7 +340,7 @@ void app_update(app_t* app) {
     ig_end_main_menu_bar();
   }
 
-  // 1. Setup DockSpace
+  // === 2. Setup DockSpace ===
   ig_dock_node_flags_t dockspace_flags = IG_DOCK_NODE_FLAGS_NONE;
   uint32_t dockspace_id =
       ig_dock_space_over_viewport(0, ig_get_main_viewport(), dockspace_flags);
@@ -376,11 +399,8 @@ void app_update(app_t* app) {
 
   ig_push_style_color(IG_COL_POPUP_BG,
                       ig_color_convert_u32_to_float4(app->theme->viewport_bg));
-  if (ig_begin_popup_modal(
-          "Shortcuts", &app->show_shortcuts_window,
-          IG_WINDOW_FLAGS_NO_MOVE | 8)) {  // IG_WINDOW_FLAGS_NO_SCROLLBAR is
-                                           // not needed if we do AutoResize
-    // Close when clicking outside
+  if (ig_begin_popup_modal("Shortcuts", &app->show_shortcuts_window,
+                           IG_WINDOW_FLAGS_NO_MOVE | 8)) {
     if (ig_is_mouse_clicked(0, false)) {
       ig_vec2_t mouse_pos = ig_get_io_mouse_pos();
       ig_vec2_t window_pos = ig_get_window_pos();
@@ -424,7 +444,7 @@ void app_update(app_t* app) {
   }
   ig_pop_style_color(1);
 
-  // 2. Scene Rendering
+  // === 3. Scene Rendering ===
   ig_window_flags_t viewport_flags =
       IG_WINDOW_FLAGS_NO_TITLE_BAR | IG_WINDOW_FLAGS_NO_COLLAPSE |
       IG_WINDOW_FLAGS_NO_RESIZE | IG_WINDOW_FLAGS_NO_MOVE |
@@ -435,19 +455,15 @@ void app_update(app_t* app) {
   ig_push_style_var(IG_STYLE_VAR_WINDOW_PADDING, (ig_vec2_t){0.0f, 0.0f});
 
   if (ig_begin("Main Viewport", nullptr, viewport_flags)) {
-    if (atomic_load(&app->loading.active)) {
+    if (app->loading.active) {
       const char* filename = app->loading.filename.len > 0
                                  ? (const char*)app->loading.filename.ptr
                                  : "";
-      loading_screen_draw(
-          filename, (size_t)atomic_load(&app->loading.event_count),
-          (size_t)atomic_load(&app->loading.total_bytes),
-          (size_t)atomic_load(&app->loading.input_consumed_bytes),
-          (size_t)atomic_load(&app->loading.input_total_bytes), app->theme);
-    } else if (app->trace_data.events.len > 0 &&
-               !atomic_load(&app->loading.active)) {
-      allocator_t allocator =
-          counting_allocator_get_allocator(&app->counting_allocator);
+      loading_screen_draw(filename, app->loading.event_count,
+                          app->loading.total_bytes,
+                          app->loading.input_consumed_bytes,
+                          app->loading.input_total_bytes, app->theme);
+    } else if (app->trace_data.events.len > 0 && !app->loading.active) {
       trace_viewer_draw(&app->trace_viewer, &app->trace_data, allocator,
                         app->theme);
     } else {
@@ -466,54 +482,30 @@ void app_on_theme_changed(app_t* app, bool is_dark) {
 
 void app_begin_session(app_t* app, int session_id, const char* filename,
                        size_t input_total_bytes) {
+  // 1. Stop any active running session (non-blocking abort)
   app_stop_jobs(app);
 
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
+
+  // 2. Reset the trace viewer state
   trace_viewer_deinit(&app->trace_viewer, allocator);
   app->trace_viewer = (trace_viewer_t){};
 
-  app->loading.trace_data = &app->trace_data;
-  app->loading.trace_viewer = &app->trace_viewer;
-  app->loading.allocator = allocator;
-
-  app->trace_viewer.search.td = &app->trace_data;
-  app->trace_viewer.search.allocator = allocator;
-
-  app->loading.parser = (trace_parser_t){};
+  // 3. Clear old trace data
   trace_data_clear(&app->trace_data, allocator);
-  atomic_store_explicit(&app->loading.event_count, 0, memory_order_relaxed);
-  atomic_store_explicit(&app->loading.total_bytes, 0, memory_order_relaxed);
-  atomic_store_explicit(&app->loading.input_total_bytes, input_total_bytes,
-                        memory_order_relaxed);
-  atomic_store_explicit(&app->loading.input_consumed_bytes, 0,
-                        memory_order_relaxed);
+
+  // 4. Initialize progress counters
+  app->loading.event_count = 0;
+  app->loading.total_bytes = 0;
+  app->loading.input_total_bytes = input_total_bytes;
+  app->loading.input_consumed_bytes = 0;
   app->loading.start_time = platform_get_now();
-  atomic_store_explicit(&app->loading.active, true, memory_order_relaxed);
+  app->loading.active = true;
   app->loading.session_id = session_id;
-  app->loading.theme = app->theme;
+  app->loading.request_update = false;
 
-  atomic_store_explicit(&app->loading.jobs_should_abort, false,
-                        memory_order_relaxed);
-  {
-    pthread_mutex_lock(&app->loading.chunk_queue.mutex);
-    trace_chunk_node_t* curr = app->loading.chunk_queue.head;
-    while (curr) {
-      trace_chunk_node_t* next = curr->next;
-      if (curr->chunk.data) {
-        allocator_free(allocator, curr->chunk.data, curr->chunk.size);
-      }
-      allocator_free(allocator, curr, sizeof(trace_chunk_node_t));
-      curr = next;
-    }
-    app->loading.chunk_queue.head = nullptr;
-    app->loading.chunk_queue.tail = nullptr;
-    atomic_store_explicit(&app->loading.chunk_queue.queue_size_bytes, 0,
-                          memory_order_relaxed);
-    app->loading.chunk_queue.closed = false;
-    pthread_mutex_unlock(&app->loading.chunk_queue.mutex);
-  }
-
+  // 5. Cache the trace filename
   array_list_clear(&app->loading.filename);
   if (filename) {
     size_t len = strlen(filename) + 1;
@@ -522,61 +514,44 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
     memcpy(dest, filename, len);
   }
 
-  pthread_mutex_lock(&app->loading.chunk_queue.mutex);
-  pthread_cond_broadcast(&app->loading.chunk_queue.cv);
-  pthread_mutex_unlock(&app->loading.chunk_queue.mutex);
+  // 6. Reset the loader channel so it starts completely fresh!
+  channel_close_and_drain(app->trace_load_channel, trace_load_msg_t,
+                          trace_load_msg_deinit, allocator);
+  channel_destroy(app->trace_load_channel, allocator);
+  app->trace_load_channel = channel_create(trace_load_msg_t, 1024, allocator);
 
-  platform_submit_job((platform_job_fn_t)trace_loading_job, &app->loading);
+  // 7. Spawn the background loader worker task!
+  trace_load_start(app->theme, app->ui_channel, app->trace_load_channel,
+                   allocator);
 }
 
 size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
                              size_t size, size_t input_consumed_bytes,
                              bool is_eof) {
-  if (session_id != app->loading.session_id) {
-    if (data && size > 0) {
-      allocator_t allocator =
-          counting_allocator_get_allocator(&app->counting_allocator);
-      allocator_free(allocator, data, size);
-    }
-    return atomic_load_explicit(&app->loading.chunk_queue.queue_size_bytes,
-                                memory_order_relaxed);
-  }
-
-  trace_chunk_t chunk = {
-      .data = data,
-      .size = size,
-      .input_consumed_bytes = input_consumed_bytes,
-      .is_eof = is_eof,
-  };
-
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
-  pthread_mutex_lock(&app->loading.chunk_queue.mutex);
-  trace_chunk_node_t* node = (trace_chunk_node_t*)allocator_alloc(
-      allocator, sizeof(trace_chunk_node_t));
-  if (node) {
-    node->chunk = chunk;
-    node->next = nullptr;
-    if (app->loading.chunk_queue.tail) {
-      app->loading.chunk_queue.tail->next = node;
-    } else {
-      app->loading.chunk_queue.head = node;
+  // 1. Stale session safety check: immediately clean up chunk and discard
+  if (session_id != app->loading.session_id) {
+    if (data && size > 0) {
+      allocator_free(allocator, data, size);
     }
-    app->loading.chunk_queue.tail = node;
-
-    atomic_fetch_add_explicit(&app->loading.chunk_queue.queue_size_bytes, size,
-                              memory_order_relaxed);
-    if (is_eof) app->loading.chunk_queue.closed = true;
-    pthread_cond_broadcast(&app->loading.chunk_queue.cv);
+    return channel_get_size(app->trace_load_channel);
   }
-  pthread_mutex_unlock(&app->loading.chunk_queue.mutex);
 
-  return atomic_load_explicit(&app->loading.chunk_queue.queue_size_bytes,
-                              memory_order_relaxed);
+  // 2. Track consumed bytes for progress bar display
+  app->loading.input_consumed_bytes = input_consumed_bytes;
+
+  // 3. Push raw chunk through the safe helper.
+  // If the loader queue is full or closed, trace_load_send_chunk AUTOMATICALLY
+  // frees 'data'!
+  trace_load_send_chunk(app->trace_load_channel, data, size,
+                        input_consumed_bytes, is_eof, allocator);
+
+  // 4. Return current queue size (in item count) to trigger backpressure
+  return channel_get_size(app->trace_load_channel);
 }
 
 size_t app_get_queue_size(app_t* app) {
-  return atomic_load_explicit(&app->loading.chunk_queue.queue_size_bytes,
-                              memory_order_relaxed);
+  return channel_get_size(app->trace_load_channel);
 }

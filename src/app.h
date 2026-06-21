@@ -1,17 +1,15 @@
 #ifndef ZTRACING_SRC_APP_H_
 #define ZTRACING_SRC_APP_H_
 
-#include <pthread.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include "src/allocator.h"
 #include "src/array_list.h"
+#include "src/channel.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
-#include "src/trace_parser.h"
 #include "src/trace_viewer.h"
 
 #ifdef __cplusplus
@@ -24,58 +22,23 @@ typedef enum ThemeMode {
   THEME_MODE_LIGHT = 2,
 } theme_mode_t;
 
-typedef struct TraceChunk {
-  char* data;
-  size_t size;
-  // Raw bytes consumed from the input stream to produce this chunk.
-  size_t input_consumed_bytes;
-  bool is_eof;
-} trace_chunk_t;
-
-typedef struct TraceChunkNode {
-  trace_chunk_t chunk;
-  struct TraceChunkNode* next;
-} trace_chunk_node_t;
-
-typedef struct ChunkQueue {
-  pthread_mutex_t mutex;
-  pthread_cond_t cv;
-  trace_chunk_node_t* head;
-  trace_chunk_node_t* tail;
-  _Atomic(size_t) queue_size_bytes;
-  bool closed;
-} chunk_queue_t;
-
-typedef struct TraceLoadingState {
-  _Atomic(size_t) event_count;
-  _Atomic(size_t) total_bytes;
-  // Total expected bytes from the raw input stream (0 if unknown).
-  _Atomic(size_t) input_total_bytes;
-  // Total raw bytes consumed from the input stream so far.
-  _Atomic(size_t) input_consumed_bytes;
-  double start_time;
-  _Atomic(bool) active;
-  int session_id;
-  array_list_t filename;
-
-  _Atomic(bool) request_update;
-  chunk_queue_t chunk_queue;
-
-  // Background job coordination
-  _Atomic(bool) jobs_should_abort;
-  pthread_mutex_t quit_mutex;
-  pthread_cond_t quit_cv;
-
-  trace_parser_t parser;
-
-  // Dependencies for background processing
-  allocator_t allocator;
-  trace_data_t* trace_data;
-  const theme_t* theme;
-  trace_viewer_t* trace_viewer;
+// Simplified, value-semantic loading state owned by the UI thread.
+// High-frequency atomic updates and parser configurations are completely
+// decoupled and isolated inside the background task thread.
+typedef struct trace_loading_state {
+  size_t event_count;        // Number of parsed events (UI display)
+  size_t total_bytes;        // Total parsed bytes (UI display)
+  size_t input_total_bytes;  // Total expected raw stream bytes
+  size_t
+      input_consumed_bytes;  // Raw stream bytes consumed so far (progress bar)
+  double start_time;         // Timestamp when loading session started
+  bool active;               // True if an active loading session is running
+  int session_id;            // Current active session ID
+  array_list_t filename;     // Name of the trace file being loaded
+  bool request_update;       // Set to true when new frames should be drawn
 } trace_loading_state_t;
 
-typedef struct App {
+typedef struct app {
   counting_allocator_t counting_allocator;
 
   // UI & Config
@@ -87,7 +50,14 @@ typedef struct App {
   bool show_about_window;
   bool show_shortcuts_window;
 
-  // Background Loading
+  // Background Mailboxes (Actor Model)
+  channel_t* ui_channel;  // UI thread input mailbox (receives app_msg_t)
+  channel_t*
+      trace_load_channel;  // Loader task input mailbox (sends trace_load_msg_t)
+  channel_t* trace_search_channel;  // Search task input mailbox (sends
+                                    // trace_search_msg_t)
+
+  // Background Loading State
   trace_loading_state_t loading;
 
   // Data & Viewer
@@ -100,6 +70,9 @@ void app_init(app_t* app, allocator_t allocator);
 
 // Deinitializes the application state and releases resources.
 void app_deinit(app_t* app);
+
+// Polls and processes all pending background messages.
+void app_poll_messages(app_t* app);
 
 // Updates the application state and UI for a single frame.
 void app_update(app_t* app);

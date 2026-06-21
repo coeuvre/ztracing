@@ -75,6 +75,9 @@ void ztracing_update(void) {
       (ig_vec2_t){(float)g_gl_ctx.width, (float)g_gl_ctx.height});
   ig_io_set_delta_time(1.0f / 60.0f);
 
+  // Poll and process all pending background messages first
+  app_poll_messages(g_app);
+
   ig_new_frame();
   app_update(g_app);
   ig_render();

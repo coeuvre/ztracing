@@ -1,5 +1,4 @@
 #include <GLES3/gl3.h>
-#include <assert.h>
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <stdatomic.h>
@@ -7,6 +6,7 @@
 #include <string.h>
 
 #include "src/app.h"
+#include "src/assert.h"
 #include "src/imgui_c.h"
 #include "src/imgui_impl_wasm.h"
 #include "src/imgui_impl_webgl.h"
@@ -37,8 +37,17 @@ static void imgui_free(void* ptr, void* user_data) {
 }
 
 static void main_loop() {
-  if (atomic_exchange(&g_app->loading.request_update, false) ||
-      atomic_exchange(&g_app->trace_viewer.search.request_update, false)) {
+  // 1. Poll and process all pending background messages first
+  app_poll_messages(g_app);
+
+  // 2. Check if a redraw has been requested by the app state
+  bool request_update = false;
+  if (g_app->loading.request_update) {
+    g_app->loading.request_update = false;
+    request_update = true;
+  }
+
+  if (request_update) {
     imgui_impl_wasm_request_update();
   }
 
@@ -139,13 +148,13 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
 }
 
 EMSCRIPTEN_KEEPALIVE void* ztracing_malloc(int size) {
-  assert(g_app != nullptr);
+  CHECK(g_app != nullptr);
   allocator_t a = counting_allocator_get_allocator(&g_app->counting_allocator);
   return allocator_alloc(a, (size_t)size);
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_free(void* ptr, int size) {
-  assert(g_app != nullptr);
+  CHECK(g_app != nullptr);
   allocator_t a = counting_allocator_get_allocator(&g_app->counting_allocator);
   allocator_free(a, ptr, (size_t)size);
 }
@@ -181,7 +190,7 @@ EMSCRIPTEN_KEEPALIVE void ztracing_deinit(void) {
 }
 
 EMSCRIPTEN_KEEPALIVE bool ztracing_is_loading_active(void) {
-  return g_app ? atomic_load(&g_app->loading.active) : false;
+  return g_app ? g_app->loading.active : false;
 }
 
 EMSCRIPTEN_KEEPALIVE size_t ztracing_get_allocated_bytes(void) {

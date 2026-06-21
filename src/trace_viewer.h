@@ -45,31 +45,19 @@ struct duration_histogram {
 };
 typedef struct duration_histogram duration_histogram_t;
 
+typedef struct channel channel_t;
+
 struct search_state {
-  pthread_mutex_t mutex;
-  array_list_t pending_query;
-  array_list_t pending_results;
-  trace_data_t* td;
-  allocator_t allocator;
-  tv_atomic_bool new_query_available;
-  tv_atomic_bool jobs_should_abort;
-  tv_atomic_bool results_ready;
-  tv_atomic_bool is_searching;
-  tv_atomic_bool is_active;
-  tv_atomic_bool request_update;
-  pthread_mutex_t quit_mutex;
-  pthread_cond_t quit_cv;
+  channel_t*
+      channel;  // Channel to send abort signals to active task (UI -> Task)
+  bool is_searching;
+
+  bool exclude_thread_events;
+  bool exclude_counter_events;
 
   int sort_column;
   bool sort_descending;
   bool sort_active;
-  tv_atomic_bool new_sort_specs_available;
-  tv_atomic_bool new_box_selection_available;
-
-  tv_atomic_bool exclude_thread_events;
-  tv_atomic_bool exclude_counter_events;
-
-  duration_histogram_t pending_histogram;
 };
 typedef struct search_state search_state_t;
 
@@ -244,6 +232,7 @@ struct trace_viewer {
 
   array_list_t search_query;
   bool focus_search_input;
+  bool search_query_dirty;
   bool exclude_thread_events;
   bool exclude_counter_events;
   search_state_t search;
@@ -273,9 +262,18 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
 void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
                        allocator_t allocator, const theme_t* theme);
 
+void trace_viewer_adopt_search_results(trace_viewer_t* tv,
+                                       const trace_data_t* td,
+                                       array_list_t results,
+                                       duration_histogram_t* histogram,
+                                       allocator_t allocator);
+
 void trace_viewer_calculate_histogram(const array_list_t* results,
                                       const trace_data_t* td,
                                       duration_histogram_t* h);
+
+bool trace_viewer_str_contains_case_insensitive(string_t text, const char* q,
+                                                size_t q_len);
 
 void trace_viewer_search_job(void* user_data);
 void trace_viewer_submit_search_job(trace_viewer_t* tv);

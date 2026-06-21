@@ -86,14 +86,14 @@ async function loadFromStream(stream, name, sizeHint, contentType) {
       setWasmMemory(ptr, value);
 
       // We pass the ABSOLUTE amount of RAW (compressed) bytes that were consumed so far.
-      let queueSize = Module._ztracing_handle_file_chunk(sessionId, ptr, size, inputProcessedBytes, false);
+      let queueItems = Module._ztracing_handle_file_chunk(sessionId, ptr, size, inputProcessedBytes, false);
 
-      const MAX_QUEUE_SIZE = 32 * 1024 * 1024; // 32MB
-      if (queueSize > MAX_QUEUE_SIZE) {
-        while (queueSize > MAX_QUEUE_SIZE) {
+      const MAX_QUEUE_ITEMS = 512; // Cap at 512 chunks in flight to prevent memory stalls
+      if (queueItems > MAX_QUEUE_ITEMS) {
+        while (queueItems > MAX_QUEUE_ITEMS) {
           // Wait for the worker to process some chunks.
           await new Promise(resolve => setTimeout(resolve, 10));
-          queueSize = Module._ztracing_get_queue_size();
+          queueItems = Module._ztracing_get_queue_size();
         }
         lastYieldTime = performance.now();
       }

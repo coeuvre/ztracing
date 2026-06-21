@@ -180,9 +180,11 @@ class ztracing_test : public ::testing::Test {
 
     double start = platform_get_now();
     while (ztracing_is_loading_active()) {
+      ztracing_update();
       usleep(1000);
       if (platform_get_now() - start > 5000.0) {
         FAIL() << "Timeout waiting for trace to load";
+        break;
       }
     }
     // Render a few frames to let ImGui dock layout settle with the new timeline
@@ -616,15 +618,13 @@ TEST_F(ztracing_test, search_highlights_golden) {
 
   // 5. Wait for background search job to complete
   double start = platform_get_now();
-  while (!atomic_load(&app->trace_viewer.search.results_ready)) {
+  while (app->trace_viewer.search.is_searching) {
+    ztracing_update();
     usleep(1000);
     if (platform_get_now() - start > 5000.0) {
       FAIL() << "Timeout waiting for search to complete";
     }
   }
-
-  // Step a frame to merge search results and apply dimming
-  ztracing_update();
 
   assert_golden("search_highlights_golden");
 }
@@ -983,7 +983,8 @@ TEST_F(ztracing_test, details_click_to_focus_golden) {
   // Wait for Details search filter job to complete
   app_t* app = get_app();
   double start = platform_get_now();
-  while (!atomic_load(&app->trace_viewer.search.results_ready)) {
+  while (app->trace_viewer.search.is_searching) {
+    ztracing_update();
     usleep(1000);
     if (platform_get_now() - start > 5000.0) {
       break;
@@ -1068,7 +1069,8 @@ TEST_F(ztracing_test, search_filter_counters_only_golden) {
   // Wait for search to complete
   app_t* app = get_app();
   double start = platform_get_now();
-  while (!atomic_load(&app->trace_viewer.search.results_ready)) {
+  while (app->trace_viewer.search.is_searching) {
+    ztracing_update();
     usleep(1000);
     if (platform_get_now() - start > 5000.0) {
       break;
@@ -1087,7 +1089,8 @@ TEST_F(ztracing_test, search_filter_counters_only_golden) {
 
   // Wait for the new search job (triggered by filter change) to complete
   start = platform_get_now();
-  while (!atomic_load(&app->trace_viewer.search.results_ready)) {
+  while (app->trace_viewer.search.is_searching) {
+    ztracing_update();
     usleep(1000);
     if (platform_get_now() - start > 5000.0) {
       break;

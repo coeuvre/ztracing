@@ -20,23 +20,11 @@ static void trace_viewer_draw_selection_overlay(trace_viewer_t* tv,
 
 static void trace_viewer_draw_search_section(trace_viewer_t* tv,
                                              allocator_t allocator);
-void trace_viewer_search_job(void* user_data);
-static void trace_viewer_stop_search_job(trace_viewer_t* tv) {
-  atomic_store(&tv->search.jobs_should_abort, true);
 
-  pthread_mutex_lock(&tv->search.quit_mutex);
-  while (atomic_load(&tv->search.is_active)) {
-    pthread_cond_wait(&tv->search.quit_cv, &tv->search.quit_mutex);
-  }
-  pthread_mutex_unlock(&tv->search.quit_mutex);
-  atomic_store(&tv->search.jobs_should_abort, false);
-}
-
-void trace_viewer_submit_search_job(trace_viewer_t* tv) {
-  trace_viewer_stop_search_job(tv);
-  atomic_store(&tv->search.is_active, true);
-  platform_submit_job(trace_viewer_search_job, &tv->search);
-}
+static void trace_viewer_sort_results(const trace_data_t* td,
+                                      array_list_t* results, int sort_column,
+                                      bool sort_ascending, bool sort_none,
+                                      allocator_t allocator);
 
 static void trace_viewer_step_vertical_minimap(
     trace_viewer_t* tv, const trace_viewer_input_t* input);
@@ -55,9 +43,8 @@ static void trace_viewer_draw_vertical_minimap(const trace_viewer_t* tv,
     b = temp;         \
   } while (0)
 
-static bool trace_viewer_str_contains_case_insensitive(string_t text,
-                                                       const char* q,
-                                                       size_t q_len) {
+bool trace_viewer_str_contains_case_insensitive(string_t text, const char* q,
+                                                size_t q_len) {
   if (q_len == 0) return true;
   if (text.len < q_len) return false;
 
@@ -175,12 +162,7 @@ static bool trace_viewer_selection_is_mouse_inside(const trace_viewer_t* tv,
 const double TRACE_VIEWER_MAX_ZOOM_FACTOR = 1.2;
 const double TRACE_VIEWER_MIN_ZOOM_DURATION = 1000.0;  // 1ms = 1000us
 
-void trace_viewer_init(trace_viewer_t* tv) {
-  *tv = (trace_viewer_t){};
-  pthread_mutex_init(&tv->search.mutex, nullptr);
-  pthread_mutex_init(&tv->search.quit_mutex, nullptr);
-  pthread_cond_init(&tv->search.quit_cv, nullptr);
-}
+void trace_viewer_init(trace_viewer_t* tv) { *tv = (trace_viewer_t){}; }
 
 void trace_viewer_deinit(trace_viewer_t* tv, allocator_t allocator) {
   track_t* tracks = (track_t*)tv->tracks.ptr;
@@ -199,13 +181,6 @@ void trace_viewer_deinit(trace_viewer_t* tv, allocator_t allocator) {
   array_list_deinit(&tv->vertical_minimap.track_has_selected, allocator);
   array_list_deinit(&tv->vertical_minimap.track_heatmap_densities, allocator);
   array_list_deinit(&tv->search_query, allocator);
-  trace_viewer_stop_search_job(tv);
-  array_list_deinit(&tv->search.pending_query, allocator);
-  array_list_deinit(&tv->search.pending_results, allocator);
-
-  pthread_mutex_destroy(&tv->search.mutex);
-  pthread_mutex_destroy(&tv->search.quit_mutex);
-  pthread_cond_destroy(&tv->search.quit_cv);
 }
 
 static void trace_viewer_draw_time_ruler(trace_viewer_t* tv,
@@ -935,32 +910,17 @@ static void trace_viewer_box_select_update(trace_viewer_t* tv, trace_data_t* td,
 
   tv->has_selected_histogram_bucket = false;
 
-  array_list_clear(&tv->filtered_event_indices);
-  if (tv->selected_event_indices.len > 0) {
-    int64_t* dest_filtered =
-        array_list_append(&tv->filtered_event_indices,
-                          tv->selected_event_indices.len, int64_t, allocator);
-    memcpy(dest_filtered, tv->selected_event_indices.ptr,
-           tv->selected_event_indices.len * sizeof(int64_t));
-  }
+  // Sort the selected events synchronously on the UI thread
+  trace_viewer_sort_results(td, &tv->selected_event_indices,
+                            tv->search.sort_column, !tv->search.sort_descending,
+                            !tv->search.sort_active, allocator);
 
-  {
-    pthread_mutex_lock(&tv->search.mutex);
-    array_list_clear(&tv->search.pending_results);
-    if (tv->selected_event_indices.len > 0) {
-      int64_t* dest_pending = array_list_append(&tv->search.pending_results,
-                                                tv->selected_event_indices.len,
-                                                int64_t, tv->search.allocator);
-      memcpy(dest_pending, tv->selected_event_indices.ptr,
-             tv->selected_event_indices.len * sizeof(int64_t));
-    }
-    atomic_store(&tv->search.new_box_selection_available, true);
-    atomic_store(&tv->search.results_ready, false);
-    pthread_mutex_unlock(&tv->search.mutex);
-  }
+  // Calculate the duration histogram of the selected events synchronously
+  trace_viewer_calculate_histogram(&tv->selected_event_indices, td,
+                                   &tv->histogram);
 
   tv->selected_events_dirty = true;
-  trace_viewer_submit_search_job(tv);
+  tv->search_histogram_dirty = true;
 }
 
 static void trace_viewer_zoom_to_event(trace_viewer_t* tv,
@@ -1107,6 +1067,28 @@ void trace_viewer_calculate_histogram(const array_list_t* results,
       }
     }
   }
+}
+
+void trace_viewer_adopt_search_results(trace_viewer_t* tv,
+                                       const trace_data_t* td,
+                                       array_list_t results,
+                                       duration_histogram_t* histogram,
+                                       allocator_t allocator) {
+  // 1. Deinit and adopt results list
+  array_list_deinit(&tv->selected_event_indices, allocator);
+  tv->selected_event_indices = results;
+
+  // 2. Sort the adopted results synchronously according to current sort specs
+  trace_viewer_sort_results(td, &tv->selected_event_indices,
+                            tv->search.sort_column, !tv->search.sort_descending,
+                            !tv->search.sort_active, allocator);
+
+  // 3. Adopt duration histogram (passed by value copy from the background task)
+  tv->histogram = *histogram;
+
+  // 4. Mark dirty flags
+  tv->selected_events_dirty = true;
+  tv->search_histogram_dirty = true;
 }
 
 void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
@@ -1596,55 +1578,6 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
   }
 
   tv->last_best_snap_ts = tv->snap_best_ts;
-
-  if (atomic_exchange(&tv->search.results_ready, false)) {
-    pthread_mutex_lock(&tv->search.mutex);
-    array_list_clear(&tv->selected_event_indices);
-    if (tv->search.pending_results.len > 0) {
-      int64_t* dest_selections =
-          array_list_append(&tv->selected_event_indices,
-                            tv->search.pending_results.len, int64_t, allocator);
-      memcpy(dest_selections, tv->search.pending_results.ptr,
-             tv->search.pending_results.len * sizeof(int64_t));
-    }
-    tv->selected_events_dirty = true;
-
-    tv->histogram = tv->search.pending_histogram;
-
-    array_list_clear(&tv->filtered_event_indices);
-    const int64_t* selected_ptr =
-        (const int64_t*)tv->selected_event_indices.ptr;
-    if (!tv->has_selected_histogram_bucket) {
-      for (size_t i = 0; i < tv->selected_event_indices.len; i++) {
-        size_t idx = (size_t)selected_ptr[i];
-        if (idx < td->events.len) {
-          *array_list_push(&tv->filtered_event_indices, int64_t, allocator) =
-              (int64_t)idx;
-        }
-      }
-    } else if (tv->has_selected_histogram_bucket &&
-               tv->selected_histogram_bucket <
-                   (size_t)tv->histogram.num_buckets) {
-      const duration_histogram_bucket_t* b =
-          &tv->histogram.buckets[tv->selected_histogram_bucket];
-      const trace_event_persisted_t* events =
-          (const trace_event_persisted_t*)td->events.ptr;
-      for (size_t i = 0; i < tv->selected_event_indices.len; i++) {
-        size_t idx = (size_t)selected_ptr[i];
-        if (idx >= td->events.len) continue;
-        const trace_event_persisted_t* e = &events[idx];
-        int64_t d = e->dur;
-
-        if (d >= b->min_dur && d <= b->max_dur) {
-          *array_list_push(&tv->filtered_event_indices, int64_t, allocator) =
-              (int64_t)idx;
-        }
-      }
-    }
-    pthread_mutex_unlock(&tv->search.mutex);
-
-    tv->search_histogram_dirty = false;
-  }
 
   if (tv->search_histogram_dirty) {
     tv->search_histogram_dirty = false;
@@ -2466,16 +2399,24 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
                 ig_sort_direction_t direction =
                     ig_table_sort_specs_get_sort_direction(specs, 0);
 
-                pthread_mutex_lock(&tv->search.mutex);
                 tv->search.sort_column = column_index;
                 tv->search.sort_descending =
                     (direction != IG_SORT_DIRECTION_ASCENDING &&
                      direction != IG_SORT_DIRECTION_NONE);
                 tv->search.sort_active = (direction != IG_SORT_DIRECTION_NONE);
-                atomic_store(&tv->search.new_sort_specs_available, true);
-                pthread_mutex_unlock(&tv->search.mutex);
 
-                trace_viewer_submit_search_job(tv);
+                // Sort the selected events synchronously on the UI thread
+                trace_viewer_sort_results(td, &tv->selected_event_indices,
+                                          tv->search.sort_column,
+                                          !tv->search.sort_descending,
+                                          !tv->search.sort_active, allocator);
+
+                // Re-calculate the duration histogram of the sorted events
+                trace_viewer_calculate_histogram(&tv->selected_event_indices,
+                                                 td, &tv->histogram);
+
+                tv->selected_events_dirty = true;
+                tv->search_histogram_dirty = true;
               }
               ig_table_sort_specs_clear_dirty(specs);
             }
@@ -2787,190 +2728,6 @@ static void trace_viewer_sort_results(const trace_data_t* td,
   }
 }
 
-void trace_viewer_search_job(void* user_data) {
-  search_state_t* s = (search_state_t*)user_data;
-  trace_data_t* td = s->td;
-  allocator_t allocator = s->allocator;
-
-  if (atomic_load(&s->jobs_should_abort)) {
-    pthread_mutex_lock(&s->quit_mutex);
-    atomic_store(&s->is_active, false);
-    pthread_cond_broadcast(&s->quit_cv);
-    pthread_mutex_unlock(&s->quit_mutex);
-    return;
-  }
-
-  atomic_store(&s->is_searching, true);
-
-  array_list_t query = {};
-  bool do_search = false;
-  bool do_sort = false;
-  bool do_box_select = false;
-
-  int sort_column = 0;
-  bool sort_ascending = true;
-  bool sort_none = true;
-
-  {
-    pthread_mutex_lock(&s->mutex);
-    if (atomic_load(&s->new_query_available)) {
-      if (s->pending_query.len > 0) {
-        char* dest_query =
-            array_list_append(&query, s->pending_query.len, char, allocator);
-        memcpy(dest_query, s->pending_query.ptr,
-               s->pending_query.len * sizeof(char));
-      }
-      atomic_store(&s->new_query_available, false);
-      do_search = true;
-    }
-
-    if (atomic_load(&s->new_sort_specs_available)) {
-      atomic_store(&s->new_sort_specs_available, false);
-      do_sort = true;
-    }
-
-    if (atomic_load(&s->new_box_selection_available)) {
-      atomic_store(&s->new_box_selection_available, false);
-      do_box_select = true;
-    }
-
-    sort_column = s->sort_column;
-    sort_ascending = !s->sort_descending;
-    sort_none = !s->sort_active;
-    pthread_mutex_unlock(&s->mutex);
-  }
-
-  if (do_search) {
-    array_list_t results = {};
-    if (query.len > 0 && ((char*)query.ptr)[0] != '\0') {
-      const char* query_ptr = (const char*)query.ptr;
-      size_t query_len = strlen(query_ptr);
-      size_t n_events = td->events.len;
-
-      bool include_threads = !atomic_load(&s->exclude_thread_events);
-      bool include_counters = !atomic_load(&s->exclude_counter_events);
-
-      for (size_t i = 0; i < n_events; i++) {
-        if (atomic_load(&s->new_query_available) ||
-            atomic_load(&s->jobs_should_abort))
-          break;
-
-        const trace_event_persisted_t* e =
-            array_list_get(&td->events, const trace_event_persisted_t, i);
-        string_t ph = trace_data_get_string(td, e->ph_ref);
-        bool is_counter = (ph.len == 1 && ph.ptr[0] == 'C');
-        bool is_metadata = (ph.len == 1 && ph.ptr[0] == 'M');
-
-        if (is_counter && !include_counters) continue;
-        if (!is_counter && !is_metadata && !include_threads) continue;
-
-        string_t name = trace_data_get_string(td, e->name_ref);
-        string_t cat = trace_data_get_string(td, e->cat_ref);
-
-        bool match = trace_viewer_str_contains_case_insensitive(name, query_ptr,
-                                                                query_len) ||
-                     trace_viewer_str_contains_case_insensitive(cat, query_ptr,
-                                                                query_len);
-
-        if (!match) {
-          for (uint32_t k = 0; k < e->args_count; k++) {
-            const trace_arg_persisted_t* arg = &(
-                (const trace_arg_persisted_t*)td->args.ptr)[e->args_offset + k];
-
-            if (arg->val_ref != 0) {
-              string_t arg_val = trace_data_get_string(td, arg->val_ref);
-              if (trace_viewer_str_contains_case_insensitive(arg_val, query_ptr,
-                                                             query_len)) {
-                match = true;
-                break;
-              }
-            }
-          }
-        }
-
-        if (match) {
-          *array_list_push(&results, int64_t, allocator) = (int64_t)i;
-        }
-      }
-
-      if (!atomic_load(&s->new_query_available) &&
-          !atomic_load(&s->jobs_should_abort)) {
-        trace_viewer_sort_results(td, &results, sort_column, sort_ascending,
-                                  sort_none, allocator);
-
-        if (!atomic_load(&s->new_query_available) &&
-            !atomic_load(&s->jobs_should_abort)) {
-          duration_histogram_t hist = {};
-          trace_viewer_calculate_histogram(&results, td, &hist);
-
-          pthread_mutex_lock(&s->mutex);
-          array_list_clear(&s->pending_results);
-          if (results.len > 0) {
-            int64_t* dest_results = array_list_append(
-                &s->pending_results, results.len, int64_t, allocator);
-            memcpy(dest_results, results.ptr, results.len * sizeof(int64_t));
-          }
-          s->pending_histogram = hist;
-          atomic_store(&s->results_ready, true);
-          pthread_mutex_unlock(&s->mutex);
-        }
-      }
-      array_list_deinit(&results, allocator);
-    } else {
-      pthread_mutex_lock(&s->mutex);
-      array_list_clear(&s->pending_results);
-      duration_histogram_t empty_hist = {};
-      s->pending_histogram = empty_hist;
-      atomic_store(&s->results_ready, true);
-      pthread_mutex_unlock(&s->mutex);
-    }
-  } else if (do_box_select || do_sort) {
-    array_list_t results = {};
-    {
-      pthread_mutex_lock(&s->mutex);
-      if (s->pending_results.len > 0) {
-        int64_t* dest_copy = array_list_append(&results, s->pending_results.len,
-                                               int64_t, allocator);
-        memcpy(dest_copy, s->pending_results.ptr,
-               s->pending_results.len * sizeof(int64_t));
-      }
-      pthread_mutex_unlock(&s->mutex);
-    }
-
-    trace_viewer_sort_results(td, &results, sort_column, sort_ascending,
-                              sort_none, allocator);
-
-    if (!atomic_load(&s->new_query_available) &&
-        !atomic_load(&s->jobs_should_abort)) {
-      duration_histogram_t hist = {};
-      trace_viewer_calculate_histogram(&results, td, &hist);
-
-      pthread_mutex_lock(&s->mutex);
-      array_list_clear(&s->pending_results);
-      if (results.len > 0) {
-        int64_t* dest_res = array_list_append(&s->pending_results, results.len,
-                                              int64_t, allocator);
-        memcpy(dest_res, results.ptr, results.len * sizeof(int64_t));
-      }
-      s->pending_histogram = hist;
-      atomic_store(&s->results_ready, true);
-      pthread_mutex_unlock(&s->mutex);
-    }
-    array_list_deinit(&results, allocator);
-  }
-
-  atomic_store(&s->is_searching, false);
-  atomic_store_explicit(&s->request_update, true, memory_order_relaxed);
-  array_list_deinit(&query, allocator);
-
-  {
-    pthread_mutex_lock(&s->quit_mutex);
-    atomic_store(&s->is_active, false);
-    pthread_cond_broadcast(&s->quit_cv);
-    pthread_mutex_unlock(&s->quit_mutex);
-  }
-}
-
 struct InputTextCallback_UserData {
   array_list_t* al;
   allocator_t allocator;
@@ -3034,49 +2791,15 @@ static void trace_viewer_draw_search_section(trace_viewer_t* tv,
   filter_changed |= local_filter_changed;
 
   if (search_input_changed || enter_pressed || filter_changed) {
-    pthread_mutex_lock(&tv->search.mutex);
-    const char* last_query =
-        (tv->search.pending_query.len > 0 && tv->search.pending_query.ptr)
-            ? (const char*)tv->search.pending_query.ptr
-            : "";
-
-    bool should_trigger = false;
-    if (enter_pressed) {
-      if (tv->selected_event_indices.len == 0) {
-        should_trigger = true;
-      }
-    } else if (search_input_changed) {
-      if (strcmp(last_query, (const char*)tv->search_query.ptr) != 0) {
-        should_trigger = true;
-      }
-    } else if (filter_changed) {
-      should_trigger = true;
-    }
-
-    if (should_trigger) {
-      array_list_clear(&tv->search.pending_query);
-      size_t query_len = strlen((const char*)tv->search_query.ptr) + 1;
-      char* dest_pq = array_list_append(&tv->search.pending_query, query_len,
-                                        char, allocator);
-      memcpy(dest_pq, tv->search_query.ptr, query_len * sizeof(char));
-
-      atomic_store(&tv->search.exclude_thread_events,
-                   tv->exclude_thread_events);
-      atomic_store(&tv->search.exclude_counter_events,
-                   tv->exclude_counter_events);
-
-      atomic_store(&tv->search.new_query_available, true);
-      atomic_store(&tv->search.results_ready, false);
-      tv->has_selected_histogram_bucket = false;
-      tv->search_histogram_dirty = true;
-      trace_viewer_submit_search_job(tv);
-    }
-    pthread_mutex_unlock(&tv->search.mutex);
+    tv->search_query_dirty = true;
+    tv->search.is_searching = true;
+    tv->has_selected_histogram_bucket = false;
+    tv->search_histogram_dirty = true;
   }
 
   if (((const char*)tv->search_query.ptr)[0] != '\0') {
     ig_text("%zu events selected", tv->selected_event_indices.len);
-    if (atomic_load(&tv->search.is_searching)) {
+    if (tv->search.is_searching) {
       ig_same_line(0.0f, -1.0f);
       ig_text_disabled("(searching...)");
     }

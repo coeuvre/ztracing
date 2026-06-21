@@ -1,8 +1,11 @@
+#include <emscripten.h>
 #include <emscripten/console.h>
 #include <stdarg.h>
 #include <stdio.h>
 
 #include "src/logging.h"
+
+extern "C" {
 
 void log_message(log_level_t level, const char* format, ...) {
   char buffer[1024];
@@ -13,7 +16,7 @@ void log_message(log_level_t level, const char* format, ...) {
 
   switch (level) {
     case LOG_LEVEL_DEBUG:
-      emscripten_console_log(buffer);
+      EM_ASM({ console.debug(UTF8ToString($0)); }, buffer);
       break;
     case LOG_LEVEL_INFO:
       emscripten_console_log(buffer);
@@ -25,4 +28,5 @@ void log_message(log_level_t level, const char* format, ...) {
       emscripten_console_error(buffer);
       break;
   }
+}
 }
