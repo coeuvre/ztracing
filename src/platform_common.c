@@ -27,6 +27,7 @@ static pthread_cond_t g_job_cv = PTHREAD_COND_INITIALIZER;
 static pthread_t g_workers[NUM_WORKERS];
 static bool g_worker_started = false;
 static bool g_worker_should_exit = false;
+static bool g_teardown_in_progress = false;
 
 static void* platform_worker_main(void* arg) {
   (void)arg;
@@ -59,6 +60,12 @@ void platform_submit_job(platform_job_fn_t fn, void* user_data) {
   bool submitted = false;
   while (!submitted) {
     pthread_mutex_lock(&g_job_mutex);
+
+    if (g_teardown_in_progress) {
+      pthread_mutex_unlock(&g_job_mutex);
+      sched_yield();
+      continue;
+    }
 
     if (!g_worker_started) {
       for (size_t i = 0; i < NUM_WORKERS; i++) {
@@ -95,9 +102,9 @@ void platform_submit_job(platform_job_fn_t fn, void* user_data) {
 void platform_teardown_workers() {
   pthread_mutex_lock(&g_job_mutex);
   if (g_worker_started) {
-    g_worker_started = false;  // Mark as stopped immediately under lock to
-                               // prevent concurrent double-join UB!
+    g_teardown_in_progress = true;
     g_worker_should_exit = true;
+    g_worker_started = false;
     g_job_queue.head = 0;
     g_job_queue.tail = 0;
     g_job_queue.size = 0;
@@ -109,6 +116,7 @@ void platform_teardown_workers() {
     }
 
     pthread_mutex_lock(&g_job_mutex);
+    g_teardown_in_progress = false;
     g_worker_should_exit = false;
   }
   pthread_mutex_unlock(&g_job_mutex);

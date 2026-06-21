@@ -212,4 +212,48 @@ TEST(trace_parser_test, infinite_loop_on_invalid_char_in_skip) {
   trace_parser_deinit(&p, a);
 }
 
+TEST(trace_parser_test, malformed_numbers) {
+  trace_parser_t p = {};
+  allocator_t a = allocator_get_default();
 
+  // "12+34" is tokenized as a single number token because it only contains
+  // [0-9.eE+-]. Our custom numeric parser must strictly validate and stop at
+  // '+' returning 12.
+  const char* json = "[{\"name\":\"foo\",\"ts\":12+34}]";
+  trace_parser_feed(&p, json, strlen(json), true, a);
+
+  trace_event_t ev;
+  EXPECT_TRUE(trace_parser_next(&p, &ev, a));
+  EXPECT_EQ(ev.name, "foo");
+  EXPECT_EQ(ev.ts, 12);
+
+  trace_parser_deinit(&p, a);
+}
+
+TEST(trace_parser_test, integer_overflow) {
+  trace_parser_t p = {};
+  allocator_t a = allocator_get_default();
+
+  // Test numbers exceeding limits
+  const char* json =
+      "[{\"name\":\"pos\",\"ts\":999999999999999999999999999999,\"pid\":"
+      "99999999999},"
+      "{\"name\":\"neg\",\"ts\":-999999999999999999999999999999,\"pid\":-"
+      "99999999999}]";
+  trace_parser_feed(&p, json, strlen(json), true, a);
+
+  trace_event_t ev;
+  // 1. Positive overflow
+  EXPECT_TRUE(trace_parser_next(&p, &ev, a));
+  EXPECT_EQ(ev.name, "pos");
+  EXPECT_EQ(ev.ts, INT64_MAX);
+  EXPECT_EQ(ev.pid, INT32_MAX);
+
+  // 2. Negative overflow
+  EXPECT_TRUE(trace_parser_next(&p, &ev, a));
+  EXPECT_EQ(ev.name, "neg");
+  EXPECT_EQ(ev.ts, INT64_MIN);
+  EXPECT_EQ(ev.pid, INT32_MIN);
+
+  trace_parser_deinit(&p, a);
+}

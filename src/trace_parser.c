@@ -242,23 +242,37 @@ static double to_double(string_t s) {
     tmp[len] = '\0';
     val = atof(tmp);
   } else {
+    if (s.len == 0) return 0.0;
+
     size_t i = 0;
     bool neg = false;
-    if (s.len > 0 && s.ptr[0] == '-') {
+    if (s.ptr[0] == '-') {
       neg = true;
       i++;
+    } else if (s.ptr[0] == '+') {
+      i++;
     }
+
     double integer_part = 0.0;
     for (; i < s.len && s.ptr[i] != '.'; ++i) {
-      integer_part = integer_part * 10.0 + (s.ptr[i] - '0');
+      char c = s.ptr[i];
+      if (c < '0' || c > '9') {
+        break;
+      }
+      integer_part = integer_part * 10.0 + (c - '0');
     }
+
     val = integer_part;
     if (i < s.len && s.ptr[i] == '.') {
       i++;
       double fraction_part = 0.0;
       double divisor = 1.0;
       for (; i < s.len; ++i) {
-        fraction_part = fraction_part * 10.0 + (s.ptr[i] - '0');
+        char c = s.ptr[i];
+        if (c < '0' || c > '9') {
+          break;
+        }
+        fraction_part = fraction_part * 10.0 + (c - '0');
         divisor *= 10.0;
       }
       val += fraction_part / divisor;
@@ -271,53 +285,77 @@ static double to_double(string_t s) {
 }
 
 static int64_t to_int64(string_t s) {
-  int64_t val = 0;
-  size_t i = 0;
-  bool neg = false;
-  if (s.len > 0 && s.ptr[0] == '-') {
-    neg = true;
-    i++;
-  }
-  for (; i < s.len; ++i) {
-    char c = s.ptr[i];
-    if (c == '.') {
-      for (size_t j = i + 1; j < s.len; ++j) {
-        if (s.ptr[j] == 'e' || s.ptr[j] == 'E') {
-          return (int64_t)to_double(s);
-        }
-      }
+  bool is_float = false;
+  for (size_t i = 0; i < s.len; ++i) {
+    if (s.ptr[i] == '.' || s.ptr[i] == 'e' || s.ptr[i] == 'E') {
+      is_float = true;
       break;
     }
-    if (c == 'e' || c == 'E') {
-      return (int64_t)to_double(s);
+  }
+  if (is_float) {
+    return (int64_t)to_double(s);
+  }
+
+  if (s.len == 0) return 0;
+
+  size_t i = 0;
+  bool neg = false;
+  if (s.ptr[0] == '-') {
+    neg = true;
+    i++;
+  } else if (s.ptr[0] == '+') {
+    i++;
+  }
+
+  int64_t val = 0;
+  for (; i < s.len; ++i) {
+    char c = s.ptr[i];
+    if (c < '0' || c > '9') {
+      break;
     }
-    val = val * 10 + (c - '0');
+    int digit = c - '0';
+    if (val > (INT64_MAX - digit) / 10) {
+      return neg ? INT64_MIN : INT64_MAX;
+    }
+    val = val * 10 + digit;
   }
   return neg ? -val : val;
 }
 
 static int32_t to_int32(string_t s) {
-  int32_t val = 0;
-  size_t i = 0;
-  bool neg = false;
-  if (s.len > 0 && s.ptr[0] == '-') {
-    neg = true;
-    i++;
-  }
-  for (; i < s.len; ++i) {
-    char c = s.ptr[i];
-    if (c == '.') {
-      for (size_t j = i + 1; j < s.len; ++j) {
-        if (s.ptr[j] == 'e' || s.ptr[j] == 'E') {
-          return (int32_t)to_double(s);
-        }
-      }
+  bool is_float = false;
+  for (size_t i = 0; i < s.len; ++i) {
+    if (s.ptr[i] == '.' || s.ptr[i] == 'e' || s.ptr[i] == 'E') {
+      is_float = true;
       break;
     }
-    if (c == 'e' || c == 'E') {
-      return (int32_t)to_double(s);
+  }
+  if (is_float) {
+    return (int32_t)to_double(s);
+  }
+
+  if (s.len == 0) return 0;
+
+  size_t i = 0;
+  bool neg = false;
+  if (s.ptr[0] == '-') {
+    neg = true;
+    i++;
+  } else if (s.ptr[0] == '+') {
+    i++;
+  }
+
+  int32_t val = 0;
+  for (; i < s.len; ++i) {
+    char c = s.ptr[i];
+    if (c < '0' || c > '9') {
+      break;
     }
-    val = val * 10 + (c - '0');
+    int digit = c - '0';
+    if (val > (INT32_MAX - digit) / 10) {
+      return neg ? INT32_MIN : INT32_MAX;
+    }
+    val = val * 10 + digit;
   }
   return neg ? -val : val;
 }

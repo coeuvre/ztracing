@@ -1,5 +1,6 @@
 #include "src/trace_data.h"
 
+#include <stdatomic.h>
 #include <string.h>
 
 #include "src/assert.h"
@@ -83,15 +84,15 @@ trace_data_t* trace_data_create(allocator_t a) {
 
 void trace_data_retain(trace_data_t* td) {
   CHECK(td != nullptr);
-  CHECK(td->ref_count > 0);
-  td->ref_count++;
+  int prev = atomic_fetch_add_explicit(&td->ref_count, 1, memory_order_relaxed);
+  CHECK(prev > 0);
 }
 
 void trace_data_release(trace_data_t* td, allocator_t a) {
   if (td == nullptr) return;
-  CHECK(td->ref_count > 0);
-  td->ref_count--;
-  if (td->ref_count == 0) {
+  int prev = atomic_fetch_sub_explicit(&td->ref_count, 1, memory_order_acq_rel);
+  CHECK(prev > 0);
+  if (prev == 1) {
     trace_data_deinit(td, a);
     allocator_free(a, td, sizeof(trace_data_t));
   }

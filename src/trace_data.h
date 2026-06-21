@@ -81,7 +81,7 @@ typedef struct trace_data {
     uint32_t current_hash;
   } tmp;
 
-  int ref_count;
+  _Atomic(int) ref_count;
 } trace_data_t;
 
 trace_data_t* trace_data_create(allocator_t a);

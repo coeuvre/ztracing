@@ -203,6 +203,11 @@ static inline void hash_table_resize(hash_table_t* ht, size_t new_capacity,
     cap <<= 1;
   }
 
+  if (cap > (size_t)-1 / ht->entry_size) {
+    LOG_ERROR("Fatal Error: Hash table capacity overflow.");
+    abort();
+  }
+
   hash_table_t new_ht = *ht;
   new_ht.entries = allocator_alloc(a, cap * ht->entry_size);
   memset(new_ht.entries, 0, cap * ht->entry_size);

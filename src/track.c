@@ -312,9 +312,9 @@ void track_calculate_depths(track_t* t, const trace_data_t* td, allocator_t a) {
     // Find the deepest parent that strictly contains this event.
     uint32_t depth = 0;
     stack_elements = (const stack_event_t*)stack.ptr;
-    for (int j = (int)stack.len - 1; j >= 0; j--) {
-      if (stack_elements[(size_t)j].end >= end_ts) {
-        depth = stack_elements[(size_t)j].depth + 1;
+    for (size_t j = stack.len; j > 0; j--) {
+      if (stack_elements[j - 1].end >= end_ts) {
+        depth = stack_elements[j - 1].depth + 1;
         break;
       }
     }
