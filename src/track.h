@@ -23,11 +23,11 @@ typedef struct track {
   string_ref_t name_ref;
   string_ref_t id_ref;
   int32_t sort_index;
-  array_list_t event_indices;   // Element type: size_t
-  array_list_t depths;          // Element type: uint32_t
-  array_list_t counter_series;  // Element type: string_ref_t
-  array_list_t counter_colors;  // Element type: uint32_t
-  array_list_t block_max_durs;  // Element type: int64_t
+  array_list_t event_indices;            // Element type: size_t
+  array_list_t depths;                   // Element type: uint32_t
+  array_list_t counter_series;           // Element type: string_ref_t
+  array_list_t counter_palette_indices;  // Element type: uint8_t
+  array_list_t block_max_durs;           // Element type: int64_t
   double counter_max_total;
   int64_t max_dur;
   uint32_t max_depth;
@@ -44,16 +44,11 @@ void track_calculate_depths(track_t* t, const trace_data_t* td, allocator_t a);
 size_t track_find_visible_start_index(const track_t* t, const trace_data_t* td,
                                       int64_t viewport_start_ts);
 
-void track_update_colors(array_list_t* tracks, const trace_data_t* td,
-                         const theme_t* theme);
-void track_organize(const trace_data_t* td, const theme_t* theme,
-                    array_list_t* out_tracks, int64_t* out_min_ts,
-                    int64_t* out_max_ts, allocator_t a);
+void track_organize(const trace_data_t* td, array_list_t* out_tracks,
+                    int64_t* out_min_ts, int64_t* out_max_ts, allocator_t a);
 
 #ifdef __cplusplus
 }
 #endif
-
-
 
 #endif  // ZTRACING_SRC_TRACK_H_

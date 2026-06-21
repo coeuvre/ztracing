@@ -1,8 +1,8 @@
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <vector>
-#include <cmath>
-#include <algorithm>
 
 #include "src/allocator.h"
 #include "src/colors.h"
@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
     trace_parser_feed(&p, buf, n, is_eof, a);
 
     while (trace_parser_next(&p, &event, a)) {
-      trace_data_add_event(td, theme_get_dark(), &event, &matcher, a);
+      trace_data_add_event(td, &event, &matcher, a);
     }
     if (is_eof) break;
   }
@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
   // Organize Tracks
   array_list_t tracks = {};
   int64_t min_ts, max_ts;
-  track_organize(td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
+  track_organize(td, &tracks, &min_ts, &max_ts, a);
 
   // 1. Vertical Scan: Find the heaviest contiguous block of N tracks (Viewport)
   // that contains the maximum total number of events when fully zoomed out.
@@ -98,19 +98,22 @@ int main(int argc, char** argv) {
   printf("----------------------------------------\n");
   printf("TRACE RENDERER BENCHMARK (VERTICAL VIEWPORT SCAN)\n");
   printf("----------------------------------------\n");
-  printf("File Size:             %.2f MB\n", (double)file_size / (1024.0 * 1024.0));
+  printf("File Size:             %.2f MB\n",
+         (double)file_size / (1024.0 * 1024.0));
   printf("Total Tracks:          %zu\n", tracks.len);
   printf("Viewport Size:         %zu tracks\n", actual_viewport_tracks);
   printf("  Thread Tracks:       %zu\n", thread_track_count);
   printf("  Counter Tracks:      %zu\n", counter_track_count);
   printf("  Total Viewport Events: %zu\n", max_viewport_events);
-  printf("  Hottest Track Block: index %zu to %zu\n", best_track_start, best_track_start + actual_viewport_tracks - 1);
+  printf("  Hottest Track Block: index %zu to %zu\n", best_track_start,
+         best_track_start + actual_viewport_tracks - 1);
   printf("----------------------------------------\n");
 
   const int ITERATIONS = 100;
   track_renderer_state_t state = {};
 
-  // We will pre-allocate temporary lists for each track to avoid allocation overhead in the benchmark loop
+  // We will pre-allocate temporary lists for each track to avoid allocation
+  // overhead in the benchmark loop
   std::vector<array_list_t> thread_blocks(actual_viewport_tracks);
   std::vector<array_list_t> counter_blocks(actual_viewport_tracks);
 
@@ -121,9 +124,13 @@ int main(int argc, char** argv) {
     for (size_t j = 0; j < actual_viewport_tracks; j++) {
       track_t* t = &track_array[best_track_start + j];
       if (t->type == TRACK_TYPE_THREAD) {
-        track_compute_render_blocks(t, td, (double)min_ts, (double)max_ts, 1000.0f, 0.0f, -1, &state, &thread_blocks[j], a);
+        track_compute_render_blocks(t, td, (double)min_ts, (double)max_ts,
+                                    1000.0f, 0.0f, -1, &state,
+                                    &thread_blocks[j], a);
       } else if (t->type == TRACK_TYPE_COUNTER) {
-        track_compute_counter_render_blocks(t, td, (double)min_ts, (double)max_ts, 1000.0f, 0.0f, -1, &state, &counter_blocks[j], a);
+        track_compute_counter_render_blocks(t, td, (double)min_ts,
+                                            (double)max_ts, 1000.0f, 0.0f, -1,
+                                            &state, &counter_blocks[j], a);
       }
     }
 
@@ -138,7 +145,8 @@ int main(int argc, char** argv) {
 
   printf("Full Viewport Render (Fully Zoomed Out):\n");
   printf("  Total Time:          %.3f ms\n", diff.count());
-  printf("  Average Frame Time:  %.3f ms (avg of %d runs)\n", diff.count() / ITERATIONS, ITERATIONS);
+  printf("  Average Frame Time:  %.3f ms (avg of %d runs)\n",
+         diff.count() / ITERATIONS, ITERATIONS);
   printf("----------------------------------------\n");
 
   // Deinit
@@ -151,7 +159,7 @@ int main(int argc, char** argv) {
     track_deinit(&track_array[i], a);
   }
   array_list_deinit(&tracks, a);
-  trace_event_matcher_deinit(&matcher, a);
+  trace_event_matcher_deinit(&matcher);
   trace_data_release(td, a);
   return 0;
 }

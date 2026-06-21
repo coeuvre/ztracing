@@ -40,8 +40,8 @@ typedef struct {
 // Minimalist functional entry point to spawn the background loading task.
 // app_channel: Output channel of app_msg_t (Task -> UI)
 // trace_load_channel: Input mailbox channel of trace_load_msg_t (UI -> Task)
-void trace_load_start(const theme_t* theme, channel_t* app_channel,
-                      channel_t* trace_load_channel, allocator_t allocator);
+void trace_load_start(channel_t* app_channel, channel_t* trace_load_channel,
+                      allocator_t allocator);
 
 // === 5. Message Destructor (Single Source of Truth Cleanup) ===
 void trace_load_msg_deinit(trace_load_msg_t* msg, allocator_t allocator);

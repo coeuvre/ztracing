@@ -215,7 +215,7 @@ void track_deinit(track_t* t, allocator_t a) {
   array_list_deinit(&t->event_indices, a);
   array_list_deinit(&t->depths, a);
   array_list_deinit(&t->counter_series, a);
-  array_list_deinit(&t->counter_colors, a);
+  array_list_deinit(&t->counter_palette_indices, a);
   array_list_deinit(&t->block_max_durs, a);
   *t = (track_t){};
 }
@@ -382,32 +382,9 @@ size_t track_find_visible_start_index(const track_t* t, const trace_data_t* td,
 // TODO: Remove track_update_colors after the migration is done. We might just
 // store the color_index instead of the real color, allowing theme colors to be
 // resolved dynamically at draw time.
-void track_update_colors(array_list_t* tracks, const trace_data_t* td,
-                         const theme_t* theme) {
-  track_t* tracks_data = (track_t*)tracks->ptr;
-  for (size_t i = 0; i < tracks->len; i++) {
-    track_t* t = &tracks_data[i];
-    if (t->type == TRACK_TYPE_COUNTER) {
-      string_ref_t* counter_series = (string_ref_t*)t->counter_series.ptr;
-      uint32_t* counter_colors = (uint32_t*)t->counter_colors.ptr;
-      for (size_t s_idx = 0; s_idx < t->counter_series.len; s_idx++) {
-        string_t key_str = trace_data_get_string(td, counter_series[s_idx]);
-        uint32_t hash = 2166136261u;
-        for (size_t char_idx = 0; char_idx < key_str.len; ++char_idx) {
-          hash ^= (uint8_t)key_str.ptr[char_idx];
-          hash *= 16777619u;
-        }
-        counter_colors[s_idx] =
-            theme->event_palette[hash % (sizeof(theme->event_palette) /
-                                         sizeof(theme->event_palette[0]))];
-      }
-    }
-  }
-}
 
-void track_organize(const trace_data_t* td, const theme_t* theme,
-                    array_list_t* out_tracks, int64_t* out_min_ts,
-                    int64_t* out_max_ts, allocator_t a) {
+void track_organize(const trace_data_t* td, array_list_t* out_tracks,
+                    int64_t* out_min_ts, int64_t* out_max_ts, allocator_t a) {
   track_t* out_tracks_data = (track_t*)out_tracks->ptr;
   for (size_t i = 0; i < out_tracks->len; i++) {
     track_deinit(&out_tracks_data[i], a);
@@ -637,14 +614,24 @@ void track_organize(const trace_data_t* td, const theme_t* theme,
                          t->counter_series.len * sizeof(counter_sort_key_t));
         }
 
-        // Cache colors
-        array_list_resize(&t->counter_colors, t->counter_series.len,
-                          sizeof(uint32_t), a);
+        // Cache palette indices
+        array_list_resize(&t->counter_palette_indices, t->counter_series.len,
+                          sizeof(uint8_t), a);
+
+        string_ref_t* counter_series = (string_ref_t*)t->counter_series.ptr;
+        uint8_t* counter_palette_indices =
+            (uint8_t*)t->counter_palette_indices.ptr;
+        for (size_t s_idx = 0; s_idx < t->counter_series.len; s_idx++) {
+          string_t key_str = trace_data_get_string(td, counter_series[s_idx]);
+          uint32_t hash = 2166136261u;
+          for (size_t char_idx = 0; char_idx < key_str.len; ++char_idx) {
+            hash ^= (uint8_t)key_str.ptr[char_idx];
+            hash *= 16777619u;
+          }
+          counter_palette_indices[s_idx] = (uint8_t)(hash % 8);
+        }
       }
     }
-
-    // Update colors based on the current theme
-    track_update_colors(out_tracks, td, theme);
 
     // Final track sort — Context-free using TrackSortKey
     track_sort_key_t* keys = nullptr;

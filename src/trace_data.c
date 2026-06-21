@@ -73,8 +73,6 @@ static void trace_data_deinit(trace_data_t* td, allocator_t a) {
   *td = (trace_data_t){};
 }
 
-
-
 trace_data_t* trace_data_create(allocator_t a) {
   trace_data_t* td = (trace_data_t*)allocator_alloc(a, sizeof(trace_data_t));
   CHECK(td != nullptr);
@@ -154,63 +152,62 @@ string_ref_t trace_data_push_string(trace_data_t* td, string_t s,
   return new_index;
 }
 
-static uint32_t compute_event_color(const theme_t* theme,
-                                    const trace_event_t* event) {
-  const size_t palette_size =
-      sizeof(theme->event_palette) / sizeof(theme->event_palette[0]);
-  uint32_t color = 0;
+static uint8_t compute_event_palette_index(const trace_event_t* event) {
+  uint8_t index = 0;
   bool resolved = false;
 
   if (event->cname.len > 0) {
     if (string_eq(event->cname, string_lit("thread_state_running"))) {
-      color = theme->event_palette[3];
+      index = 3;
       resolved = true;
     } else if (string_eq(event->cname, string_lit("thread_state_runnable"))) {
-      color = theme->event_palette[2];
+      index = 2;
       resolved = true;
     } else if (string_eq(event->cname, string_lit("thread_state_sleeping"))) {
-      color = theme->event_palette[4];
+      index = 4;
       resolved = true;
     } else if (string_eq(event->cname,
                          string_lit("thread_state_uninterruptible"))) {
-      color = theme->event_palette[0];
+      index = 0;
       resolved = true;
     } else if (string_eq(event->cname, string_lit("thread_state_iowait"))) {
-      color = theme->event_palette[1];
+      index = 1;
       resolved = true;
     } else if (string_eq(event->cname, string_lit("rail_idle"))) {
-      color = theme->event_palette[3];
+      index = 3;
       resolved = true;
     } else if (string_eq(event->cname, string_lit("rail_animation"))) {
-      color = theme->event_palette[6];
+      index = 6;
       resolved = true;
     } else if (string_eq(event->cname, string_lit("rail_response"))) {
-      color = theme->event_palette[5];
+      index = 5;
       resolved = true;
     } else if (string_eq(event->cname, string_lit("rail_load"))) {
-      color = theme->event_palette[1];
+      index = 1;
       resolved = true;
     } else if (string_eq(event->cname, string_lit("background_memory_dump"))) {
-      color = theme->event_palette[4];
+      index = 4;
       resolved = true;
     } else if (string_eq(event->cname, string_lit("light_memory_dump"))) {
-      color = theme->event_palette[5];
+      index = 5;
       resolved = true;
     } else if (string_eq(event->cname, string_lit("detailed_memory_dump"))) {
-      color = theme->event_palette[7];
+      index = 7;
       resolved = true;
     }
   }
 
   if (!resolved) {
     uint32_t hash = compute_hash(event->name);
-    color = theme->event_palette[hash % palette_size];
+    index = (uint8_t)(hash % 8);
   }
 
-  return color;
+  return index;
 }
 
-void trace_event_matcher_deinit(trace_event_matcher_t* matcher, allocator_t a) {
+void trace_event_matcher_deinit(trace_event_matcher_t* matcher) {
+  allocator_t a = matcher->allocator;
+  if (a.alloc == nullptr) return;
   if (matcher->active_b_events.entries != nullptr) {
     for (size_t i = 0; i < matcher->active_b_events.capacity; i++) {
       void* entry = (char*)matcher->active_b_events.entries +
@@ -298,15 +295,17 @@ static void trace_data_merge_args(trace_data_t* td,
 }
 
 static inline void trace_event_matcher_ensure_init(
-    trace_event_matcher_t* matcher) {
+    trace_event_matcher_t* matcher, allocator_t default_allocator) {
   if (matcher->active_b_events.hash_fn == nullptr) {
+    allocator_t a = matcher->allocator.alloc != nullptr ? matcher->allocator
+                                                        : default_allocator;
     matcher->active_b_events = hash_table_init(uint64_t, thread_stack_t,
                                                hash_uint64, eq_uint64, nullptr);
+    matcher->allocator = a;
   }
 }
 
-void trace_data_add_event(trace_data_t* td, const theme_t* theme,
-                          const trace_event_t* event,
+void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
                           trace_event_matcher_t* matcher, allocator_t a) {
   string_t ph = event->ph;
   bool is_begin = (ph.len == 1 && (ph.ptr[0] == 'B' || ph.ptr[0] == 'b'));
@@ -319,7 +318,7 @@ void trace_data_add_event(trace_data_t* td, const theme_t* theme,
     p.ph_ref = trace_data_push_string(td, event->ph, a);
     p.cname_ref = trace_data_push_string(td, event->cname, a);
     p.id_ref = trace_data_push_string(td, event->id, a);
-    p.color = compute_event_color(theme, event);
+    p.palette_index = compute_event_palette_index(event);
     p.ts = event->ts;
     p.dur = 0;
     p.pid = event->pid;
@@ -340,24 +339,25 @@ void trace_data_add_event(trace_data_t* td, const theme_t* theme,
 
     uint64_t thread_id =
         ((uint64_t)(uint32_t)event->pid << 32) | (uint32_t)event->tid;
-    trace_event_matcher_ensure_init(matcher);
+    trace_event_matcher_ensure_init(matcher, a);
 
     thread_stack_t* ts_stack_ptr =
         (thread_stack_t*)hash_table_get(&matcher->active_b_events, &thread_id);
     if (ts_stack_ptr == nullptr) {
       thread_stack_t ts_stack = {};
       thread_stack_t* val_slot = (thread_stack_t*)hash_table_put(
-          &matcher->active_b_events, &thread_id, a);
+          &matcher->active_b_events, &thread_id, matcher->allocator);
       *val_slot = ts_stack;
       ts_stack_ptr = val_slot;
     }
     active_event_b_t active_ev = {new_idx};
-    *array_list_push(&ts_stack_ptr->stack, active_event_b_t, a) = active_ev;
+    *array_list_push(&ts_stack_ptr->stack, active_event_b_t,
+                     matcher->allocator) = active_ev;
 
   } else if (is_end) {
     uint64_t thread_id =
         ((uint64_t)(uint32_t)event->pid << 32) | (uint32_t)event->tid;
-    trace_event_matcher_ensure_init(matcher);
+    trace_event_matcher_ensure_init(matcher, a);
 
     thread_stack_t* ts_stack_ptr =
         (thread_stack_t*)hash_table_get(&matcher->active_b_events, &thread_id);
@@ -383,7 +383,7 @@ void trace_data_add_event(trace_data_t* td, const theme_t* theme,
     p.ph_ref = trace_data_push_string(td, event->ph, a);
     p.cname_ref = trace_data_push_string(td, event->cname, a);
     p.id_ref = trace_data_push_string(td, event->id, a);
-    p.color = compute_event_color(theme, event);
+    p.palette_index = compute_event_palette_index(event);
     p.ts = event->ts;
     p.dur = event->dur;
     p.pid = event->pid;
@@ -400,17 +400,5 @@ void trace_data_add_event(trace_data_t* td, const theme_t* theme,
     }
 
     *array_list_push(&td->events, trace_event_persisted_t, a) = p;
-  }
-}
-
-void trace_data_update_event_color(trace_data_t* td, uint32_t event_idx,
-                                   const theme_t* theme) {
-  if (event_idx < td->events.len) {
-    trace_event_persisted_t* events = (trace_event_persisted_t*)td->events.ptr;
-    trace_event_persisted_t* p = &events[event_idx];
-    trace_event_t event = {};
-    event.name = trace_data_get_string(td, p->name_ref);
-    event.cname = trace_data_get_string(td, p->cname_ref);
-    p->color = compute_event_color(theme, &event);
   }
 }

@@ -1,6 +1,11 @@
 #include <emscripten.h>
+#include <emscripten/threading.h>
 
 #include "src/platform.h"
+
+bool platform_is_main_thread(void) {
+  return emscripten_is_main_browser_thread();
+}
 
 double platform_get_now() {
   double now = emscripten_get_now();

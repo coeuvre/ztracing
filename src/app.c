@@ -77,19 +77,6 @@ static void app_apply_theme(app_t* app, const theme_t* theme) {
   } else {
     ig_style_colors_light();
   }
-
-  if (app->loading.active) return;
-
-  // Re-compute all event colors when theme changes
-  if (app->trace_data != nullptr) {
-    size_t events_count = app->trace_data->events.len;
-    for (size_t i = 0; i < events_count; i++) {
-      trace_data_update_event_color(app->trace_data, (uint32_t)i, app->theme);
-    }
-
-    // Re-compute all counter track colors when theme changes
-    track_update_colors(&app->trace_viewer.tracks, app->trace_data, app->theme);
-  }
 }
 
 void app_stop_jobs(app_t* app) {
@@ -520,8 +507,7 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
   app->trace_load_channel = channel_create(trace_load_msg_t, 1024, allocator);
 
   // 7. Spawn the background loader worker task!
-  trace_load_start(app->theme, app->ui_channel, app->trace_load_channel,
-                   allocator);
+  trace_load_start(app->ui_channel, app->trace_load_channel, allocator);
 }
 
 size_t app_handle_file_chunk(app_t* app, int session_id, char* data,

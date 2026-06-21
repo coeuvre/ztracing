@@ -1,7 +1,18 @@
+#include <pthread.h>
 #include <stdbool.h>
 #include <time.h>
 
 #include "src/platform.h"
+
+static pthread_t g_main_thread_id;
+
+__attribute__((constructor)) static void capture_main_thread(void) {
+  g_main_thread_id = pthread_self();
+}
+
+bool platform_is_main_thread(void) {
+  return pthread_equal(pthread_self(), g_main_thread_id);
+}
 
 double platform_get_now() {
   struct timespec ts;

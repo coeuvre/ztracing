@@ -41,7 +41,7 @@ typedef struct trace_event_persisted {
   string_ref_t ph_ref;
   string_ref_t cname_ref;
   string_ref_t id_ref;
-  uint32_t color;
+  uint8_t palette_index;
   int64_t ts;
   int64_t dur;
   int32_t pid;
@@ -98,23 +98,19 @@ typedef struct thread_stack {
 
 typedef struct trace_event_matcher {
   hash_table_t active_b_events;
+  allocator_t allocator;
 } trace_event_matcher_t;
 
-void trace_event_matcher_deinit(trace_event_matcher_t* matcher, allocator_t a);
+void trace_event_matcher_deinit(trace_event_matcher_t* matcher);
 
 struct Theme;
 typedef struct Theme theme_t;
 
-
 string_ref_t trace_data_push_string(trace_data_t* td, string_t s,
                                     allocator_t a);
 
-void trace_data_add_event(trace_data_t* td, const theme_t* theme,
-                          const trace_event_t* event,
+void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
                           trace_event_matcher_t* matcher, allocator_t a);
-
-void trace_data_update_event_color(trace_data_t* td, uint32_t event_idx,
-                                   const theme_t* theme);
 
 static inline string_t trace_data_get_string(const trace_data_t* td,
                                              string_ref_t ref) {
@@ -127,7 +123,6 @@ static inline string_t trace_data_get_string(const trace_data_t* td,
   }
   return result;
 }
-
 
 /**
  * Performs a binary search (lower bound) over an array of event indices.

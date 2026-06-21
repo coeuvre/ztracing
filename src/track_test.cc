@@ -5,12 +5,18 @@
 #include "src/colors.h"
 #include "src/trace_data.h"
 
-#define trace_data_add_event(td, a, theme, ev)                  \
-  do {                                                          \
-    trace_event_matcher_t matcher = {};                         \
-    (trace_data_add_event)((td), (theme), (ev), &matcher, (a)); \
-    trace_event_matcher_deinit(&matcher, (a));                  \
+#define trace_data_add_event(td, a, theme, ev)         \
+  do {                                                 \
+    (void)(theme);                                     \
+    trace_event_matcher_t matcher = {};                \
+    (trace_data_add_event)((td), (ev), &matcher, (a)); \
+    trace_event_matcher_deinit(&matcher);              \
   } while (0)
+
+#define track_organize(td, theme, out_tracks, out_min_ts, out_max_ts, \
+                       allocator)                                     \
+  ((void)(theme), (track_organize)((td), (out_tracks), (out_min_ts),  \
+                                   (out_max_ts), (allocator)))
 
 TEST(track_test, sort_events) {
   allocator_t a = allocator_get_default();
@@ -531,16 +537,14 @@ TEST(track_test, organize_tracks_counters) {
   EXPECT_EQ(tracks_data[0].pid, 1);
   EXPECT_EQ(tracks_data[0].tid, -1);
   EXPECT_EQ(tracks_data[0].type, TRACK_TYPE_COUNTER);
-  EXPECT_EQ(trace_data_get_string(td, tracks_data[0].name_ref),
-            "my_counter");
+  EXPECT_EQ(trace_data_get_string(td, tracks_data[0].name_ref), "my_counter");
   EXPECT_EQ(tracks_data[0].id_ref, 0u);
 
   // Counter track (with ID) - Type 0
   EXPECT_EQ(tracks_data[1].pid, 1);
   EXPECT_EQ(tracks_data[1].tid, -1);
   EXPECT_EQ(tracks_data[1].type, TRACK_TYPE_COUNTER);
-  EXPECT_EQ(trace_data_get_string(td, tracks_data[1].name_ref),
-            "my_counter");
+  EXPECT_EQ(trace_data_get_string(td, tracks_data[1].name_ref), "my_counter");
   EXPECT_EQ(trace_data_get_string(td, tracks_data[1].id_ref), "1");
 
   // Thread track - Type 1

@@ -13,7 +13,7 @@
 typedef struct track_render_block {
   float x1;
   float x2;
-  uint32_t color;
+  uint8_t palette_index;
   string_ref_t name_ref;
   uint32_t depth;
   uint32_t count;

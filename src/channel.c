@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "src/assert.h"
+#include "src/platform.h"
 
 struct channel {
   pthread_mutex_t mutex;
@@ -58,6 +59,10 @@ void channel_destroy(channel_t* chan, allocator_t allocator) {
 }
 
 bool channel_send_(channel_t* chan, const void* item, size_t item_size) {
+#ifdef __EMSCRIPTEN__
+  CHECK(!platform_is_main_thread() &&
+        "FATAL: Blocking channel_send called on UI thread!");
+#endif
   CHECK(chan != nullptr);
   CHECK(item != nullptr);
   // Runtime Type-Size Safety Assertion
@@ -88,6 +93,10 @@ bool channel_send_(channel_t* chan, const void* item, size_t item_size) {
 }
 
 bool channel_recv_(channel_t* chan, void* out_item, size_t item_size) {
+#ifdef __EMSCRIPTEN__
+  CHECK(!platform_is_main_thread() &&
+        "FATAL: Blocking channel_recv called on UI thread!");
+#endif
   CHECK(chan != nullptr);
   CHECK(out_item != nullptr);
   // Runtime Type-Size Safety Assertion

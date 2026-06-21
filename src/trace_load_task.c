@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "src/app_msg.h"
+#include "src/arena.h"
 #include "src/assert.h"
 #include "src/logging.h"
 #include "src/platform.h"
@@ -13,7 +14,6 @@
 
 // Context structure for the background loader thread
 typedef struct {
-  const theme_t* theme;
   channel_t* app_channel;
   channel_t* trace_load_channel;
   allocator_t allocator;
@@ -27,8 +27,14 @@ static void trace_load_run(void* arg) {
 
   LOG_DEBUG("trace_load_run background task started");
 
-  trace_parser_t parser = {};          // ZII
-  trace_event_matcher_t matcher = {};  // ZII
+  trace_parser_t parser = {};  // ZII
+
+  arena_t arena = {};
+  arena_init(&arena, allocator, 0);
+  allocator_t arena_allocator = arena_get_allocator(&arena);
+
+  trace_event_matcher_t matcher = {};
+  matcher.allocator = arena_allocator;
 
   // Allocate the persistent trace data shell
   trace_data_t* td = trace_data_create(allocator);
@@ -74,7 +80,7 @@ static void trace_load_run(void* arg) {
       // 3. Parse all available events in this chunk
       trace_event_t event;
       while (trace_parser_next(&parser, &event, allocator)) {
-        trace_data_add_event(td, task->theme, &event, &matcher, allocator);
+        trace_data_add_event(td, &event, &matcher, allocator);
 
         // Periodically check for abort signals mid-parse at chunk boundaries
       }
@@ -123,7 +129,7 @@ static void trace_load_run(void* arg) {
     array_list_t tracks = {};  // ZII
     int64_t min_ts = 0;
     int64_t max_ts = 0;
-    track_organize(td, task->theme, &tracks, &min_ts, &max_ts, allocator);
+    track_organize(td, &tracks, &min_ts, &max_ts, allocator);
 
     double organize_duration_ms = platform_get_now() - organize_start_time;
     LOG_INFO("organized %zu tracks in %.3f ms", tracks.len,
@@ -137,8 +143,8 @@ static void trace_load_run(void* arg) {
   }
 
   // Clean up parser and matcher local allocations
-  trace_event_matcher_deinit(&matcher, allocator);
   trace_parser_deinit(&parser, allocator);
+  arena_deinit(&arena);
 
   // Clean up task context structure
   allocator_free(allocator, task, sizeof(trace_load_task_t));
@@ -146,16 +152,14 @@ static void trace_load_run(void* arg) {
   LOG_DEBUG("trace_load_run background task exiting");
 }
 
-void trace_load_start(const theme_t* theme, channel_t* app_channel,
-                      channel_t* trace_load_channel, allocator_t allocator) {
-  CHECK(theme != nullptr);
+void trace_load_start(channel_t* app_channel, channel_t* trace_load_channel,
+                      allocator_t allocator) {
   CHECK(app_channel != nullptr);
   CHECK(trace_load_channel != nullptr);
 
   // Allocate and package thread context
   trace_load_task_t* task =
       (trace_load_task_t*)allocator_alloc(allocator, sizeof(trace_load_task_t));
-  task->theme = theme;
   task->app_channel = app_channel;
   task->trace_load_channel = trace_load_channel;
   task->allocator = allocator;

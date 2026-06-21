@@ -69,6 +69,16 @@ cc_library(
 )
 
 cc_library(
+    name = "arena",
+    srcs = ["arena.c"],
+    hdrs = ["arena.h"],
+    deps = [
+        ":allocator",
+        ":assert",
+    ],
+)
+
+cc_library(
     name = "string",
     hdrs = ["string.h"],
 )
@@ -92,6 +102,7 @@ cc_library(
     deps = [
         ":allocator",
         ":assert",
+        ":platform",
     ],
 )
 
@@ -115,6 +126,7 @@ cc_library(
     hdrs = ["trace_load_task.h"],
     deps = [
         ":allocator",
+        ":arena",
         ":app_msg",
         ":array_list",
         ":assert",
@@ -146,6 +158,15 @@ cc_test(
     srcs = ["allocator_test.cc"],
     deps = [
         ":allocator",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "arena_test",
+    srcs = ["arena_test.cc"],
+    deps = [
+        ":arena",
         "@googletest//:gtest_main",
     ],
 )

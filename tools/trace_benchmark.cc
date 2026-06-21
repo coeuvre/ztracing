@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
     trace_parser_feed(&p, buf, n, is_eof, a);
 
     while (trace_parser_next(&p, &event, a)) {
-      trace_data_add_event(td, theme_get_dark(), &event, &matcher, a);
+      trace_data_add_event(td, &event, &matcher, a);
       event_count++;
     }
 
@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
 
   array_list_t tracks = {};
   int64_t min_ts, max_ts;
-  track_organize(td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
+  track_organize(td, &tracks, &min_ts, &max_ts, a);
 
   auto organize_end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> organize_diff = organize_end - organize_start;
@@ -75,7 +75,8 @@ int main(int argc, char** argv) {
   printf("----------------------------------------\n");
   printf("TRACE LOADING BENCHMARK\n");
   printf("----------------------------------------\n");
-  printf("File Size:             %.2f MB\n", (double)file_size / (1024.0 * 1024.0));
+  printf("File Size:             %.2f MB\n",
+         (double)file_size / (1024.0 * 1024.0));
   printf("Total Events:          %zu\n", event_count);
   printf("Total Tracks:          %zu\n", tracks.len);
   printf("----------------------------------------\n");
@@ -95,7 +96,7 @@ int main(int argc, char** argv) {
     track_deinit(&track_array[i], a);
   }
   array_list_deinit(&tracks, a);
-  trace_event_matcher_deinit(&matcher, a);
+  trace_event_matcher_deinit(&matcher);
   trace_data_release(td, a);
   trace_parser_deinit(&p, a);
 

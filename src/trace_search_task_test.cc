@@ -78,7 +78,7 @@ TEST(trace_search_task_test, e2e_search_task) {
     ev0.ph = string_lit("X");
     ev0.ts = 100;
     ev0.dur = 50;
-    trace_data_add_event(td, theme_get_dark(), &ev0, &matcher, a);
+    trace_data_add_event(td, &ev0, &matcher, a);
 
     // Event 1: name="hello", cat="world"
     trace_event_t ev1 = {};
@@ -87,7 +87,7 @@ TEST(trace_search_task_test, e2e_search_task) {
     ev1.ph = string_lit("X");
     ev1.ts = 200;
     ev1.dur = 10;
-    trace_data_add_event(td, theme_get_dark(), &ev1, &matcher, a);
+    trace_data_add_event(td, &ev1, &matcher, a);
 
     // Event 2: name="baz", cat="bar"
     trace_event_t ev2 = {};
@@ -96,7 +96,7 @@ TEST(trace_search_task_test, e2e_search_task) {
     ev2.ph = string_lit("X");
     ev2.ts = 300;
     ev2.dur = 20;
-    trace_data_add_event(td, theme_get_dark(), &ev2, &matcher, a);
+    trace_data_add_event(td, &ev2, &matcher, a);
 
     // 2. Create coordination channels
     channel_t* app_channel = channel_create(app_msg_t, 5, a);
@@ -121,14 +121,16 @@ TEST(trace_search_task_test, e2e_search_task) {
     EXPECT_EQ(result.histogram->total_count, 1u);
 
     // 5. Centralized cleanup via app_msg_deinit!
-    // This will release the background task's reference to td (ref_count: 2 -> 1),
-    // deinit the results list, free the histogram shell, and destroy the search_channel.
+    // This will release the background task's reference to td (ref_count: 2 ->
+    // 1), deinit the results list, free the histogram shell, and destroy the
+    // search_channel.
     app_msg_deinit(&msg, a);
 
-    // 6. Tear down channels and release our own reference to td (ref_count: 1 -> 0, triggers free)
+    // 6. Tear down channels and release our own reference to td (ref_count: 1
+    // -> 0, triggers free)
     channel_destroy(app_channel, a);
     trace_data_release(td, a);
-    trace_event_matcher_deinit(&matcher, a);
+    trace_event_matcher_deinit(&matcher);
   }
 
   // Verify that all memory was perfectly deallocated!

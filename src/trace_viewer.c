@@ -425,12 +425,10 @@ static void trace_viewer_details_add_row(const char* field_label,
   }
 }
 
-static void trace_viewer_draw_event_properties(const trace_data_t* td,
-                                               const trace_event_persisted_t* e,
-                                               double viewport_min_ts,
-                                               bool show_copy_buttons,
-                                               const track_t* t,
-                                               allocator_t allocator) {
+static void trace_viewer_draw_event_properties(
+    const trace_data_t* td, const trace_event_persisted_t* e,
+    double viewport_min_ts, bool show_copy_buttons, const track_t* t,
+    const theme_t* theme, allocator_t allocator) {
   string_t name = trace_data_get_string(td, e->name_ref);
   string_t cat = trace_data_get_string(td, e->cat_ref);
   string_t ph = trace_data_get_string(td, e->ph_ref);
@@ -602,7 +600,9 @@ static void trace_viewer_draw_event_properties(const trace_data_t* td,
           trace_viewer_details_add_row(
               name_buf, (string_t){series_val_buf, strlen(series_val_buf)},
               nullptr, show_copy_buttons,
-              ((const uint32_t*)t->counter_colors.ptr)[s_idx], true, allocator);
+              theme->event_palette[(
+                  (const uint8_t*)t->counter_palette_indices.ptr)[s_idx]],
+              true, allocator);
 
           total += val;
         }
@@ -662,6 +662,7 @@ static void trace_viewer_draw_tooltip(trace_viewer_t* tv, trace_data_t* td,
                                       const hover_match_t* best_hm,
                                       float inner_width,
                                       float tracks_canvas_pos_x,
+                                      const theme_t* theme,
                                       allocator_t allocator) {
   const track_render_block_t* rb = &best_hm->rb;
   if (rb->count == 1) {
@@ -674,7 +675,7 @@ static void trace_viewer_draw_tooltip(trace_viewer_t* tv, trace_data_t* td,
     ig_begin_tooltip();
 
     trace_viewer_draw_event_properties(td, e, (double)tv->viewport.min_ts,
-                                       false, t, allocator);
+                                       false, t, theme, allocator);
     ig_end_tooltip();
     ig_pop_style_var(1);
   } else if (rb->count > 1) {
@@ -761,7 +762,8 @@ static void trace_viewer_draw_counter_track(
 
       ig_draw_list_add_rect_filled(
           draw_list, (ig_vec2_t){rb->x1, y_top}, (ig_vec2_t){rb->x2, y_bottom},
-          ((const uint32_t*)t->counter_colors.ptr)[s_idx]);
+          theme->event_palette[(
+              (const uint8_t*)t->counter_palette_indices.ptr)[s_idx]]);
     }
 
     if (hovered) {
@@ -1809,7 +1811,9 @@ static void trace_viewer_draw_vertical_minimap(const trace_viewer_t* tv,
       for (int b = 0; b < TRACK_HEATMAP_BUCKET_COUNT; b++) {
         size_t event_idx = h->event_indices[b];
         uint32_t cell_col =
-            (event_idx != (size_t)-1) ? events[event_idx].color : 0;
+            (event_idx != (size_t)-1)
+                ? theme->event_palette[events[event_idx].palette_index]
+                : 0;
 
         if (cell_col == active_col) {
           continue;
@@ -2093,8 +2097,9 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
             float y2 = y1 + input.lane_height - 1.0f;
 
             trace_viewer_draw_event(tv, td, track_draw_list, rb->x1, rb->x2, y1,
-                                    y2, rb->color, rb->is_selected,
-                                    rb->is_focused, rb->name_ref, inner_width,
+                                    y2, theme->event_palette[rb->palette_index],
+                                    rb->is_selected, rb->is_focused,
+                                    rb->name_ref, inner_width,
                                     tracks_canvas_pos.x, theme);
           }
         } else {
@@ -2127,7 +2132,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
         // it themselves)
         const track_t* best_track = &tracks[best_hm->track_idx];
         if (best_track->type == TRACK_TYPE_THREAD) {
-          uint32_t col = rb->color;
+          uint32_t col = theme->event_palette[rb->palette_index];
           if (!rb->is_selected) {
             ig_vec4_t col_v = ig_color_convert_u32_to_float4(col);
             col_v.x = min(col_v.x + 0.15f, 1.0f);
@@ -2144,7 +2149,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
 
         // Show tooltip
         trace_viewer_draw_tooltip(tv, td, best_hm, inner_width,
-                                  tracks_canvas_pos.x, allocator);
+                                  tracks_canvas_pos.x, theme, allocator);
       }
 
       if (tv->selection_drag_mode == INTERACTION_DRAG_MODE_BOX_SELECT) {
@@ -2522,7 +2527,8 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
         ig_spacing();
 
         trace_viewer_draw_event_properties(td, e, (double)tv->viewport.min_ts,
-                                           true, target_track, allocator);
+                                           true, target_track, theme,
+                                           allocator);
       }
 
       if (!has_focus && !has_selection) {

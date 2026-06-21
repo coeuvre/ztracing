@@ -8,11 +8,12 @@
 #include "src/platform.h"
 #include "src/trace_data.h"
 
-#define trace_data_add_event(td, a, theme, ev)                  \
-  do {                                                          \
-    trace_event_matcher_t matcher = {};                         \
-    (trace_data_add_event)((td), (theme), (ev), &matcher, (a)); \
-    trace_event_matcher_deinit(&matcher, (a));                  \
+#define trace_data_add_event(td, a, theme, ev)         \
+  do {                                                 \
+    (void)(theme);                                     \
+    trace_event_matcher_t matcher = {};                \
+    (trace_data_add_event)((td), (ev), &matcher, (a)); \
+    trace_event_matcher_deinit(&matcher);              \
   } while (0)
 
 class TraceViewerTest : public ::testing::Test {
