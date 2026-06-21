@@ -23,7 +23,7 @@ typedef struct duration_histogram duration_histogram_t;
 typedef struct {
   size_t event_count;
   size_t total_bytes;
-} app_msg_load_progress_t;
+} app_msg_trace_load_progress_t;
 
 // Ingestion completion payload (Value-semantic, transfers ownership of heap
 // pointers)
@@ -33,12 +33,12 @@ typedef struct {
   int64_t min_ts;
   int64_t max_ts;
   channel_t* task_channel;  // Mailbox channel of the loader task
-} app_msg_load_result_t;
+} app_msg_trace_load_complete_t;
 
 // Ingestion aborted payload (Value-semantic)
 typedef struct {
   channel_t* task_channel;  // Mailbox channel of the loader task
-} app_msg_load_aborted_t;
+} app_msg_trace_load_aborted_t;
 
 // === 2. Search Task Payloads ===
 
@@ -49,24 +49,24 @@ typedef struct {
   array_list_t results;             // Value instance of results array list
   duration_histogram_t* histogram;  // Pointer to heap-allocated histogram
   channel_t* task_channel;          // Mailbox channel of the search task
-} app_msg_search_result_t;
+} app_msg_trace_search_complete_t;
 
 // Search aborted payload (Value-semantic)
 typedef struct {
   trace_data_t* trace_data;  // The trace data used by the search
   channel_t* task_channel;   // Mailbox channel of the aborted task
-} app_msg_search_aborted_t;
+} app_msg_trace_search_aborted_t;
 
 // === 3. Message Types (Received by the App UI Thread) ===
 typedef enum {
   // Loading pipeline events
-  MSG_TRACE_LOAD_PROGRESS,
-  MSG_TRACE_LOAD_COMPLETE,
-  MSG_TRACE_LOAD_ABORTED,
+  APP_MSG_TRACE_LOAD_PROGRESS,
+  APP_MSG_TRACE_LOAD_COMPLETE,
+  APP_MSG_TRACE_LOAD_ABORTED,
 
   // Search pipeline events
-  MSG_TRACE_SEARCH_COMPLETE,
-  MSG_TRACE_SEARCH_ABORTED,
+  APP_MSG_TRACE_SEARCH_COMPLETE,
+  APP_MSG_TRACE_SEARCH_ABORTED,
 } app_msg_type_t;
 
 // === 4. App Message Envelope ===
@@ -74,11 +74,11 @@ typedef struct {
   app_msg_type_t type;
   allocator_t allocator;  // The allocator used to allocate the payload
   union {
-    app_msg_load_progress_t load_progress;
-    app_msg_load_result_t load_result;
-    app_msg_load_aborted_t load_aborted;
-    app_msg_search_result_t search_result;
-    app_msg_search_aborted_t search_aborted;
+    app_msg_trace_load_progress_t trace_load_progress;
+    app_msg_trace_load_complete_t trace_load_complete;
+    app_msg_trace_load_aborted_t trace_load_aborted;
+    app_msg_trace_search_complete_t trace_search_complete;
+    app_msg_trace_search_aborted_t trace_search_aborted;
   } as;
 } app_msg_t;
 
@@ -88,27 +88,34 @@ void app_msg_deinit(app_msg_t* msg);
 // === 6. Safe Message Sending APIs ===
 
 // Sends a progress update from the loader task. (Value-only, no allocation)
-bool app_send_load_progress(channel_t* app_channel, size_t event_count,
-                            size_t total_bytes);
+bool app_send_trace_load_progress(channel_t* app_channel, size_t event_count,
+                                  size_t total_bytes);
 
 // Sends load completion, transferring ownership.
-bool app_send_load_complete(channel_t* app_channel, trace_data_t* trace_data,
-                            array_list_t tracks, int64_t min_ts, int64_t max_ts,
-                            channel_t* task_channel, allocator_t allocator);
+bool app_send_trace_load_complete(channel_t* app_channel,
+                                  trace_data_t* trace_data, array_list_t tracks,
+                                  int64_t min_ts, int64_t max_ts,
+                                  channel_t* task_channel,
+                                  allocator_t allocator);
 
 // Sends load aborted signal.
-bool app_send_load_aborted(channel_t* app_channel, channel_t* task_channel,
-                           allocator_t allocator);
+bool app_send_trace_load_aborted(channel_t* app_channel,
+                                 channel_t* task_channel,
+                                 allocator_t allocator);
 
 // Sends search completion, transferring ownership.
-bool app_send_search_complete(channel_t* app_channel, trace_data_t* trace_data,
-                              array_list_t results,
-                              duration_histogram_t* histogram,
-                              channel_t* task_channel, allocator_t allocator);
+bool app_send_trace_search_complete(channel_t* app_channel,
+                                    trace_data_t* trace_data,
+                                    array_list_t results,
+                                    duration_histogram_t* histogram,
+                                    channel_t* task_channel,
+                                    allocator_t allocator);
 
 // Sends search aborted signal.
-bool app_send_search_aborted(channel_t* app_channel, trace_data_t* trace_data,
-                             channel_t* task_channel, allocator_t allocator);
+bool app_send_trace_search_aborted(channel_t* app_channel,
+                                   trace_data_t* trace_data,
+                                   channel_t* task_channel,
+                                   allocator_t allocator);
 
 #ifdef __cplusplus
 }

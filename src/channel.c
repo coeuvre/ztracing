@@ -16,7 +16,8 @@ struct channel {
   size_t head;       // Index of the next item to read (pop)
   size_t tail;       // Index of the next slot to write (push)
   size_t size;       // Current number of items in the channel
-  bool closed;       // True if the channel has been closed
+  bool tx_closed;    // True if the sender side has been closed
+  bool rx_closed;    // True if the receiver side has been closed
   channel_item_destructor_t destructor;
   allocator_t allocator;
 };
@@ -39,7 +40,8 @@ channel_t* channel_create_(size_t item_size, size_t capacity,
   chan->head = 0;
   chan->tail = 0;
   chan->size = 0;
-  chan->closed = false;
+  chan->tx_closed = false;
+  chan->rx_closed = false;
   chan->destructor = destructor;
   chan->allocator = allocator;
 
@@ -52,7 +54,10 @@ channel_t* channel_create_(size_t item_size, size_t capacity,
 void channel_destroy(channel_t* chan) {
   CHECK(chan != nullptr);
 
-  channel_close(chan);
+  pthread_mutex_lock(&chan->mutex);
+  CHECK(chan->item_size);
+  CHECK(chan->tx_closed);
+  CHECK(chan->rx_closed);
 
   // Drain every remaining item and destroy it using the registered destructor
   if (chan->buffer != nullptr) {
@@ -60,7 +65,8 @@ void channel_destroy(channel_t* chan) {
       void* item = allocator_alloc(chan->allocator, chan->item_size);
       CHECK(item != nullptr);
       while (chan->size > 0) {
-        const void* src = (const char*)chan->buffer + chan->head * chan->item_size;
+        const void* src =
+            (const char*)chan->buffer + chan->head * chan->item_size;
         memcpy(item, src, chan->item_size);
         chan->head = (chan->head + 1) % chan->capacity;
         chan->size--;
@@ -68,8 +74,13 @@ void channel_destroy(channel_t* chan) {
       }
       allocator_free(chan->allocator, item, chan->item_size);
     }
-    allocator_free(chan->allocator, chan->buffer, chan->capacity * chan->item_size);
+    allocator_free(chan->allocator, chan->buffer,
+                   chan->capacity * chan->item_size);
   }
+
+  // Gravestone: invalidate item_size last, after all reads are done.
+  chan->item_size = 0;
+  pthread_mutex_unlock(&chan->mutex);
 
   pthread_mutex_destroy(&chan->mutex);
   pthread_cond_destroy(&chan->cv_recv);
@@ -90,12 +101,13 @@ bool channel_send_(channel_t* chan, void* item, size_t item_size) {
   (void)item_size;
 
   pthread_mutex_lock(&chan->mutex);
+  CHECK(chan->item_size);
 
-  while (chan->size == chan->capacity && !chan->closed) {
+  while (chan->size == chan->capacity && !chan->tx_closed && !chan->rx_closed) {
     pthread_cond_wait(&chan->cv_send, &chan->mutex);
   }
 
-  if (chan->closed) {
+  if (chan->tx_closed || chan->rx_closed) {
     pthread_mutex_unlock(&chan->mutex);
     if (chan->destructor != nullptr) {
       chan->destructor(item);
@@ -127,13 +139,14 @@ bool channel_recv_(channel_t* chan, void* out_item, size_t item_size) {
   (void)item_size;
 
   pthread_mutex_lock(&chan->mutex);
+  CHECK(chan->item_size);
 
-  while (chan->size == 0 && !chan->closed) {
+  while (chan->size == 0 && !chan->tx_closed && !chan->rx_closed) {
     pthread_cond_wait(&chan->cv_recv, &chan->mutex);
   }
 
   // If the channel is closed and empty, we cannot pop anymore.
-  if (chan->size == 0 && chan->closed) {
+  if ((chan->size == 0 && chan->tx_closed) || chan->rx_closed) {
     pthread_mutex_unlock(&chan->mutex);
     return false;
   }
@@ -158,8 +171,9 @@ bool channel_try_send_(channel_t* chan, void* item, size_t item_size) {
   (void)item_size;
 
   pthread_mutex_lock(&chan->mutex);
+  CHECK(chan->item_size);
 
-  if (chan->size == chan->capacity || chan->closed) {
+  if (chan->size == chan->capacity || chan->tx_closed || chan->rx_closed) {
     pthread_mutex_unlock(&chan->mutex);
     if (chan->destructor != nullptr) {
       chan->destructor(item);
@@ -187,8 +201,9 @@ bool channel_try_recv_(channel_t* chan, void* out_item, size_t item_size) {
   (void)item_size;
 
   pthread_mutex_lock(&chan->mutex);
+  CHECK(chan->item_size);
 
-  if (chan->size == 0) {
+  if (chan->size == 0 || chan->rx_closed) {
     pthread_mutex_unlock(&chan->mutex);
     return false;
   }
@@ -205,36 +220,60 @@ bool channel_try_recv_(channel_t* chan, void* out_item, size_t item_size) {
   return true;
 }
 
-void channel_close(channel_t* chan) {
+void channel_close_tx(channel_t* chan) {
   CHECK(chan != nullptr);
 
   pthread_mutex_lock(&chan->mutex);
-  chan->closed = true;
+  CHECK(chan->item_size);
+  CHECK(!chan->tx_closed);
+  chan->tx_closed = true;
   pthread_cond_broadcast(&chan->cv_recv);
   pthread_cond_broadcast(&chan->cv_send);
   pthread_mutex_unlock(&chan->mutex);
 }
 
-size_t channel_get_size(const channel_t* chan) {
+void channel_close_rx(channel_t* chan) {
   CHECK(chan != nullptr);
 
-  // We cast away const for the lock, as mutex locking modifies the mutex state,
-  // but it is conceptually a const query.
-  channel_t* non_const_chan = (channel_t*)chan;
-  pthread_mutex_lock(&non_const_chan->mutex);
+  pthread_mutex_lock(&chan->mutex);
+  CHECK(chan->item_size);
+  CHECK(!chan->rx_closed);
+  chan->rx_closed = true;
+  pthread_cond_broadcast(&chan->cv_recv);
+  pthread_cond_broadcast(&chan->cv_send);
+  pthread_mutex_unlock(&chan->mutex);
+}
+
+size_t channel_get_size(channel_t* chan) {
+  CHECK(chan != nullptr);
+
+  // We lock the mutex even though this is conceptually a const query.
+  pthread_mutex_lock(&chan->mutex);
+  CHECK(chan->item_size);
   size_t size = chan->size;
-  pthread_mutex_unlock(&non_const_chan->mutex);
+  pthread_mutex_unlock(&chan->mutex);
 
   return size;
 }
 
-bool channel_is_closed(const channel_t* chan) {
+bool channel_is_tx_closed(channel_t* chan) {
   CHECK(chan != nullptr);
 
-  channel_t* non_const_chan = (channel_t*)chan;
-  pthread_mutex_lock(&non_const_chan->mutex);
-  bool closed = chan->closed;
-  pthread_mutex_unlock(&non_const_chan->mutex);
+  pthread_mutex_lock(&chan->mutex);
+  CHECK(chan->item_size);
+  bool closed = chan->tx_closed;
+  pthread_mutex_unlock(&chan->mutex);
+
+  return closed;
+}
+
+bool channel_is_rx_closed(channel_t* chan) {
+  CHECK(chan != nullptr);
+
+  pthread_mutex_lock(&chan->mutex);
+  CHECK(chan->item_size);
+  bool closed = chan->rx_closed;
+  pthread_mutex_unlock(&chan->mutex);
 
   return closed;
 }

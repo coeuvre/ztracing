@@ -34,6 +34,8 @@ TEST(channel_test, basic_fifo_int) {
     EXPECT_EQ(channel_get_size(chan), (size_t)(4 - i));
   }
 
+  channel_close_tx(chan);
+  channel_close_rx(chan);
   channel_destroy(chan);
 }
 
@@ -56,6 +58,8 @@ TEST(channel_test, basic_fifo_double) {
   EXPECT_TRUE(channel_recv(chan, &out));
   EXPECT_DOUBLE_EQ(out, 2.718);
 
+  channel_close_tx(chan);
+  channel_close_rx(chan);
   channel_destroy(chan);
 }
 
@@ -81,6 +85,8 @@ TEST(channel_test, basic_fifo_struct) {
   EXPECT_EQ(out.fields[0], 9u);
   EXPECT_EQ(out.fields[7], 16u);
 
+  channel_close_tx(chan);
+  channel_close_rx(chan);
   channel_destroy(chan);
 }
 
@@ -107,6 +113,8 @@ TEST(channel_test, boundary_conditions) {
   // Receiving from an empty channel must fail instantly (non-blocking)
   EXPECT_FALSE(channel_try_recv(chan, &out));
 
+  channel_close_tx(chan);
+  channel_close_rx(chan);
   channel_destroy(chan);
 }
 
@@ -140,6 +148,8 @@ TEST(channel_test, thread_blocking_recv) {
   t.join();
   EXPECT_EQ(received_val, 100);
 
+  channel_close_tx(chan);
+  channel_close_rx(chan);
   channel_destroy(chan);
 }
 
@@ -182,6 +192,8 @@ TEST(channel_test, thread_blocking_send) {
   EXPECT_TRUE(channel_recv(chan, &out));
   EXPECT_EQ(out, 200);
 
+  channel_close_tx(chan);
+  channel_close_rx(chan);
   channel_destroy(chan);
 }
 
@@ -209,7 +221,8 @@ TEST(channel_test, thread_wakeup_close_recv) {
   EXPECT_FALSE(recv_returned_false);
 
   // Close channel to wake up and cancel the blocked receiver
-  channel_close(chan);
+  channel_close_tx(chan);
+  channel_close_rx(chan);
 
   t.join();
   EXPECT_TRUE(recv_returned_false);
@@ -245,7 +258,8 @@ TEST(channel_test, thread_wakeup_close_send) {
   EXPECT_FALSE(send_returned_false);
 
   // Close channel to wake up and cancel the blocked writer
-  channel_close(chan);
+  channel_close_tx(chan);
+  channel_close_rx(chan);
 
   t.join();
   EXPECT_TRUE(send_returned_false);
@@ -299,7 +313,8 @@ TEST(channel_test, concurrent_producers_consumers) {
   }
 
   // Close the channel to signal consumers that no more items are coming
-  channel_close(chan);
+  channel_close_tx(chan);
+  channel_close_rx(chan);
 
   // Wait for consumers to finish draining the channel
   for (auto& t : consumers) {
@@ -330,6 +345,8 @@ TEST(channel_test, memory_leak_verification) {
       EXPECT_TRUE(channel_recv(chan, &out));
     }
 
+    channel_close_tx(chan);
+    channel_close_rx(chan);
     channel_destroy(chan);
   }
 
@@ -360,7 +377,8 @@ TEST(channel_test, auto_destruction_on_closed_send) {
   mock_resource_t res = {&ref_count};
 
   // Close the channel
-  channel_close(chan);
+  channel_close_tx(chan);
+  channel_close_rx(chan);
 
   // Sending on closed channel must fail and AUTOMATICALLY call
   // mock_resource_deinit
@@ -389,6 +407,8 @@ TEST(channel_test, auto_destruction_on_full_try_send) {
 
   // Destroying the channel must automatically drain the filling item and deinit
   // it
+  channel_close_tx(chan);
+  channel_close_rx(chan);
   channel_destroy(chan);
   EXPECT_EQ(ref_count_fill, 0);
 }
@@ -409,6 +429,8 @@ TEST(channel_test, auto_drain_on_destroy) {
 
   // Destroying the channel must automatically drain all remaining items and
   // call the destructor on each
+  channel_close_tx(chan);
+  channel_close_rx(chan);
   channel_destroy(chan);
 
   EXPECT_EQ(ref1, 0);

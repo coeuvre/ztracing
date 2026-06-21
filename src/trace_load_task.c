@@ -12,6 +12,33 @@
 #include "src/trace_parser.h"
 #include "src/track.h"
 
+// === Loader Channel Messages (private to this translation unit) ===
+typedef enum {
+  TRACE_LOAD_MSG_CHUNK,
+  TRACE_LOAD_MSG_ABORT,
+} trace_load_msg_type_t;
+
+// Chunk payload (Value-semantic, transfers ownership of data buffer)
+typedef struct {
+  char* data;
+  size_t size;
+  size_t input_consumed_bytes;
+  bool is_eof;
+} trace_load_chunk_t;
+
+// Loader message envelope
+typedef struct {
+  trace_load_msg_type_t type;
+  allocator_t allocator;  // The allocator used to allocate the chunk data
+  union {
+    trace_load_chunk_t chunk;
+  } as;
+} trace_load_msg_t;
+
+// Forward declaration: used by trace_load_start's channel_create before its
+// definition below.
+static void trace_load_msg_deinit(trace_load_msg_t* msg);
+
 // Context structure for the background loader thread
 typedef struct {
   channel_t* app_channel;
@@ -61,12 +88,12 @@ static void trace_load_run(void* arg) {
       aborted = true;
       break;
     }
-    if (msg.type == MSG_TRACE_LOAD_ABORT) {
+    if (msg.type == TRACE_LOAD_MSG_ABORT) {
       aborted = true;
       break;
     }
 
-    if (msg.type == MSG_TRACE_LOAD_CHUNK) {
+    if (msg.type == TRACE_LOAD_MSG_CHUNK) {
       trace_load_chunk_t chunk = msg.as.chunk;
 
       // Feed raw chunk into parser
@@ -89,8 +116,8 @@ static void trace_load_run(void* arg) {
       size_t current_count = td->events.len;
       if (current_count - last_report_event_count >= 5000) {
         last_report_event_count = current_count;
-        app_send_load_progress(task->app_channel, current_count,
-                               total_discarded_bytes + parser.pos);
+        app_send_trace_load_progress(task->app_channel, current_count,
+                                     total_discarded_bytes + parser.pos);
       }
 
       // Break if EOF chunk parsed successfully
@@ -105,8 +132,9 @@ static void trace_load_run(void* arg) {
     trace_data_release(td, allocator);
 
     // Notify App UI thread that loading was aborted
-    app_send_load_aborted(task->app_channel, task->trace_load_channel,
-                          allocator);
+    channel_close_rx(task->trace_load_channel);
+    app_send_trace_load_aborted(task->app_channel, task->trace_load_channel,
+                                allocator);
   } else {
     double size_mb =
         (double)(total_discarded_bytes + parser.pos) / (1024.0 * 1024.0);
@@ -136,10 +164,11 @@ static void trace_load_run(void* arg) {
              organize_duration_ms);
 
     // Transmit complete results.
-    // If the send fails, app_send_load_complete AUTOMATICALLY cleans up td and
-    // tracks!
-    app_send_load_complete(task->app_channel, td, tracks, min_ts, max_ts,
-                           task->trace_load_channel, allocator);
+    // If the send fails, app_send_trace_load_complete AUTOMATICALLY cleans up
+    // td and tracks!
+    channel_close_rx(task->trace_load_channel);
+    app_send_trace_load_complete(task->app_channel, td, tracks, min_ts, max_ts,
+                                 task->trace_load_channel, allocator);
   }
 
   // Clean up parser and matcher local allocations
@@ -152,10 +181,11 @@ static void trace_load_run(void* arg) {
   LOG_DEBUG("trace_load_run background task exiting");
 }
 
-void trace_load_start(channel_t* app_channel, channel_t* trace_load_channel,
-                      allocator_t allocator) {
+channel_t* trace_load_start(channel_t* app_channel, allocator_t allocator) {
   CHECK(app_channel != nullptr);
-  CHECK(trace_load_channel != nullptr);
+
+  channel_t* trace_load_channel =
+      channel_create(trace_load_msg_t, 1024, trace_load_msg_deinit, allocator);
 
   // Allocate and package thread context
   trace_load_task_t* task =
@@ -167,12 +197,14 @@ void trace_load_start(channel_t* app_channel, channel_t* trace_load_channel,
 
   // Submit background worker to the persistent platform thread pool
   platform_submit_job(trace_load_run, task);
+
+  return trace_load_channel;
 }
 
-void trace_load_msg_deinit(trace_load_msg_t* msg) {
+static void trace_load_msg_deinit(trace_load_msg_t* msg) {
   CHECK(msg != nullptr);
   allocator_t allocator = msg->allocator;
-  if (msg->type == MSG_TRACE_LOAD_CHUNK) {
+  if (msg->type == TRACE_LOAD_MSG_CHUNK) {
     if (msg->as.chunk.data != nullptr && msg->as.chunk.size > 0) {
       allocator_free(allocator, msg->as.chunk.data, msg->as.chunk.size);
       msg->as.chunk.data = nullptr;
@@ -187,7 +219,7 @@ bool trace_load_send_chunk(channel_t* trace_load_channel, char* data,
   CHECK(size == 0 || data != nullptr);
 
   trace_load_msg_t msg = {
-      .type = MSG_TRACE_LOAD_CHUNK,
+      .type = TRACE_LOAD_MSG_CHUNK,
       .allocator = allocator,
       .as = {.chunk = {.data = data,
                        .size = size,
@@ -199,6 +231,6 @@ bool trace_load_send_chunk(channel_t* trace_load_channel, char* data,
 
 bool trace_load_send_abort(channel_t* trace_load_channel) {
   CHECK(trace_load_channel != nullptr);
-  trace_load_msg_t msg = {.type = MSG_TRACE_LOAD_ABORT};
+  trace_load_msg_t msg = {.type = TRACE_LOAD_MSG_ABORT};
   return channel_try_send(trace_load_channel, &msg);
 }

@@ -10,6 +10,16 @@
 #include "src/trace_data.h"
 #include "src/trace_viewer.h"
 
+// === Input Message Types (private to this translation unit) ===
+typedef enum {
+  TRACE_SEARCH_MSG_ABORT,  // Signal the active search task to abort execution
+} trace_search_msg_type_t;
+
+// === Input Message Envelope ===
+typedef struct {
+  trace_search_msg_type_t type;
+} trace_search_msg_t;
+
 // Context structure for the background search thread
 typedef struct {
   char* query;  // Heap-allocated copy of query string
@@ -42,13 +52,13 @@ static void trace_search_run(void* arg) {
       // Periodically check for abort signals from the UI thread (every 2048
       // events)
       if ((i & 2047) == 0) {
-        if (channel_is_closed(task->trace_search_channel)) {
+        if (channel_is_tx_closed(task->trace_search_channel)) {
           aborted = true;
           break;
         }
         trace_search_msg_t abort_msg;
         if (channel_try_recv(task->trace_search_channel, &abort_msg)) {
-          if (abort_msg.type == MSG_TRACE_SEARCH_ABORT) {
+          if (abort_msg.type == TRACE_SEARCH_MSG_ABORT) {
             aborted = true;
             break;
           }
@@ -97,8 +107,9 @@ static void trace_search_run(void* arg) {
   if (aborted) {
     LOG_DEBUG("trace_search_run background task aborted");
     array_list_deinit(&results, allocator);
-    app_send_search_aborted(task->app_channel, (trace_data_t*)td,
-                            task->trace_search_channel, allocator);
+    channel_close_rx(task->trace_search_channel);
+    app_send_trace_search_aborted(task->app_channel, (trace_data_t*)td,
+                                  task->trace_search_channel, allocator);
   } else {
     LOG_DEBUG(
         "trace_search_run background task completed, generating histogram");
@@ -110,10 +121,12 @@ static void trace_search_run(void* arg) {
     trace_viewer_calculate_histogram(&results, td, histogram);
 
     // Transmit the results back to the App UI thread mailbox!
-    // If sending fails, app_send_search_complete automatically cleans up
+    // If sending fails, app_send_trace_search_complete automatically cleans up
     // results and histogram!
-    app_send_search_complete(task->app_channel, (trace_data_t*)td, results,
-                             histogram, task->trace_search_channel, allocator);
+    channel_close_rx(task->trace_search_channel);
+    app_send_trace_search_complete(task->app_channel, (trace_data_t*)td,
+                                   results, histogram,
+                                   task->trace_search_channel, allocator);
   }
 
   // Clean up task resources
@@ -125,13 +138,14 @@ static void trace_search_run(void* arg) {
   LOG_DEBUG("trace_search_run background task exiting");
 }
 
-void trace_search_start(const char* query, const trace_data_t* td,
-                        bool include_threads, bool include_counters,
-                        channel_t* app_channel, channel_t* trace_search_channel,
-                        allocator_t allocator) {
+channel_t* trace_search_start(const char* query, const trace_data_t* td,
+                              bool include_threads, bool include_counters,
+                              channel_t* app_channel, allocator_t allocator) {
   CHECK(td != nullptr);
   CHECK(app_channel != nullptr);
-  CHECK(trace_search_channel != nullptr);
+
+  channel_t* trace_search_channel =
+      channel_create(trace_search_msg_t, 8, nullptr, allocator);
 
   trace_search_task_t* task = (trace_search_task_t*)allocator_alloc(
       allocator, sizeof(trace_search_task_t));
@@ -152,10 +166,12 @@ void trace_search_start(const char* query, const trace_data_t* td,
   task->allocator = allocator;
 
   platform_submit_job(trace_search_run, task);
+
+  return trace_search_channel;
 }
 
 bool trace_search_send_abort(channel_t* trace_search_channel) {
   CHECK(trace_search_channel != nullptr);
-  trace_search_msg_t msg = {.type = MSG_TRACE_SEARCH_ABORT};
+  trace_search_msg_t msg = {.type = TRACE_SEARCH_MSG_ABORT};
   return channel_try_send(trace_search_channel, &msg);
 }

@@ -22,14 +22,25 @@ typedef void (*channel_item_destructor_t)(void* item);
 channel_t* channel_create_(size_t item_size, size_t capacity,
                            channel_item_destructor_t destructor,
                            allocator_t allocator);
+// Destroys the channel. Requires channel_close_tx AND channel_close_rx to have
+// been called first (CHECKs otherwise).
 void channel_destroy(channel_t* chan);
 bool channel_send_(channel_t* chan, void* item, size_t item_size);
 bool channel_recv_(channel_t* chan, void* out_item, size_t item_size);
 bool channel_try_send_(channel_t* chan, void* item, size_t item_size);
 bool channel_try_recv_(channel_t* chan, void* out_item, size_t item_size);
-void channel_close(channel_t* chan);
-size_t channel_get_size(const channel_t* chan);
-bool channel_is_closed(const channel_t* chan);
+
+// Closes the sender side. Further send ops fail (and destruct the item).
+// Receivers still drain remaining items; once empty, recv returns false.
+void channel_close_tx(channel_t* chan);
+
+// Closes the receiver side. Further recv ops fail immediately; send ops also
+// fail (and destruct the item) since no one will consume.
+void channel_close_rx(channel_t* chan);
+
+size_t channel_get_size(channel_t* chan);
+bool channel_is_tx_closed(channel_t* chan);
+bool channel_is_rx_closed(channel_t* chan);
 
 // 2. Type-Safe Public Macro API (Replaces void* with compile-time type
 // extraction)

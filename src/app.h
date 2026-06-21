@@ -52,10 +52,10 @@ typedef struct app {
 
   // Background Mailboxes (Actor Model)
   channel_t* ui_channel;  // UI thread input mailbox (receives app_msg_t)
-  channel_t*
-      trace_load_channel;  // Loader task input mailbox (sends trace_load_msg_t)
-  channel_t* trace_search_channel;  // Search task input mailbox (sends
-                                    // trace_search_msg_t)
+  channel_t* trace_load_channel;    // Loader task input mailbox (opaque, see
+                                    // trace_load_task.h)
+  channel_t* trace_search_channel;  // Search task input mailbox (opaque, see
+                                    // trace_search_task.h)
 
   // Background Loading State
   trace_loading_state_t loading;

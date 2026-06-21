@@ -81,15 +81,17 @@ static void app_apply_theme(app_t* app, const theme_t* theme) {
 
 void app_stop_jobs(app_t* app) {
   if (app->trace_load_channel != nullptr) {
-    // Send abort request to the loader task mailbox.
+    // Send abort request to the loader task mailbox, then close our (tx) side.
     // Asynchronous and 100% non-blocking!
     trace_load_send_abort(app->trace_load_channel);
+    channel_close_tx(app->trace_load_channel);
     app->trace_load_channel = nullptr;
   }
 
   // Abort active search task (if any)
   if (app->trace_search_channel != nullptr) {
     trace_search_send_abort(app->trace_search_channel);
+    channel_close_tx(app->trace_search_channel);
     app->trace_search_channel = nullptr;
   }
 }
@@ -119,6 +121,8 @@ void app_deinit(app_t* app) {
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
+  channel_close_rx(app->ui_channel);
+  channel_close_tx(app->ui_channel);
   channel_destroy(app->ui_channel);
 
   // Deallocate structures
@@ -136,51 +140,57 @@ void app_poll_messages(app_t* app) {
   while (channel_try_recv(app->ui_channel, &msg)) {
     app->loading.request_update = true;
     switch (msg.type) {
-      case MSG_TRACE_LOAD_PROGRESS:
-        app->loading.event_count = msg.as.load_progress.event_count;
-        app->loading.total_bytes = msg.as.load_progress.total_bytes;
+      case APP_MSG_TRACE_LOAD_PROGRESS:
+        app->loading.event_count = msg.as.trace_load_progress.event_count;
+        app->loading.total_bytes = msg.as.trace_load_progress.total_bytes;
         break;
 
-      case MSG_TRACE_LOAD_COMPLETE: {
-        app_msg_load_result_t result = msg.as.load_result;
+      case APP_MSG_TRACE_LOAD_COMPLETE: {
+        app_msg_trace_load_complete_t result = msg.as.trace_load_complete;
+        bool is_active = (app->trace_load_channel == result.task_channel);
 
-        // Adopt the completed parsed trace data and organized tracks
-        trace_data_release(app->trace_data, allocator);
-        app->trace_data = result.trace_data;
-        app->trace_viewer.tracks = result.tracks;
-        app->trace_viewer.viewport.min_ts = result.min_ts;
-        app->trace_viewer.viewport.max_ts = result.max_ts;
+        if (is_active) {
+          // Adopt the completed parsed trace data and organized tracks
+          trace_data_release(app->trace_data, allocator);
+          app->trace_data = result.trace_data;
+          app->trace_viewer.tracks = result.tracks;
+          app->trace_viewer.viewport.min_ts = result.min_ts;
+          app->trace_viewer.viewport.max_ts = result.max_ts;
 
-        // Clear pointers in the message envelope so app_msg_deinit doesn't
-        // free/release them!
-        msg.as.load_result.trace_data = nullptr;
-        msg.as.load_result.tracks = (array_list_t){};
+          // Clear pointers in the message envelope so app_msg_deinit doesn't
+          // free/release them!
+          msg.as.trace_load_complete.trace_data = nullptr;
+          msg.as.trace_load_complete.tracks = (array_list_t){};
 
-        // The loader channel has been sent back and will be destroyed by
-        // app_msg_deinit. We set the app pointer to null to prevent dangling
-        // references or double-free.
-        if (app->trace_load_channel == result.task_channel) {
+          // Close our (tx) side (eager) and null the app pointer.
+          channel_close_tx(result.task_channel);
           app->trace_load_channel = nullptr;
-        }
+          app->loading.active = false;
 
-        app->loading.active = false;
-        trace_viewer_reset_view(&app->trace_viewer);
-        trace_viewer_precompute_minimap_heatmap(&app->trace_viewer,
-                                                app->trace_data, allocator);
+          trace_viewer_reset_view(&app->trace_viewer);
+          trace_viewer_precompute_minimap_heatmap(&app->trace_viewer,
+                                                  app->trace_data, allocator);
+        }
+        // If stale (not active): a newer session has replaced this channel.
+        // Don't adopt — app_msg_deinit will release trace_data and deinit
+        // tracks. tx was already closed by the abort initiator.
         break;
       }
 
-      case MSG_TRACE_LOAD_ABORTED: {
-        app_msg_load_aborted_t aborted = msg.as.load_aborted;
+      case APP_MSG_TRACE_LOAD_ABORTED: {
+        app_msg_trace_load_aborted_t aborted = msg.as.trace_load_aborted;
         if (app->trace_load_channel == aborted.task_channel) {
           app->trace_load_channel = nullptr;
+          app->loading.active = false;
         }
-        app->loading.active = false;
+        // If stale: a newer session is active. Don't touch loading.active —
+        // the active session's COMPLETE/ABORTED will clear it. tx was already
+        // closed by the abort initiator.
         break;
       }
 
-      case MSG_TRACE_SEARCH_COMPLETE: {
-        app_msg_search_result_t result = msg.as.search_result;
+      case APP_MSG_TRACE_SEARCH_COMPLETE: {
+        app_msg_trace_search_complete_t result = msg.as.trace_search_complete;
         bool is_active = (app->trace_search_channel == result.task_channel);
 
         if (is_active) {
@@ -189,16 +199,21 @@ void app_poll_messages(app_t* app) {
                                             result.results, result.histogram,
                                             allocator);
           // Clear results in envelope so app_msg_deinit doesn't free them
-          msg.as.search_result.results = (array_list_t){};
+          msg.as.trace_search_complete.results = (array_list_t){};
 
+          // Close our (tx) side (eager). If this is a stale complete (channel
+          // was already aborted via app_stop_jobs / search replacement, which
+          // closed tx and nulled/replaced the pointer), is_active is false and
+          // we skip — tx already closed by the abort initiator.
+          channel_close_tx(result.task_channel);
           app->trace_search_channel = nullptr;
           app->trace_viewer.search.is_searching = false;
         }
         break;
       }
 
-      case MSG_TRACE_SEARCH_ABORTED: {
-        app_msg_search_aborted_t aborted = msg.as.search_aborted;
+      case APP_MSG_TRACE_SEARCH_ABORTED: {
+        app_msg_trace_search_aborted_t aborted = msg.as.trace_search_aborted;
 
         if (app->trace_search_channel == aborted.task_channel) {
           app->trace_search_channel = nullptr;
@@ -223,16 +238,18 @@ void app_update(app_t* app) {
   if (app->trace_viewer.search_query_dirty) {
     app->trace_viewer.search_query_dirty = false;
 
-    // Abort the previous running search task (if any)
+    // Abort the previous running search task (if any), closing our (tx) side
+    // of its mailbox. The old channel is later destroyed by app_msg_deinit
+    // when the aborted message is polled.
     if (app->trace_search_channel != nullptr) {
       trace_search_send_abort(app->trace_search_channel);
+      channel_close_tx(app->trace_search_channel);
     }
 
-    // Create a NEW channel for the new search task.
+    // Spawn a new search task for the new query (creates its own channel).
     // The old channel remains alive and will be cleanly destroyed
     // by the UI thread when it receives the aborted message.
-    app->trace_search_channel =
-        channel_create(trace_search_msg_t, 8, nullptr, allocator);
+    app->trace_search_channel = nullptr;
 
     const char* query = (const char*)app->trace_viewer.search_query.ptr;
     if (query && query[0] != '\0' && app->trace_data != nullptr) {
@@ -240,10 +257,10 @@ void app_update(app_t* app) {
       trace_data_retain(app->trace_data);
 
       // Spawn a new background search task!
-      trace_search_start(query, app->trace_data,
-                         !app->trace_viewer.exclude_thread_events,
-                         !app->trace_viewer.exclude_counter_events,
-                         app->ui_channel, app->trace_search_channel, allocator);
+      app->trace_search_channel = trace_search_start(
+          query, app->trace_data, !app->trace_viewer.exclude_thread_events,
+          !app->trace_viewer.exclude_counter_events, app->ui_channel,
+          allocator);
     } else {
       // For empty queries, clear the search results synchronously
       array_list_clear(&app->trace_viewer.selected_event_indices);
@@ -499,10 +516,7 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
   // exiting worker thread. It will be safely destroyed inside app_msg_deinit
   // when the main thread processes the final abort message. We simply create a
   // fresh channel for the new loader task.
-  app->trace_load_channel = channel_create(trace_load_msg_t, 1024, trace_load_msg_deinit, allocator);
-
-  // Spawn the background loader worker task!
-  trace_load_start(app->ui_channel, app->trace_load_channel, allocator);
+  app->trace_load_channel = trace_load_start(app->ui_channel, allocator);
 }
 
 size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
