@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "src/assert.h"
 #include "src/colors.h"
 
 static uint32_t compute_hash(string_t s) {
@@ -59,7 +60,7 @@ static void string_lookup_table_resize(string_lookup_table_t* lt,
   lt->capacity_mask = mask;
 }
 
-void trace_data_deinit(trace_data_t* td, allocator_t a) {
+static void trace_data_deinit(trace_data_t* td, allocator_t a) {
   array_list_deinit(&td->string_buffer, a);
   array_list_deinit(&td->string_table, a);
   if (td->string_lookup.entries != nullptr) {
@@ -71,17 +72,29 @@ void trace_data_deinit(trace_data_t* td, allocator_t a) {
   *td = (trace_data_t){};
 }
 
-void trace_data_clear(trace_data_t* td, allocator_t a) {
-  (void)a;
-  array_list_clear(&td->string_buffer);
-  array_list_clear(&td->string_table);
-  if (td->string_lookup.entries != nullptr) {
-    memset(td->string_lookup.entries, 0,
-           td->string_lookup.capacity * sizeof(string_lookup_entry_t));
+
+
+trace_data_t* trace_data_create(allocator_t a) {
+  trace_data_t* td = (trace_data_t*)allocator_alloc(a, sizeof(trace_data_t));
+  CHECK(td != nullptr);
+  *td = (trace_data_t){.ref_count = 1};
+  return td;
+}
+
+void trace_data_retain(trace_data_t* td) {
+  CHECK(td != nullptr);
+  CHECK(td->ref_count > 0);
+  td->ref_count++;
+}
+
+void trace_data_release(trace_data_t* td, allocator_t a) {
+  if (td == nullptr) return;
+  CHECK(td->ref_count > 0);
+  td->ref_count--;
+  if (td->ref_count == 0) {
+    trace_data_deinit(td, a);
+    allocator_free(a, td, sizeof(trace_data_t));
   }
-  td->string_lookup.size = 0;
-  array_list_clear(&td->events);
-  array_list_clear(&td->args);
 }
 
 string_ref_t trace_data_push_string(trace_data_t* td, string_t s,

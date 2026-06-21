@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
   allocator_t a = counting_allocator_get_allocator(&ca);
 
   trace_parser_t p = {};
-  trace_data_t td = {};
+  trace_data_t* td = trace_data_create(a);
   trace_event_matcher_t matcher = {};
 
   char buf[65536];
@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
     trace_parser_feed(&p, buf, n, is_eof, a);
 
     while (trace_parser_next(&p, &event, a)) {
-      trace_data_add_event(&td, theme_get_dark(), &event, &matcher, a);
+      trace_data_add_event(td, theme_get_dark(), &event, &matcher, a);
       event_count++;
     }
 
@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
 
   array_list_t tracks = {};
   int64_t min_ts, max_ts;
-  track_organize(&td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
+  track_organize(td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
 
   auto organize_end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> organize_diff = organize_end - organize_start;
@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
   }
   array_list_deinit(&tracks, a);
   trace_event_matcher_deinit(&matcher, a);
-  trace_data_deinit(&td, a);
+  trace_data_release(td, a);
   trace_parser_deinit(&p, a);
 
   fclose(f);

@@ -1121,4 +1121,59 @@ TEST_F(ztracing_test, shortcuts_cheatsheet_dismissal_golden) {
   assert_golden("shortcuts_cheatsheet_dismissed_golden");
 }
 
+// 22. Regression test: Start a new session while a search task is actively
+// running in the background. Verifies that the old trace data is not freed
+// prematurely (Use-After-Free) and is released only when the search task exits,
+// and that the search task aborts cleanly.
+TEST_F(ztracing_test, regression_rapid_session_restart_with_active_search) {
+  // 1. Load initial trace
+  load_trace(MOCK_STANDARD_TRACE);
+
+  // 2. Open details and trigger a search
+  simulate_key_shortcut(ImGuiKey_F, ImGuiMod_Ctrl);
+  ztracing_update();
+  ztracing_update();
+  simulate_key_shortcut(ImGuiKey_F, ImGuiMod_Ctrl);
+  ztracing_update();
+  simulate_text_input("Event");
+  ztracing_update();
+
+  app_t* app = get_app();
+  // Verify that search has started
+  ASSERT_TRUE(app->trace_viewer.search.is_searching);
+  ASSERT_NE(app->trace_search_channel, nullptr);
+
+  // 3. IMMEDIATELY start a new session (loading a different trace)
+  // This will close the old search channel, triggering the search task to abort.
+  // It will also release the main thread's reference to the old trace data.
+  const char* MOCK_NEW_TRACE =
+      "["
+      "{\"name\":\"process_name\",\"ph\":\"M\",\"pid\":2,\"args\":{\"name\":\"NewProcess\"}},"
+      "{\"name\":\"EventNew\",\"cat\":\"ui\",\"ph\":\"X\",\"pid\":2,\"tid\":1,\"ts\":1000,\"dur\":100}"
+      "]";
+  
+  // Start the new session using the same load_trace helper (which handles chunks and waits for completion)
+  load_trace(MOCK_NEW_TRACE, "new_trace.json");
+
+  // 4. Verify that the new trace is loaded and active
+  ASSERT_FALSE(ztracing_is_loading_active());
+  ASSERT_NE(app->trace_data, nullptr);
+  
+  // The new trace should have pid 2, and one of the events should be EventNew
+  ASSERT_EQ(app->trace_data->events.len, 2u);
+  const trace_event_persisted_t* events =
+      (const trace_event_persisted_t*)app->trace_data->events.ptr;
+  bool found_new_event = false;
+  for (size_t i = 0; i < 2; ++i) {
+    if (trace_data_get_string(app->trace_data, events[i].name_ref) == "EventNew") {
+      found_new_event = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_new_event);
+
+  // 5. Verify that the old search is no longer active
+  EXPECT_FALSE(app->trace_viewer.search.is_searching);
+}
+
 }  // namespace

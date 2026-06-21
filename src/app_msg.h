@@ -40,6 +40,7 @@ typedef struct {
 // Search completion payload (Value-semantic, transfers ownership of heap
 // pointers)
 typedef struct {
+  trace_data_t* trace_data;         // The trace data used by the search
   array_list_t results;             // Value instance of results array list
   duration_histogram_t* histogram;  // Pointer to heap-allocated histogram
   channel_t* task_channel;          // Mailbox channel of the search task
@@ -47,6 +48,7 @@ typedef struct {
 
 // Search aborted payload (Value-semantic)
 typedef struct {
+  trace_data_t* trace_data;         // The trace data used by the search
   channel_t* task_channel;  // Mailbox channel of the aborted task
 } app_msg_search_aborted_t;
 
@@ -93,13 +95,14 @@ bool app_send_load_aborted(channel_t* app_channel);
 
 // Sends search completion, transferring ownership. AUTOMATICALLY cleans up
 // results and histogram if the send fails.
-bool app_send_search_complete(channel_t* app_channel, array_list_t results,
+bool app_send_search_complete(channel_t* app_channel, trace_data_t* trace_data,
+                              array_list_t results,
                               duration_histogram_t* histogram,
                               channel_t* task_channel, allocator_t allocator);
 
 // Sends search aborted signal.
-bool app_send_search_aborted(channel_t* app_channel, channel_t* task_channel,
-                             allocator_t allocator);
+bool app_send_search_aborted(channel_t* app_channel, trace_data_t* trace_data,
+                             channel_t* task_channel, allocator_t allocator);
 
 #ifdef __cplusplus
 }

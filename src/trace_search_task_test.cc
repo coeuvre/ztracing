@@ -26,16 +26,19 @@ TEST(trace_search_task_test,
 
     array_list_t results = {};
 
+    // Create a mock trace data shell on the heap (ref_count = 1)
+    trace_data_t* td = trace_data_create(a);
+
     // Close channel to force send failure!
     channel_close_and_drain(chan, app_msg_t, app_msg_deinit, a);
 
-    // Send should fail and AUTOMATICALLY free both results and hist!
-    EXPECT_FALSE(app_send_search_complete(chan, results, hist, nullptr, a));
+    // Send should fail and AUTOMATICALLY free results, hist, and release td!
+    EXPECT_FALSE(app_send_search_complete(chan, td, results, hist, nullptr, a));
 
     channel_destroy(chan, a);
   }
 
-  // If hist was not freed automatically, this check would fail!
+  // If hist or td was not freed automatically, this check would fail!
   EXPECT_EQ(counting_allocator_get_allocated_bytes(&ca), 0u);
 }
 
@@ -64,8 +67,8 @@ TEST(trace_search_task_test, e2e_search_task) {
   allocator_t a = counting_allocator_get_allocator(&ca);
 
   {
-    // 1. Construct a mock trace data with 3 events
-    trace_data_t td = {};
+    // 1. Construct a mock trace data with 3 events on the heap (ref_count = 1)
+    trace_data_t* td = trace_data_create(a);
     trace_event_matcher_t matcher = {};
 
     // Event 0: name="foo", cat="bar"
@@ -75,7 +78,7 @@ TEST(trace_search_task_test, e2e_search_task) {
     ev0.ph = string_lit("X");
     ev0.ts = 100;
     ev0.dur = 50;
-    trace_data_add_event(&td, theme_get_dark(), &ev0, &matcher, a);
+    trace_data_add_event(td, theme_get_dark(), &ev0, &matcher, a);
 
     // Event 1: name="hello", cat="world"
     trace_event_t ev1 = {};
@@ -84,7 +87,7 @@ TEST(trace_search_task_test, e2e_search_task) {
     ev1.ph = string_lit("X");
     ev1.ts = 200;
     ev1.dur = 10;
-    trace_data_add_event(&td, theme_get_dark(), &ev1, &matcher, a);
+    trace_data_add_event(td, theme_get_dark(), &ev1, &matcher, a);
 
     // Event 2: name="baz", cat="bar"
     trace_event_t ev2 = {};
@@ -93,14 +96,17 @@ TEST(trace_search_task_test, e2e_search_task) {
     ev2.ph = string_lit("X");
     ev2.ts = 300;
     ev2.dur = 20;
-    trace_data_add_event(&td, theme_get_dark(), &ev2, &matcher, a);
+    trace_data_add_event(td, theme_get_dark(), &ev2, &matcher, a);
 
     // 2. Create coordination channels
     channel_t* app_channel = channel_create(app_msg_t, 5, a);
     channel_t* search_channel = channel_create(trace_search_msg_t, 5, a);
 
+    // Retain td for the background task (ref_count: 1 -> 2)
+    trace_data_retain(td);
+
     // 3. Start background search for "foo"
-    trace_search_start("foo", &td, true, true, app_channel, search_channel, a);
+    trace_search_start("foo", td, true, true, app_channel, search_channel, a);
 
     // 4. Block-receive the result from app_channel
     app_msg_t msg = {};
@@ -114,14 +120,14 @@ TEST(trace_search_task_test, e2e_search_task) {
     EXPECT_NE(result.histogram, nullptr);
     EXPECT_EQ(result.histogram->total_count, 1u);
 
-    // 5. Clean up results
-    array_list_deinit(&result.results, a);
-    allocator_free(a, result.histogram, sizeof(duration_histogram_t));
+    // 5. Centralized cleanup via app_msg_deinit!
+    // This will release the background task's reference to td (ref_count: 2 -> 1),
+    // deinit the results list, free the histogram shell, and destroy the search_channel.
+    app_msg_deinit(&msg, a);
 
-    // 6. Tear down channels and trace data
+    // 6. Tear down channels and release our own reference to td (ref_count: 1 -> 0, triggers free)
     channel_destroy(app_channel, a);
-    channel_destroy(search_channel, a);
-    trace_data_deinit(&td, a);
+    trace_data_release(td, a);
     trace_event_matcher_deinit(&matcher, a);
   }
 

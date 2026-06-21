@@ -213,3 +213,14 @@ size_t channel_get_size(const channel_t* chan) {
 
   return size;
 }
+
+bool channel_is_closed(const channel_t* chan) {
+  CHECK(chan != nullptr);
+
+  channel_t* non_const_chan = (channel_t*)chan;
+  pthread_mutex_lock(&non_const_chan->mutex);
+  bool closed = chan->closed;
+  pthread_mutex_unlock(&non_const_chan->mutex);
+
+  return closed;
+}

@@ -28,6 +28,7 @@ void channel_close_and_drain_(channel_t* chan,
                                                  allocator_t allocator),
                               allocator_t allocator);
 size_t channel_get_size(const channel_t* chan);
+bool channel_is_closed(const channel_t* chan);
 
 // 2. Type-Safe Public Macro API (Replaces void* with compile-time type
 // extraction)

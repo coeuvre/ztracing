@@ -19,20 +19,19 @@ class TraceViewerTest : public ::testing::Test {
  protected:
   allocator_t allocator;
   trace_viewer_t tv;
-  trace_data_t td;
+  trace_data_t* td;
 
   void SetUp() override {
     allocator = allocator_get_default();
     tv.~trace_viewer_t();
     new (&tv) trace_viewer_t();
     trace_viewer_init(&tv);
-    td.~trace_data_t();
-    new (&td) trace_data_t();
+    td = trace_data_create(allocator);
   }
 
   void TearDown() override {
     trace_viewer_deinit(&tv, allocator);
-    trace_data_deinit(&td, allocator);
+    trace_data_release(td, allocator);
     platform_teardown_workers();
   }
 };
@@ -51,7 +50,7 @@ TEST_F(TraceViewerTest, ZoomInAroundMouse) {
   input.is_ctrl_down = true;
   input.tracks_hovered = true;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   double new_duration = tv.viewport.end_time - tv.viewport.start_time;
   EXPECT_LT(new_duration, 1000000.0);
@@ -75,7 +74,7 @@ TEST_F(TraceViewerTest, Panning) {
 
   // 10 pixels in 1000 pixels width is 1% of viewport duration (100,000) = 1,000
   // units
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_NEAR(tv.viewport.start_time, 99000.0, 1.0);
   EXPECT_NEAR(tv.viewport.end_time, 199000.0, 1.0);
@@ -88,15 +87,15 @@ TEST_F(TraceViewerTest, HitTestingThreadEvent) {
   e.dur = 100000;
   e.name_ref = 0;
   e.ph_ref = 0;  // thread event
-  *array_list_push(&td.events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, decltype(e), allocator) = e;
 
   // Add a track
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
       (size_t)0;
-  track_update_max_dur(&t, &td, allocator);
-  track_calculate_depths(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
+  track_calculate_depths(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   tv.viewport.start_time = 0;
@@ -119,7 +118,7 @@ TEST_F(TraceViewerTest, HitTestingThreadEvent) {
   input.mouse_x = 550.0f;
   input.mouse_y = 50.0f;  // Middle of the lane [40, 60]
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   hover_match_t* hover_matches = (hover_match_t*)tv.hover_matches.ptr;
   (void)hover_matches;
@@ -135,16 +134,16 @@ TEST_F(TraceViewerTest, ClickToFocusAndCenter) {
     e.ts = 5000;
     e.dur = 1000;
     e.tid = i;
-    size_t event_idx = td.events.len;
-    *array_list_push(&td.events, decltype(e), allocator) = e;
+    size_t event_idx = td->events.len;
+    *array_list_push(&td->events, decltype(e), allocator) = e;
 
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
     t.tid = i;
     *array_list_push(&t.event_indices, decltype(event_idx), allocator) =
         event_idx;
-    track_update_max_dur(&t, &td, allocator);
-    track_calculate_depths(&t, &td, allocator);
+    track_update_max_dur(&t, td, allocator);
+    track_calculate_depths(&t, td, allocator);
     *array_list_push(&tv.tracks, decltype(t), allocator) = t;
   }
 
@@ -166,7 +165,7 @@ TEST_F(TraceViewerTest, ClickToFocusAndCenter) {
   tv.has_target_focused_event = true;
 
   // First step: Handles focus request, zooms, and calculates scroll to center
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_TRUE(tv.has_focused_event);
   EXPECT_EQ(tv.focused_event_idx, 1u);
@@ -194,14 +193,14 @@ TEST_F(TraceViewerTest, SelectionOnClick) {
   trace_event_persisted_t e = {};
   e.ts = 500000;
   e.dur = 100000;
-  *array_list_push(&td.events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, decltype(e), allocator) = e;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
       (size_t)0;
-  track_update_max_dur(&t, &td, allocator);
-  track_calculate_depths(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
+  track_calculate_depths(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   tv.viewport.start_time = 0;
@@ -221,7 +220,7 @@ TEST_F(TraceViewerTest, SelectionOnClick) {
   input.is_mouse_released = true;
   input.drag_threshold = 5.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_TRUE(tv.has_focused_event);
   EXPECT_EQ(tv.focused_event_idx, 0u);
@@ -249,7 +248,7 @@ TEST_F(TraceViewerTest, TimelineClickToClearRuler) {
   i1.drag_delta_x = 0.0f;
   i1.drag_threshold = 5.0f;
 
-  trace_viewer_step(&tv, &td, &i1, allocator);
+  trace_viewer_step(&tv, td, &i1, allocator);
   EXPECT_TRUE(tv.selection_active);
   EXPECT_EQ(tv.selection_drag_mode, INTERACTION_DRAG_MODE_RULER_NEW);
 
@@ -260,7 +259,7 @@ TEST_F(TraceViewerTest, TimelineClickToClearRuler) {
   i2.ruler_deactivated = true;
   i2.drag_delta_x = 1.0f;  // < threshold
 
-  trace_viewer_step(&tv, &td, &i2, allocator);
+  trace_viewer_step(&tv, td, &i2, allocator);
   EXPECT_FALSE(tv.selection_active);
   EXPECT_EQ(tv.selection_drag_mode, INTERACTION_DRAG_MODE_NONE);
 }
@@ -286,7 +285,7 @@ TEST_F(TraceViewerTest, TimelineKeepExistingSelectionOnPress) {
   i1.drag_delta_x = 0.0f;
   i1.drag_threshold = 5.0f;
 
-  trace_viewer_step(&tv, &td, &i1, allocator);
+  trace_viewer_step(&tv, td, &i1, allocator);
   EXPECT_TRUE(tv.selection_active);
   EXPECT_EQ(tv.selection_drag_mode, INTERACTION_DRAG_MODE_RULER_NEW);
   EXPECT_DOUBLE_EQ(tv.selection_start_time, 100.0);
@@ -298,7 +297,7 @@ TEST_F(TraceViewerTest, TimelineKeepExistingSelectionOnPress) {
   i2.mouse_x = 152.0f;
   i2.drag_delta_x = 2.0f;
 
-  trace_viewer_step(&tv, &td, &i2, allocator);
+  trace_viewer_step(&tv, td, &i2, allocator);
   EXPECT_DOUBLE_EQ(tv.selection_start_time, 100.0);
   EXPECT_DOUBLE_EQ(tv.selection_end_time, 200.0);
 
@@ -308,7 +307,7 @@ TEST_F(TraceViewerTest, TimelineKeepExistingSelectionOnPress) {
   i3.mouse_x = 160.0f;
   i3.drag_delta_x = 10.0f;
 
-  trace_viewer_step(&tv, &td, &i3, allocator);
+  trace_viewer_step(&tv, td, &i3, allocator);
   EXPECT_DOUBLE_EQ(tv.selection_start_time, 150.0);
   EXPECT_DOUBLE_EQ(tv.selection_end_time, 160.0);
 }
@@ -330,7 +329,7 @@ TEST_F(TraceViewerTest, ViewportZoomClampingWithSelection) {
   input.is_ctrl_down = true;
   input.mouse_x = 500.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_DOUBLE_EQ(tv.viewport.end_time - tv.viewport.start_time, 1200.0);
   EXPECT_LE(tv.viewport.start_time, 400.0);
@@ -348,14 +347,14 @@ TEST_F(TraceViewerTest, TimelineSnapping) {
   trace_event_persisted_t e = {};
   e.ts = 102;
   e.dur = 10;  // Ensure it's not a zero-width event
-  *array_list_push(&td.events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, decltype(e), allocator) = e;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
       (size_t)0;
-  track_update_max_dur(&t, &td, allocator);
-  track_calculate_depths(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
+  track_calculate_depths(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   trace_viewer_input_t input = {};
@@ -376,7 +375,7 @@ TEST_F(TraceViewerTest, TimelineSnapping) {
 
   // Frame 1: Press (no drag yet)
   input.drag_delta_x = 0.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_FALSE(tv.selection_active);
   EXPECT_FALSE(tv.snap_has_snap);
 
@@ -384,7 +383,7 @@ TEST_F(TraceViewerTest, TimelineSnapping) {
   input.ruler_activated = false;
   input.drag_delta_x = 10.0f;
   input.mouse_x = 104.0f;  // Near ts=104, within 5px threshold of ts=102
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_TRUE(tv.selection_active);
   EXPECT_DOUBLE_EQ(tv.selection_start_time, 100.0);
@@ -413,14 +412,14 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
   trace_event_persisted_t e = {};
   e.ts = 100;
   e.dur = 50;
-  *array_list_push(&td.events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, decltype(e), allocator) = e;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
       (size_t)0;
-  track_update_max_dur(&t, &td, allocator);
-  track_calculate_depths(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
+  track_calculate_depths(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   trace_viewer_input_t input = {};
@@ -434,7 +433,7 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
   input.is_mouse_released = true;
   input.drag_threshold = 5.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   // Hover matches should be empty because it's outside selection
   EXPECT_EQ(tv.hover_matches.len, 0u);
@@ -465,19 +464,19 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
   trace_arg_persisted_t arg = {};
   arg.key_ref = 1;
   arg.val_double = 1.0;
-  *array_list_push(&td.args, decltype(arg), allocator) = arg;
+  *array_list_push(&td->args, decltype(arg), allocator) = arg;
 
   trace_event_persisted_t e1 = {};
   e1.ts = 100;
   e1.args_offset = 0;
   e1.args_count = 1;
-  *array_list_push(&td.events, decltype(e1), allocator) = e1;
+  *array_list_push(&td->events, decltype(e1), allocator) = e1;
 
   trace_event_persisted_t e2 = {};
   e2.ts = 200;
   e2.args_offset = 0;
   e2.args_count = 1;
-  *array_list_push(&td.events, decltype(e2), allocator) = e2;
+  *array_list_push(&td->events, decltype(e2), allocator) = e2;
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
@@ -488,7 +487,7 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
   *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) =
       (string_ref_t)1;
   t.counter_max_total = 1.0;
-  track_update_max_dur(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   trace_viewer_input_t input = {};
@@ -503,7 +502,7 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
   input.is_mouse_released = true;
   input.drag_threshold = 5.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   // Should be 0 because gating is currently ENABLED
   EXPECT_EQ(tv.hover_matches.len, 0u);
@@ -541,7 +540,7 @@ TEST_F(TraceViewerTest, TimelineClickOutsideToClearTracks) {
   input.is_mouse_released = true;
   input.drag_threshold = 5.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_FALSE(tv.selection_active);
   // Events are kept because click was consumed by range clearing
   EXPECT_EQ(tv.selected_event_indices.len, 1u);
@@ -564,7 +563,7 @@ TEST_F(TraceViewerTest, TimelineClickInsideKeepsSelection) {
   input.is_mouse_released = true;
   input.drag_threshold = 5.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.selection_active);
 }
 
@@ -585,7 +584,7 @@ TEST_F(TraceViewerTest, TimelineClickBoundaryKeepsSelection) {
   input.is_mouse_released = true;
   input.drag_threshold = 5.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.selection_active);
 }
 
@@ -603,19 +602,19 @@ TEST_F(TraceViewerTest, CounterInteractionInsideSelectionWorks) {
   trace_arg_persisted_t arg = {};
   arg.key_ref = 1;
   arg.val_double = 1.0;
-  *array_list_push(&td.args, decltype(arg), allocator) = arg;
+  *array_list_push(&td->args, decltype(arg), allocator) = arg;
 
   trace_event_persisted_t e1 = {};
   e1.ts = 150;
   e1.args_offset = 0;
   e1.args_count = 1;
-  *array_list_push(&td.events, decltype(e1), allocator) = e1;
+  *array_list_push(&td->events, decltype(e1), allocator) = e1;
 
   trace_event_persisted_t e2 = {};
   e2.ts = 300;
   e2.args_offset = 0;
   e2.args_count = 1;
-  *array_list_push(&td.events, decltype(e2), allocator) = e2;
+  *array_list_push(&td->events, decltype(e2), allocator) = e2;
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
@@ -626,7 +625,7 @@ TEST_F(TraceViewerTest, CounterInteractionInsideSelectionWorks) {
   *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) =
       (string_ref_t)1;
   t.counter_max_total = 1.0;
-  track_update_max_dur(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   trace_viewer_input_t input = {};
@@ -640,7 +639,7 @@ TEST_F(TraceViewerTest, CounterInteractionInsideSelectionWorks) {
   input.is_mouse_released = true;
   input.drag_threshold = 5.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_EQ(tv.hover_matches.len, 1u);
   EXPECT_TRUE(tv.has_focused_event);
@@ -658,14 +657,14 @@ TEST_F(TraceViewerTest, SnappingOnlyInVisibleTracks) {
   trace_event_persisted_t e = {};
   e.ts = 102;
   e.dur = 10;
-  *array_list_push(&td.events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, decltype(e), allocator) = e;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
       (size_t)0;
-  track_update_max_dur(&t, &td, allocator);
-  track_calculate_depths(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
+  track_calculate_depths(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   trace_viewer_input_t input = {};
@@ -690,13 +689,13 @@ TEST_F(TraceViewerTest, SnappingOnlyInVisibleTracks) {
   // track_height = (0 + 2) * 20 = 40
   // track_y + track_height = 0 ( < canvas_y + ruler_height = 20)
   input.tracks_scroll_y = 60.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_FALSE(tv.snap_has_snap);
 
   // Scenario 2: track_t is visible
   input.tracks_scroll_y = 10.0f;
   input.drag_delta_x = 10.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.snap_has_snap);
   EXPECT_DOUBLE_EQ(tv.snap_best_ts, 102.0);
 }
@@ -712,14 +711,14 @@ TEST_F(TraceViewerTest, SnappingDisabledWhenNotDragging) {
   trace_event_persisted_t e = {};
   e.ts = 102;
   e.dur = 10;
-  *array_list_push(&td.events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, decltype(e), allocator) = e;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
       (size_t)0;
-  track_update_max_dur(&t, &td, allocator);
-  track_calculate_depths(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
+  track_calculate_depths(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   trace_viewer_input_t input = {};
@@ -737,7 +736,7 @@ TEST_F(TraceViewerTest, SnappingDisabledWhenNotDragging) {
   input.ruler_activated = true;
   input.drag_delta_x = 0.0f;
   input.drag_threshold = 5.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_FALSE(tv.snap_has_snap);
 
   // 2. Dragging boundary in tracks past threshold: snapping should be enabled
@@ -748,7 +747,7 @@ TEST_F(TraceViewerTest, SnappingDisabledWhenNotDragging) {
   input.is_mouse_clicked = true;
   input.is_mouse_down = true;
   input.drag_delta_x = 10.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_EQ(tv.selection_drag_mode, INTERACTION_DRAG_MODE_TRACKS_START);
   EXPECT_TRUE(tv.snap_has_snap);
   EXPECT_DOUBLE_EQ(tv.snap_best_ts, 102.0);
@@ -773,7 +772,7 @@ TEST_F(TraceViewerTest, PanningClampingWithSelection) {
 
   // Pan right (moving viewport left), should clamp start_time at 400
   input.mouse_delta_x = -1000.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_DOUBLE_EQ(tv.viewport.start_time, 400.0);
   EXPECT_DOUBLE_EQ(tv.viewport.end_time, 1400.0);
 
@@ -782,7 +781,7 @@ TEST_F(TraceViewerTest, PanningClampingWithSelection) {
   tv.viewport.start_time = 100.0;
   tv.viewport.end_time = 1100.0;
   input.mouse_delta_x = 1000.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   // duration is 1000. t2 is 600.
   // viewport.start_time + 1000 < 600 is false.
   // wait, if I pan left (positive dx), viewport.start_time decreases.
@@ -805,19 +804,19 @@ TEST_F(TraceViewerTest, TimelineProximityCheck) {
 
   // Mouse near start
   input.mouse_x = 102.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   // Proximity is internal to step, but we can verify it indirectly via
   // drag_mode if we trigger a click
   input.is_mouse_clicked = true;
   input.is_mouse_down = true;
   input.tracks_hovered = true;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_EQ(tv.selection_drag_mode, INTERACTION_DRAG_MODE_TRACKS_START);
 
   // Mouse near end
   tv.selection_drag_mode = INTERACTION_DRAG_MODE_NONE;
   input.mouse_x = 198.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_EQ(tv.selection_drag_mode, INTERACTION_DRAG_MODE_TRACKS_END);
 }
 
@@ -836,14 +835,14 @@ TEST_F(TraceViewerTest, TimelineNoZeroWidthSelectionOnPress) {
   input.drag_delta_x = 0.0f;
   input.drag_threshold = 5.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_FALSE(tv.selection_active);
 
   // Drag past threshold
   input.ruler_activated = false;
   input.mouse_x = 160.0f;
   input.drag_delta_x = 10.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.selection_active);
   EXPECT_DOUBLE_EQ(tv.selection_start_time, 150.0);
   EXPECT_DOUBLE_EQ(tv.selection_end_time, 160.0);
@@ -861,13 +860,13 @@ TEST_F(TraceViewerTest, TimelineSnappedBoundaryDragTracks) {
   trace_event_persisted_t e = {};
   e.ts = 50;
   e.dur = 10;
-  *array_list_push(&td.events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, decltype(e), allocator) = e;
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
       (size_t)0;
-  track_update_max_dur(&t, &td, allocator);
-  track_calculate_depths(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
+  track_calculate_depths(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   trace_viewer_input_t input = {};
@@ -882,13 +881,13 @@ TEST_F(TraceViewerTest, TimelineSnappedBoundaryDragTracks) {
   input.click_x = 101.0f;
   input.is_mouse_clicked = true;
   input.is_mouse_down = true;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_EQ(tv.selection_drag_mode, INTERACTION_DRAG_MODE_TRACKS_START);
 
   // Drag towards 50, should snap to 50
   input.is_mouse_clicked = false;
   input.mouse_x = 52.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_DOUBLE_EQ(tv.selection_start_time, 50.0);
   EXPECT_DOUBLE_EQ(tv.selection_end_time, 200.0);
 }
@@ -906,7 +905,7 @@ TEST_F(TraceViewerTest, TimelineAreaIsolation) {
   input.mouse_x = 100.0f;
   input.is_mouse_clicked = true;
   input.is_mouse_down = true;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_FALSE(tv.selection_active);
   EXPECT_EQ(tv.selection_drag_mode, INTERACTION_DRAG_MODE_NONE);
@@ -921,8 +920,8 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
     trace_event_persisted_t e2 = {};
     e2.ts = 200;
     e2.dur = 50;
-    *array_list_push(&td.events, decltype(e1), allocator) = e1;
-    *array_list_push(&td.events, decltype(e2), allocator) = e2;
+    *array_list_push(&td->events, decltype(e1), allocator) = e1;
+    *array_list_push(&td->events, decltype(e2), allocator) = e2;
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
     *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
@@ -935,7 +934,7 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
     depths = (uint32_t*)t.depths.ptr;
     depths[0] = 0;
     depths[1] = 0;
-    track_update_max_dur(&t, &td, allocator);
+    track_update_max_dur(&t, td, allocator);
     *array_list_push(&tv.tracks, decltype(t), allocator) = t;
   }
   // track_t 2: Thread with 1 event in depth 1
@@ -943,7 +942,7 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
     trace_event_persisted_t e3 = {};
     e3.ts = 150;
     e3.dur = 100;
-    *array_list_push(&td.events, decltype(e3), allocator) = e3;
+    *array_list_push(&td->events, decltype(e3), allocator) = e3;
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
     *array_list_push(&t.event_indices, decltype((size_t)2), allocator) =
@@ -953,7 +952,7 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
     array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
     depths = (uint32_t*)t.depths.ptr;
     depths[0] = 1;
-    track_update_max_dur(&t, &td, allocator);
+    track_update_max_dur(&t, td, allocator);
     t.max_depth = 1;
     *array_list_push(&tv.tracks, decltype(t), allocator) = t;
   }
@@ -988,7 +987,7 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
   input.mouse_y = 30.0f;
   input.tracks_hovered = true;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_EQ(tv.selection_drag_mode, INTERACTION_DRAG_MODE_BOX_SELECT);
   EXPECT_FALSE(tv.snap_has_snap);  // Snapping should be disabled
   EXPECT_FLOAT_EQ(tv.box_select_start.x, 120.0f);
@@ -1008,7 +1007,7 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
   input.mouse_x = 180.0f;
   input.mouse_y = 110.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_EQ(tv.selection_drag_mode, INTERACTION_DRAG_MODE_NONE);
   int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
   (void)selected_event_indices;
@@ -1022,7 +1021,7 @@ TEST_F(TraceViewerTest, BoxSelectLongEvent) {
   trace_event_persisted_t e = {};
   e.ts = 0;
   e.dur = 1000;
-  *array_list_push(&td.events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, decltype(e), allocator) = e;
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
@@ -1032,7 +1031,7 @@ TEST_F(TraceViewerTest, BoxSelectLongEvent) {
   array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
-  track_update_max_dur(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   tv.viewport.min_ts = 0;
@@ -1057,7 +1056,7 @@ TEST_F(TraceViewerTest, BoxSelectLongEvent) {
   input.mouse_y = 45.0f;
   input.tracks_hovered = true;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   input.is_mouse_clicked = false;
   input.is_mouse_down = false;
@@ -1065,7 +1064,7 @@ TEST_F(TraceViewerTest, BoxSelectLongEvent) {
   input.mouse_x = 600.0f;
   input.mouse_y = 55.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   EXPECT_EQ(tv.selected_event_indices.len, 1u);
@@ -1077,13 +1076,13 @@ TEST_F(TraceViewerTest, BoxSelectCounterHeaderIgnored) {
   trace_arg_persisted_t arg = {};
   arg.key_ref = 1;
   arg.val_double = 1.0;
-  *array_list_push(&td.args, decltype(arg), allocator) = arg;
+  *array_list_push(&td->args, decltype(arg), allocator) = arg;
 
   trace_event_persisted_t e1 = {};
   e1.ts = 100;
   e1.args_offset = 0;
   e1.args_count = 1;
-  *array_list_push(&td.events, decltype(e1), allocator) = e1;
+  *array_list_push(&td->events, decltype(e1), allocator) = e1;
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
@@ -1092,7 +1091,7 @@ TEST_F(TraceViewerTest, BoxSelectCounterHeaderIgnored) {
   *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) =
       (string_ref_t)1;
   t.counter_max_total = 1.0;
-  track_update_max_dur(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   tv.viewport.min_ts = 0;
@@ -1123,14 +1122,14 @@ TEST_F(TraceViewerTest, BoxSelectCounterHeaderIgnored) {
   // Case 1: Box overlaps ONLY the header [25, 35]
   input.mouse_x = 50.0f;
   input.mouse_y = 25.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   input.is_mouse_clicked = false;
   input.is_mouse_down = false;
   input.is_mouse_released = true;
   input.mouse_x = 150.0f;
   input.mouse_y = 35.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_EQ(tv.selected_event_indices.len, 0u);
 
@@ -1140,14 +1139,14 @@ TEST_F(TraceViewerTest, BoxSelectCounterHeaderIgnored) {
   input.is_mouse_released = false;
   input.mouse_x = 50.0f;
   input.mouse_y = 45.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   input.is_mouse_clicked = false;
   input.is_mouse_down = false;
   input.is_mouse_released = true;
   input.mouse_x = 150.0f;
   input.mouse_y = 55.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
   (void)selected_event_indices;
@@ -1157,9 +1156,9 @@ TEST_F(TraceViewerTest, BoxSelectCounterHeaderIgnored) {
 
 TEST_F(TraceViewerTest, TrackHeaderNameFormatting) {
   // 1. Thread with name
-  trace_data_t td_local = {};
+  trace_data_t* td_local = trace_data_create(allocator);
   string_ref_t name_ref =
-      trace_data_push_string(&td_local, string_lit("MainThread"), allocator);
+      trace_data_push_string(td_local, string_lit("MainThread"), allocator);
 
   track_t t1 = {};
   t1.type = TRACK_TYPE_THREAD;
@@ -1175,9 +1174,9 @@ TEST_F(TraceViewerTest, TrackHeaderNameFormatting) {
 
   // 3. Counter with name and ID
   string_ref_t c_name_ref =
-      trace_data_push_string(&td_local, string_lit("Memory"), allocator);
+      trace_data_push_string(td_local, string_lit("Memory"), allocator);
   string_ref_t c_id_ref =
-      trace_data_push_string(&td_local, string_lit("0x1"), allocator);
+      trace_data_push_string(td_local, string_lit("0x1"), allocator);
   track_t t3 = {};
   t3.type = TRACK_TYPE_COUNTER;
   t3.name_ref = c_name_ref;
@@ -1190,7 +1189,7 @@ TEST_F(TraceViewerTest, TrackHeaderNameFormatting) {
   input.ruler_height = 20.0f;
   input.lane_height = 20.0f;
 
-  trace_viewer_step(&tv, &td_local, &input, allocator);
+  trace_viewer_step(&tv, td_local, &input, allocator);
 
   track_view_info_t* track_infos = (track_view_info_t*)tv.track_infos.ptr;
   (void)track_infos;
@@ -1199,7 +1198,7 @@ TEST_F(TraceViewerTest, TrackHeaderNameFormatting) {
   EXPECT_STREQ(track_infos[1].name, "Thread 456");
   EXPECT_STREQ(track_infos[2].name, "Memory (0x1)");
 
-  trace_data_deinit(&td_local, allocator);
+  trace_data_release(td_local, allocator);
 }
 
 TEST_F(TraceViewerTest, TrackLayoutAndCulling) {
@@ -1219,7 +1218,7 @@ TEST_F(TraceViewerTest, TrackLayoutAndCulling) {
   input.lane_height = 20.0f;
   input.tracks_scroll_y = 0.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_FLOAT_EQ(tv.total_tracks_height, 120.0f);  // 3 * 40
   track_view_info_t* track_infos = (track_view_info_t*)tv.track_infos.ptr;
@@ -1243,7 +1242,7 @@ TEST_F(TraceViewerTest, TrackLayoutAndCulling) {
 
   // Scroll down by 50 pixels
   input.tracks_scroll_y = 50.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   // track_t 0: y = 120 - 50 = 70. Height 40. End = 110.
   // Culled because end 110 < track area start 120.
@@ -1265,7 +1264,7 @@ TEST_F(TraceViewerTest, SelectionOverlayLayoutComputation) {
   input.canvas_x = 100.0f;
   input.canvas_width = 1000.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   // 1000 width, 1000 duration -> 1 unit = 1 pixel.
   // x1 = 100 + (200 - 0)/1000 * 1000 = 300
@@ -1285,7 +1284,7 @@ TEST_F(TraceViewerTest, RulerTickGeneration) {
   input.canvas_x = 0.0f;
   input.canvas_width = 1000.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   // 1000 pixels, 1000us. Interval should be around 100us or 200us.
   // calculate_tick_interval(1000, 1000, 100) -> 100.0
@@ -1306,13 +1305,13 @@ TEST_F(TraceViewerTest, DoubleClickToZoomEdgeStability) {
   // Add an event at the very beginning
   trace_event_t ev = {
       .name = "event1", .ph = "X", .ts = 0, .dur = 1000, .pid = 1, .tid = 1};
-  trace_data_add_event(&td, allocator, theme, &ev);
+  trace_data_add_event(td, allocator, theme, &ev);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
       (size_t)0;
-  track_update_max_dur(&t, &td, allocator);
-  track_calculate_depths(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
+  track_calculate_depths(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   tv.viewport.min_ts = 0;
@@ -1339,7 +1338,7 @@ TEST_F(TraceViewerTest, DoubleClickToZoomEdgeStability) {
   input.is_mouse_double_clicked = true;
   input.is_mouse_clicked = true;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   // After zoom, the event (0-1000) is centered with 5% padding (50us).
   // Start time: 0 - 50 = -50.
@@ -1364,7 +1363,7 @@ TEST_F(TraceViewerTest, DoubleClickToZoomEdgeStability) {
   input2.mouse_y = 50.0f;
   input2.is_mouse_released = true;
 
-  trace_viewer_step(&tv, &td, &input2, allocator);
+  trace_viewer_step(&tv, td, &input2, allocator);
 
   // Selection should STILL be active because of ignore_next_release
   EXPECT_TRUE(tv.selection_active);
@@ -1377,13 +1376,13 @@ TEST_F(TraceViewerTest, DoubleClickToZoomSameFrameRelease) {
   // Add an event
   trace_event_t ev = {
       .name = "event1", .ph = "X", .ts = 5000, .dur = 1000, .pid = 1, .tid = 1};
-  trace_data_add_event(&td, allocator, theme, &ev);
+  trace_data_add_event(td, allocator, theme, &ev);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
       (size_t)0;
-  track_update_max_dur(&t, &td, allocator);
-  track_calculate_depths(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
+  track_calculate_depths(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   tv.viewport.start_time = 0;
@@ -1404,7 +1403,7 @@ TEST_F(TraceViewerTest, DoubleClickToZoomSameFrameRelease) {
   input.is_mouse_double_clicked = true;
   input.is_mouse_released = true;  // Release in same frame!
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_TRUE(tv.selection_active);
   EXPECT_TRUE(
@@ -1413,7 +1412,7 @@ TEST_F(TraceViewerTest, DoubleClickToZoomSameFrameRelease) {
   // Next frame, no release
   trace_viewer_input_t input2 = {};
   input2.tracks_hovered = true;
-  trace_viewer_step(&tv, &td, &input2, allocator);
+  trace_viewer_step(&tv, td, &input2, allocator);
   EXPECT_TRUE(tv.selection_active);
   EXPECT_TRUE(tv.ignore_next_release);
 
@@ -1421,7 +1420,7 @@ TEST_F(TraceViewerTest, DoubleClickToZoomSameFrameRelease) {
   trace_viewer_input_t input3 = {};
   input3.tracks_hovered = true;
   input3.is_mouse_released = true;
-  trace_viewer_step(&tv, &td, &input3, allocator);
+  trace_viewer_step(&tv, td, &input3, allocator);
   EXPECT_TRUE(tv.selection_active);
   EXPECT_FALSE(tv.ignore_next_release);
 }
@@ -1434,16 +1433,16 @@ TEST_F(TraceViewerTest, DoubleClickEventOutsideCurrentSelection) {
       .name = "event1", .ph = "X", .ts = 1000, .dur = 1000, .pid = 1, .tid = 1};
   trace_event_t ev2 = {
       .name = "event2", .ph = "X", .ts = 8000, .dur = 1000, .pid = 1, .tid = 1};
-  trace_data_add_event(&td, allocator, theme, &ev1);
-  trace_data_add_event(&td, allocator, theme, &ev2);
+  trace_data_add_event(td, allocator, theme, &ev1);
+  trace_data_add_event(td, allocator, theme, &ev2);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
       (size_t)0;
   *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
       (size_t)1;
-  track_update_max_dur(&t, &td, allocator);
-  track_calculate_depths(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
+  track_calculate_depths(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   tv.viewport.start_time = 0;
@@ -1469,7 +1468,7 @@ TEST_F(TraceViewerTest, DoubleClickEventOutsideCurrentSelection) {
   input.mouse_y = 50.0f;
   input.is_mouse_double_clicked = true;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   // Should have zoomed to event2 (8000-9000)
   // Padding: 1000 * 0.05 = 50
@@ -1492,8 +1491,8 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   trace_event_persisted_t e2 = {};
   e2.ts = 500;
   e2.dur = 50;
-  *array_list_push(&td.events, decltype(e1), allocator) = e1;
-  *array_list_push(&td.events, decltype(e2), allocator) = e2;
+  *array_list_push(&td->events, decltype(e1), allocator) = e1;
+  *array_list_push(&td->events, decltype(e2), allocator) = e2;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
@@ -1507,7 +1506,7 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   depths[1] = 0;
-  track_update_max_dur(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   tv.viewport.start_time = 0;
@@ -1530,7 +1529,7 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   input.mouse_y = 45.0f;
   input.tracks_hovered = true;
   input.drag_threshold = 5.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   input.is_mouse_clicked = false;
   input.is_mouse_down = false;
@@ -1538,7 +1537,7 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   input.mouse_x = 160.0f;
   input.mouse_y = 55.0f;
   input.drag_delta_x = 40.0f;  // Simulate drag
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
   (void)selected_event_indices;
@@ -1554,12 +1553,12 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   input.mouse_x = 525.0f;
   input.mouse_y = 50.0f;
   input.drag_delta_x = 0.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   input.is_mouse_clicked = false;
   input.is_mouse_down = false;
   input.is_mouse_released = true;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_TRUE(tv.has_focused_event);
   EXPECT_EQ(tv.focused_event_idx, 1u);
@@ -1571,12 +1570,12 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   input.is_mouse_down = true;
   input.is_mouse_released = false;
   input.mouse_x = 800.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   input.is_mouse_clicked = false;
   input.is_mouse_down = false;
   input.is_mouse_released = true;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_FALSE(tv.has_focused_event);
   EXPECT_EQ(tv.selected_event_indices.len, 1u);
@@ -1587,7 +1586,7 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
   trace_event_persisted_t e1 = {};
   e1.ts = 100;
   e1.dur = 50;
-  *array_list_push(&td.events, decltype(e1), allocator) = e1;
+  *array_list_push(&td->events, decltype(e1), allocator) = e1;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
@@ -1598,7 +1597,7 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
   array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
-  track_update_max_dur(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   tv.viewport.start_time = 0;
@@ -1627,7 +1626,7 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
   input.is_mouse_released = true;
   input.drag_threshold = 5.0f;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_TRUE(tv.selection_active);  // Timeline range kept
   EXPECT_EQ(tv.selected_event_indices.len, 1u);
@@ -1637,7 +1636,7 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
 TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
   // Add a counter event (dur=0) at ts=5000
   trace_event_persisted_t e = {.ts = 5000, .dur = 0, .pid = 1, .tid = 1};
-  *array_list_push(&td.events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, decltype(e), allocator) = e;
   track_t t = {.type = TRACK_TYPE_COUNTER, .pid = 1, .tid = -1};
   *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
       (size_t)0;
@@ -1653,7 +1652,7 @@ TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
   tv.target_focused_event_idx = 0;
   tv.has_target_focused_event = true;
   trace_viewer_input_t input = {};
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   // Should NOT have changed zoom (duration remains 10000)
   EXPECT_DOUBLE_EQ(tv.viewport.end_time - tv.viewport.start_time, 10000.0);
@@ -1663,7 +1662,7 @@ TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
   tv.viewport.end_time = 18000;
   tv.target_focused_event_idx = 0;
   tv.has_target_focused_event = true;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   // Centered on 5000 with duration 10000 -> [0, 10000]
   EXPECT_DOUBLE_EQ(tv.viewport.start_time, 0.0);
@@ -1679,19 +1678,19 @@ TEST_F(TraceViewerTest, SearchHistogramCalculation) {
   trace_event_persisted_t e0 = {};
   e0.ts = 100;
   e0.dur = 0;
-  *array_list_push(&td.events, decltype(e0), allocator) = e0;
+  *array_list_push(&td->events, decltype(e0), allocator) = e0;
 
   // Small-duration events
   trace_event_persisted_t e1 = {};
   e1.ts = 150;
   e1.dur = 50;
-  *array_list_push(&td.events, decltype(e1), allocator) = e1;
+  *array_list_push(&td->events, decltype(e1), allocator) = e1;
 
   // Large-duration events
   trace_event_persisted_t e2 = {};
   e2.ts = 200;
   e2.dur = 5000;
-  *array_list_push(&td.events, decltype(e2), allocator) = e2;
+  *array_list_push(&td->events, decltype(e2), allocator) = e2;
 
   // Setup input index list
   array_list_t selected_indices = {};
@@ -1703,7 +1702,7 @@ TEST_F(TraceViewerTest, SearchHistogramCalculation) {
       (int64_t)2;
 
   duration_histogram_t h = {};
-  trace_viewer_calculate_histogram(&selected_indices, &td, &h);
+  trace_viewer_calculate_histogram(&selected_indices, td, &h);
 
   EXPECT_GE(h.num_buckets, 2);
   EXPECT_TRUE(h.has_non_zero_durations);
@@ -1719,8 +1718,8 @@ TEST_F(TraceViewerTest, SearchHistogramCalculation) {
 TEST_F(TraceViewerTest, AsyncHistogramIntegrationForBoxSelect) {
   trace_event_persisted_t e1 = {.ts = 100, .dur = 50, .pid = 1, .tid = 1};
   trace_event_persisted_t e2 = {.ts = 200, .dur = 50, .pid = 1, .tid = 1};
-  *array_list_push(&td.events, decltype(e1), allocator) = e1;
-  *array_list_push(&td.events, decltype(e2), allocator) = e2;
+  *array_list_push(&td->events, decltype(e1), allocator) = e1;
+  *array_list_push(&td->events, decltype(e2), allocator) = e2;
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
   *array_list_push(&t.event_indices, decltype(0ul), allocator) = 0ul;
@@ -1731,7 +1730,7 @@ TEST_F(TraceViewerTest, AsyncHistogramIntegrationForBoxSelect) {
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   depths[1] = 0;
-  track_update_max_dur(&t, &td, allocator);
+  track_update_max_dur(&t, td, allocator);
   *array_list_push(&tv.tracks, decltype(t), allocator) = t;
 
   tv.viewport.start_time = 0;
@@ -1756,13 +1755,13 @@ TEST_F(TraceViewerTest, AsyncHistogramIntegrationForBoxSelect) {
   input.mouse_y = 30.0f;
   input.tracks_hovered = true;
 
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   input.is_mouse_down = false;
   input.is_mouse_released = true;
   input.mouse_x = 250.0f;
   input.mouse_y = 70.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
   (void)selected_event_indices;
@@ -1808,7 +1807,7 @@ TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
   input.tracks_scroll_y = 0.0f;
 
   // Step once to compute track heights and initial layout
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   float expected_minimap_x = 1000.0f - VERTICAL_MINIMAP_WIDTH;
   float expected_minimap_y = 20.0f;  // ruler_height
@@ -1827,24 +1826,24 @@ TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
   // 2. Test Hover State (within active area)
   input.mouse_x = expected_minimap_x + 5.0f;
   input.mouse_y = expected_minimap_y + 15.0f;  // 15px is within 20px
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.vertical_minimap.layout.is_hovered);
 
   // Test Hover State (outside active area but within viewport)
   input.mouse_y = expected_minimap_y + 50.0f;  // 50px is outside 20px
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_FALSE(tv.vertical_minimap.layout.is_hovered);
 
   // Reset mouse to active area for next tests
   input.mouse_y = expected_minimap_y + 15.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.vertical_minimap.layout.is_hovered);
 
   // 3. Test Click / Press (Trigger Jump)
   input.is_mouse_clicked = true;
   input.is_mouse_down = true;
   input.mouse_y = expected_minimap_y + 15.0f;  // Click at 15px (track_t 7)
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   // Should jump to center track_t 7: 280 - (180 - 40)*0.5 = 210
   EXPECT_TRUE(tv.has_target_scroll_y);
@@ -1853,7 +1852,7 @@ TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
   // 4. Simulate scroll update and transition to drag (mouse still at 15px)
   input.is_mouse_clicked = false;
   input.tracks_scroll_y = tv.target_scroll_y;  // 210.0f
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   // drag_offset_y should be captured as: mouse_y (35) - slider_y1 (20 +
   // 210*0.05 - 0 = 30.5) = 4.5
@@ -1861,7 +1860,7 @@ TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
 
   // 5. Test Drag Scrolling (Move mouse to 10px)
   input.mouse_y = expected_minimap_y + 10.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   // slider_y1_target = 10 - 4.5 = 5.5
   // pct = 5.5 / 10 = 0.55
@@ -1871,7 +1870,7 @@ TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
 
   // 6. Test Release
   input.is_mouse_down = false;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_FALSE(tv.vertical_minimap.is_dragging);
 }
 
@@ -1907,7 +1906,7 @@ TEST_F(TraceViewerTest, VerticalMinimapScrollingLayoutAndDragScroll) {
   input.tracks_scroll_y = 0.0f;
 
   // Step once to compute layout at scroll = 0
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   float expected_minimap_x = 1000.0f - VERTICAL_MINIMAP_WIDTH;
   float expected_minimap_y = 20.0f;  // ruler_height
@@ -1924,13 +1923,13 @@ TEST_F(TraceViewerTest, VerticalMinimapScrollingLayoutAndDragScroll) {
   // Step with scroll at max
   float max_scroll = 100.0f * 40.0f - expected_visible_h;  // 4000 - 180 = 3820
   input.tracks_scroll_y = max_scroll;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_FLOAT_EQ(layout.minimap_scroll_y,
                   200.0f - expected_visible_h);  // 200 - 180 = 20
 
   // Test Drag Scrolling from scroll = 0
   input.tracks_scroll_y = 0.0f;
-  trace_viewer_step(&tv, &td, &input,
+  trace_viewer_step(&tv, td, &input,
                     allocator);  // Reset layout state to scroll 0
 
   // 1. Click at 90px (track_t 45)
@@ -1938,7 +1937,7 @@ TEST_F(TraceViewerTest, VerticalMinimapScrollingLayoutAndDragScroll) {
   input.mouse_y = expected_minimap_y + 90.0f;  // Middle of viewport
   input.is_mouse_clicked = true;
   input.is_mouse_down = true;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   // Should jump to center track_t 45: 45 * 40 - (180 - 40)*0.5 = 1730
   EXPECT_TRUE(tv.has_target_scroll_y);
@@ -1947,7 +1946,7 @@ TEST_F(TraceViewerTest, VerticalMinimapScrollingLayoutAndDragScroll) {
   // 2. Simulate scroll update and transition to drag (mouse still at 90px)
   input.is_mouse_clicked = false;
   input.tracks_scroll_y = tv.target_scroll_y;  // 1730.0f
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   // drag_offset_y should be captured: 110 - (20 + 1730*0.05 - 9.0576) = 110
   // - 97.4424 = 12.5576
@@ -1955,7 +1954,7 @@ TEST_F(TraceViewerTest, VerticalMinimapScrollingLayoutAndDragScroll) {
 
   // 3. Test Drag Scrolling (Move mouse to 80px relative)
   input.mouse_y = expected_minimap_y + 80.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   // slider_y1_target = 80 - 12.5576 = 67.4424
   // pct = 67.4424 / 170 = 0.39672
@@ -1974,30 +1973,30 @@ TEST_F(TraceViewerTest, VerticalMinimap2DHeatmap) {
   trace_event_persisted_t e1 = {};
   e1.ts = 500;
   e1.dur = 100;
-  size_t e1_idx = td.events.len;
-  *array_list_push(&td.events, decltype(e1), allocator) = e1;
+  size_t e1_idx = td->events.len;
+  *array_list_push(&td->events, decltype(e1), allocator) = e1;
 
   // Event B (track_t 0, ts = 5500, belongs to Bucket 5, depth 0)
   trace_event_persisted_t e2 = {};
   e2.ts = 5500;
   e2.dur = 100;
-  size_t e2_idx = td.events.len;
-  *array_list_push(&td.events, decltype(e2), allocator) = e2;
+  size_t e2_idx = td->events.len;
+  *array_list_push(&td->events, decltype(e2), allocator) = e2;
 
   // Event C (track_t 1, ts = 5000, belongs to Bucket 5, depth 0)
   trace_event_persisted_t e3 = {};
   e3.ts = 5000;
   e3.dur = 100;
-  size_t e3_idx = td.events.len;
-  *array_list_push(&td.events, decltype(e3), allocator) = e3;
+  size_t e3_idx = td->events.len;
+  *array_list_push(&td->events, decltype(e3), allocator) = e3;
 
   // Event D (track_t 0, ts = 5600, belongs to Bucket 5, nested at depth 1)
   // This event should be ignored in heat calculation because depth != 0
   trace_event_persisted_t e4 = {};
   e4.ts = 5600;
   e4.dur = 50;
-  size_t e4_idx = td.events.len;
-  *array_list_push(&td.events, decltype(e4), allocator) = e4;
+  size_t e4_idx = td->events.len;
+  *array_list_push(&td->events, decltype(e4), allocator) = e4;
 
   // 3. Setup mock tracks
   // track_t 0: holds Event A, Event B, and Event D
@@ -2023,7 +2022,7 @@ TEST_F(TraceViewerTest, VerticalMinimap2DHeatmap) {
   *array_list_push(&tv.tracks, decltype(t1), allocator) = t1;
 
   // 4. Run precompute heatmap function
-  trace_viewer_precompute_minimap_heatmap(&tv, &td, allocator);
+  trace_viewer_precompute_minimap_heatmap(&tv, td, allocator);
 
   // 5. Verify cached 2D densities
   track_heatmap_t* track_heatmap_densities =
@@ -2053,7 +2052,7 @@ TEST_F(TraceViewerTest, VerticalMinimapHeatmapZeroDuration) {
   t0.type = TRACK_TYPE_THREAD;
   *array_list_push(&tv.tracks, decltype(t0), allocator) = t0;
 
-  trace_viewer_precompute_minimap_heatmap(&tv, &td, allocator);
+  trace_viewer_precompute_minimap_heatmap(&tv, td, allocator);
 
   track_heatmap_t* track_heatmap_densities =
       (track_heatmap_t*)tv.vertical_minimap.track_heatmap_densities.ptr;
@@ -2099,25 +2098,25 @@ TEST_F(TraceViewerTest, VerticalMinimapSliderFixedSizeAndBoundaryAlignment) {
   float max_scroll = 100.0f * 40.0f - expected_visible_h;  // 3820
 
   // 1. Verify fixed slider height at different scroll positions
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   const vertical_minimap_layout_t& layout = tv.vertical_minimap.layout;
   float h0 = layout.slider_y2 - layout.slider_y1;
   EXPECT_FLOAT_EQ(h0, 10.0f);  // 180 * 0.05 = 9.0f, clamped to 10.0f
 
   input.tracks_scroll_y = 1000.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   float h1 = layout.slider_y2 - layout.slider_y1;
   EXPECT_FLOAT_EQ(h0, h1);
 
   input.tracks_scroll_y = max_scroll;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   float h2 = layout.slider_y2 - layout.slider_y1;
   EXPECT_FLOAT_EQ(h0, h2);
 
   // 2. Test Boundary Alignment
   // Start drag at scroll = 1000
   input.tracks_scroll_y = 1000.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   // Click on slider center to start drag
   input.mouse_x = expected_minimap_x + 5.0f;
@@ -2126,14 +2125,14 @@ TEST_F(TraceViewerTest, VerticalMinimapSliderFixedSizeAndBoundaryAlignment) {
   input.mouse_y = expected_minimap_y + 49.7644f;
   input.is_mouse_clicked = true;
   input.is_mouse_down = true;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   EXPECT_NEAR(tv.vertical_minimap.drag_offset_y, 5.0f, 0.001f);  // Centered
 
   // Drag to top boundary (minimap_y = 20)
   input.is_mouse_clicked = false;
   input.mouse_y = expected_minimap_y;  // 20.0f
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   // slider_y1_target = 0 - 5 = -5
   // pct clamped to 0
   EXPECT_TRUE(tv.has_target_scroll_y);
@@ -2141,7 +2140,7 @@ TEST_F(TraceViewerTest, VerticalMinimapSliderFixedSizeAndBoundaryAlignment) {
 
   // Drag to bottom boundary (minimap_y + minimap_draw_h = 200)
   input.mouse_y = expected_minimap_y + expected_visible_h;  // 200.0f
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   // slider_y1_target = 180 - 5 = 175
   // max_slider_y = 170
   // pct clamped to 1.0
@@ -2153,7 +2152,7 @@ TEST_F(TraceViewerTest, VerticalMinimapSliderFixedSizeAndBoundaryAlignment) {
   float last_scroll = -1.0f;
   for (float my = 40.0f; my <= 160.0f; my += 20.0f) {
     input.mouse_y = expected_minimap_y + my;
-    trace_viewer_step(&tv, &td, &input, allocator);
+    trace_viewer_step(&tv, td, &input, allocator);
     EXPECT_TRUE(tv.has_target_scroll_y);
     EXPECT_GT(tv.target_scroll_y, last_scroll);
     last_scroll = tv.target_scroll_y;
@@ -2193,7 +2192,7 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
   float expected_minimap_y = 20.0f;  // ruler_height
 
   // Initial step to populate layout
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   // Slider is [20.0f, 30.0f] (since scroll = 0, slider_h = 10.0f)
 
   // --- Case 1: Click Inside Slider ---
@@ -2202,7 +2201,7 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
   input.mouse_y = expected_minimap_y + 5.0f;  // 25.0f (inside [20, 30])
   input.is_mouse_clicked = true;
   input.is_mouse_down = true;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   EXPECT_FLOAT_EQ(tv.vertical_minimap.drag_offset_y, 5.0f);  // 25 - 20
@@ -2213,7 +2212,7 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
   // Drag down by 3px (mouse to 28.0f)
   input.is_mouse_clicked = false;
   input.mouse_y = expected_minimap_y + 8.0f;  // 28.0f
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   // slider_y1_target = 8 - 5 = 3
   // pct = 3 / 10 = 0.3
   // target_scroll_y = 0.3 * (400 - 180) = 66
@@ -2222,19 +2221,19 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
 
   // Release
   input.is_mouse_down = false;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_FALSE(tv.vertical_minimap.is_dragging);
 
   // --- Case 2: Click Outside Slider (Jump) ---
   // Reset scroll to 0
   input.tracks_scroll_y = 0.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   input.mouse_y =
       expected_minimap_y + 15.0f;  // 35.0f (outside [20, 30], track_t 7)
   input.is_mouse_clicked = true;
   input.is_mouse_down = true;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
 
   EXPECT_TRUE(tv.vertical_minimap.is_dragging);
   // Should jump to center track_t 7 (300px): 280 - (180 - 40)*0.5 = 210
@@ -2245,13 +2244,13 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
   // Simulate scroll update in next frame
   input.is_mouse_clicked = false;
   input.tracks_scroll_y = tv.target_scroll_y;  // 210.0f
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   // Offset captured: mouse_y (35) - slider_y1 (20 + 210*0.05 = 30.5) = 4.5
   EXPECT_FLOAT_EQ(tv.vertical_minimap.drag_offset_y, 4.5f);
 
   // Drag to 10px relative (30.0f)
   input.mouse_y = expected_minimap_y + 10.0f;
-  trace_viewer_step(&tv, &td, &input, allocator);
+  trace_viewer_step(&tv, td, &input, allocator);
   // slider_y1_target = 10 - 4.5 = 5.5
   // pct = 5.5 / 10 = 0.55
   // target_scroll_y = 0.55 * 220 = 121

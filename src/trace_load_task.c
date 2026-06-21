@@ -31,9 +31,7 @@ static void trace_load_run(void* arg) {
   trace_event_matcher_t matcher = {};  // ZII
 
   // Allocate the persistent trace data shell
-  trace_data_t* td =
-      (trace_data_t*)allocator_alloc(allocator, sizeof(trace_data_t));
-  *td = (trace_data_t){};  // ZII
+  trace_data_t* td = trace_data_create(allocator);
 
   size_t total_discarded_bytes = 0;
   size_t last_report_event_count = 0;
@@ -54,6 +52,7 @@ static void trace_load_run(void* arg) {
     }
 
     if (!received) {
+      aborted = true;
       break;
     }
     if (msg.type == MSG_TRACE_LOAD_ABORT) {
@@ -97,8 +96,7 @@ static void trace_load_run(void* arg) {
 
   if (aborted) {
     LOG_DEBUG("trace_load_run worker aborted by UI thread request");
-    trace_data_deinit(td, allocator);
-    allocator_free(allocator, td, sizeof(trace_data_t));
+    trace_data_release(td, allocator);
 
     // Notify App UI thread that loading was aborted
     app_send_load_aborted(task->app_channel);

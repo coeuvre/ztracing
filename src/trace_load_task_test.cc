@@ -48,11 +48,8 @@ TEST(trace_load_task_test, safe_send_helper_load_complete_cleanup_on_failure) {
     // App channel
     channel_t* chan = channel_create(app_msg_t, 5, a);
 
-    // Allocate trace data shell and tracks list on the heap
-    trace_data_t* td = (trace_data_t*)allocator_alloc(a, sizeof(trace_data_t));
-    // Zero-initialize to ensure trace_data_deinit is a safe no-op on internal
-    // lists
-    *td = {};
+    // Create trace data shell on the heap using the lifecycle API (ref_count = 1)
+    trace_data_t* td = trace_data_create(a);
 
     array_list_t tracks = {};  // Empty list requires no heap allocation, but
                                // deinit is a safe no-op

@@ -32,7 +32,7 @@ int main(int argc, char** argv) {
   allocator_t a = counting_allocator_get_allocator(&ca);
 
   trace_parser_t p = {};
-  trace_data_t td = {};
+  trace_data_t* td = trace_data_create(a);
   trace_event_matcher_t matcher = {};
 
   char buf[65536];
@@ -45,7 +45,7 @@ int main(int argc, char** argv) {
     trace_parser_feed(&p, buf, n, is_eof, a);
 
     while (trace_parser_next(&p, &event, a)) {
-      trace_data_add_event(&td, theme_get_dark(), &event, &matcher, a);
+      trace_data_add_event(td, theme_get_dark(), &event, &matcher, a);
     }
     if (is_eof) break;
   }
@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
   // Organize Tracks
   array_list_t tracks = {};
   int64_t min_ts, max_ts;
-  track_organize(&td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
+  track_organize(td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
 
   // 1. Vertical Scan: Find the heaviest contiguous block of N tracks (Viewport)
   // that contains the maximum total number of events when fully zoomed out.
@@ -121,9 +121,9 @@ int main(int argc, char** argv) {
     for (size_t j = 0; j < actual_viewport_tracks; j++) {
       track_t* t = &track_array[best_track_start + j];
       if (t->type == TRACK_TYPE_THREAD) {
-        track_compute_render_blocks(t, &td, (double)min_ts, (double)max_ts, 1000.0f, 0.0f, -1, &state, &thread_blocks[j], a);
+        track_compute_render_blocks(t, td, (double)min_ts, (double)max_ts, 1000.0f, 0.0f, -1, &state, &thread_blocks[j], a);
       } else if (t->type == TRACK_TYPE_COUNTER) {
-        track_compute_counter_render_blocks(t, &td, (double)min_ts, (double)max_ts, 1000.0f, 0.0f, -1, &state, &counter_blocks[j], a);
+        track_compute_counter_render_blocks(t, td, (double)min_ts, (double)max_ts, 1000.0f, 0.0f, -1, &state, &counter_blocks[j], a);
       }
     }
 
@@ -152,6 +152,6 @@ int main(int argc, char** argv) {
   }
   array_list_deinit(&tracks, a);
   trace_event_matcher_deinit(&matcher, a);
-  trace_data_deinit(&td, a);
+  trace_data_release(td, a);
   return 0;
 }

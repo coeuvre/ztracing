@@ -61,7 +61,7 @@ typedef struct app {
   trace_loading_state_t loading;
 
   // Data & Viewer
-  trace_data_t trace_data;
+  trace_data_t* trace_data;
   trace_viewer_t trace_viewer;
 } app_t;
 

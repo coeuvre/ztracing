@@ -14,8 +14,7 @@ void app_msg_deinit(app_msg_t* msg, allocator_t allocator) {
     case MSG_TRACE_LOAD_COMPLETE: {
       app_msg_load_result_t* res = &msg->as.load_result;
       if (res->trace_data != nullptr) {
-        trace_data_deinit(res->trace_data, allocator);
-        allocator_free(allocator, res->trace_data, sizeof(trace_data_t));
+        trace_data_release(res->trace_data, allocator);
       }
       array_list_deinit(&res->tracks, allocator);
       break;
@@ -23,6 +22,7 @@ void app_msg_deinit(app_msg_t* msg, allocator_t allocator) {
 
     case MSG_TRACE_SEARCH_COMPLETE: {
       app_msg_search_result_t* res = &msg->as.search_result;
+      trace_data_release(res->trace_data, allocator);
       array_list_deinit(&res->results, allocator);
       if (res->histogram != nullptr) {
         allocator_free(allocator, res->histogram, sizeof(duration_histogram_t));
@@ -37,6 +37,7 @@ void app_msg_deinit(app_msg_t* msg, allocator_t allocator) {
 
     case MSG_TRACE_SEARCH_ABORTED: {
       app_msg_search_aborted_t* aborted = &msg->as.search_aborted;
+      trace_data_release(aborted->trace_data, allocator);
       if (aborted->task_channel != nullptr) {
         channel_close_and_drain(aborted->task_channel, trace_search_msg_t,
                                 nullptr, allocator);
@@ -85,14 +86,17 @@ bool app_send_load_aborted(channel_t* app_channel) {
   return channel_send(app_channel, &msg);
 }
 
-bool app_send_search_complete(channel_t* app_channel, array_list_t results,
+bool app_send_search_complete(channel_t* app_channel, trace_data_t* trace_data,
+                              array_list_t results,
                               duration_histogram_t* histogram,
                               channel_t* task_channel, allocator_t allocator) {
   CHECK(app_channel != nullptr);
+  CHECK(trace_data != nullptr);
   CHECK(histogram != nullptr);
 
   app_msg_t msg = {.type = MSG_TRACE_SEARCH_COMPLETE,
-                   .as = {.search_result = {.results = results,
+                   .as = {.search_result = {.trace_data = trace_data,
+                                            .results = results,
                                             .histogram = histogram,
                                             .task_channel = task_channel}}};
 
@@ -103,11 +107,12 @@ bool app_send_search_complete(channel_t* app_channel, array_list_t results,
   return ok;
 }
 
-bool app_send_search_aborted(channel_t* app_channel, channel_t* task_channel,
-                             allocator_t allocator) {
+bool app_send_search_aborted(channel_t* app_channel, trace_data_t* trace_data,
+                             channel_t* task_channel, allocator_t allocator) {
   CHECK(app_channel != nullptr);
   app_msg_t msg = {.type = MSG_TRACE_SEARCH_ABORTED,
-                   .as = {.search_aborted = {.task_channel = task_channel}}};
+                   .as = {.search_aborted = {.trace_data = trace_data,
+                                             .task_channel = task_channel}}};
 
   bool ok = channel_send(app_channel, &msg);
   if (!ok) {

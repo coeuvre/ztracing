@@ -6,7 +6,7 @@
 
 TEST(trace_data_test, basic) {
   allocator_t a = allocator_get_default();
-  trace_data_t td = {};
+  trace_data_t* td = trace_data_create(a);
 
   trace_event_t ev = {};
   ev.name = string_lit("event1");
@@ -24,83 +24,57 @@ TEST(trace_data_test, basic) {
   ev.args_count = 2;
 
   trace_event_matcher_t matcher = {};
-  trace_data_add_event(&td, theme_get_dark(), &ev, &matcher, a);
+  trace_data_add_event(td, theme_get_dark(), &ev, &matcher, a);
 
-  ASSERT_EQ(td.events.len, 1u);
+  ASSERT_EQ(td->events.len, 1u);
   const trace_event_persisted_t* events =
-      (const trace_event_persisted_t*)td.events.ptr;
+      (const trace_event_persisted_t*)td->events.ptr;
   const trace_event_persisted_t& p = events[0];
-  EXPECT_EQ(trace_data_get_string(&td, p.name_ref), "event1");
-  EXPECT_EQ(trace_data_get_string(&td, p.cat_ref), "cat1");
-  EXPECT_EQ(trace_data_get_string(&td, p.ph_ref), "X");
+  EXPECT_EQ(trace_data_get_string(td, p.name_ref), "event1");
+  EXPECT_EQ(trace_data_get_string(td, p.cat_ref), "cat1");
+  EXPECT_EQ(trace_data_get_string(td, p.ph_ref), "X");
   EXPECT_EQ(p.ts, 100);
   EXPECT_EQ(p.dur, 50);
   EXPECT_EQ(p.pid, 1);
   EXPECT_EQ(p.tid, 2);
   EXPECT_EQ(p.args_count, 2u);
 
-  ASSERT_EQ(td.args.len, 2u);
+  ASSERT_EQ(td->args.len, 2u);
   const trace_arg_persisted_t* td_args =
-      (const trace_arg_persisted_t*)td.args.ptr;
+      (const trace_arg_persisted_t*)td->args.ptr;
   const trace_arg_persisted_t& pa1 = td_args[p.args_offset];
-  EXPECT_EQ(trace_data_get_string(&td, pa1.key_ref), "key1");
-  EXPECT_EQ(trace_data_get_string(&td, pa1.val_ref), "val1");
+  EXPECT_EQ(trace_data_get_string(td, pa1.key_ref), "key1");
+  EXPECT_EQ(trace_data_get_string(td, pa1.val_ref), "val1");
 
   const trace_arg_persisted_t& pa2 = td_args[p.args_offset + 1];
-  EXPECT_EQ(trace_data_get_string(&td, pa2.key_ref), "key2");
-  EXPECT_EQ(trace_data_get_string(&td, pa2.val_ref), "val2");
+  EXPECT_EQ(trace_data_get_string(td, pa2.key_ref), "key2");
+  EXPECT_EQ(trace_data_get_string(td, pa2.val_ref), "val2");
 
   trace_event_matcher_deinit(&matcher, a);
-  trace_data_deinit(&td, a);
+  trace_data_release(td, a);
 }
 
 TEST(trace_data_test, de_duplication) {
   allocator_t a = allocator_get_default();
-  trace_data_t td = {};
+  trace_data_t* td = trace_data_create(a);
 
-  string_ref_t ref1 = trace_data_push_string(&td, string_lit("foo"), a);
-  string_ref_t ref2 = trace_data_push_string(&td, string_lit("bar"), a);
-  string_ref_t ref3 = trace_data_push_string(&td, string_lit("foo"), a);
+  string_ref_t ref1 = trace_data_push_string(td, string_lit("foo"), a);
+  string_ref_t ref2 = trace_data_push_string(td, string_lit("bar"), a);
+  string_ref_t ref3 = trace_data_push_string(td, string_lit("foo"), a);
 
   EXPECT_EQ(ref1, ref3);
   EXPECT_NE(ref1, ref2);
-  EXPECT_EQ(td.string_table.len, 2u);
+  EXPECT_EQ(td->string_table.len, 2u);
 
-  EXPECT_EQ(trace_data_get_string(&td, ref1), "foo");
-  EXPECT_EQ(trace_data_get_string(&td, ref2), "bar");
+  EXPECT_EQ(trace_data_get_string(td, ref1), "foo");
+  EXPECT_EQ(trace_data_get_string(td, ref2), "bar");
 
-  trace_data_deinit(&td, a);
-}
-
-TEST(trace_data_test, clear) {
-  allocator_t a = allocator_get_default();
-  trace_data_t td = {};
-
-  trace_data_push_string(&td, string_lit("foo"), a);
-  trace_event_t ev = {};
-  ev.name = string_lit("foo");
-  trace_event_matcher_t matcher = {};
-  trace_data_add_event(&td, theme_get_dark(), &ev, &matcher, a);
-
-  trace_data_clear(&td, a);
-
-  EXPECT_EQ(td.string_buffer.len, 0u);
-  EXPECT_EQ(td.string_table.len, 0u);
-  EXPECT_EQ(td.events.len, 0u);
-  EXPECT_EQ(td.string_lookup.size, 0u);
-
-  // Should still be usable
-  string_ref_t ref = trace_data_push_string(&td, string_lit("foo"), a);
-  EXPECT_EQ(ref, 1u);
-  EXPECT_EQ(trace_data_get_string(&td, ref), "foo");
-
-  trace_event_matcher_deinit(&matcher, a);
-  trace_data_deinit(&td, a);
+  trace_data_release(td, a);
 }
 
 TEST(trace_data_test, begin_end_events_basic) {
   allocator_t a = allocator_get_default();
-  trace_data_t td = {};
+  trace_data_t* td = trace_data_create(a);
   trace_event_matcher_t matcher = {};
 
   // 1. Thread 1 Begin event
@@ -111,11 +85,11 @@ TEST(trace_data_test, begin_end_events_basic) {
   b1.ts = 100;
   b1.pid = 1;
   b1.tid = 2;
-  trace_data_add_event(&td, theme_get_dark(), &b1, &matcher, a);
+  trace_data_add_event(td, theme_get_dark(), &b1, &matcher, a);
 
-  ASSERT_EQ(td.events.len, 1u);
+  ASSERT_EQ(td->events.len, 1u);
   const trace_event_persisted_t* events =
-      (const trace_event_persisted_t*)td.events.ptr;
+      (const trace_event_persisted_t*)td->events.ptr;
   EXPECT_EQ(events[0].dur, 0);
 
   // 2. Thread 1 End event
@@ -124,20 +98,20 @@ TEST(trace_data_test, begin_end_events_basic) {
   e1.ts = 150;
   e1.pid = 1;
   e1.tid = 2;
-  trace_data_add_event(&td, theme_get_dark(), &e1, &matcher, a);
+  trace_data_add_event(td, theme_get_dark(), &e1, &matcher, a);
 
   // End event should not create a new event, but resolve duration of B
-  ASSERT_EQ(td.events.len, 1u);
-  events = (const trace_event_persisted_t*)td.events.ptr;
+  ASSERT_EQ(td->events.len, 1u);
+  events = (const trace_event_persisted_t*)td->events.ptr;
   EXPECT_EQ(events[0].dur, 50);
 
   trace_event_matcher_deinit(&matcher, a);
-  trace_data_deinit(&td, a);
+  trace_data_release(td, a);
 }
 
 TEST(trace_data_test, begin_end_events_nested_and_thread_isolated) {
   allocator_t a = allocator_get_default();
-  trace_data_t td = {};
+  trace_data_t* td = trace_data_create(a);
   trace_event_matcher_t matcher = {};
 
   // 1. Thread 1 B1
@@ -146,7 +120,7 @@ TEST(trace_data_test, begin_end_events_nested_and_thread_isolated) {
                       .ts = 100,
                       .pid = 1,
                       .tid = 1};
-  trace_data_add_event(&td, theme_get_dark(), &b1, &matcher, a);
+  trace_data_add_event(td, theme_get_dark(), &b1, &matcher, a);
 
   // 2. Thread 2 B2 (Different thread)
   trace_event_t b2 = {.name = string_lit("other"),
@@ -154,7 +128,7 @@ TEST(trace_data_test, begin_end_events_nested_and_thread_isolated) {
                       .ts = 110,
                       .pid = 1,
                       .tid = 2};
-  trace_data_add_event(&td, theme_get_dark(), &b2, &matcher, a);
+  trace_data_add_event(td, theme_get_dark(), &b2, &matcher, a);
 
   // 3. Thread 1 B3 (Nested on thread 1)
   trace_event_t b3 = {.name = string_lit("child"),
@@ -162,44 +136,44 @@ TEST(trace_data_test, begin_end_events_nested_and_thread_isolated) {
                       .ts = 120,
                       .pid = 1,
                       .tid = 1};
-  trace_data_add_event(&td, theme_get_dark(), &b3, &matcher, a);
+  trace_data_add_event(td, theme_get_dark(), &b3, &matcher, a);
 
-  ASSERT_EQ(td.events.len, 3u);
+  ASSERT_EQ(td->events.len, 3u);
   const trace_event_persisted_t* events =
-      (const trace_event_persisted_t*)td.events.ptr;
-  EXPECT_EQ(trace_data_get_string(&td, events[0].name_ref), "parent");
-  EXPECT_EQ(trace_data_get_string(&td, events[1].name_ref), "other");
-  EXPECT_EQ(trace_data_get_string(&td, events[2].name_ref), "child");
+      (const trace_event_persisted_t*)td->events.ptr;
+  EXPECT_EQ(trace_data_get_string(td, events[0].name_ref), "parent");
+  EXPECT_EQ(trace_data_get_string(td, events[1].name_ref), "other");
+  EXPECT_EQ(trace_data_get_string(td, events[2].name_ref), "child");
 
   // 4. Thread 1 End (Should match B3 "child")
   trace_event_t e3 = {.ph = string_lit("E"), .ts = 130, .pid = 1, .tid = 1};
-  trace_data_add_event(&td, theme_get_dark(), &e3, &matcher, a);
+  trace_data_add_event(td, theme_get_dark(), &e3, &matcher, a);
 
-  events = (const trace_event_persisted_t*)td.events.ptr;
+  events = (const trace_event_persisted_t*)td->events.ptr;
   EXPECT_EQ(events[2].dur, 10);
   EXPECT_EQ(events[0].dur, 0);  // Still 0
 
   // 5. Thread 2 End (Should match B2 "other")
   trace_event_t e2 = {.ph = string_lit("E"), .ts = 140, .pid = 1, .tid = 2};
-  trace_data_add_event(&td, theme_get_dark(), &e2, &matcher, a);
+  trace_data_add_event(td, theme_get_dark(), &e2, &matcher, a);
 
-  events = (const trace_event_persisted_t*)td.events.ptr;
+  events = (const trace_event_persisted_t*)td->events.ptr;
   EXPECT_EQ(events[1].dur, 30);
 
   // 6. Thread 1 End (Should match B1 "parent")
   trace_event_t e1 = {.ph = string_lit("E"), .ts = 150, .pid = 1, .tid = 1};
-  trace_data_add_event(&td, theme_get_dark(), &e1, &matcher, a);
+  trace_data_add_event(td, theme_get_dark(), &e1, &matcher, a);
 
-  events = (const trace_event_persisted_t*)td.events.ptr;
+  events = (const trace_event_persisted_t*)td->events.ptr;
   EXPECT_EQ(events[0].dur, 50);
 
   trace_event_matcher_deinit(&matcher, a);
-  trace_data_deinit(&td, a);
+  trace_data_release(td, a);
 }
 
 TEST(trace_data_test, begin_end_events_args_merging) {
   allocator_t a = allocator_get_default();
-  trace_data_t td = {};
+  trace_data_t* td = trace_data_create(a);
   trace_event_matcher_t matcher = {};
 
   // 1. Begin with arguments
@@ -214,7 +188,7 @@ TEST(trace_data_test, begin_end_events_args_merging) {
   b_args[1] = {string_lit("arg2"), string_lit(""), 42.0};
   b.args = b_args;
   b.args_count = 2;
-  trace_data_add_event(&td, theme_get_dark(), &b, &matcher, a);
+  trace_data_add_event(td, theme_get_dark(), &b, &matcher, a);
 
   // 2. End with arguments (one duplicate, one new)
   trace_event_t e = {};
@@ -227,28 +201,28 @@ TEST(trace_data_test, begin_end_events_args_merging) {
   e_args[1] = {string_lit("arg3"), string_lit("val3"), 0.0};  // New arg
   e.args = e_args;
   e.args_count = 2;
-  trace_data_add_event(&td, theme_get_dark(), &e, &matcher, a);
+  trace_data_add_event(td, theme_get_dark(), &e, &matcher, a);
 
   const trace_event_persisted_t* events =
-      (const trace_event_persisted_t*)td.events.ptr;
+      (const trace_event_persisted_t*)td->events.ptr;
   const trace_event_persisted_t& p = events[0];
   EXPECT_EQ(p.args_count, 3u);
 
   // Check the merged args
   const trace_arg_persisted_t* td_args =
-      (const trace_arg_persisted_t*)td.args.ptr;
+      (const trace_arg_persisted_t*)td->args.ptr;
   const trace_arg_persisted_t& arg1 = td_args[p.args_offset];
-  EXPECT_EQ(trace_data_get_string(&td, arg1.key_ref), "arg1");
-  EXPECT_EQ(trace_data_get_string(&td, arg1.val_ref), "val1");
+  EXPECT_EQ(trace_data_get_string(td, arg1.key_ref), "arg1");
+  EXPECT_EQ(trace_data_get_string(td, arg1.val_ref), "val1");
 
   const trace_arg_persisted_t& arg2 = td_args[p.args_offset + 1];
-  EXPECT_EQ(trace_data_get_string(&td, arg2.key_ref), "arg2");
+  EXPECT_EQ(trace_data_get_string(td, arg2.key_ref), "arg2");
   EXPECT_EQ(arg2.val_double, 99.0);
 
   const trace_arg_persisted_t& arg3 = td_args[p.args_offset + 2];
-  EXPECT_EQ(trace_data_get_string(&td, arg3.key_ref), "arg3");
-  EXPECT_EQ(trace_data_get_string(&td, arg3.val_ref), "val3");
+  EXPECT_EQ(trace_data_get_string(td, arg3.key_ref), "arg3");
+  EXPECT_EQ(trace_data_get_string(td, arg3.val_ref), "val3");
 
   trace_event_matcher_deinit(&matcher, a);
-  trace_data_deinit(&td, a);
+  trace_data_release(td, a);
 }

@@ -42,6 +42,10 @@ static void trace_search_run(void* arg) {
       // Periodically check for abort signals from the UI thread (every 2048
       // events)
       if ((i & 2047) == 0) {
+        if (channel_is_closed(task->trace_search_channel)) {
+          aborted = true;
+          break;
+        }
         trace_search_msg_t abort_msg;
         if (channel_try_recv(task->trace_search_channel, &abort_msg)) {
           if (abort_msg.type == MSG_TRACE_SEARCH_ABORT) {
@@ -93,8 +97,8 @@ static void trace_search_run(void* arg) {
   if (aborted) {
     LOG_DEBUG("trace_search_run background task aborted");
     array_list_deinit(&results, allocator);
-    app_send_search_aborted(task->app_channel, task->trace_search_channel,
-                            allocator);
+    app_send_search_aborted(task->app_channel, (trace_data_t*)td,
+                            task->trace_search_channel, allocator);
   } else {
     LOG_DEBUG(
         "trace_search_run background task completed, generating histogram");
@@ -108,8 +112,8 @@ static void trace_search_run(void* arg) {
     // Transmit the results back to the App UI thread mailbox!
     // If sending fails, app_send_search_complete automatically cleans up
     // results and histogram!
-    app_send_search_complete(task->app_channel, results, histogram,
-                             task->trace_search_channel, allocator);
+    app_send_search_complete(task->app_channel, (trace_data_t*)td, results,
+                             histogram, task->trace_search_channel, allocator);
   }
 
   // Clean up task resources

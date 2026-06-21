@@ -283,6 +283,7 @@ cc_library(
     deps = [
         ":allocator",
         ":array_list",
+        ":assert",
         ":colors",
         ":hash_table",
         ":string",

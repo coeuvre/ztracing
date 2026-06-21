@@ -34,8 +34,7 @@ typedef struct trace_arg_persisted {
 // underlying string memory is managed by the trace_data_t instance. Therefore,
 // the lifetime of the resolved strings (retrieved via trace_data_get_string) is
 // strictly bound to the lifetime of the parent trace_data_t instance. They
-// remain valid and stable until the parent trace_data_t is cleared
-// (trace_data_clear) or deinitialized (trace_data_deinit).
+// remain valid and stable until the parent trace_data_t is released.
 typedef struct trace_event_persisted {
   string_ref_t name_ref;
   string_ref_t cat_ref;
@@ -81,7 +80,13 @@ typedef struct trace_data {
     string_t current_str;
     uint32_t current_hash;
   } tmp;
+
+  int ref_count;
 } trace_data_t;
+
+trace_data_t* trace_data_create(allocator_t a);
+void trace_data_retain(trace_data_t* td);
+void trace_data_release(trace_data_t* td, allocator_t a);
 
 typedef struct active_event_b {
   size_t event_idx;
@@ -100,8 +105,6 @@ void trace_event_matcher_deinit(trace_event_matcher_t* matcher, allocator_t a);
 struct Theme;
 typedef struct Theme theme_t;
 
-void trace_data_deinit(trace_data_t* td, allocator_t a);
-void trace_data_clear(trace_data_t* td, allocator_t a);
 
 string_ref_t trace_data_push_string(trace_data_t* td, string_t s,
                                     allocator_t a);

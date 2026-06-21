@@ -81,13 +81,15 @@ static void app_apply_theme(app_t* app, const theme_t* theme) {
   if (app->loading.active) return;
 
   // Re-compute all event colors when theme changes
-  size_t events_count = app->trace_data.events.len;
-  for (size_t i = 0; i < events_count; i++) {
-    trace_data_update_event_color(&app->trace_data, (uint32_t)i, app->theme);
-  }
+  if (app->trace_data != nullptr) {
+    size_t events_count = app->trace_data->events.len;
+    for (size_t i = 0; i < events_count; i++) {
+      trace_data_update_event_color(app->trace_data, (uint32_t)i, app->theme);
+    }
 
-  // Re-compute all counter track colors when theme changes
-  track_update_colors(&app->trace_viewer.tracks, &app->trace_data, app->theme);
+    // Re-compute all counter track colors when theme changes
+    track_update_colors(&app->trace_viewer.tracks, app->trace_data, app->theme);
+  }
 }
 
 void app_stop_jobs(app_t* app) {
@@ -145,7 +147,7 @@ void app_deinit(app_t* app) {
   }
 
   // 5. Deallocate structures
-  trace_data_deinit(&app->trace_data, allocator);
+  trace_data_release(app->trace_data, allocator);
   array_list_deinit(&app->loading.filename, allocator);
   trace_viewer_deinit(&app->trace_viewer, allocator);
 }
@@ -168,19 +170,20 @@ void app_poll_messages(app_t* app) {
         app_msg_load_result_t result = msg.as.load_result;
 
         // Adopt the completed parsed trace data and organized tracks
-        trace_data_deinit(&app->trace_data, allocator);
-        app->trace_data = *result.trace_data;
+        trace_data_release(app->trace_data, allocator);
+        app->trace_data = result.trace_data;
         app->trace_viewer.tracks = result.tracks;
         app->trace_viewer.viewport.min_ts = result.min_ts;
         app->trace_viewer.viewport.max_ts = result.max_ts;
 
-        // Free the temporary shell container
-        allocator_free(allocator, result.trace_data, sizeof(trace_data_t));
+        // Clear pointers in the message envelope so app_msg_deinit doesn't free/release them!
+        msg.as.load_result.trace_data = nullptr;
+        msg.as.load_result.tracks = (array_list_t){};
 
         app->loading.active = false;
         trace_viewer_reset_view(&app->trace_viewer);
         trace_viewer_precompute_minimap_heatmap(&app->trace_viewer,
-                                                &app->trace_data, allocator);
+                                                app->trace_data, allocator);
         break;
       }
 
@@ -190,53 +193,37 @@ void app_poll_messages(app_t* app) {
 
       case MSG_TRACE_SEARCH_COMPLETE: {
         app_msg_search_result_t result = msg.as.search_result;
+        bool is_active = (app->trace_search_channel == result.task_channel);
 
-        // Adopt results and histogram synchronously on the UI thread
-        trace_viewer_adopt_search_results(&app->trace_viewer, &app->trace_data,
-                                          result.results, result.histogram,
-                                          allocator);
+        if (is_active) {
+          // Adopt results and histogram synchronously on the UI thread
+          trace_viewer_adopt_search_results(&app->trace_viewer, app->trace_data,
+                                            result.results, result.histogram,
+                                            allocator);
+          // Clear results in envelope so app_msg_deinit doesn't free them
+          msg.as.search_result.results = (array_list_t){};
 
-        // Free the temporary heap-allocated histogram container
-        allocator_free(allocator, result.histogram,
-                       sizeof(duration_histogram_t));
-
-        // If the completed task's channel is still our active channel pointer,
-        // clear it so we don't hold a dangling pointer.
-        if (app->trace_search_channel == result.task_channel) {
           app->trace_search_channel = nullptr;
+          app->trace_viewer.search.is_searching = false;
         }
-
-        // Cleanly close and destroy the search task's mailbox channel
-        // now that we are 100% sure the background task has exited!
-        channel_close_and_drain(result.task_channel, trace_search_msg_t,
-                                nullptr, allocator);
-        channel_destroy(result.task_channel, allocator);
-
-        // Mark search task as completed
-        app->trace_viewer.search.is_searching = false;
         break;
       }
 
       case MSG_TRACE_SEARCH_ABORTED: {
         app_msg_search_aborted_t aborted = msg.as.search_aborted;
 
-        // If the aborted task's channel is still our active channel pointer,
-        // clear it so we don't hold a dangling pointer.
         if (app->trace_search_channel == aborted.task_channel) {
           app->trace_search_channel = nullptr;
         }
-
-        // Cleanly close and destroy the aborted search task's mailbox channel
-        // now that we are 100% sure the background task has exited!
-        channel_close_and_drain(aborted.task_channel, trace_search_msg_t,
-                                nullptr, allocator);
-        channel_destroy(aborted.task_channel, allocator);
         break;
       }
 
       default:
         break;
     }
+
+    // Centralized message resource cleanup!
+    app_msg_deinit(&msg, allocator);
   }
 }
 
@@ -260,9 +247,12 @@ void app_update(app_t* app) {
         channel_create(trace_search_msg_t, 8, allocator);
 
     const char* query = (const char*)app->trace_viewer.search_query.ptr;
-    if (query && query[0] != '\0') {
+    if (query && query[0] != '\0' && app->trace_data != nullptr) {
+      // Retain a reference to trace_data for the background task!
+      trace_data_retain(app->trace_data);
+
       // Spawn a new background search task!
-      trace_search_start(query, &app->trace_data,
+      trace_search_start(query, app->trace_data,
                          !app->trace_viewer.exclude_thread_events,
                          !app->trace_viewer.exclude_counter_events,
                          app->ui_channel, app->trace_search_channel, allocator);
@@ -463,8 +453,8 @@ void app_update(app_t* app) {
                           app->loading.total_bytes,
                           app->loading.input_consumed_bytes,
                           app->loading.input_total_bytes, app->theme);
-    } else if (app->trace_data.events.len > 0 && !app->loading.active) {
-      trace_viewer_draw(&app->trace_viewer, &app->trace_data, allocator,
+    } else if (app->trace_data != nullptr && app->trace_data->events.len > 0 && !app->loading.active) {
+      trace_viewer_draw(&app->trace_viewer, app->trace_data, allocator,
                         app->theme);
     } else {
       welcome_screen_draw(app->theme);
@@ -493,7 +483,8 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
   app->trace_viewer = (trace_viewer_t){};
 
   // 3. Clear old trace data
-  trace_data_clear(&app->trace_data, allocator);
+  trace_data_release(app->trace_data, allocator);
+  app->trace_data = nullptr;
 
   // 4. Initialize progress counters
   app->loading.event_count = 0;
