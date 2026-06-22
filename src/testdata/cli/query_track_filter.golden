@@ -1,0 +1,9 @@
+[
+  {
+    "name": "network_request",
+    "track": "worker_thread",
+    "ts_us": 1500,
+    "dur_us": 800,
+    "depth": 0
+  }
+]

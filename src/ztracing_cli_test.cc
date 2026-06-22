@@ -368,4 +368,46 @@ TEST_F(ztracing_cli_test, inspect_nested_hierarchy_matches_golden) {
                        "inspect_nested_child.golden", 0);
 }
 
+// Verify the 'query' subcommand output on a simple trace.
+TEST_F(ztracing_cli_test, query_minified_output_matches_golden) {
+  std::string path =
+      write_temp_trace("query_standard.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("query " + path, "query_minified.golden", 0);
+}
+
+// Verify the 'query' subcommand output in pretty-printed mode.
+TEST_F(ztracing_cli_test, query_pretty_output_matches_golden) {
+  std::string path = write_temp_trace("query_pretty.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("query " + path + " --pretty", "query_pretty.golden", 0);
+}
+
+// Verify the 'query' subcommand with advanced filtering options.
+TEST_F(ztracing_cli_test, query_filtered_output_matches_golden) {
+  // Write a nested and multi-threaded mock trace with named threads to test
+  // complex filters
+  std::string complex_trace = R"([
+    {"name": "thread_name", "ph": "M", "pid": 1, "tid": 1, "args": {"name": "main_thread"}},
+    {"name": "thread_name", "ph": "M", "pid": 1, "tid": 2, "args": {"name": "worker_thread"}},
+    {"name": "parent_task", "cat": "cpu", "ph": "X", "ts": 1000, "dur": 1000, "pid": 1, "tid": 1},
+    {"name": "child_task_A", "cat": "cpu", "ph": "X", "ts": 1100, "dur": 300, "pid": 1, "tid": 1},
+    {"name": "network_request", "cat": "net", "ph": "X", "ts": 1500, "dur": 800, "pid": 1, "tid": 2},
+    {"name": "render_frame", "cat": "gpu", "ph": "X", "ts": 2000, "dur": 500, "pid": 1, "tid": 1}
+  ])";
+  std::string path = write_temp_trace("query_filtered.json", complex_trace);
+
+  // 1. Substring match and max-depth filter: "task" at depth <= 0 -> should
+  // only match parent_task!
+  assert_golden_output("query " + path + " --match task --max-depth 0 --pretty",
+                       "query_match_depth.golden", 0);
+
+  // 2. Time-window and limit filter: ts >= 1200, limit to 1 match -> should
+  // only return network_request!
+  assert_golden_output("query " + path + " --t-start 1200 --limit 1 --pretty",
+                       "query_time_limit.golden", 0);
+
+  // 3. Track filter: only scan the named "worker_thread"
+  assert_golden_output("query " + path + " --track \"worker_thread\" --pretty",
+                       "query_track_filter.golden", 0);
+}
+
 }  // namespace

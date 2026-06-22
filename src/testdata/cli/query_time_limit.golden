@@ -1,0 +1,9 @@
+[
+  {
+    "name": "parent_task",
+    "track": "main_thread",
+    "ts_us": 1000,
+    "dur_us": 1000,
+    "depth": 0
+  }
+]
