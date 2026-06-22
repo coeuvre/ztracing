@@ -31,6 +31,12 @@ static void print_usage(const char* prog_name) {
           "  tracks <trace_file>          List all organized tracks (names, "
           "events, depths).\n");
   fprintf(stderr,
+          "  inspect <trace_file>         Inspect detailed event parameters "
+          "at a timestamp.\n");
+  fprintf(stderr,
+          "                               Options: --track <name> "
+          "--ts <ts_us>\n");
+  fprintf(stderr,
           "  heatmap <trace_file>         Calculate the 2D Activity Heatmap "
           "Grid.\n");
   fprintf(stderr,
@@ -113,6 +119,15 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
     string_t arg = string_from_cstr(argv[i]);
     if (string_eq(arg, string_lit("--pretty"))) {
       out_args->pretty = true;
+    } else if (string_eq(arg, string_lit("--ts"))) {
+      if (i + 1 < argc) {
+        out_args->t_start = (int64_t)atoll(argv[i + 1]);
+        out_args->has_t_start = true;
+        i++;
+      } else {
+        fprintf(stderr, "Error: Missing value for option '--ts'\n");
+        success = false;
+      }
     } else if (string_eq(arg, string_lit("--track"))) {
       if (i + 1 < argc) {
         out_args->track_filter = argv[i + 1];
@@ -520,6 +535,184 @@ static int handle_histogram(const trace_data_t* td, const cli_args_t* args,
   return 0;
 }
 
+// Handles the 'inspect' subcommand.
+static int handle_inspect(const trace_data_t* td, const cli_args_t* args,
+                          allocator_t a) {
+  if (!args->track_filter) {
+    fprintf(stderr,
+            "Error: Missing required option '--track <name>' for inspect "
+            "subcommand.\n");
+    return 1;
+  }
+  if (!args->has_t_start) {
+    fprintf(stderr,
+            "Error: Missing required option '--ts <ts_us>' for inspect "
+            "subcommand.\n");
+    return 1;
+  }
+
+  int64_t target_ts = args->t_start;  // target ts in us
+
+  // Organize tracks
+  array_list_t tracks = {};
+  int64_t min_ts = 0;
+  int64_t max_ts = 0;
+  track_organize(td, &tracks, &min_ts, &max_ts, a);
+
+  // Find the target track
+  const track_t* target_track = nullptr;
+  string_t target_track_name = string_from_cstr(args->track_filter);
+  track_t* tracks_data = (track_t*)tracks.ptr;
+
+  for (size_t i = 0; i < tracks.len; i++) {
+    string_t track_name = trace_data_get_string(td, tracks_data[i].name_ref);
+    if (string_eq(track_name, target_track_name)) {
+      target_track = &tracks_data[i];
+      break;
+    }
+  }
+
+  if (!target_track) {
+    fprintf(stderr, "Error: Track '%s' not found.\n", args->track_filter);
+    for (size_t i = 0; i < tracks.len; i++) {
+      track_deinit(&tracks_data[i], a);
+    }
+    array_list_deinit(&tracks, a);
+    return 1;
+  }
+
+  // Serialize to JSON array
+  array_list_t json_buf = {};
+  json_writer_t w;
+  json_writer_init(&w, args->pretty, &json_buf, a);
+
+  json_writer_begin_array(&w);
+
+  const size_t* event_indices = (const size_t*)target_track->event_indices.ptr;
+  const trace_event_persisted_t* events =
+      (const trace_event_persisted_t*)td->events.ptr;
+
+  // Use binary search to find the first event with ts >= target_ts
+  size_t start_k = trace_data_events_lower_bound(
+      event_indices, target_track->event_indices.len, events, target_ts);
+
+  // Inspect all events starting at target_ts
+  for (size_t k = start_k; k < target_track->event_indices.len; k++) {
+    size_t event_idx = event_indices[k];
+    const trace_event_persisted_t* e = &events[event_idx];
+    if (e->ts != target_ts) {
+      break;  // Since events are sorted by ts, we stop as soon as ts differs
+    }
+
+    json_writer_begin_object(&w);
+
+    json_writer_name(&w, string_lit("name"));
+    json_writer_string(&w, trace_data_get_string(td, e->name_ref));
+
+    json_writer_name(&w, string_lit("track"));
+    json_writer_string(&w, target_track_name);
+
+    json_writer_name(&w, string_lit("ts_us"));
+    json_writer_number_double(&w, (double)e->ts);
+
+    json_writer_name(&w, string_lit("dur_us"));
+    json_writer_number_double(&w, (double)e->dur);
+
+    if (target_track->type == TRACK_TYPE_THREAD) {
+      // Self Time & Depth
+      const int64_t* self_durs = (const int64_t*)target_track->self_durs.ptr;
+      const int* depths = (const int*)target_track->depths.ptr;
+
+      json_writer_name(&w, string_lit("self_time_us"));
+      json_writer_number_double(&w, (double)self_durs[k]);
+
+      json_writer_name(&w, string_lit("depth"));
+      json_writer_number_int(&w, (int64_t)depths[k]);
+
+      int depth_target = depths[k];
+
+      // 1. Find Parent: nearest preceding event with depth == depth_target - 1
+      const trace_event_persisted_t* parent_event = nullptr;
+      for (int prev = (int)k - 1; prev >= 0; prev--) {
+        if (depths[prev] == depth_target - 1) {
+          parent_event = &events[event_indices[prev]];
+          break;
+        }
+      }
+
+      if (parent_event) {
+        json_writer_name(&w, string_lit("parent"));
+        json_writer_begin_object(&w);
+        json_writer_name(&w, string_lit("track"));
+        json_writer_string(&w, target_track_name);
+        json_writer_name(&w, string_lit("ts_us"));
+        json_writer_number_double(&w, (double)parent_event->ts);
+        json_writer_end_object(&w);
+      }
+
+      // 2. Find Children: subsequent events with depth == depth_target + 1,
+      // until depth <= depth_target
+      json_writer_name(&w, string_lit("children"));
+      json_writer_begin_array(&w);
+      for (size_t next = k + 1; next < target_track->event_indices.len;
+           next++) {
+        int next_depth = depths[next];
+        if (next_depth <= depth_target) {
+          break;  // Stop at sibling or parent close frame
+        }
+        if (next_depth == depth_target + 1) {
+          const trace_event_persisted_t* child_event =
+              &events[event_indices[next]];
+          json_writer_begin_object(&w);
+          json_writer_name(&w, string_lit("track"));
+          json_writer_string(&w, target_track_name);
+          json_writer_name(&w, string_lit("ts_us"));
+          json_writer_number_double(&w, (double)child_event->ts);
+          json_writer_end_object(&w);
+        }
+      }
+      json_writer_end_array(&w);
+    }
+
+    // Custom Arguments
+    if (e->args_count > 0) {
+      json_writer_name(&w, string_lit("args"));
+      json_writer_begin_object(&w);
+      const trace_arg_persisted_t* args_ptr =
+          (const trace_arg_persisted_t*)td->args.ptr + e->args_offset;
+      for (uint32_t a_idx = 0; a_idx < e->args_count; a_idx++) {
+        const trace_arg_persisted_t* arg = &args_ptr[a_idx];
+        string_t key = trace_data_get_string(td, arg->key_ref);
+        json_writer_name(&w, key);
+        if (arg->val_ref != 0) {
+          string_t val = trace_data_get_string(td, arg->val_ref);
+          json_writer_string(&w, val);
+        } else {
+          json_writer_number_double(&w, arg->val_double);
+        }
+      }
+      json_writer_end_object(&w);
+    }
+
+    json_writer_end_object(&w);
+  }
+
+  json_writer_end_array(&w);
+
+  // Null terminate and print
+  *array_list_push(&json_buf, char, a) = '\0';
+  printf("%s\n", (const char*)json_buf.ptr);
+
+  // Clean up
+  array_list_deinit(&json_buf, a);
+  for (size_t i = 0; i < tracks.len; i++) {
+    track_deinit(&tracks_data[i], a);
+  }
+  array_list_deinit(&tracks, a);
+
+  return 0;
+}
+
 // main entry point preferring success path under if.
 int main(int argc, char* argv[]) {
   int exit_code = 0;
@@ -540,6 +733,8 @@ int main(int argc, char* argv[]) {
         exit_code = handle_heatmap(td, args.pretty, a);
       } else if (string_eq(sub, string_lit("histogram"))) {
         exit_code = handle_histogram(td, &args, a);
+      } else if (string_eq(sub, string_lit("inspect"))) {
+        exit_code = handle_inspect(td, &args, a);
       } else {
         fprintf(stderr, "Error: Subcommand '%s' is not yet implemented.\n",
                 args.subcommand);

@@ -331,4 +331,41 @@ TEST_F(ztracing_cli_test, histogram_filtered_output_matches_golden) {
                        "histogram_time_filtered.golden", 0);
 }
 
+// Verify the 'inspect' subcommand output on a simple trace.
+TEST_F(ztracing_cli_test, inspect_minified_output_matches_golden) {
+  std::string path =
+      write_temp_trace("inspect_standard.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("inspect " + path + " --track \"\" --ts 1000",
+                       "inspect_minified.golden", 0);
+}
+
+// Verify the 'inspect' subcommand output in pretty-printed mode.
+TEST_F(ztracing_cli_test, inspect_pretty_output_matches_golden) {
+  std::string path =
+      write_temp_trace("inspect_pretty.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("inspect " + path + " --track \"\" --ts 1000 --pretty",
+                       "inspect_pretty.golden", 0);
+}
+
+// Verify the 'inspect' subcommand on nested events (parent, children, and
+// self-time).
+TEST_F(ztracing_cli_test, inspect_nested_hierarchy_matches_golden) {
+  std::string nested_trace = R"([
+    {"name": "parent_task", "cat": "test", "ph": "X", "ts": 1000, "dur": 1000, "pid": 1, "tid": 1},
+    {"name": "child_task_A", "cat": "test", "ph": "X", "ts": 1100, "dur": 300, "pid": 1, "tid": 1},
+    {"name": "child_task_B", "cat": "test", "ph": "X", "ts": 1500, "dur": 400, "pid": 1, "tid": 1}
+  ])";
+  std::string path = write_temp_trace("inspect_nested.json", nested_trace);
+
+  // 1. Inspect the parent (should list child_task_A and child_task_B, self_time
+  // = 300)
+  assert_golden_output("inspect " + path + " --track \"\" --ts 1000 --pretty",
+                       "inspect_nested_parent.golden", 0);
+
+  // 2. Inspect the first child (should list parent_task as parent, children
+  // empty, self_time = 300)
+  assert_golden_output("inspect " + path + " --track \"\" --ts 1100 --pretty",
+                       "inspect_nested_child.golden", 0);
+}
+
 }  // namespace

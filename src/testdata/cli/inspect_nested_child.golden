@@ -1,0 +1,17 @@
+[
+  {
+    "name": "child_task_A",
+    "track": "",
+    "ts_us": 1100,
+    "dur_us": 300,
+    "self_time_us": 300,
+    "depth": 1,
+    "parent": {
+      "track": "",
+      "ts_us": 1000
+    },
+    "children": [
+
+    ]
+  }
+]
