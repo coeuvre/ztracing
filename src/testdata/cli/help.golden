@@ -1,0 +1,7 @@
+Usage: src/ztracing <subcommand> <trace_file> [options]
+
+Global Options:
+  --pretty                     Enable pretty-printed JSON output
+
+Subcommands:
+  summary <trace_file>         Print high-level trace metadata (counts, duration).

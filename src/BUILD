@@ -481,7 +481,7 @@ cc_library(
 )
 
 cc_binary(
-    name = "ztracing",
+    name = "ztracing_wasm_cc",
     srcs = [
         "ztracing.h",
         "ztracing_wasm.c",
@@ -520,9 +520,28 @@ cc_binary(
 
 wasm_cc_binary(
     name = "ztracing_wasm",
-    cc_target = ":ztracing",
+    cc_target = ":ztracing_wasm_cc",
     tags = ["wasm"],
 )
+
+cc_binary(
+    name = "ztracing",
+    srcs = [
+        "ztracing_cli.c",
+    ],
+
+    deps = [
+        ":app",
+        ":json",
+        ":track",
+        ":trace_data",
+        ":trace_parser",
+        ":logging",
+        ":platform",
+    ],
+)
+
+
 
 cc_library(
     name = "ztracing_headless",
@@ -558,3 +577,17 @@ exports_files([
     "shell.html",
     "coi-serviceworker.js",
 ])
+
+cc_test(
+    name = "ztracing_cli_test",
+    srcs = ["ztracing_cli_test.cc"],
+    data = [":ztracing"] + glob(["testdata/cli/*"]),
+    deps = [
+        "@googletest//:gtest_main",
+    ],
+)
+
+
+
+
+
