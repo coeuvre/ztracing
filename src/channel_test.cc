@@ -314,12 +314,14 @@ TEST(channel_test, concurrent_producers_consumers) {
 
   // Close the channel to signal consumers that no more items are coming
   channel_close_tx(chan);
-  channel_close_rx(chan);
 
   // Wait for consumers to finish draining the channel
   for (auto& t : consumers) {
     t.join();
   }
+
+  // Now that consumers have finished draining, close the receiver side
+  channel_close_rx(chan);
 
   // Mathematical validation: no data lost or duplicated!
   EXPECT_EQ(total_sum_received.load(), total_sum_sent.load());
