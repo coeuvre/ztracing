@@ -6,3 +6,7 @@ Global Options:
 Subcommands:
   summary <trace_file>         Print high-level trace metadata (counts, duration).
   tracks <trace_file>          List all organized tracks (names, events, depths).
+  heatmap <trace_file>         Calculate the 2D Activity Heatmap Grid.
+  histogram <trace_file>       Compute duration histogram buckets.
+                               Options: [--track <name>] [--match <substr>]
+                                        [--t-start <us>] [--t-end <us>]

@@ -279,4 +279,56 @@ TEST_F(ztracing_cli_test, tracks_pretty_output_matches_golden) {
                        0);
 }
 
+// Verify the 'heatmap' subcommand output in default minified mode (raw JSON).
+TEST_F(ztracing_cli_test, heatmap_minified_output_matches_golden) {
+  std::string path =
+      write_temp_trace("heatmap_standard.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("heatmap " + path, "heatmap_minified.golden", 0);
+}
+
+// Verify the 'heatmap' subcommand output in pretty-printed mode (raw JSON).
+TEST_F(ztracing_cli_test, heatmap_pretty_output_matches_golden) {
+  std::string path =
+      write_temp_trace("heatmap_pretty.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("heatmap " + path + " --pretty", "heatmap_pretty.golden",
+                       0);
+}
+
+// Verify the 'histogram' subcommand output in default minified mode (raw JSON).
+TEST_F(ztracing_cli_test, histogram_minified_output_matches_golden) {
+  std::string path =
+      write_temp_trace("histogram_standard.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("histogram " + path, "histogram_minified.golden", 0);
+}
+
+// Verify the 'histogram' subcommand output in pretty-printed mode (raw JSON).
+TEST_F(ztracing_cli_test, histogram_pretty_output_matches_golden) {
+  std::string path =
+      write_temp_trace("histogram_pretty.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("histogram " + path + " --pretty",
+                       "histogram_pretty.golden", 0);
+}
+
+// Verify the 'histogram' subcommand with advanced filtering options (raw JSON).
+TEST_F(ztracing_cli_test, histogram_filtered_output_matches_golden) {
+  // Write a more complex mock trace to test filtering
+  std::string complex_trace = R"([
+    {"name": "render_frame", "cat": "gpu", "ph": "X", "ts": 1000, "dur": 500, "pid": 1, "tid": 1},
+    {"name": "network_request", "cat": "net", "ph": "X", "ts": 1500, "dur": 8000, "pid": 1, "tid": 2},
+    {"name": "parse_json", "cat": "cpu", "ph": "X", "ts": 2000, "dur": 300, "pid": 1, "tid": 2},
+    {"name": "render_frame", "cat": "gpu", "ph": "X", "ts": 3000, "dur": 600, "pid": 1, "tid": 1}
+  ])";
+  std::string path = write_temp_trace("histogram_filtered.json", complex_trace);
+
+  // Substring match filter: "render" -> should only match the two render_frame
+  // events!
+  assert_golden_output("histogram " + path + " --match render",
+                       "histogram_match_render.golden", 0);
+
+  // Time filter: ts between 1200 and 2500 -> should only match network_request
+  // and parse_json!
+  assert_golden_output("histogram " + path + " --t-start 1200 --t-end 2500",
+                       "histogram_time_filtered.golden", 0);
+}
+
 }  // namespace
