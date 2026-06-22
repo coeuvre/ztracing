@@ -5,7 +5,7 @@
 #include "src/allocator.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
-#include "src/trace_parser.h"
+#include "src/trace_loader.h"
 #include "src/track.h"
 
 int main(int argc, char** argv) {
@@ -15,45 +15,39 @@ int main(int argc, char** argv) {
   }
 
   const char* filename = argv[1];
+
+  // Read magic bytes and file size for metadata reporting
   FILE* f = fopen(filename, "rb");
   if (!f) {
     fprintf(stderr, "error: could not open file %s\n", filename);
     return 1;
   }
 
+  unsigned char magic[2];
+  size_t magic_read = fread(magic, 1, 2, f);
+
   fseek(f, 0, SEEK_END);
   size_t file_size = (size_t)ftell(f);
-  fseek(f, 0, SEEK_SET);
+  fclose(f);
+
+  bool is_gzip = (magic_read == 2 && magic[0] == 0x1f && magic[1] == 0x8b);
 
   counting_allocator_t ca = counting_allocator_init(allocator_get_default());
   allocator_t a = counting_allocator_get_allocator(&ca);
 
-  trace_parser_t p = {};
-  trace_data_t* td = trace_data_create(a);
-  trace_event_matcher_t matcher = {};
-
-  char buf[65536];
-  size_t event_count = 0;
-  trace_event_t event;
-
-  // 1. Benchmark Parsing + Ingestion
+  // 1. Benchmark Ingestion (Read + Decompress + Parse + Add)
+  size_t decompressed_size = 0;
   auto ingest_start = std::chrono::high_resolution_clock::now();
+  trace_data_t* td = trace_loader_load_file(filename, a, &decompressed_size);
+  auto ingest_end = std::chrono::high_resolution_clock::now();
 
-  while (true) {
-    size_t n = fread(buf, 1, sizeof(buf), f);
-    bool is_eof = n < sizeof(buf);
-    trace_parser_feed(&p, buf, n, is_eof, a);
-
-    while (trace_parser_next(&p, &event, a)) {
-      trace_data_add_event(td, &event, &matcher, a);
-      event_count++;
-    }
-
-    if (is_eof) break;
+  if (!td) {
+    fprintf(stderr, "error: failed to load trace file %s\n", filename);
+    return 1;
   }
 
-  auto ingest_end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> ingest_diff = ingest_end - ingest_start;
+  size_t event_count = td->events.len;
 
   // 2. Benchmark Track Organization
   auto organize_start = std::chrono::high_resolution_clock::now();
@@ -68,20 +62,39 @@ int main(int argc, char** argv) {
   double total_time = ingest_diff.count() + organize_diff.count();
   size_t consumed_mem = counting_allocator_get_allocated_bytes(&ca);
 
-  double ingest_speed_mb_s =
+  double ingest_speed_disk_mb_s =
       ((double)file_size / (1024.0 * 1024.0)) / ingest_diff.count();
+  double ingest_speed_stream_mb_s =
+      ((double)decompressed_size / (1024.0 * 1024.0)) / ingest_diff.count();
   double ingest_speed_events_s = (double)event_count / ingest_diff.count();
 
   printf("----------------------------------------\n");
   printf("TRACE LOADING BENCHMARK\n");
   printf("----------------------------------------\n");
-  printf("File Size:             %.2f MB\n",
+  printf("File Size (Disk):      %.2f MB\n",
          (double)file_size / (1024.0 * 1024.0));
+  if (is_gzip) {
+    printf("Decompressed Size:     %.2f MB (%.1fx compression)\n",
+           (double)decompressed_size / (1024.0 * 1024.0),
+           (double)decompressed_size / (double)file_size);
+  }
+  printf("Compression:           %s\n",
+         is_gzip ? "GZIP (decompressing on-the-fly)" : "None");
   printf("Total Events:          %zu\n", event_count);
   printf("Total Tracks:          %zu\n", tracks.len);
   printf("----------------------------------------\n");
-  printf("Ingest Time (Parse+Add): %.3f s (%.2f MB/s, %.2f ev/s)\n",
-         ingest_diff.count(), ingest_speed_mb_s, ingest_speed_events_s);
+  if (is_gzip) {
+    printf("Ingest Time (Parse+Add): %.3f s\n", ingest_diff.count());
+    printf("  Throughput (Disk Read):   %.2f MB/s (compressed)\n",
+           ingest_speed_disk_mb_s);
+    printf("  Throughput (Decompress):  %.2f MB/s (decompressed)\n",
+           ingest_speed_stream_mb_s);
+    printf("  Ingestion Rate:           %.2f ev/s\n", ingest_speed_events_s);
+  } else {
+    printf("Ingest Time (Parse+Add): %.3f s\n", ingest_diff.count());
+    printf("  Throughput (Disk Read):   %.2f MB/s\n", ingest_speed_disk_mb_s);
+    printf("  Ingestion Rate:           %.2f ev/s\n", ingest_speed_events_s);
+  }
   printf("Track Organize Time:     %.3f ms (%.5f s)\n",
          organize_diff.count() * 1000.0, organize_diff.count());
   printf("Total Ingestion Time:    %.3f s\n", total_time);
@@ -96,10 +109,7 @@ int main(int argc, char** argv) {
     track_deinit(&track_array[i], a);
   }
   array_list_deinit(&tracks, a);
-  trace_event_matcher_deinit(&matcher);
   trace_data_release(td, a);
-  trace_parser_deinit(&p, a);
 
-  fclose(f);
   return 0;
 }

@@ -7,12 +7,14 @@ cc_binary(
     srcs = ["trace_benchmark.cc"],
     deps = [
         "//src:allocator",
-        "//src:trace_parser",
+        "//src:trace_loader",
         "//src:trace_data",
         "//src:track",
         "//src:colors",
     ],
 )
+
+
 
 cc_binary(
     name = "trace_renderer_benchmark",

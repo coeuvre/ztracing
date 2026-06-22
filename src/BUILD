@@ -524,24 +524,32 @@ wasm_cc_binary(
     tags = ["wasm"],
 )
 
+cc_library(
+    name = "trace_loader",
+    srcs = ["trace_loader.c"],
+    hdrs = ["trace_loader.h"],
+    deps = [
+        ":allocator",
+        ":trace_data",
+        ":trace_parser",
+        "@zlib//:zlib",
+    ],
+)
+
 cc_binary(
     name = "ztracing",
     srcs = [
         "ztracing_cli.c",
     ],
-
     deps = [
         ":app",
         ":json",
         ":track",
-        ":trace_data",
-        ":trace_parser",
+        ":trace_loader",
         ":logging",
         ":platform",
     ],
 )
-
-
 
 cc_library(
     name = "ztracing_headless",
@@ -584,10 +592,7 @@ cc_test(
     data = [":ztracing"] + glob(["testdata/cli/*"]),
     deps = [
         "@googletest//:gtest_main",
+        "@zlib//:zlib",
     ],
 )
-
-
-
-
 

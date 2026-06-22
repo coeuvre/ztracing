@@ -9,7 +9,7 @@
 #include "src/logging.h"
 #include "src/platform.h"
 #include "src/trace_data.h"
-#include "src/trace_parser.h"
+#include "src/trace_loader.h"
 #include "src/track.h"
 
 // Print the global usage and exit.
@@ -98,44 +98,6 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
   return success;
 }
 
-// Synchronously loads a trace file, preferring success path under if.
-static trace_data_t* load_trace_file(const char* filename, allocator_t a) {
-  trace_data_t* td = nullptr;
-  FILE* f = fopen(filename, "rb");
-
-  if (f) {
-    td = trace_data_create(a);
-    trace_event_matcher_t matcher = {};
-    trace_parser_t parser = {};
-
-    char buf[65536];
-    bool is_eof = false;
-
-    while (!is_eof) {
-      size_t n = fread(buf, 1, sizeof(buf), f);
-      if (n < sizeof(buf)) {
-        is_eof = true;
-      }
-
-      size_t discarded = trace_parser_feed(&parser, buf, n, is_eof, a);
-      (void)discarded;
-
-      trace_event_t ev;
-      while (trace_parser_next(&parser, &ev, a)) {
-        trace_data_add_event(td, &ev, &matcher, a);
-      }
-    }
-
-    fclose(f);
-    trace_event_matcher_deinit(&matcher);
-    trace_parser_deinit(&parser, a);
-  } else {
-    fprintf(stderr, "Error: Failed to open trace file '%s'\n", filename);
-  }
-
-  return td;
-}
-
 // Handles the 'summary' subcommand.
 static int handle_summary(const trace_data_t* td, bool pretty, allocator_t a) {
   // Organize tracks to get track count and exact timestamp bounds
@@ -194,7 +156,7 @@ int main(int argc, char* argv[]) {
 
   if (parse_arguments(argc, argv, &args)) {
     allocator_t a = allocator_get_default();
-    trace_data_t* td = load_trace_file(args.trace_file, a);
+    trace_data_t* td = trace_loader_load_file(args.trace_file, a, nullptr);
 
     if (td) {
       string_t sub = string_from_cstr(args.subcommand);

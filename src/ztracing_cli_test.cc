@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include <array>
 #include <cstdio>
@@ -72,6 +73,50 @@ class ztracing_cli_test : public ::testing::Test {
     return path;
   }
 
+  // Compresses a string to gzip format and writes it to a hermetic temporary
+  // file.
+  std::string write_temp_gzip_trace(const std::string& filename,
+                                    const std::string& json_content) {
+    const char* test_tmpdir = getenv("TEST_TMPDIR");
+    std::string path =
+        test_tmpdir ? std::string(test_tmpdir) + "/" + filename : filename;
+
+    // Initialize zlib deflate stream for gzip
+    z_stream strm = {};
+    if (deflateInit2(&strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 16 + MAX_WBITS,
+                     8, Z_DEFAULT_STRATEGY) != Z_OK) {
+      throw std::runtime_error("deflateInit2 failed!");
+    }
+
+    strm.next_in = (Bytef*)json_content.data();
+    strm.avail_in = (uInt)json_content.size();
+
+    // Allocate a buffer for compressed output
+    std::vector<unsigned char> out_buf(json_content.size() + 1024);
+    strm.next_out = out_buf.data();
+    strm.avail_out = (uInt)out_buf.size();
+
+    // Compress
+    int status = deflate(&strm, Z_FINISH);
+    if (status != Z_STREAM_END) {
+      deflateEnd(&strm);
+      throw std::runtime_error("deflate failed to finish!");
+    }
+
+    size_t compressed_size = out_buf.size() - strm.avail_out;
+    deflateEnd(&strm);
+
+    // Write compressed bytes to file
+    std::ofstream f(path, std::ios::binary);
+    EXPECT_TRUE(f.is_open())
+        << "Failed to create temp gzip trace file at: " << path;
+    f.write((const char*)out_buf.data(), compressed_size);
+    f.close();
+
+    temp_files_.push_back(path);
+    return path;
+  }
+
   // Captures the CLI output and asserts that it matches the golden reference
   // file exactly.
   void assert_golden_output(const std::string& args,
@@ -124,62 +169,99 @@ class ztracing_cli_test : public ::testing::Test {
   }
 };
 
-// 1. Verify that running with no arguments matches the golden help text.
+// Standard mock trace content used across multiple tests.
+const std::string STANDARD_MOCK_TRACE = R"([
+  {"name": "task_A", "cat": "test", "ph": "X", "ts": 1000, "dur": 500, "pid": 1, "tid": 1},
+  {"name": "task_B", "cat": "test", "ph": "B", "ts": 2000, "pid": 1, "tid": 1},
+  {"name": "task_B", "cat": "test", "ph": "E", "ts": 3000, "pid": 1, "tid": 1}
+])";
+
+// Verify that running with no arguments matches the golden help text.
 TEST_F(ztracing_cli_test, no_arguments_matches_golden_help) {
   assert_golden_output("", "help.golden", 1);
 }
 
-// 2. Verify that running help flag matches the golden help text.
+// Verify that running help flag matches the golden help text.
 TEST_F(ztracing_cli_test, help_flag_matches_golden_help) {
   assert_golden_output("--help", "help.golden", 1);
 }
 
-// 3. Verify the 'summary' subcommand output in default minified mode.
+// Verify the 'summary' subcommand output in default minified mode (raw
+// JSON).
 TEST_F(ztracing_cli_test, summary_minified_output_matches_golden) {
-  std::string trace = R"([
-    {"name": "task_A", "cat": "test", "ph": "X", "ts": 1000, "dur": 500, "pid": 1, "tid": 1},
-    {"name": "task_B", "cat": "test", "ph": "B", "ts": 2000, "pid": 1, "tid": 1},
-    {"name": "task_B", "cat": "test", "ph": "E", "ts": 3000, "pid": 1, "tid": 1}
-  ])";
-  std::string path = write_temp_trace("summary_standard.json", trace);
+  std::string path =
+      write_temp_trace("summary_standard.json", STANDARD_MOCK_TRACE);
   assert_golden_output("summary " + path, "summary_minified.golden", 0);
 }
 
-// 4. Verify the 'summary' subcommand output in pretty-printed mode.
+// Verify the 'summary' subcommand output in pretty-printed mode (raw JSON).
 TEST_F(ztracing_cli_test, summary_pretty_output_matches_golden) {
-  std::string trace = R"([
-    {"name": "task_A", "cat": "test", "ph": "X", "ts": 1000, "dur": 500, "pid": 1, "tid": 1},
-    {"name": "task_B", "cat": "test", "ph": "B", "ts": 2000, "pid": 1, "tid": 1},
-    {"name": "task_B", "cat": "test", "ph": "E", "ts": 3000, "pid": 1, "tid": 1}
-  ])";
-  std::string path = write_temp_trace("summary_pretty.json", trace);
+  std::string path =
+      write_temp_trace("summary_pretty.json", STANDARD_MOCK_TRACE);
   assert_golden_output("summary " + path + " --pretty", "summary_pretty.golden",
                        0);
 }
 
-// 5. Verify the 'summary' subcommand output with pretty flag placed globally.
+// Verify the 'summary' subcommand output with pretty flag placed globally
+// (raw JSON).
 TEST_F(ztracing_cli_test, pretty_flag_can_be_placed_globally) {
-  std::string trace = R"([
-    {"name": "task_A", "cat": "test", "ph": "X", "ts": 1000, "dur": 500, "pid": 1, "tid": 1},
-    {"name": "task_B", "cat": "test", "ph": "B", "ts": 2000, "pid": 1, "tid": 1},
-    {"name": "task_B", "cat": "test", "ph": "E", "ts": 3000, "pid": 1, "tid": 1}
-  ])";
-  std::string path = write_temp_trace("summary_global_pretty.json", trace);
+  std::string path =
+      write_temp_trace("summary_global_pretty.json", STANDARD_MOCK_TRACE);
   assert_golden_output("--pretty summary " + path, "summary_pretty.golden", 0);
 }
 
-// 6. Verify that running an unknown subcommand matches the golden error text.
+// Verify the 'summary' subcommand output in default minified mode (gzip
+// JSON).
+TEST_F(ztracing_cli_test, summary_minified_gzip_output_matches_golden) {
+  std::string path =
+      write_temp_gzip_trace("summary_standard.json.gz", STANDARD_MOCK_TRACE);
+  assert_golden_output("summary " + path, "summary_minified.golden", 0);
+}
+
+// Verify the 'summary' subcommand output in pretty-printed mode (gzip JSON).
+TEST_F(ztracing_cli_test, summary_pretty_gzip_output_matches_golden) {
+  std::string path =
+      write_temp_gzip_trace("summary_pretty.json.gz", STANDARD_MOCK_TRACE);
+  assert_golden_output("summary " + path + " --pretty", "summary_pretty.golden",
+                       0);
+}
+
+// Verify that running an unknown subcommand matches the golden error text.
 TEST_F(ztracing_cli_test, unknown_subcommand_matches_golden_error) {
   std::string path = write_temp_trace("empty.json", "[]");
   assert_golden_output("unknown_subcommand " + path,
                        "error_unknown_subcommand.golden", 1);
 }
 
-// 7. Verify that running with a non-existent trace file matches the golden
+// Verify that running with a non-existent trace file matches the golden
 // error text.
 TEST_F(ztracing_cli_test, non_existent_trace_file_matches_golden_error) {
   assert_golden_output("summary non_existent_file.json",
                        "error_non_existent_file.golden", 1);
+}
+
+// Verify that running with a corrupted gzip file prints a decompression
+// error (inline assertion).
+TEST_F(ztracing_cli_test, corrupted_gzip_file_errors) {
+  // Write a corrupted gzip file: starts with correct gzip magic but followed by
+  // garbage
+  const char* test_tmpdir = getenv("TEST_TMPDIR");
+  std::string path = test_tmpdir
+                         ? std::string(test_tmpdir) + "/corrupted.json.gz"
+                         : "corrupted.json.gz";
+
+  std::ofstream f(path, std::ios::binary);
+  ASSERT_TRUE(f.is_open());
+  unsigned char bad_data[] = {0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00,
+                              0x00, 0x00, 0xff, 0xff, 0xff, 0xff};
+  f.write((const char*)bad_data, sizeof(bad_data));
+  f.close();
+  temp_files_.push_back(path);
+
+  command_result res = run_cli("summary " + path);
+  EXPECT_EQ(res.exit_code, 1);
+  EXPECT_NE(res.output.find("Error: Gzip decompression failed"),
+            std::string::npos);
 }
 
 }  // namespace
