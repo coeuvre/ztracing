@@ -33,6 +33,12 @@
     - **CountingAllocator**: A thread-safe decorator that tracks total allocated bytes using `std::atomic<size_t>`. It utilizes `memory_order_relaxed` for high-performance counter updates across the main UI thread and background parser threads.
     - **ImGui Integration**: Dear ImGui is configured to use the `CountingAllocator` for all internal allocations. A specialized wrapper handles the size-tracking requirement by prepending a 16-byte header to every ImGui-requested block, ensuring accurate memory reporting in the UI.
 - `src/str`: (Removed) Migrated to `std::string_view`. String-to-number utilities have been moved to their respective usage locations (e.g., `src/trace_parser.cc`) and now utilize `std::from_chars` for improved performance.
+- `src/json`: Unified high-performance C23 JSON parser and writer engine.
+    - **Streaming Reader**: Highly optimized, allocation-free C23 reader that maintains clean code separation (implemented in `json.c`). It parses names, numbers, strings, and literals on-the-fly via a highly efficient character-level scanning state machine.
+    - **Streaming Writer**: Manages comma insertions and bracket stack scopes dynamically during trace formatting.
+        - **Conditional Indentation**: Supports both compact (minified) and pretty-printed (formatted) JSON output via a compile/initialization-time `indent` configuration parameter, generating parent-aligned indents and spaced formatting with zero dynamic heap overhead.
+        - **Active Depth Clamping**: Actively clamps structural depth at 32 levels to guarantee absolute memory safety (no buffer overflows or integer underflows) under malicious or extremely nested inputs.
+        - **Explicit Output Naming**: Adheres to a strict API safety convention where all return-by-pointer/mutation parameters are explicitly prefixed with `out_` (e.g. `out_buf`, `out_val`, `out_token`) to clarify mutability bounds.
 - `src/array_list`: C-style `array_list_t` with explicit allocation, macro-based type safety, and ZII support via `{}`.
 - `src/hash_table`: C-style `hash_table_t` with open addressing and linear probing. 
     - **ZII Support**: Fully Zero-Is-Initialization compatible. Internal storage is lazily allocated upon the first `put` operation.

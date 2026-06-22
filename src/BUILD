@@ -236,6 +236,17 @@ cc_test(
 
 
 cc_library(
+    name = "json",
+    srcs = ["json.c"],
+    hdrs = ["json.h"],
+    deps = [
+        ":allocator",
+        ":array_list",
+        ":string",
+    ],
+)
+
+cc_library(
     name = "trace_parser",
     srcs = ["trace_parser.c"],
     hdrs = ["trace_parser.h"],
@@ -243,6 +254,7 @@ cc_library(
         ":allocator",
         ":array_list",
         ":string",
+        ":json",
     ],
 )
 
@@ -254,6 +266,17 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "json_test",
+    srcs = ["json_test.cc"],
+    deps = [
+        ":json",
+        "@googletest//:gtest_main",
+    ],
+)
+
+
 
 cc_library(
     name = "imgui_c",
