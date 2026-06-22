@@ -24,6 +24,9 @@ static void print_usage(const char* prog_name) {
   fprintf(stderr,
           "  summary <trace_file>         Print high-level trace metadata "
           "(counts, duration).\n");
+  fprintf(stderr,
+          "  tracks <trace_file>          List all organized tracks (names, "
+          "events, depths).\n");
 }
 
 typedef struct cli_args {
@@ -149,6 +152,76 @@ static int handle_summary(const trace_data_t* td, bool pretty, allocator_t a) {
   return 0;
 }
 
+// Handles the 'tracks' subcommand.
+static int handle_tracks(const trace_data_t* td, bool pretty, allocator_t a) {
+  // Organize tracks
+  array_list_t tracks = {};
+  int64_t min_ts = 0;
+  int64_t max_ts = 0;
+  track_organize(td, &tracks, &min_ts, &max_ts, a);
+
+  // Serialize tracks
+  array_list_t json_buf = {};
+  json_writer_t w;
+  json_writer_init(&w, pretty, &json_buf, a);
+
+  json_writer_begin_array(&w);
+
+  track_t* tracks_data = (track_t*)tracks.ptr;
+  for (size_t i = 0; i < tracks.len; i++) {
+    const track_t* t = &tracks_data[i];
+
+    json_writer_begin_object(&w);
+
+    json_writer_name(&w, string_lit("index"));
+    json_writer_number_int(&w, (int64_t)i);
+
+    json_writer_name(&w, string_lit("name"));
+    string_t track_name = trace_data_get_string(td, t->name_ref);
+    json_writer_string(&w, track_name);
+
+    json_writer_name(&w, string_lit("type"));
+    if (t->type == TRACK_TYPE_THREAD) {
+      json_writer_string(&w, string_lit("THREAD"));
+    } else {
+      json_writer_string(&w, string_lit("COUNTER"));
+    }
+
+    json_writer_name(&w, string_lit("pid"));
+    json_writer_number_int(&w, (int64_t)t->pid);
+
+    json_writer_name(&w, string_lit("tid"));
+    json_writer_number_int(&w, (int64_t)t->tid);
+
+    json_writer_name(&w, string_lit("event_count"));
+    json_writer_number_int(&w, (int64_t)t->event_indices.len);
+
+    json_writer_name(&w, string_lit("max_depth"));
+    json_writer_number_int(&w, (int64_t)t->max_depth);
+
+    json_writer_end_object(&w);
+  }
+
+  json_writer_end_array(&w);
+
+  // Null terminate the JSON string buffer
+  *array_list_push(&json_buf, char, a) = '\0';
+
+  // Output to stdout
+  printf("%s\n", (const char*)json_buf.ptr);
+
+  // Clean up
+  array_list_deinit(&json_buf, a);
+
+  // Clean up organized tracks
+  for (size_t i = 0; i < tracks.len; i++) {
+    track_deinit(&tracks_data[i], a);
+  }
+  array_list_deinit(&tracks, a);
+
+  return 0;
+}
+
 // main entry point preferring success path under if.
 int main(int argc, char* argv[]) {
   int exit_code = 0;
@@ -163,6 +236,8 @@ int main(int argc, char* argv[]) {
 
       if (string_eq(sub, string_lit("summary"))) {
         exit_code = handle_summary(td, args.pretty, a);
+      } else if (string_eq(sub, string_lit("tracks"))) {
+        exit_code = handle_tracks(td, args.pretty, a);
       } else {
         fprintf(stderr, "Error: Subcommand '%s' is not yet implemented.\n",
                 args.subcommand);

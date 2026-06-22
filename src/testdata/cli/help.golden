@@ -5,3 +5,4 @@ Global Options:
 
 Subcommands:
   summary <trace_file>         Print high-level trace metadata (counts, duration).
+  tracks <trace_file>          List all organized tracks (names, events, depths).

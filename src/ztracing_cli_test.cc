@@ -264,4 +264,19 @@ TEST_F(ztracing_cli_test, corrupted_gzip_file_errors) {
             std::string::npos);
 }
 
+// Verify the 'tracks' subcommand output in default minified mode (raw JSON).
+TEST_F(ztracing_cli_test, tracks_minified_output_matches_golden) {
+  std::string path =
+      write_temp_trace("tracks_standard.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("tracks " + path, "tracks_minified.golden", 0);
+}
+
+// Verify the 'tracks' subcommand output in pretty-printed mode (raw JSON).
+TEST_F(ztracing_cli_test, tracks_pretty_output_matches_golden) {
+  std::string path =
+      write_temp_trace("tracks_pretty.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("tracks " + path + " --pretty", "tracks_pretty.golden",
+                       0);
+}
+
 }  // namespace
