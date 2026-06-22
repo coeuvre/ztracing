@@ -194,6 +194,13 @@ TEST(track_test, calculate_depths) {
 
   EXPECT_EQ(t.max_depth, 2u);
 
+  const int64_t* self_durs = (const int64_t*)t.self_durs.ptr;
+  EXPECT_EQ(self_durs[0], 30);  // ev0: 100 - ev1(40) - ev3(30) = 30
+  EXPECT_EQ(self_durs[1], 30);  // ev1: 40 - ev2(10) = 30
+  EXPECT_EQ(self_durs[2], 10);  // ev2: 10 (no children)
+  EXPECT_EQ(self_durs[3], 30);  // ev3: 30 (no children)
+  EXPECT_EQ(self_durs[4], 10);  // ev4: 10 (no children)
+
   track_deinit(&t, a);
   trace_data_release(td, a);
 }
@@ -233,6 +240,11 @@ TEST(track_test, calculate_depths_siblings) {
   EXPECT_EQ(depths[1], 1u);  // ev1
   EXPECT_EQ(depths[2], 1u);  // ev2 - should be depth 1, not 0 or 2
 
+  const int64_t* self_durs = (const int64_t*)t.self_durs.ptr;
+  EXPECT_EQ(self_durs[0], 10);  // ev0: 100 - ev1(40) - ev2(50) = 10
+  EXPECT_EQ(self_durs[1], 40);  // ev1: 40
+  EXPECT_EQ(self_durs[2], 50);  // ev2: 50
+
   track_deinit(&t, a);
   trace_data_release(td, a);
 }
@@ -264,6 +276,11 @@ TEST(track_test, calculate_depths_duplicates) {
   const uint32_t* depths = (const uint32_t*)t.depths.ptr;
   EXPECT_EQ(depths[0], 0u);
   EXPECT_EQ(depths[1], 1u);
+
+  const int64_t* self_durs = (const int64_t*)t.self_durs.ptr;
+  EXPECT_EQ(self_durs[0],
+            0);  // ev0: 100 - ev1(100) = 0 (overlapped by duplicate)
+  EXPECT_EQ(self_durs[1], 100);  // ev1: 100
 
   track_deinit(&t, a);
   trace_data_release(td, a);
@@ -305,6 +322,11 @@ TEST(track_test, calculate_depths_non_strict) {
       depths[1],
       0u);  // ev1 - moved up to depth 0 because ev0 doesn't strictly contain it
   EXPECT_EQ(depths[2], 0u);  // ev2
+
+  const int64_t* self_durs = (const int64_t*)t.self_durs.ptr;
+  EXPECT_EQ(self_durs[0], 100);  // ev0: 100 (ev1 does not strictly fit)
+  EXPECT_EQ(self_durs[1], 100);  // ev1: 100 (ev2 does not strictly fit)
+  EXPECT_EQ(self_durs[2], 15);   // ev2: 15
 
   track_deinit(&t, a);
   trace_data_release(td, a);
@@ -551,6 +573,13 @@ TEST(track_test, organize_tracks_counters) {
   EXPECT_EQ(tracks_data[2].pid, 1);
   EXPECT_EQ(tracks_data[2].tid, 1);
   EXPECT_EQ(tracks_data[2].type, TRACK_TYPE_THREAD);
+
+  // Verify counter tracks have self_durs initialized to 0
+  const int64_t* self_durs_0 = (const int64_t*)tracks_data[0].self_durs.ptr;
+  EXPECT_EQ(self_durs_0[0], 0);
+
+  const int64_t* self_durs_1 = (const int64_t*)tracks_data[1].self_durs.ptr;
+  EXPECT_EQ(self_durs_1[0], 0);
 
   for (size_t i = 0; i < tracks.len; i++) {
     track_deinit(&((track_t*)tracks.ptr)[i], a);

@@ -487,6 +487,41 @@ static void trace_viewer_draw_event_properties(
       trace_viewer_details_add_row(
           "Duration", (string_t){dur_buf, strlen(dur_buf)}, nullptr,
           show_copy_buttons, 0, false, allocator);
+
+      if (t != nullptr && t->type == TRACK_TYPE_THREAD &&
+          t->self_durs.len > 0) {
+        const trace_event_persisted_t* events =
+            (const trace_event_persisted_t*)td->events.ptr;
+        const size_t* event_indices = (const size_t*)t->event_indices.ptr;
+        const int64_t* self_durs = (const int64_t*)t->self_durs.ptr;
+
+        size_t global_event_idx = (size_t)(e - events);
+        size_t local_idx = trace_data_events_lower_bound(
+            event_indices, t->event_indices.len, events, e->ts);
+
+        bool found = false;
+        for (size_t k = local_idx; k < t->event_indices.len; k++) {
+          const trace_event_persisted_t* test_e = &events[event_indices[k]];
+          if (test_e->ts > e->ts) {
+            break;
+          }
+          if (event_indices[k] == global_event_idx) {
+            local_idx = k;
+            found = true;
+            break;
+          }
+        }
+
+        if (found) {
+          int64_t self_dur = self_durs[local_idx];
+          char self_dur_buf[32];
+          format_duration(self_dur_buf, sizeof(self_dur_buf), (double)self_dur,
+                          0.0);
+          trace_viewer_details_add_row(
+              "Self Time", (string_t){self_dur_buf, strlen(self_dur_buf)},
+              nullptr, show_copy_buttons, 0, false, allocator);
+        }
+      }
     }
 
     if (t == nullptr || t->type == TRACK_TYPE_THREAD) {

@@ -11,6 +11,7 @@
 typedef struct stack_event {
   int64_t end;
   uint32_t depth;
+  size_t track_event_idx;
 } stack_event_t;
 
 typedef struct track_key {
@@ -215,6 +216,7 @@ static bool track_key_eq(const void* a, const void* b, void* ctx) {
 void track_deinit(track_t* t, allocator_t a) {
   array_list_deinit(&t->event_indices, a);
   array_list_deinit(&t->depths, a);
+  array_list_deinit(&t->self_durs, a);
   array_list_deinit(&t->counter_series, a);
   array_list_deinit(&t->counter_palette_indices, a);
   array_list_deinit(&t->block_max_durs, a);
@@ -291,6 +293,7 @@ void track_update_max_dur(track_t* t, const trace_data_t* td, allocator_t a) {
 
 void track_calculate_depths(track_t* t, const trace_data_t* td, allocator_t a) {
   array_list_resize(&t->depths, t->event_indices.len, sizeof(uint32_t), a);
+  array_list_resize(&t->self_durs, t->event_indices.len, sizeof(int64_t), a);
   t->max_depth = 0;
 
   array_list_t stack = {};
@@ -298,11 +301,14 @@ void track_calculate_depths(track_t* t, const trace_data_t* td, allocator_t a) {
   const trace_event_persisted_t* events =
       (const trace_event_persisted_t*)td->events.ptr;
   uint32_t* depths = (uint32_t*)t->depths.ptr;
+  int64_t* self_durs = (int64_t*)t->self_durs.ptr;
 
   for (size_t i = 0; i < t->event_indices.len; i++) {
     size_t event_idx = event_indices[i];
     const trace_event_persisted_t* e = &events[event_idx];
     int64_t end_ts = e->ts + e->dur;
+
+    self_durs[i] = e->dur;
 
     // Pop events that have finished.
     const stack_event_t* stack_elements = (const stack_event_t*)stack.ptr;
@@ -316,6 +322,12 @@ void track_calculate_depths(track_t* t, const trace_data_t* td, allocator_t a) {
     for (size_t j = stack.len; j > 0; j--) {
       if (stack_elements[j - 1].end >= end_ts) {
         depth = stack_elements[j - 1].depth + 1;
+
+        // j - 1 is the direct parent! Subtract our duration from its
+        // self-duration.
+        size_t parent_track_idx = stack_elements[j - 1].track_event_idx;
+        self_durs[parent_track_idx] -= e->dur;
+
         break;
       }
     }
@@ -325,7 +337,11 @@ void track_calculate_depths(track_t* t, const trace_data_t* td, allocator_t a) {
       t->max_depth = depth;
     }
 
-    stack_event_t se = {.end = end_ts, .depth = depth};
+    stack_event_t se = {
+        .end = end_ts,
+        .depth = depth,
+        .track_event_idx = i,
+    };
     *array_list_push(&stack, stack_event_t, a) = se;
   }
 
@@ -550,6 +566,13 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
         uint32_t* depths = (uint32_t*)t->depths.ptr;
         for (size_t k = 0; k < t->depths.len; k++) {
           depths[k] = 0;
+        }
+
+        array_list_resize(&t->self_durs, t->event_indices.len, sizeof(int64_t),
+                          a);
+        int64_t* self_durs = (int64_t*)t->self_durs.ptr;
+        for (size_t k = 0; k < t->self_durs.len; k++) {
+          self_durs[k] = 0;
         }
 
         // Discover unique series (argument keys) and calculate max total

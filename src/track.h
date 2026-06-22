@@ -25,6 +25,7 @@ typedef struct track {
   int32_t sort_index;
   array_list_t event_indices;            // Element type: size_t
   array_list_t depths;                   // Element type: uint32_t
+  array_list_t self_durs;                // Element type: int64_t
   array_list_t counter_series;           // Element type: string_ref_t
   array_list_t counter_palette_indices;  // Element type: uint8_t
   array_list_t block_max_durs;           // Element type: int64_t
