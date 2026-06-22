@@ -37,7 +37,7 @@ void app_msg_deinit(app_msg_t* msg) {
       trace_data_release(res->trace_data, allocator);
       array_list_deinit(&res->results, allocator);
       if (res->histogram != nullptr) {
-        allocator_free(allocator, res->histogram, sizeof(duration_histogram_t));
+        allocator_free(allocator, res->histogram, sizeof(trace_histogram_t));
       }
       if (res->task_channel != nullptr) {
         channel_destroy(res->task_channel);
@@ -99,7 +99,7 @@ bool app_send_trace_load_aborted(channel_t* app_channel,
 bool app_send_trace_search_complete(channel_t* app_channel,
                                     trace_data_t* trace_data,
                                     array_list_t results,
-                                    duration_histogram_t* histogram,
+                                    trace_histogram_t* histogram,
                                     channel_t* task_channel,
                                     allocator_t allocator) {
   CHECK(trace_data != nullptr);

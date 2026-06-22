@@ -23,9 +23,9 @@ genrule(
 
         # Copy artifacts from the wasm_cc_binary target
         for f in $(locations //src:ztracing_wasm); do
-            if [[ $$f == */ztracing.js ]]; then
+            if [[ $$f == */ztracing_wasm_cc.js ]]; then
                 cp -f $$f $(location ztracing/ztracing.js)
-            elif [[ $$f == */ztracing.wasm ]] && [[ $$f != *.debug.wasm ]]; then
+            elif [[ $$f == */ztracing_wasm_cc.wasm ]] && [[ $$f != *.debug.wasm ]]; then
                 cp -f $$f $(location ztracing/ztracing.wasm)
             fi
         done

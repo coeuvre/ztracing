@@ -8,6 +8,7 @@
 #include "src/logging.h"
 #include "src/platform.h"
 #include "src/trace_data.h"
+#include "src/trace_histogram.h"
 #include "src/trace_viewer.h"
 
 // === Input Message Types (private to this translation unit) ===
@@ -115,10 +116,10 @@ static void trace_search_run(void* arg) {
         "trace_search_run background task completed, generating histogram");
 
     // Calculate the duration histogram of the search results
-    duration_histogram_t* histogram = (duration_histogram_t*)allocator_alloc(
-        allocator, sizeof(duration_histogram_t));
-    *histogram = (duration_histogram_t){};  // ZII
-    trace_viewer_calculate_histogram(&results, td, histogram);
+    trace_histogram_t* histogram = (trace_histogram_t*)allocator_alloc(
+        allocator, sizeof(trace_histogram_t));
+    *histogram = (trace_histogram_t){};  // ZII
+    trace_histogram_compute(&results, td, histogram);
 
     // Transmit the results back to the App UI thread mailbox!
     // If sending fails, app_send_trace_search_complete automatically cleans up

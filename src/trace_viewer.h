@@ -8,6 +8,8 @@
 #include "src/colors.h"
 #include "src/imgui_c.h"
 #include "src/trace_data.h"
+#include "src/trace_heatmap.h"
+#include "src/trace_histogram.h"
 #include "src/track.h"
 #include "src/track_renderer.h"
 #ifdef __cplusplus
@@ -21,29 +23,6 @@
 
 #define tv_atomic_bool _Atomic(bool)
 #define tv_atomic_uint32 _Atomic(uint32_t)
-
-constexpr int DURATION_HISTOGRAM_MAX_BINS = 32;
-
-struct duration_histogram_bucket {
-  int64_t min_dur;
-  int64_t max_dur;
-  uint32_t count;
-};
-typedef struct duration_histogram_bucket duration_histogram_bucket_t;
-
-struct duration_histogram {
-#ifdef __cplusplus
-  static constexpr int MAX_BINS = 32;
-  duration_histogram_bucket_t buckets[MAX_BINS];
-#else
-  duration_histogram_bucket_t buckets[DURATION_HISTOGRAM_MAX_BINS];
-#endif
-  int num_buckets;
-  uint32_t max_bucket_count;
-  uint32_t total_count;
-  bool has_non_zero_durations;
-};
-typedef struct duration_histogram duration_histogram_t;
 
 typedef struct channel channel_t;
 
@@ -143,18 +122,6 @@ typedef struct selection_overlay_layout selection_overlay_layout_t;
 constexpr float VERTICAL_MINIMAP_WIDTH = 64.0f;
 constexpr float VERTICAL_MINIMAP_LANE_HEIGHT = 1.0f;
 
-constexpr int TRACK_HEATMAP_BUCKET_COUNT = 16;
-
-struct track_heatmap {
-#ifdef __cplusplus
-  static constexpr int BUCKET_COUNT = 16;
-  size_t event_indices[BUCKET_COUNT];
-#else
-  size_t event_indices[TRACK_HEATMAP_BUCKET_COUNT];
-#endif
-};
-typedef struct track_heatmap track_heatmap_t;
-
 struct vertical_minimap_layout {
   bool active;
   float x, y;
@@ -240,7 +207,7 @@ struct trace_viewer {
   bool search_histogram_dirty;
   bool has_selected_histogram_bucket;
   size_t selected_histogram_bucket;
-  duration_histogram_t histogram;
+  trace_histogram_t histogram;
   array_list_t filtered_event_indices;
   vertical_minimap_state_t vertical_minimap;
 };
@@ -265,12 +232,8 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
 void trace_viewer_adopt_search_results(trace_viewer_t* tv,
                                        const trace_data_t* td,
                                        array_list_t results,
-                                       duration_histogram_t* histogram,
+                                       trace_histogram_t* histogram,
                                        allocator_t allocator);
-
-void trace_viewer_calculate_histogram(const array_list_t* results,
-                                      const trace_data_t* td,
-                                      duration_histogram_t* h);
 
 bool trace_viewer_str_contains_case_insensitive(string_t text, const char* q,
                                                 size_t q_len);

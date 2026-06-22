@@ -264,7 +264,7 @@ void app_update(app_t* app) {
     } else {
       // For empty queries, clear the search results synchronously
       array_list_clear(&app->trace_viewer.selected_event_indices);
-      app->trace_viewer.histogram = (duration_histogram_t){};  // ZII
+      app->trace_viewer.histogram = (trace_histogram_t){};  // ZII
       app->trace_viewer.selected_events_dirty = true;
       app->trace_viewer.search.is_searching = false;
     }

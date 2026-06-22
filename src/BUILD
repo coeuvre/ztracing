@@ -422,6 +422,8 @@ cc_library(
         ":trace_parser",
         ":track",
         ":track_renderer",
+        ":trace_heatmap",
+        ":trace_histogram",
     ],
 )
 
@@ -522,6 +524,48 @@ wasm_cc_binary(
     name = "ztracing_wasm",
     cc_target = ":ztracing_wasm_cc",
     tags = ["wasm"],
+)
+
+cc_library(
+    name = "trace_heatmap",
+    srcs = ["trace_heatmap.c"],
+    hdrs = ["trace_heatmap.h"],
+    deps = [
+        ":array_list",
+        ":trace_data",
+        ":track",
+    ],
+)
+
+cc_test(
+    name = "trace_heatmap_test",
+    srcs = ["trace_heatmap_test.cc"],
+    deps = [
+        ":trace_heatmap",
+        ":allocator",
+        ":track",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "trace_histogram",
+    srcs = ["trace_histogram.c"],
+    hdrs = ["trace_histogram.h"],
+    deps = [
+        ":array_list",
+        ":trace_data",
+    ],
+)
+
+cc_test(
+    name = "trace_histogram_test",
+    srcs = ["trace_histogram_test.cc"],
+    deps = [
+        ":trace_histogram",
+        ":allocator",
+        "@googletest//:gtest_main",
+    ],
 )
 
 cc_library(

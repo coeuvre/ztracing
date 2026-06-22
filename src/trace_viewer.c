@@ -953,8 +953,7 @@ static void trace_viewer_box_select_update(trace_viewer_t* tv, trace_data_t* td,
                             !tv->search.sort_active, allocator);
 
   // Calculate the duration histogram of the selected events synchronously
-  trace_viewer_calculate_histogram(&tv->selected_event_indices, td,
-                                   &tv->histogram);
+  trace_histogram_compute(&tv->selected_event_indices, td, &tv->histogram);
 
   tv->selected_events_dirty = true;
   tv->search_histogram_dirty = true;
@@ -991,125 +990,10 @@ static void trace_viewer_zoom_to_event(trace_viewer_t* tv,
   tv->request_scroll_to_focused_event = true;
 }
 
-void trace_viewer_calculate_histogram(const array_list_t* results,
-                                      const trace_data_t* td,
-                                      duration_histogram_t* h) {
-  h->num_buckets = 0;
-  h->max_bucket_count = 0;
-  h->total_count = (uint32_t)results->len;
-  h->has_non_zero_durations = false;
-
-  const int64_t* results_ptr = (const int64_t*)results->ptr;
-  const trace_event_persisted_t* events_ptr =
-      (const trace_event_persisted_t*)td->events.ptr;
-
-  if (results->len > 0) {
-    int64_t min_dur = -1;
-    int64_t max_dur = -1;
-    uint32_t zero_count = 0;
-
-    for (size_t i = 0; i < results->len; i++) {
-      size_t idx = (size_t)results_ptr[i];
-      if (idx >= td->events.len) continue;
-      const trace_event_persisted_t* e = &events_ptr[idx];
-      int64_t d = e->dur;
-
-      if (d <= 0) {
-        zero_count++;
-      } else {
-        if (min_dur == -1 || d < min_dur) min_dur = d;
-        if (max_dur == -1 || d > max_dur) max_dur = d;
-      }
-    }
-
-    int k_bins = 20;
-
-    if (zero_count > 0) {
-      h->buckets[0].min_dur = 0;
-      h->buckets[0].max_dur = 0;
-      h->buckets[0].count = zero_count;
-      h->num_buckets = 1;
-      h->max_bucket_count = zero_count;
-    }
-
-    if (min_dur != -1) {
-      h->has_non_zero_durations = true;
-
-      bool is_logarithmic = false;
-      if (min_dur > 0 && max_dur > 0 &&
-          (double)max_dur / (double)min_dur > 100.0) {
-        is_logarithmic = true;
-      }
-
-      int64_t non_zero_range = max_dur - min_dur;
-      if (non_zero_range < k_bins) {
-        k_bins = (int)non_zero_range + 1;
-        is_logarithmic = false;
-      }
-
-      double log_min = 0.0;
-      double log_max = 0.0;
-      double log_width = 0.0;
-
-      if (is_logarithmic) {
-        log_min = log10((double)min_dur);
-        log_max = log10((double)max_dur);
-        log_width = (log_max - log_min) / k_bins;
-      }
-
-      int start_bin_idx = h->num_buckets;
-      h->num_buckets += k_bins;
-
-      int64_t L[36];
-      for (int j = 0; j <= k_bins; j++) {
-        if (j == k_bins) {
-          L[j] = max_dur + 1;
-        } else if (is_logarithmic) {
-          double ld = log_min + j * log_width;
-          L[j] = (int64_t)round(pow(10.0, ld));
-        } else {
-          L[j] = min_dur + (int64_t)((non_zero_range * j) / k_bins);
-        }
-
-        if (j > 0 && L[j] <= L[j - 1]) {
-          L[j] = L[j - 1] + 1;
-        }
-      }
-
-      for (int j = 0; j < k_bins; j++) {
-        duration_histogram_bucket_t* b = &h->buckets[start_bin_idx + j];
-        b->min_dur = L[j];
-        b->max_dur = L[j + 1] - 1;
-        b->count = 0;
-      }
-
-      for (size_t i = 0; i < results->len; i++) {
-        size_t idx = (size_t)results_ptr[i];
-        if (idx >= td->events.len) continue;
-        const trace_event_persisted_t* e = &events_ptr[idx];
-        int64_t d = e->dur;
-
-        if (d <= 0) continue;
-
-        for (int b_idx = start_bin_idx; b_idx < h->num_buckets; b_idx++) {
-          duration_histogram_bucket_t* b = &h->buckets[b_idx];
-          if (d >= b->min_dur && d <= b->max_dur) {
-            b->count++;
-            if (b->count > h->max_bucket_count) {
-              h->max_bucket_count = b->count;
-            }
-            break;
-          }
-        }
-      }
-    }
-  }
-}
-
 void trace_viewer_adopt_search_results(trace_viewer_t* tv,
                                        const trace_data_t* td,
                                        array_list_t results,
-                                       duration_histogram_t* histogram,
+                                       trace_histogram_t* histogram,
                                        allocator_t allocator) {
   // 1. Deinit and adopt results list
   array_list_deinit(&tv->selected_event_indices, allocator);
@@ -1633,7 +1517,7 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
     } else if (tv->has_selected_histogram_bucket &&
                tv->selected_histogram_bucket <
                    (size_t)tv->histogram.num_buckets) {
-      const duration_histogram_bucket_t* b =
+      const trace_histogram_bucket_t* b =
           &tv->histogram.buckets[tv->selected_histogram_bucket];
       const trace_event_persisted_t* events =
           (const trace_event_persisted_t*)td->events.ptr;
@@ -1810,13 +1694,13 @@ static void trace_viewer_draw_vertical_minimap(const trace_viewer_t* tv,
                 (tv->last_lane_height > 0.0f ? tv->last_lane_height : 1.0f);
 
   // 1. Draw 2D micro track heat blocks
-  float cell_w = (minimap_size.x - 2.0f) / TRACK_HEATMAP_BUCKET_COUNT;
+  float cell_w = (minimap_size.x - 2.0f) / TRACE_HEATMAP_BUCKET_COUNT;
   float minimap_scroll_y = layout->minimap_scroll_y;
 
   const track_view_info_t* track_infos =
       (const track_view_info_t*)tv->track_infos.ptr;
-  const track_heatmap_t* heatmaps =
-      (const track_heatmap_t*)tv->vertical_minimap.track_heatmap_densities.ptr;
+  const trace_heatmap_t* heatmaps =
+      (const trace_heatmap_t*)tv->vertical_minimap.track_heatmap_densities.ptr;
   const trace_event_persisted_t* events =
       (const trace_event_persisted_t*)td->events.ptr;
 
@@ -1837,13 +1721,13 @@ static void trace_viewer_draw_vertical_minimap(const trace_viewer_t* tv,
     }
 
     if (draw_y1 < draw_y2) {
-      const track_heatmap_t* h = &heatmaps[i];
+      const trace_heatmap_t* h = &heatmaps[i];
 
       // Render the 16 horizontal time slices with consecutive bucket coalescing
       int start_b = -1;
       uint32_t active_col = 0;
 
-      for (int b = 0; b < TRACK_HEATMAP_BUCKET_COUNT; b++) {
+      for (int b = 0; b < TRACE_HEATMAP_BUCKET_COUNT; b++) {
         size_t event_idx = h->event_indices[b];
         uint32_t cell_col =
             (event_idx != (size_t)-1)
@@ -1872,7 +1756,7 @@ static void trace_viewer_draw_vertical_minimap(const trace_viewer_t* tv,
       if (active_col != 0 && start_b != -1) {
         float cell_x1 = minimap_pos.x + 1.0f + (float)start_b * cell_w;
         float cell_x2 =
-            minimap_pos.x + 1.0f + (float)TRACK_HEATMAP_BUCKET_COUNT * cell_w;
+            minimap_pos.x + 1.0f + (float)TRACE_HEATMAP_BUCKET_COUNT * cell_w;
         ig_draw_list_add_rect_filled(draw_list, (ig_vec2_t){cell_x1, draw_y1},
                                      (ig_vec2_t){cell_x2, draw_y2}, active_col);
       }
@@ -2245,7 +2129,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
         }
 
         // Duration Histogram
-        const duration_histogram_t* h = &tv->histogram;
+        const trace_histogram_t* h = &tv->histogram;
         if (h->num_buckets > 0) {
           ig_spacing();
           ig_text_disabled("Duration Distribution");
@@ -2278,7 +2162,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
           int hovered_bucket = -1;
 
           for (int i = 0; i < h->num_buckets; i++) {
-            const duration_histogram_bucket_t* b = &h->buckets[i];
+            const trace_histogram_bucket_t* b = &h->buckets[i];
 
             float h_ratio = (h->max_bucket_count > 0)
                                 ? (float)b->count / (float)h->max_bucket_count
@@ -2372,7 +2256,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
               theme->ruler_text, max_label, nullptr, 0.0f, nullptr);
 
           if (hovered_bucket != -1) {
-            const duration_histogram_bucket_t* b = &h->buckets[hovered_bucket];
+            const trace_histogram_bucket_t* b = &h->buckets[hovered_bucket];
 
             ig_begin_tooltip();
 
@@ -2450,10 +2334,6 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
                                           tv->search.sort_column,
                                           !tv->search.sort_descending,
                                           !tv->search.sort_active, allocator);
-
-                // Re-calculate the duration histogram of the sorted events
-                trace_viewer_calculate_histogram(&tv->selected_event_indices,
-                                                 td, &tv->histogram);
 
                 tv->selected_events_dirty = true;
                 tv->search_histogram_dirty = true;
@@ -2595,67 +2475,10 @@ void trace_viewer_precompute_minimap_heatmap(trace_viewer_t* tv,
                                              const trace_data_t* td,
                                              allocator_t a) {
   array_list_resize(&tv->vertical_minimap.track_heatmap_densities,
-                    tv->tracks.len, sizeof(track_heatmap_t), a);
-
-  track_heatmap_t* heatmaps =
-      (track_heatmap_t*)tv->vertical_minimap.track_heatmap_densities.ptr;
-  const track_t* tracks = (const track_t*)tv->tracks.ptr;
-  const trace_event_persisted_t* events =
-      (const trace_event_persisted_t*)td->events.ptr;
-
-  // Initialize all buckets to (size_t)-1 (idle) to prevent out-of-bounds access
-  // on zero duration or empty traces
-  for (size_t i = 0; i < tv->tracks.len; i++) {
-    track_heatmap_t* h = &heatmaps[i];
-    for (int b = 0; b < TRACK_HEATMAP_BUCKET_COUNT; b++) {
-      h->event_indices[b] = (size_t)-1;
-    }
-  }
-
-  double total_dur = (double)(tv->viewport.max_ts - tv->viewport.min_ts);
-  if (total_dur > 0) {
-    double bucket_dur = total_dur / TRACK_HEATMAP_BUCKET_COUNT;
-
-    // Duration cache for finding the dominant event color
-    int64_t max_dur[TRACK_HEATMAP_BUCKET_COUNT];
-
-    for (size_t i = 0; i < tv->tracks.len; i++) {
-      const track_t* t = &tracks[i];
-      track_heatmap_t* h = &heatmaps[i];
-
-      // Initialize buckets to (size_t)-1 (idle)
-      for (int b = 0; b < TRACK_HEATMAP_BUCKET_COUNT; b++) {
-        h->event_indices[b] = (size_t)-1;
-        max_dur[b] = -1;
-      }
-
-      if (t->event_indices.len == 0) continue;
-
-      const size_t* t_event_indices = (const size_t*)t->event_indices.ptr;
-      const int* t_depths = (const int*)t->depths.ptr;
-
-      // Identify dominant event index in each bucket
-      for (size_t k = 0; k < t->event_indices.len; k++) {
-        if (t->type == TRACK_TYPE_THREAD && t_depths[k] != 0) {
-          continue;
-        }
-
-        size_t event_idx = t_event_indices[k];
-        const trace_event_persisted_t* e = &events[event_idx];
-        double rel_ts = (double)(e->ts - tv->viewport.min_ts);
-        int b_idx = (int)(rel_ts / bucket_dur);
-        if (b_idx < 0) b_idx = 0;
-        if (b_idx >= TRACK_HEATMAP_BUCKET_COUNT)
-          b_idx = TRACK_HEATMAP_BUCKET_COUNT - 1;
-
-        // Pick dominant event index based on longest duration
-        if (e->dur > max_dur[b_idx]) {
-          max_dur[b_idx] = e->dur;
-          h->event_indices[b_idx] = event_idx;
-        }
-      }
-    }
-  }
+                    tv->tracks.len, sizeof(trace_heatmap_t), a);
+  trace_heatmap_compute(
+      &tv->tracks, td, tv->viewport.min_ts, tv->viewport.max_ts,
+      (trace_heatmap_t*)tv->vertical_minimap.track_heatmap_densities.ptr);
 }
 
 struct sort_key {

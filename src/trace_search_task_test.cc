@@ -7,7 +7,7 @@
 #include "src/colors.h"
 #include "src/platform.h"
 #include "src/trace_data.h"
-#include "src/trace_viewer.h"  // For duration_histogram_t
+#include "src/trace_histogram.h"
 
 // Verify that app_send_trace_search_complete automatically cleans up results
 // and histogram on failure.
@@ -21,8 +21,8 @@ TEST(trace_search_task_test,
     channel_t* chan = channel_create(app_msg_t, 5, app_msg_deinit, a);
 
     // Allocate search results list and histogram on the heap
-    duration_histogram_t* hist =
-        (duration_histogram_t*)allocator_alloc(a, sizeof(duration_histogram_t));
+    trace_histogram_t* hist =
+        (trace_histogram_t*)allocator_alloc(a, sizeof(trace_histogram_t));
     *hist = {};  // Zero-initialize
 
     array_list_t results = {};

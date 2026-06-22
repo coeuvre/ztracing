@@ -15,7 +15,7 @@ extern "C" {
 
 // Forward declarations to avoid header coupling
 typedef struct trace_data trace_data_t;
-typedef struct duration_histogram duration_histogram_t;
+typedef struct trace_histogram trace_histogram_t;
 
 // === 1. Loading Task Payloads ===
 
@@ -45,10 +45,10 @@ typedef struct {
 // Search completion payload (Value-semantic, transfers ownership of heap
 // pointers)
 typedef struct {
-  trace_data_t* trace_data;         // The trace data used by the search
-  array_list_t results;             // Value instance of results array list
-  duration_histogram_t* histogram;  // Pointer to heap-allocated histogram
-  channel_t* task_channel;          // Mailbox channel of the search task
+  trace_data_t* trace_data;      // The trace data used by the search
+  array_list_t results;          // Value instance of results array list
+  trace_histogram_t* histogram;  // Pointer to heap-allocated histogram
+  channel_t* task_channel;       // Mailbox channel of the search task
 } app_msg_trace_search_complete_t;
 
 // Search aborted payload (Value-semantic)
@@ -107,7 +107,7 @@ bool app_send_trace_load_aborted(channel_t* app_channel,
 bool app_send_trace_search_complete(channel_t* app_channel,
                                     trace_data_t* trace_data,
                                     array_list_t results,
-                                    duration_histogram_t* histogram,
+                                    trace_histogram_t* histogram,
                                     channel_t* task_channel,
                                     allocator_t allocator);
 
