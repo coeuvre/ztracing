@@ -95,17 +95,6 @@ static double to_double(string_view_t s) {
 }
 
 static int64_t to_int64(string_view_t s) {
-  bool is_float = false;
-  for (size_t i = 0; i < s.len; ++i) {
-    if (s.ptr[i] == '.' || s.ptr[i] == 'e' || s.ptr[i] == 'E') {
-      is_float = true;
-      break;
-    }
-  }
-  if (is_float) {
-    return (int64_t)to_double(s);
-  }
-
   if (s.len == 0) return 0;
 
   size_t i = 0;
@@ -120,6 +109,9 @@ static int64_t to_int64(string_view_t s) {
   int64_t val = 0;
   for (; i < s.len; ++i) {
     char c = s.ptr[i];
+    if (c == '.' || c == 'e' || c == 'E') {
+      return (int64_t)to_double(s);
+    }
     if (c < '0' || c > '9') {
       break;
     }
@@ -133,17 +125,6 @@ static int64_t to_int64(string_view_t s) {
 }
 
 static int32_t to_int32(string_view_t s) {
-  bool is_float = false;
-  for (size_t i = 0; i < s.len; ++i) {
-    if (s.ptr[i] == '.' || s.ptr[i] == 'e' || s.ptr[i] == 'E') {
-      is_float = true;
-      break;
-    }
-  }
-  if (is_float) {
-    return (int32_t)to_double(s);
-  }
-
   if (s.len == 0) return 0;
 
   size_t i = 0;
@@ -158,6 +139,9 @@ static int32_t to_int32(string_view_t s) {
   int32_t val = 0;
   for (; i < s.len; ++i) {
     char c = s.ptr[i];
+    if (c == '.' || c == 'e' || c == 'E') {
+      return (int32_t)to_double(s);
+    }
     if (c < '0' || c > '9') {
       break;
     }
@@ -423,7 +407,8 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
                 int depth = 1;
                 while (depth > 0) {
                   tok = json_reader_next(&r);
-                  if (tok.type == JSON_TOKEN_EOF || tok.type == JSON_TOKEN_ERROR) {
+                  if (tok.type == JSON_TOKEN_EOF ||
+                      tok.type == JSON_TOKEN_ERROR) {
                     break;
                   }
                   if (tok.type == JSON_TOKEN_OBJECT_START ||
@@ -455,7 +440,8 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
             p->state = TRACE_PARSER_STATE_LOOKING_FOR_TRACE_EVENTS;
           }
         } else {
-          // We expect either OBJECT_START (first event) or COMMA (subsequent events)
+          // We expect either OBJECT_START (first event) or COMMA (subsequent
+          // events)
           if (tok.type == JSON_TOKEN_COMMA) {
             checkpoint = r.pos;
             tok = json_reader_next(&r);

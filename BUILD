@@ -24,7 +24,7 @@ genrule(
         # Copy artifacts from the wasm_cc_binary target
         for f in $(locations //src:ztracing_wasm); do
             if [[ $$f == */ztracing_wasm_cc.js ]]; then
-                cp -f $$f $(location ztracing/ztracing.js)
+                sed 's/ztracing_wasm_cc\\.wasm/ztracing.wasm/g' $$f > $(location ztracing/ztracing.js)
             elif [[ $$f == */ztracing_wasm_cc.wasm ]] && [[ $$f != *.debug.wasm ]]; then
                 cp -f $$f $(location ztracing/ztracing.wasm)
             fi

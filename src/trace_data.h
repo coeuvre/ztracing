@@ -75,6 +75,10 @@ typedef struct trace_data {
   array_list_t events;  // Element type: trace_event_persisted_t
   array_list_t args;    // Element type: trace_arg_persisted_t
 
+  string_ref_t last_cat_ref;
+  string_ref_t last_ph_ref;
+  string_ref_t last_cname_ref;
+
   // Temporary storage for hashing during push
   struct {
     string_view_t current_str;

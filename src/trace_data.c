@@ -152,53 +152,79 @@ string_ref_t trace_data_push_string(trace_data_t* td, string_view_t s,
   return new_index;
 }
 
-static uint8_t compute_event_palette_index(const trace_event_t* event) {
+static string_ref_t trace_data_push_string_cached(trace_data_t* td, string_view_t s,
+                                                  string_ref_t* cache_ref,
+                                                  allocator_t a) {
+  if (s.ptr == nullptr || s.len == 0) {
+    return 0;
+  }
+  if (*cache_ref > 0) {
+    string_view_t last_str = trace_data_get_string(td, *cache_ref);
+    if (string_view_eq(s, last_str)) {
+      return *cache_ref;
+    }
+  }
+  string_ref_t new_ref = trace_data_push_string(td, s, a);
+  *cache_ref = new_ref;
+  return new_ref;
+}
+
+
+static uint8_t compute_event_palette_index(const trace_data_t* td,
+                                           string_ref_t name_ref,
+                                           string_ref_t cname_ref) {
   uint8_t index = 0;
   bool resolved = false;
 
-  if (event->cname.len > 0) {
-    if (string_view_eq(event->cname, SV("thread_state_running"))) {
-      index = 3;
-      resolved = true;
-    } else if (string_view_eq(event->cname, SV("thread_state_runnable"))) {
-      index = 2;
-      resolved = true;
-    } else if (string_view_eq(event->cname, SV("thread_state_sleeping"))) {
-      index = 4;
-      resolved = true;
-    } else if (string_view_eq(event->cname,
-                              SV("thread_state_uninterruptible"))) {
-      index = 0;
-      resolved = true;
-    } else if (string_view_eq(event->cname, SV("thread_state_iowait"))) {
-      index = 1;
-      resolved = true;
-    } else if (string_view_eq(event->cname, SV("rail_idle"))) {
-      index = 3;
-      resolved = true;
-    } else if (string_view_eq(event->cname, SV("rail_animation"))) {
-      index = 6;
-      resolved = true;
-    } else if (string_view_eq(event->cname, SV("rail_response"))) {
-      index = 5;
-      resolved = true;
-    } else if (string_view_eq(event->cname, SV("rail_load"))) {
-      index = 1;
-      resolved = true;
-    } else if (string_view_eq(event->cname, SV("background_memory_dump"))) {
-      index = 4;
-      resolved = true;
-    } else if (string_view_eq(event->cname, SV("light_memory_dump"))) {
-      index = 5;
-      resolved = true;
-    } else if (string_view_eq(event->cname, SV("detailed_memory_dump"))) {
-      index = 7;
-      resolved = true;
+  if (cname_ref > 0) {
+    string_view_t cname = trace_data_get_string(td, cname_ref);
+    if (cname.len > 0) {
+      if (string_view_eq(cname, SV("thread_state_running"))) {
+        index = 3;
+        resolved = true;
+      } else if (string_view_eq(cname, SV("thread_state_runnable"))) {
+        index = 2;
+        resolved = true;
+      } else if (string_view_eq(cname, SV("thread_state_sleeping"))) {
+        index = 4;
+        resolved = true;
+      } else if (string_view_eq(cname, SV("thread_state_uninterruptible"))) {
+        index = 0;
+        resolved = true;
+      } else if (string_view_eq(cname, SV("thread_state_iowait"))) {
+        index = 1;
+        resolved = true;
+      } else if (string_view_eq(cname, SV("rail_idle"))) {
+        index = 3;
+        resolved = true;
+      } else if (string_view_eq(cname, SV("rail_animation"))) {
+        index = 6;
+        resolved = true;
+      } else if (string_view_eq(cname, SV("rail_response"))) {
+        index = 5;
+        resolved = true;
+      } else if (string_view_eq(cname, SV("rail_load"))) {
+        index = 1;
+        resolved = true;
+      } else if (string_view_eq(cname, SV("background_memory_dump"))) {
+        index = 4;
+        resolved = true;
+      } else if (string_view_eq(cname, SV("light_memory_dump"))) {
+        index = 5;
+        resolved = true;
+      } else if (string_view_eq(cname, SV("detailed_memory_dump"))) {
+        index = 7;
+        resolved = true;
+      }
     }
   }
 
-  if (!resolved) {
-    uint32_t hash = compute_hash(event->name);
+  if (!resolved && name_ref > 0) {
+    uint32_t hash = 0;
+    if (name_ref <= td->string_table.len) {
+      const string_entry_t* table = (const string_entry_t*)td->string_table.ptr;
+      hash = table[name_ref - 1].hash;
+    }
     index = (uint8_t)(hash % 8);
   }
 
@@ -226,6 +252,24 @@ static void trace_data_merge_args(trace_data_t* td,
                                   trace_event_persisted_t* b_ev,
                                   const trace_event_t* e_ev, allocator_t a) {
   if (e_ev->args_count > 0) {
+    // 1. Pre-resolve/push all end event argument keys and values.
+    // This populates the string table and gives us stable integer references.
+    string_ref_t e_key_refs_stack[16];
+    string_ref_t e_val_refs_stack[16];
+    string_ref_t* e_key_refs = e_key_refs_stack;
+    string_ref_t* e_val_refs = e_val_refs_stack;
+    if (e_ev->args_count > 16) {
+      e_key_refs = (string_ref_t*)allocator_alloc(
+          a, e_ev->args_count * sizeof(string_ref_t));
+      e_val_refs = (string_ref_t*)allocator_alloc(
+          a, e_ev->args_count * sizeof(string_ref_t));
+    }
+
+    for (size_t i = 0; i < e_ev->args_count; i++) {
+      e_key_refs[i] = trace_data_push_string(td, e_ev->args[i].key, a);
+      e_val_refs[i] = trace_data_push_string(td, e_ev->args[i].val, a);
+    }
+
     size_t new_args_count = 0;
     bool is_new_stack[16];
     bool* is_new = is_new_stack;
@@ -236,18 +280,15 @@ static void trace_data_merge_args(trace_data_t* td,
 
     trace_arg_persisted_t* td_args = (trace_arg_persisted_t*)td->args.ptr;
 
+    // 2. Perform fast O(1) integer comparisons in the search loop!
     for (size_t i = 0; i < e_ev->args_count; i++) {
-      string_view_t e_key = e_ev->args[i].key;
+      string_ref_t key_ref = e_key_refs[i];
       bool found = false;
       for (uint32_t j = 0; j < b_ev->args_count; j++) {
-        const trace_arg_persisted_t* b_arg = &td_args[b_ev->args_offset + j];
-        string_view_t b_key = trace_data_get_string(td, b_arg->key_ref);
-        if (string_view_eq(b_key, e_key)) {
-          trace_arg_persisted_t* mutable_b_arg =
-              &td_args[b_ev->args_offset + j];
-          mutable_b_arg->val_ref =
-              trace_data_push_string(td, e_ev->args[i].val, a);
-          mutable_b_arg->val_double = e_ev->args[i].val_double;
+        trace_arg_persisted_t* b_arg = &td_args[b_ev->args_offset + j];
+        if (b_arg->key_ref == key_ref) {
+          b_arg->val_ref = e_val_refs[i];
+          b_arg->val_double = e_ev->args[i].val_double;
           found = true;
           break;
         }
@@ -274,12 +315,14 @@ static void trace_data_merge_args(trace_data_t* td,
 
       td_args = (trace_arg_persisted_t*)td->args.ptr;
 
+      // 3. Insert new arguments using the pre-resolved references!
       for (size_t i = 0; i < e_ev->args_count; i++) {
         if (is_new[i]) {
-          trace_arg_persisted_t arg = {};
-          arg.key_ref = trace_data_push_string(td, e_ev->args[i].key, a);
-          arg.val_ref = trace_data_push_string(td, e_ev->args[i].val, a);
-          arg.val_double = e_ev->args[i].val_double;
+          trace_arg_persisted_t arg = {
+              .key_ref = e_key_refs[i],
+              .val_ref = e_val_refs[i],
+              .val_double = e_ev->args[i].val_double,
+          };
           *array_list_push(&td->args, trace_arg_persisted_t, a) = arg;
         }
       }
@@ -288,6 +331,11 @@ static void trace_data_merge_args(trace_data_t* td,
       b_ev->args_count = new_count;
     }
 
+    // Clean up temporary arrays
+    if (e_ev->args_count > 16) {
+      allocator_free(a, e_key_refs, e_ev->args_count * sizeof(string_ref_t));
+      allocator_free(a, e_val_refs, e_ev->args_count * sizeof(string_ref_t));
+    }
     if (is_new != is_new_stack) {
       allocator_free(a, is_new, e_ev->args_count * sizeof(bool));
     }
@@ -314,11 +362,11 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
   if (is_begin) {
     trace_event_persisted_t p = {};
     p.name_ref = trace_data_push_string(td, event->name, a);
-    p.cat_ref = trace_data_push_string(td, event->cat, a);
-    p.ph_ref = trace_data_push_string(td, event->ph, a);
-    p.cname_ref = trace_data_push_string(td, event->cname, a);
+    p.cat_ref = trace_data_push_string_cached(td, event->cat, &td->last_cat_ref, a);
+    p.ph_ref = trace_data_push_string_cached(td, event->ph, &td->last_ph_ref, a);
+    p.cname_ref = trace_data_push_string_cached(td, event->cname, &td->last_cname_ref, a);
     p.id_ref = trace_data_push_string(td, event->id, a);
-    p.palette_index = compute_event_palette_index(event);
+    p.palette_index = compute_event_palette_index(td, p.name_ref, p.cname_ref);
     p.ts = event->ts;
     p.dur = 0;
     p.pid = event->pid;
@@ -379,11 +427,11 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
   } else {
     trace_event_persisted_t p = {};
     p.name_ref = trace_data_push_string(td, event->name, a);
-    p.cat_ref = trace_data_push_string(td, event->cat, a);
-    p.ph_ref = trace_data_push_string(td, event->ph, a);
-    p.cname_ref = trace_data_push_string(td, event->cname, a);
+    p.cat_ref = trace_data_push_string_cached(td, event->cat, &td->last_cat_ref, a);
+    p.ph_ref = trace_data_push_string_cached(td, event->ph, &td->last_ph_ref, a);
+    p.cname_ref = trace_data_push_string_cached(td, event->cname, &td->last_cname_ref, a);
     p.id_ref = trace_data_push_string(td, event->id, a);
-    p.palette_index = compute_event_palette_index(event);
+    p.palette_index = compute_event_palette_index(td, p.name_ref, p.cname_ref);
     p.ts = event->ts;
     p.dur = event->dur;
     p.pid = event->pid;
