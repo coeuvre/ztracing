@@ -8,6 +8,8 @@
 
 #if defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
+#elif defined(__ARM_NEON) || defined(__aarch64__)
+#include <arm_neon.h>
 #elif defined(__wasm_simd128__)
 #include <wasm_simd128.h>
 #endif
@@ -69,6 +71,34 @@ static inline size_t find_quote_or_backslash(const char* buf, size_t pos,
     if (mask != 0) {
       size_t index = (size_t)__builtin_ctz((unsigned int)mask);
       return pos + index;
+    }
+    pos += 16;
+  }
+#elif defined(__ARM_NEON) || defined(__aarch64__)
+  // ARM NEON Fast Path: Scan in 16-byte chunks
+  const uint8x16_t quotes = vdupq_n_u8('"');
+  const uint8x16_t backslashes = vdupq_n_u8('\\');
+
+  while (pos + 15 < len) {
+    uint8x16_t chunk = vld1q_u8((const uint8_t*)(buf + pos));
+
+    uint8x16_t eq_quote = vceqq_u8(chunk, quotes);
+    uint8x16_t eq_backslash = vceqq_u8(chunk, backslashes);
+
+    uint8x16_t matched = vorrq_u8(eq_quote, eq_backslash);
+
+    uint64x2_t matched64 = vreinterpretq_u64_u8(matched);
+    uint64_t low = vgetq_lane_u64(matched64, 0);
+    uint64_t high = vgetq_lane_u64(matched64, 1);
+
+    if (low != 0 || high != 0) {
+      if (low != 0) {
+        size_t index = (size_t)(__builtin_ctzll(low) / 8);
+        return pos + index;
+      } else {
+        size_t index = (size_t)(__builtin_ctzll(high) / 8) + 8;
+        return pos + index;
+      }
     }
     pos += 16;
   }
