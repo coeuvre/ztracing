@@ -178,6 +178,10 @@ EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_size() {
   return (int)app_get_queue_size(g_app);
 }
 
+EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_capacity() {
+  return (int)app_get_queue_capacity(g_app);
+}
+
 EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed(bool is_dark) {
   app_on_theme_changed(g_app, is_dark);
   imgui_impl_wasm_request_update();

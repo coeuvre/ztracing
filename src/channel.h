@@ -39,6 +39,7 @@ void channel_close_tx(channel_t* chan);
 void channel_close_rx(channel_t* chan);
 
 size_t channel_get_size(channel_t* chan);
+size_t channel_get_capacity(channel_t* chan);
 bool channel_is_tx_closed(channel_t* chan);
 bool channel_is_rx_closed(channel_t* chan);
 

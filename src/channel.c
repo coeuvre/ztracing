@@ -256,6 +256,17 @@ size_t channel_get_size(channel_t* chan) {
   return size;
 }
 
+size_t channel_get_capacity(channel_t* chan) {
+  CHECK(chan != nullptr);
+
+  pthread_mutex_lock(&chan->mutex);
+  CHECK(chan->item_size);
+  size_t cap = chan->capacity;
+  pthread_mutex_unlock(&chan->mutex);
+
+  return cap;
+}
+
 bool channel_is_tx_closed(channel_t* chan) {
   CHECK(chan != nullptr);
 

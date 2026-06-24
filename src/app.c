@@ -561,3 +561,9 @@ size_t app_get_queue_size(app_t* app) {
              ? channel_get_size(app->trace_load_channel)
              : 0;
 }
+
+size_t app_get_queue_capacity(app_t* app) {
+  return app->trace_load_channel != nullptr
+             ? channel_get_capacity(app->trace_load_channel)
+             : 0;
+}

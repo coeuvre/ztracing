@@ -97,6 +97,9 @@ void app_stop_jobs(app_t* app);
 // Returns the current total size of chunks in the queue.
 size_t app_get_queue_size(app_t* app);
 
+// Returns the maximum capacity of the queue.
+size_t app_get_queue_capacity(app_t* app);
+
 #ifdef __cplusplus
 }
 #endif
