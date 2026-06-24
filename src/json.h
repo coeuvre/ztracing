@@ -21,7 +21,8 @@ typedef enum json_token_type {
   JSON_TOKEN_ARRAY_START,   // [
   JSON_TOKEN_ARRAY_END,     // ]
   JSON_TOKEN_STRING,
-  JSON_TOKEN_NUMBER,
+  JSON_TOKEN_NUMBER_I64,
+  JSON_TOKEN_NUMBER_F64,
   JSON_TOKEN_TRUE,
   JSON_TOKEN_FALSE,
   JSON_TOKEN_NULL,
@@ -32,16 +33,27 @@ typedef enum json_token_type {
 
 typedef struct json_token {
   json_token_type_t type;
-  string_view_t val;
+  // We keep 'str' outside the anonymous union so that it is NOT overwritten
+  // when parsing numeric values. This is crucial for Chrome trace parsing
+  // because polymorphic fields like event 'id' (which can be either a string
+  // or a number) must be stored as raw string views pointing directly into
+  // the JSON buffer to avoid dynamic memory allocation.
+  struct {
+    string_view_t str;
+    union {
+      int64_t i64;  // Active when type is JSON_TOKEN_NUMBER_I64
+      double f64;   // Active when type is JSON_TOKEN_NUMBER_F64
+    };
+  } val;
 } json_token_t;
 
 // A lightweight, allocation-free, streaming JSON parser.
 // It parses names, numbers, strings, and literals on-the-fly directly from
 // a provided character buffer.
 typedef struct json_reader {
-  const char* buf; // Pointer to the JSON input buffer
-  size_t len;      // Total length of the input buffer
-  size_t pos;      // Current parsing position (offset from buf)
+  const char* buf;  // Pointer to the JSON input buffer
+  size_t len;       // Total length of the input buffer
+  size_t pos;       // Current parsing position (offset from buf)
 } json_reader_t;
 
 // Returns true if the reader has reached the end of the input buffer.
@@ -49,15 +61,14 @@ static inline bool json_reader_done(const json_reader_t* r) {
   return r->pos >= r->len;
 }
 
-
 // Initializes the JSON reader with the given buffer and length.
 // The buffer is not copied and must remain valid during parsing.
 void json_reader_init(json_reader_t* r, const char* buf, size_t len);
 
-// Parses and returns the next JSON token, skipping any leading whitespace.
-// Returns a token with type JSON_TOKEN_EOF if the end of the buffer is reached.
-// Returns a token with type JSON_TOKEN_ERROR on parsing failures.
-json_token_t json_reader_next(json_reader_t* r);
+// Parses and writes the next JSON token into out_token, skipping any leading
+// whitespace. Writes a token with type JSON_TOKEN_EOF if the end of the buffer
+// is reached. Writes a token with type JSON_TOKEN_ERROR on parsing failures.
+void json_reader_next(json_reader_t* r, json_token_t* out_token);
 
 // ==========================================
 // 2. JSON WRITER (Formatter)

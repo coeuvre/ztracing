@@ -14,10 +14,16 @@ COMMON_COPTS = [
     "-Wno-missing-designated-field-initializers",
 ]
 
+WASM_SIMD_COPTS = select({
+    "//src:wasm_build": ["-msimd128"],
+    "//src:wasm_and_headless_build": ["-msimd128"],
+    "//conditions:default": [],
+})
+
 def cc_library(name, **kwargs):
     _cc_library(
         name = name,
-        copts = COMMON_COPTS + kwargs.pop("copts", []),
+        copts = COMMON_COPTS + WASM_SIMD_COPTS + kwargs.pop("copts", []),
         conlyopts = ["-std=c23"] + kwargs.pop("conlyopts", []),
         cxxopts = ["-std=c++20"] + kwargs.pop("cxxopts", []),
         **kwargs
@@ -26,7 +32,7 @@ def cc_library(name, **kwargs):
 def cc_binary(name, **kwargs):
     _cc_binary(
         name = name,
-        copts = COMMON_COPTS + kwargs.pop("copts", []),
+        copts = COMMON_COPTS + WASM_SIMD_COPTS + kwargs.pop("copts", []),
         conlyopts = ["-std=c23"] + kwargs.pop("conlyopts", []),
         cxxopts = ["-std=c++20"] + kwargs.pop("cxxopts", []),
         **kwargs
@@ -35,7 +41,7 @@ def cc_binary(name, **kwargs):
 def cc_test(name, **kwargs):
     _cc_test(
         name = name,
-        copts = COMMON_COPTS + kwargs.pop("copts", []),
+        copts = COMMON_COPTS + WASM_SIMD_COPTS + kwargs.pop("copts", []),
         conlyopts = ["-std=c23"] + kwargs.pop("conlyopts", []),
         cxxopts = ["-std=c++20"] + kwargs.pop("cxxopts", []),
         **kwargs

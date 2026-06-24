@@ -266,7 +266,9 @@ static void trace_data_merge_args(trace_data_t* td,
     }
 
     for (size_t i = 0; i < e_ev->args_count; i++) {
-      e_key_refs[i] = trace_data_push_string(td, e_ev->args[i].key, a);
+      size_t cache_idx = i < 4 ? i : 3;
+      e_key_refs[i] = trace_data_push_string_cached(td, e_ev->args[i].key,
+                                                    &td->last_arg_key_refs[cache_idx], a);
       e_val_refs[i] = trace_data_push_string(td, e_ev->args[i].val, a);
     }
 
@@ -376,7 +378,9 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
 
     for (size_t i = 0; i < event->args_count; ++i) {
       trace_arg_persisted_t arg = {};
-      arg.key_ref = trace_data_push_string(td, event->args[i].key, a);
+      size_t cache_idx = i < 4 ? i : 3;
+      arg.key_ref = trace_data_push_string_cached(td, event->args[i].key,
+                                                  &td->last_arg_key_refs[cache_idx], a);
       arg.val_ref = trace_data_push_string(td, event->args[i].val, a);
       arg.val_double = event->args[i].val_double;
       *array_list_push(&td->args, trace_arg_persisted_t, a) = arg;
@@ -441,7 +445,9 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
 
     for (size_t i = 0; i < event->args_count; ++i) {
       trace_arg_persisted_t arg = {};
-      arg.key_ref = trace_data_push_string(td, event->args[i].key, a);
+      size_t cache_idx = i < 4 ? i : 3;
+      arg.key_ref = trace_data_push_string_cached(td, event->args[i].key,
+                                                  &td->last_arg_key_refs[cache_idx], a);
       arg.val_ref = trace_data_push_string(td, event->args[i].val, a);
       arg.val_double = event->args[i].val_double;
       *array_list_push(&td->args, trace_arg_persisted_t, a) = arg;

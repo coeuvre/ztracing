@@ -35,123 +35,10 @@ size_t trace_parser_feed(trace_parser_t* p, const char* buf, size_t len,
   return discarded;
 }
 
-static double to_double(string_view_t s) {
-  bool has_exponent = false;
-  for (size_t i = 0; i < s.len; ++i) {
-    if (s.ptr[i] == 'e' || s.ptr[i] == 'E') {
-      has_exponent = true;
-      break;
-    }
-  }
-
-  double val = 0.0;
-  if (has_exponent) {
-    char tmp[64];
-    size_t len = s.len < 63 ? s.len : 63;
-    memcpy(tmp, s.ptr, len);
-    tmp[len] = '\0';
-    val = atof(tmp);
-  } else {
-    if (s.len == 0) return 0.0;
-
-    size_t i = 0;
-    bool neg = false;
-    if (s.ptr[0] == '-') {
-      neg = true;
-      i++;
-    } else if (s.ptr[0] == '+') {
-      i++;
-    }
-
-    double integer_part = 0.0;
-    for (; i < s.len && s.ptr[i] != '.'; ++i) {
-      char c = s.ptr[i];
-      if (c < '0' || c > '9') {
-        break;
-      }
-      integer_part = integer_part * 10.0 + (c - '0');
-    }
-
-    val = integer_part;
-    if (i < s.len && s.ptr[i] == '.') {
-      i++;
-      double fraction_part = 0.0;
-      double divisor = 1.0;
-      for (; i < s.len; ++i) {
-        char c = s.ptr[i];
-        if (c < '0' || c > '9') {
-          break;
-        }
-        fraction_part = fraction_part * 10.0 + (c - '0');
-        divisor *= 10.0;
-      }
-      val += fraction_part / divisor;
-    }
-    if (neg) {
-      val = -val;
-    }
-  }
-  return val;
-}
-
-static int64_t to_int64(string_view_t s) {
-  if (s.len == 0) return 0;
-
-  size_t i = 0;
-  bool neg = false;
-  if (s.ptr[0] == '-') {
-    neg = true;
-    i++;
-  } else if (s.ptr[0] == '+') {
-    i++;
-  }
-
-  int64_t val = 0;
-  for (; i < s.len; ++i) {
-    char c = s.ptr[i];
-    if (c == '.' || c == 'e' || c == 'E') {
-      return (int64_t)to_double(s);
-    }
-    if (c < '0' || c > '9') {
-      break;
-    }
-    int digit = c - '0';
-    if (val > (INT64_MAX - digit) / 10) {
-      return neg ? INT64_MIN : INT64_MAX;
-    }
-    val = val * 10 + digit;
-  }
-  return neg ? -val : val;
-}
-
-static int32_t to_int32(string_view_t s) {
-  if (s.len == 0) return 0;
-
-  size_t i = 0;
-  bool neg = false;
-  if (s.ptr[0] == '-') {
-    neg = true;
-    i++;
-  } else if (s.ptr[0] == '+') {
-    i++;
-  }
-
-  int32_t val = 0;
-  for (; i < s.len; ++i) {
-    char c = s.ptr[i];
-    if (c == '.' || c == 'e' || c == 'E') {
-      return (int32_t)to_double(s);
-    }
-    if (c < '0' || c > '9') {
-      break;
-    }
-    int digit = c - '0';
-    if (val > (INT32_MAX - digit) / 10) {
-      return neg ? INT32_MIN : INT32_MAX;
-    }
-    val = val * 10 + digit;
-  }
-  return neg ? -val : val;
+static inline int32_t clamp_to_int32(int64_t val) {
+  if (val > INT32_MAX) return INT32_MAX;
+  if (val < INT32_MIN) return INT32_MIN;
+  return (int32_t)val;
 }
 
 static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
@@ -160,9 +47,10 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
   *event = (trace_event_t){};
   array_list_clear(&p->args_buffer);
   bool ok = true;
+  json_token_t tok;
 
   while (ok) {
-    json_token_t tok = json_reader_next(r);
+    json_reader_next(r, &tok);
     if (tok.type == JSON_TOKEN_OBJECT_END) {
       success = true;
       break;
@@ -172,85 +60,106 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
       break;
     }
 
-    string_view_t key = tok.val;
-    tok = json_reader_next(r);
+    string_view_t key = tok.val.str;
+    json_reader_next(r, &tok);
     if (tok.type != JSON_TOKEN_COLON) {
       ok = false;
       break;
     }
 
     if (string_view_eq(key, SV("name"))) {
-      tok = json_reader_next(r);
+      json_reader_next(r, &tok);
       if (tok.type != JSON_TOKEN_STRING) {
         ok = false;
         break;
       }
-      event->name = tok.val;
+      event->name = tok.val.str;
     } else if (string_view_eq(key, SV("cat"))) {
-      tok = json_reader_next(r);
+      json_reader_next(r, &tok);
       if (tok.type != JSON_TOKEN_STRING) {
         ok = false;
         break;
       }
-      event->cat = tok.val;
+      event->cat = tok.val.str;
     } else if (string_view_eq(key, SV("ph"))) {
-      tok = json_reader_next(r);
+      json_reader_next(r, &tok);
       if (tok.type != JSON_TOKEN_STRING) {
         ok = false;
         break;
       }
-      event->ph = tok.val;
+      event->ph = tok.val.str;
     } else if (string_view_eq(key, SV("cname"))) {
-      tok = json_reader_next(r);
+      json_reader_next(r, &tok);
       if (tok.type != JSON_TOKEN_STRING) {
         ok = false;
         break;
       }
-      event->cname = tok.val;
+      event->cname = tok.val.str;
     } else if (string_view_eq(key, SV("ts"))) {
-      tok = json_reader_next(r);
-      if (tok.type != JSON_TOKEN_NUMBER) {
+      json_reader_next(r, &tok);
+      if (tok.type != JSON_TOKEN_NUMBER_I64 &&
+          tok.type != JSON_TOKEN_NUMBER_F64) {
         ok = false;
         break;
       }
-      event->ts = to_int64(tok.val);
+      if (tok.type == JSON_TOKEN_NUMBER_I64) {
+        event->ts = tok.val.i64;
+      } else {
+        event->ts = (int64_t)tok.val.f64;
+      }
     } else if (string_view_eq(key, SV("dur"))) {
-      tok = json_reader_next(r);
-      if (tok.type != JSON_TOKEN_NUMBER) {
+      json_reader_next(r, &tok);
+      if (tok.type != JSON_TOKEN_NUMBER_I64 &&
+          tok.type != JSON_TOKEN_NUMBER_F64) {
         ok = false;
         break;
       }
-      event->dur = to_int64(tok.val);
+      if (tok.type == JSON_TOKEN_NUMBER_I64) {
+        event->dur = tok.val.i64;
+      } else {
+        event->dur = (int64_t)tok.val.f64;
+      }
     } else if (string_view_eq(key, SV("pid"))) {
-      tok = json_reader_next(r);
-      if (tok.type != JSON_TOKEN_NUMBER) {
+      json_reader_next(r, &tok);
+      if (tok.type != JSON_TOKEN_NUMBER_I64 &&
+          tok.type != JSON_TOKEN_NUMBER_F64) {
         ok = false;
         break;
       }
-      event->pid = to_int32(tok.val);
+      if (tok.type == JSON_TOKEN_NUMBER_I64) {
+        event->pid = clamp_to_int32(tok.val.i64);
+      } else {
+        event->pid = clamp_to_int32((int64_t)tok.val.f64);
+      }
     } else if (string_view_eq(key, SV("tid"))) {
-      tok = json_reader_next(r);
-      if (tok.type != JSON_TOKEN_NUMBER) {
+      json_reader_next(r, &tok);
+      if (tok.type != JSON_TOKEN_NUMBER_I64 &&
+          tok.type != JSON_TOKEN_NUMBER_F64) {
         ok = false;
         break;
       }
-      event->tid = to_int32(tok.val);
+      if (tok.type == JSON_TOKEN_NUMBER_I64) {
+        event->tid = clamp_to_int32(tok.val.i64);
+      } else {
+        event->tid = clamp_to_int32((int64_t)tok.val.f64);
+      }
     } else if (string_view_eq(key, SV("id"))) {
-      tok = json_reader_next(r);
-      if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER) {
-        event->id = tok.val;
+      json_reader_next(r, &tok);
+      if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER_I64 ||
+          tok.type == JSON_TOKEN_NUMBER_F64) {
+        event->id = tok.val.str;
       } else {
         ok = false;
         break;
       }
     } else if (string_view_eq(key, SV("args"))) {
-      tok = json_reader_next(r);
+      json_reader_next(r, &tok);
       if (tok.type != JSON_TOKEN_OBJECT_START) {
         ok = false;
         break;
       }
       while (ok) {
-        tok = json_reader_next(r);
+        json_reader_next(r, &tok);
         if (tok.type == JSON_TOKEN_OBJECT_END) {
           break;
         }
@@ -259,30 +168,35 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
           break;
         }
         trace_arg_t arg = {};
-        arg.key = tok.val;
-        tok = json_reader_next(r);
+        arg.key = tok.val.str;
+        json_reader_next(r, &tok);
         if (tok.type != JSON_TOKEN_COLON) {
           ok = false;
           break;
         }
 
-        tok = json_reader_next(r);
+        json_reader_next(r, &tok);
         arg.val_double = 0.0;
-        if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER ||
+        if (tok.type == JSON_TOKEN_STRING ||
+            tok.type == JSON_TOKEN_NUMBER_I64 ||
+            tok.type == JSON_TOKEN_NUMBER_F64 ||
             tok.type == JSON_TOKEN_TRUE || tok.type == JSON_TOKEN_FALSE ||
             tok.type == JSON_TOKEN_NULL) {
-          if (tok.type == JSON_TOKEN_NUMBER) {
-            arg.val_double = to_double(tok.val);
+          if (tok.type == JSON_TOKEN_NUMBER_I64) {
+            arg.val_double = (double)tok.val.i64;
+            arg.val = (string_view_t){};
+          } else if (tok.type == JSON_TOKEN_NUMBER_F64) {
+            arg.val_double = tok.val.f64;
             arg.val = (string_view_t){};
           } else {
-            arg.val = tok.val;
+            arg.val = tok.val.str;
           }
         } else if (tok.type == JSON_TOKEN_OBJECT_START ||
                    tok.type == JSON_TOKEN_ARRAY_START) {
-          size_t start = r->pos - tok.val.len;
+          size_t start = r->pos - tok.val.str.len;
           int depth = 1;
           while (depth > 0) {
-            tok = json_reader_next(r);
+            json_reader_next(r, &tok);
             if (tok.type == JSON_TOKEN_EOF || tok.type == JSON_TOKEN_ERROR) {
               break;
             }
@@ -302,7 +216,7 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
 
         *array_list_push(&p->args_buffer, trace_arg_t, a) = arg;
 
-        tok = json_reader_next(r);
+        json_reader_next(r, &tok);
         if (tok.type == JSON_TOKEN_COMMA) {
           continue;
         }
@@ -317,12 +231,12 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
       }
     } else {
       // Unknown key, skip value
-      tok = json_reader_next(r);
+      json_reader_next(r, &tok);
       if (tok.type == JSON_TOKEN_OBJECT_START ||
           tok.type == JSON_TOKEN_ARRAY_START) {
         int depth = 1;
         while (depth > 0) {
-          tok = json_reader_next(r);
+          json_reader_next(r, &tok);
           if (tok.type == JSON_TOKEN_EOF || tok.type == JSON_TOKEN_ERROR) {
             break;
           }
@@ -337,7 +251,7 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
       }
     }
 
-    tok = json_reader_next(r);
+    json_reader_next(r, &tok);
     if (tok.type == JSON_TOKEN_COMMA) {
       continue;
     }
@@ -360,11 +274,12 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
   bool found = false;
   json_reader_t r = {p->buffer.ptr, p->buffer.len, p->pos};
   bool loop = !json_reader_done(&r);
+  json_token_t tok;
 
   while (loop && !found) {
     switch (p->state) {
       case TRACE_PARSER_STATE_INITIAL: {
-        json_token_t tok = json_reader_next(&r);
+        json_reader_next(&r, &tok);
         if (tok.type == JSON_TOKEN_EOF) {
           loop = false;  // need more data
         } else if (tok.type == JSON_TOKEN_ARRAY_START) {
@@ -380,20 +295,20 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
       }
 
       case TRACE_PARSER_STATE_LOOKING_FOR_TRACE_EVENTS: {
-        json_token_t tok = json_reader_next(&r);
+        json_reader_next(&r, &tok);
         if (tok.type == JSON_TOKEN_EOF) {
           loop = false;  // need more data
         } else if (tok.type == JSON_TOKEN_OBJECT_END) {
           p->state = TRACE_PARSER_STATE_COMPLETE;
           loop = false;  // done
         } else if (tok.type == JSON_TOKEN_STRING) {
-          bool is_trace_events = string_view_eq(tok.val, SV("traceEvents"));
-          tok = json_reader_next(&r);
+          bool is_trace_events = string_view_eq(tok.val.str, SV("traceEvents"));
+          json_reader_next(&r, &tok);
           if (tok.type != JSON_TOKEN_COLON) {
             loop = false;  // Error!
           } else {
             if (is_trace_events) {
-              tok = json_reader_next(&r);
+              json_reader_next(&r, &tok);
               if (tok.type != JSON_TOKEN_ARRAY_START) {
                 loop = false;  // Error!
               } else {
@@ -401,12 +316,12 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
               }
             } else {
               // Skip value
-              tok = json_reader_next(&r);
+              json_reader_next(&r, &tok);
               if (tok.type == JSON_TOKEN_OBJECT_START ||
                   tok.type == JSON_TOKEN_ARRAY_START) {
                 int depth = 1;
                 while (depth > 0) {
-                  tok = json_reader_next(&r);
+                  json_reader_next(&r, &tok);
                   if (tok.type == JSON_TOKEN_EOF ||
                       tok.type == JSON_TOKEN_ERROR) {
                     break;
@@ -428,7 +343,7 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
 
       case TRACE_PARSER_STATE_IN_ARRAY: {
         size_t checkpoint = r.pos;
-        json_token_t tok = json_reader_next(&r);
+        json_reader_next(&r, &tok);
 
         if (tok.type == JSON_TOKEN_EOF) {
           loop = false;  // need more data
@@ -444,7 +359,7 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
           // events)
           if (tok.type == JSON_TOKEN_COMMA) {
             checkpoint = r.pos;
-            tok = json_reader_next(&r);
+            json_reader_next(&r, &tok);
           }
 
           if (tok.type == JSON_TOKEN_OBJECT_START) {

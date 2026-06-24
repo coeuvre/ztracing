@@ -181,8 +181,7 @@ TEST(trace_parser_test, exponent_numbers) {
   trace_parser_t p = {};
   allocator_t a = allocator_get_default();
 
-  const char* json =
-      "[{\"name\":\"foo\",\"ts\":1e2,\"dur\":1e1}]";
+  const char* json = "[{\"name\":\"foo\",\"ts\":1e2,\"dur\":1e1}]";
   trace_parser_feed(&p, json, strlen(json), true, a);
 
   trace_event_t ev;
@@ -197,9 +196,9 @@ TEST(trace_parser_test, infinite_loop_on_invalid_char_in_skip) {
   trace_parser_t p = {};
   allocator_t a = allocator_get_default();
 
-  // "unknown" is an unknown key, its value has an invalid char 'x' inside an object.
-  const char* json =
-      "[{\"name\":\"foo\",\"unknown\":{\"a\":x}}]";
+  // "unknown" is an unknown key, its value has an invalid char 'x' inside an
+  // object.
+  const char* json = "[{\"name\":\"foo\",\"unknown\":{\"a\":x}}]";
   trace_parser_feed(&p, json, strlen(json), true, a);
 
   trace_event_t ev;
@@ -223,9 +222,7 @@ TEST(trace_parser_test, malformed_numbers) {
   trace_parser_feed(&p, json, strlen(json), true, a);
 
   trace_event_t ev;
-  EXPECT_TRUE(trace_parser_next(&p, &ev, a));
-  EXPECT_EQ(ev.name, "foo");
-  EXPECT_EQ(ev.ts, 12);
+  EXPECT_FALSE(trace_parser_next(&p, &ev, a));
 
   trace_parser_deinit(&p, a);
 }

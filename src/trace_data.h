@@ -78,6 +78,7 @@ typedef struct trace_data {
   string_ref_t last_cat_ref;
   string_ref_t last_ph_ref;
   string_ref_t last_cname_ref;
+  string_ref_t last_arg_key_refs[4];
 
   // Temporary storage for hashing during push
   struct {
