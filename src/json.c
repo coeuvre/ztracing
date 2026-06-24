@@ -20,7 +20,7 @@ void json_reader_init(json_reader_t* r, const char* buf, size_t len) {
   r->pos = 0;
 }
 
-bool json_reader_read_string(json_reader_t* r, string_t* out_val) {
+bool json_reader_read_string(json_reader_t* r, string_view_t* out_val) {
   bool success = false;
   if (json_reader_peek(r) == '"') {
     json_reader_advance(r);
@@ -38,7 +38,7 @@ bool json_reader_read_string(json_reader_t* r, string_t* out_val) {
       }
     }
     if (ok && !json_reader_done(r)) {
-      *out_val = string_from_parts(r->buf + start, r->pos - start);
+      *out_val = string_view_from_parts(r->buf + start, r->pos - start);
       json_reader_advance(r);  // skip closing '"'
       success = true;
     }
@@ -46,7 +46,7 @@ bool json_reader_read_string(json_reader_t* r, string_t* out_val) {
   return success;
 }
 
-bool json_reader_read_number(json_reader_t* r, string_t* out_val) {
+bool json_reader_read_number(json_reader_t* r, string_view_t* out_val) {
   bool success = false;
   size_t start = r->pos;
   if (json_reader_peek(r) == '-') {
@@ -60,7 +60,7 @@ bool json_reader_read_number(json_reader_t* r, string_t* out_val) {
             json_reader_peek(r) == '-')) {
       json_reader_advance(r);
     }
-    *out_val = string_from_parts(r->buf + start, r->pos - start);
+    *out_val = string_view_from_parts(r->buf + start, r->pos - start);
     success = true;
   }
   return success;
@@ -74,7 +74,7 @@ bool json_reader_read_literal(json_reader_t* r, const char* literal,
     if (memcmp(r->buf + r->pos, literal, literal_len) == 0) {
       if (out_token) {
         out_token->type = type;
-        out_token->str = string_from_parts(r->buf + r->pos, literal_len);
+        out_token->str = string_view_from_parts(r->buf + r->pos, literal_len);
       }
       r->pos += literal_len;
       success = true;
@@ -97,32 +97,32 @@ json_token_t json_reader_next(json_reader_t* r) {
       case '{':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_OBJECT_START;
-        tok.str = string_from_parts(r->buf + r->pos - 1, 1);
+        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case '}':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_OBJECT_END;
-        tok.str = string_from_parts(r->buf + r->pos - 1, 1);
+        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case '[':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_ARRAY_START;
-        tok.str = string_from_parts(r->buf + r->pos - 1, 1);
+        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case ']':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_ARRAY_END;
-        tok.str = string_from_parts(r->buf + r->pos - 1, 1);
+        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case ':':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_COLON;
-        tok.str = string_from_parts(r->buf + r->pos - 1, 1);
+        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case ',':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_COMMA;
-        tok.str = string_from_parts(r->buf + r->pos - 1, 1);
+        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case '"':
         tok.type = JSON_TOKEN_STRING;
@@ -164,7 +164,7 @@ json_token_t json_reader_next(json_reader_t* r) {
 // 2. JSON WRITER (Formatter) Implementation
 // ==========================================
 
-static size_t json_escaped_len(string_t s) {
+static size_t json_escaped_len(string_view_t s) {
   size_t len = 0;
   for (size_t i = 0; i < s.len; i++) {
     char c = s.ptr[i];
@@ -190,7 +190,7 @@ static size_t json_escaped_len(string_t s) {
   return len;
 }
 
-static void json_writer_write_escaped(array_list_t* out_buf, string_t s,
+static void json_writer_write_escaped(array_list_t* out_buf, string_view_t s,
                                       allocator_t a) {
   size_t escaped_len = json_escaped_len(s);
   if (escaped_len == s.len) {
@@ -352,7 +352,7 @@ void json_writer_end_array(json_writer_t* w) {
   json_writer_append_char(w, ']');
 }
 
-void json_writer_name(json_writer_t* w, string_t name) {
+void json_writer_name(json_writer_t* w, string_view_t name) {
   if (w->depth > 0) {
     if (!w->first_item[w->depth]) {
       if (w->indent) {
@@ -378,7 +378,7 @@ void json_writer_name(json_writer_t* w, string_t name) {
   w->after_key = true;
 }
 
-void json_writer_string(json_writer_t* w, string_t val) {
+void json_writer_string(json_writer_t* w, string_view_t val) {
   json_writer_prepare_value(w);
   json_writer_append_char(w, '"');
   json_writer_write_escaped(w->buf, val, w->allocator);

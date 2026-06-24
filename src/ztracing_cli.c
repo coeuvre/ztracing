@@ -91,11 +91,11 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
   int i = 1;
   // Parse global flags or subcommand
   while (success && i < argc) {
-    string_t arg = string_from_cstr(argv[i]);
-    if (string_eq(arg, string_lit("--pretty"))) {
+    string_view_t arg = string_view_from_cstr(argv[i]);
+    if (string_view_eq(arg, SV("--pretty"))) {
       out_args->pretty = true;
-    } else if (string_eq(arg, string_lit("-h")) ||
-               string_eq(arg, string_lit("--help"))) {
+    } else if (string_view_eq(arg, SV("-h")) ||
+               string_view_eq(arg, SV("--help"))) {
       success = false;
     } else if (arg.len > 0 && arg.ptr[0] == '-') {
       fprintf(stderr, "Error: Unknown global option '%s'\n", argv[i]);
@@ -116,9 +116,8 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
   // Next argument must be the trace file
   if (success) {
     if (i < argc) {
-      string_t arg = string_from_cstr(argv[i]);
-      if (string_eq(arg, string_lit("-h")) ||
-          string_eq(arg, string_lit("--help"))) {
+      string_view_t arg = string_view_from_cstr(argv[i]);
+      if (string_view_eq(arg, SV("-h")) || string_view_eq(arg, SV("--help"))) {
         success = false;
       } else {
         out_args->trace_file = argv[i];
@@ -132,10 +131,10 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
 
   // Parse remaining options
   while (success && i < argc) {
-    string_t arg = string_from_cstr(argv[i]);
-    if (string_eq(arg, string_lit("--pretty"))) {
+    string_view_t arg = string_view_from_cstr(argv[i]);
+    if (string_view_eq(arg, SV("--pretty"))) {
       out_args->pretty = true;
-    } else if (string_eq(arg, string_lit("--ts"))) {
+    } else if (string_view_eq(arg, SV("--ts"))) {
       if (i + 1 < argc) {
         out_args->t_start = (int64_t)atoll(argv[i + 1]);
         out_args->has_t_start = true;
@@ -144,7 +143,7 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
         fprintf(stderr, "Error: Missing value for option '--ts'\n");
         success = false;
       }
-    } else if (string_eq(arg, string_lit("--track"))) {
+    } else if (string_view_eq(arg, SV("--track"))) {
       if (i + 1 < argc) {
         out_args->track_filter = argv[i + 1];
         i++;
@@ -152,7 +151,7 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
         fprintf(stderr, "Error: Missing value for option '--track'\n");
         success = false;
       }
-    } else if (string_eq(arg, string_lit("--match"))) {
+    } else if (string_view_eq(arg, SV("--match"))) {
       if (i + 1 < argc) {
         out_args->match_filter = argv[i + 1];
         i++;
@@ -160,7 +159,7 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
         fprintf(stderr, "Error: Missing value for option '--match'\n");
         success = false;
       }
-    } else if (string_eq(arg, string_lit("--t-start"))) {
+    } else if (string_view_eq(arg, SV("--t-start"))) {
       if (i + 1 < argc) {
         out_args->t_start = (int64_t)atoll(argv[i + 1]);
         out_args->has_t_start = true;
@@ -169,7 +168,7 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
         fprintf(stderr, "Error: Missing value for option '--t-start'\n");
         success = false;
       }
-    } else if (string_eq(arg, string_lit("--t-end"))) {
+    } else if (string_view_eq(arg, SV("--t-end"))) {
       if (i + 1 < argc) {
         out_args->t_end = (int64_t)atoll(argv[i + 1]);
         out_args->has_t_end = true;
@@ -178,7 +177,7 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
         fprintf(stderr, "Error: Missing value for option '--t-end'\n");
         success = false;
       }
-    } else if (string_eq(arg, string_lit("--max-depth"))) {
+    } else if (string_view_eq(arg, SV("--max-depth"))) {
       if (i + 1 < argc) {
         out_args->max_depth = atoi(argv[i + 1]);
         out_args->has_max_depth = true;
@@ -187,7 +186,7 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
         fprintf(stderr, "Error: Missing value for option '--max-depth'\n");
         success = false;
       }
-    } else if (string_eq(arg, string_lit("--limit"))) {
+    } else if (string_view_eq(arg, SV("--limit"))) {
       if (i + 1 < argc) {
         out_args->limit = atoi(argv[i + 1]);
         out_args->has_limit = true;
@@ -222,19 +221,19 @@ static int handle_summary(const trace_data_t* td, bool pretty, allocator_t a) {
 
   json_writer_begin_object(&w);
 
-  json_writer_name(&w, string_lit("event_count"));
+  json_writer_name(&w, SV("event_count"));
   json_writer_number_int(&w, (int64_t)td->events.len);
 
-  json_writer_name(&w, string_lit("track_count"));
+  json_writer_name(&w, SV("track_count"));
   json_writer_number_int(&w, (int64_t)tracks.len);
 
-  json_writer_name(&w, string_lit("min_ts_us"));
+  json_writer_name(&w, SV("min_ts_us"));
   json_writer_number_double(&w, (double)min_ts);
 
-  json_writer_name(&w, string_lit("max_ts_us"));
+  json_writer_name(&w, SV("max_ts_us"));
   json_writer_number_double(&w, (double)max_ts);
 
-  json_writer_name(&w, string_lit("duration_ms"));
+  json_writer_name(&w, SV("duration_ms"));
   json_writer_number_double(&w, (double)(max_ts - min_ts) / 1000.0);
 
   json_writer_end_object(&w);
@@ -279,30 +278,30 @@ static int handle_tracks(const trace_data_t* td, bool pretty, allocator_t a) {
 
     json_writer_begin_object(&w);
 
-    json_writer_name(&w, string_lit("index"));
+    json_writer_name(&w, SV("index"));
     json_writer_number_int(&w, (int64_t)i);
 
-    json_writer_name(&w, string_lit("name"));
-    string_t track_name = trace_data_get_string(td, t->name_ref);
+    json_writer_name(&w, SV("name"));
+    string_view_t track_name = trace_data_get_string(td, t->name_ref);
     json_writer_string(&w, track_name);
 
-    json_writer_name(&w, string_lit("type"));
+    json_writer_name(&w, SV("type"));
     if (t->type == TRACK_TYPE_THREAD) {
-      json_writer_string(&w, string_lit("THREAD"));
+      json_writer_string(&w, SV("THREAD"));
     } else {
-      json_writer_string(&w, string_lit("COUNTER"));
+      json_writer_string(&w, SV("COUNTER"));
     }
 
-    json_writer_name(&w, string_lit("pid"));
+    json_writer_name(&w, SV("pid"));
     json_writer_number_int(&w, (int64_t)t->pid);
 
-    json_writer_name(&w, string_lit("tid"));
+    json_writer_name(&w, SV("tid"));
     json_writer_number_int(&w, (int64_t)t->tid);
 
-    json_writer_name(&w, string_lit("event_count"));
+    json_writer_name(&w, SV("event_count"));
     json_writer_number_int(&w, (int64_t)t->event_indices.len);
 
-    json_writer_name(&w, string_lit("max_depth"));
+    json_writer_name(&w, SV("max_depth"));
     json_writer_number_int(&w, (int64_t)t->max_depth);
 
     json_writer_end_object(&w);
@@ -369,14 +368,14 @@ static int handle_heatmap(const trace_data_t* td, bool pretty, allocator_t a) {
     if (has_active) {
       json_writer_begin_object(&w);
 
-      string_t track_name = trace_data_get_string(td, t->name_ref);
-      json_writer_name(&w, string_lit("track_name"));
+      string_view_t track_name = trace_data_get_string(td, t->name_ref);
+      json_writer_name(&w, SV("track_name"));
       json_writer_string(&w, track_name);
 
-      json_writer_name(&w, string_lit("track_index"));
+      json_writer_name(&w, SV("track_index"));
       json_writer_number_int(&w, (int64_t)i);
 
-      json_writer_name(&w, string_lit("buckets"));
+      json_writer_name(&w, SV("buckets"));
       json_writer_begin_array(&w);
 
       for (int b = 0; b < TRACE_HEATMAP_BUCKET_COUNT; b++) {
@@ -387,17 +386,17 @@ static int handle_heatmap(const trace_data_t* td, bool pretty, allocator_t a) {
 
           json_writer_begin_object(&w);
 
-          json_writer_name(&w, string_lit("bucket"));
+          json_writer_name(&w, SV("bucket"));
           json_writer_number_int(&w, (int64_t)b);
 
-          json_writer_name(&w, string_lit("ts_us"));
+          json_writer_name(&w, SV("ts_us"));
           json_writer_number_double(&w, (double)e->ts);
 
-          json_writer_name(&w, string_lit("name"));
-          string_t event_name = trace_data_get_string(td, e->name_ref);
+          json_writer_name(&w, SV("name"));
+          string_view_t event_name = trace_data_get_string(td, e->name_ref);
           json_writer_string(&w, event_name);
 
-          json_writer_name(&w, string_lit("dur_us"));
+          json_writer_name(&w, SV("dur_us"));
           json_writer_number_double(&w, (double)e->dur);
 
           json_writer_end_object(&w);
@@ -443,12 +442,12 @@ static int handle_histogram(const trace_data_t* td, const cli_args_t* args,
   }
 
   if (has_track_filter) {
-    string_t target_track = string_from_cstr(args->track_filter);
+    string_view_t target_track = string_view_from_cstr(args->track_filter);
     track_t* tracks_data = (track_t*)tracks.ptr;
     for (size_t i = 0; i < tracks.len; i++) {
       const track_t* t = &tracks_data[i];
-      string_t track_name = trace_data_get_string(td, t->name_ref);
-      if (string_eq(track_name, target_track)) {
+      string_view_t track_name = trace_data_get_string(td, t->name_ref);
+      if (string_view_eq(track_name, target_track)) {
         const size_t* idx_ptr = (const size_t*)t->event_indices.ptr;
         for (size_t k = 0; k < t->event_indices.len; k++) {
           size_t event_idx = idx_ptr[k];
@@ -456,8 +455,8 @@ static int handle_histogram(const trace_data_t* td, const cli_args_t* args,
             const trace_event_persisted_t* e = &events[event_idx];
 
             if (args->match_filter) {
-              string_t name = trace_data_get_string(td, e->name_ref);
-              string_t cat = trace_data_get_string(td, e->cat_ref);
+              string_view_t name = trace_data_get_string(td, e->name_ref);
+              string_view_t cat = trace_data_get_string(td, e->cat_ref);
               bool match =
                   trace_viewer_str_contains_case_insensitive(
                       name, args->match_filter, strlen(args->match_filter)) ||
@@ -480,8 +479,8 @@ static int handle_histogram(const trace_data_t* td, const cli_args_t* args,
       const trace_event_persisted_t* e = &events[i];
 
       if (args->match_filter) {
-        string_t name = trace_data_get_string(td, e->name_ref);
-        string_t cat = trace_data_get_string(td, e->cat_ref);
+        string_view_t name = trace_data_get_string(td, e->name_ref);
+        string_view_t cat = trace_data_get_string(td, e->cat_ref);
         bool match =
             trace_viewer_str_contains_case_insensitive(
                 name, args->match_filter, strlen(args->match_filter)) ||
@@ -508,24 +507,24 @@ static int handle_histogram(const trace_data_t* td, const cli_args_t* args,
 
   json_writer_begin_object(&w);
 
-  json_writer_name(&w, string_lit("scale"));
+  json_writer_name(&w, SV("scale"));
   if (h.has_non_zero_durations && (h.num_buckets > 0)) {
     int64_t width_first = h.buckets[0].max_dur - h.buckets[0].min_dur;
     int64_t width_last = h.buckets[h.num_buckets - 1].max_dur -
                          h.buckets[h.num_buckets - 1].min_dur;
     if (width_last > width_first * 2) {
-      json_writer_string(&w, string_lit("logarithmic"));
+      json_writer_string(&w, SV("logarithmic"));
     } else {
-      json_writer_string(&w, string_lit("linear"));
+      json_writer_string(&w, SV("linear"));
     }
   } else {
-    json_writer_string(&w, string_lit("linear"));
+    json_writer_string(&w, SV("linear"));
   }
 
-  json_writer_name(&w, string_lit("total_events"));
+  json_writer_name(&w, SV("total_events"));
   json_writer_number_int(&w, (int64_t)selected_indices.len);
 
-  json_writer_name(&w, string_lit("buckets"));
+  json_writer_name(&w, SV("buckets"));
   json_writer_begin_array(&w);
 
   for (int i = 0; i < h.num_buckets; i++) {
@@ -533,16 +532,16 @@ static int handle_histogram(const trace_data_t* td, const cli_args_t* args,
 
     json_writer_begin_object(&w);
 
-    json_writer_name(&w, string_lit("bucket_idx"));
+    json_writer_name(&w, SV("bucket_idx"));
     json_writer_number_int(&w, (int64_t)i);
 
-    json_writer_name(&w, string_lit("min_dur_us"));
+    json_writer_name(&w, SV("min_dur_us"));
     json_writer_number_double(&w, (double)b->min_dur);
 
-    json_writer_name(&w, string_lit("max_dur_us"));
+    json_writer_name(&w, SV("max_dur_us"));
     json_writer_number_double(&w, (double)b->max_dur);
 
-    json_writer_name(&w, string_lit("count"));
+    json_writer_name(&w, SV("count"));
     json_writer_number_int(&w, (int64_t)b->count);
 
     json_writer_end_object(&w);
@@ -595,12 +594,13 @@ static int handle_inspect(const trace_data_t* td, const cli_args_t* args,
 
   // Find the target track
   const track_t* target_track = nullptr;
-  string_t target_track_name = string_from_cstr(args->track_filter);
+  string_view_t target_track_name = string_view_from_cstr(args->track_filter);
   track_t* tracks_data = (track_t*)tracks.ptr;
 
   for (size_t i = 0; i < tracks.len; i++) {
-    string_t track_name = trace_data_get_string(td, tracks_data[i].name_ref);
-    if (string_eq(track_name, target_track_name)) {
+    string_view_t track_name =
+        trace_data_get_string(td, tracks_data[i].name_ref);
+    if (string_view_eq(track_name, target_track_name)) {
       target_track = &tracks_data[i];
       break;
     }
@@ -640,16 +640,16 @@ static int handle_inspect(const trace_data_t* td, const cli_args_t* args,
 
     json_writer_begin_object(&w);
 
-    json_writer_name(&w, string_lit("name"));
+    json_writer_name(&w, SV("name"));
     json_writer_string(&w, trace_data_get_string(td, e->name_ref));
 
-    json_writer_name(&w, string_lit("track"));
+    json_writer_name(&w, SV("track"));
     json_writer_string(&w, target_track_name);
 
-    json_writer_name(&w, string_lit("ts_us"));
+    json_writer_name(&w, SV("ts_us"));
     json_writer_number_double(&w, (double)e->ts);
 
-    json_writer_name(&w, string_lit("dur_us"));
+    json_writer_name(&w, SV("dur_us"));
     json_writer_number_double(&w, (double)e->dur);
 
     if (target_track->type == TRACK_TYPE_THREAD) {
@@ -657,10 +657,10 @@ static int handle_inspect(const trace_data_t* td, const cli_args_t* args,
       const int64_t* self_durs = (const int64_t*)target_track->self_durs.ptr;
       const int* depths = (const int*)target_track->depths.ptr;
 
-      json_writer_name(&w, string_lit("self_time_us"));
+      json_writer_name(&w, SV("self_time_us"));
       json_writer_number_double(&w, (double)self_durs[k]);
 
-      json_writer_name(&w, string_lit("depth"));
+      json_writer_name(&w, SV("depth"));
       json_writer_number_int(&w, (int64_t)depths[k]);
 
       int depth_target = depths[k];
@@ -675,18 +675,18 @@ static int handle_inspect(const trace_data_t* td, const cli_args_t* args,
       }
 
       if (parent_event) {
-        json_writer_name(&w, string_lit("parent"));
+        json_writer_name(&w, SV("parent"));
         json_writer_begin_object(&w);
-        json_writer_name(&w, string_lit("track"));
+        json_writer_name(&w, SV("track"));
         json_writer_string(&w, target_track_name);
-        json_writer_name(&w, string_lit("ts_us"));
+        json_writer_name(&w, SV("ts_us"));
         json_writer_number_double(&w, (double)parent_event->ts);
         json_writer_end_object(&w);
       }
 
       // 2. Find Children: subsequent events with depth == depth_target + 1,
       // until depth <= depth_target
-      json_writer_name(&w, string_lit("children"));
+      json_writer_name(&w, SV("children"));
       json_writer_begin_array(&w);
       for (size_t next = k + 1; next < target_track->event_indices.len;
            next++) {
@@ -698,9 +698,9 @@ static int handle_inspect(const trace_data_t* td, const cli_args_t* args,
           const trace_event_persisted_t* child_event =
               &events[event_indices[next]];
           json_writer_begin_object(&w);
-          json_writer_name(&w, string_lit("track"));
+          json_writer_name(&w, SV("track"));
           json_writer_string(&w, target_track_name);
-          json_writer_name(&w, string_lit("ts_us"));
+          json_writer_name(&w, SV("ts_us"));
           json_writer_number_double(&w, (double)child_event->ts);
           json_writer_end_object(&w);
         }
@@ -710,16 +710,16 @@ static int handle_inspect(const trace_data_t* td, const cli_args_t* args,
 
     // Custom Arguments
     if (e->args_count > 0) {
-      json_writer_name(&w, string_lit("args"));
+      json_writer_name(&w, SV("args"));
       json_writer_begin_object(&w);
       const trace_arg_persisted_t* args_ptr =
           (const trace_arg_persisted_t*)td->args.ptr + e->args_offset;
       for (uint32_t a_idx = 0; a_idx < e->args_count; a_idx++) {
         const trace_arg_persisted_t* arg = &args_ptr[a_idx];
-        string_t key = trace_data_get_string(td, arg->key_ref);
+        string_view_t key = trace_data_get_string(td, arg->key_ref);
         json_writer_name(&w, key);
         if (arg->val_ref != 0) {
-          string_t val = trace_data_get_string(td, arg->val_ref);
+          string_view_t val = trace_data_get_string(td, arg->val_ref);
           json_writer_string(&w, val);
         } else {
           json_writer_number_double(&w, arg->val_double);
@@ -776,10 +776,11 @@ static int handle_query(const trace_data_t* td, const cli_args_t* args,
   // Find the target track if filtering by track
   const track_t* track_filter = nullptr;
   if (args->track_filter) {
-    string_t target_track_name = string_from_cstr(args->track_filter);
+    string_view_t target_track_name = string_view_from_cstr(args->track_filter);
     for (size_t i = 0; i < tracks.len; i++) {
-      string_t track_name = trace_data_get_string(td, tracks_data[i].name_ref);
-      if (string_eq(track_name, target_track_name)) {
+      string_view_t track_name =
+          trace_data_get_string(td, tracks_data[i].name_ref);
+      if (string_view_eq(track_name, target_track_name)) {
         track_filter = &tracks_data[i];
         break;
       }
@@ -833,8 +834,8 @@ static int handle_query(const trace_data_t* td, const cli_args_t* args,
 
       // 2. Substring match check
       if (args->match_filter) {
-        string_t name = trace_data_get_string(td, e->name_ref);
-        string_t cat = trace_data_get_string(td, e->cat_ref);
+        string_view_t name = trace_data_get_string(td, e->name_ref);
+        string_view_t cat = trace_data_get_string(td, e->cat_ref);
         bool match =
             trace_viewer_str_contains_case_insensitive(
                 name, args->match_filter, strlen(args->match_filter)) ||
@@ -883,19 +884,19 @@ static int handle_query(const trace_data_t* td, const cli_args_t* args,
 
     json_writer_begin_object(&w);
 
-    json_writer_name(&w, string_lit("name"));
+    json_writer_name(&w, SV("name"));
     json_writer_string(&w, trace_data_get_string(td, e->name_ref));
 
-    json_writer_name(&w, string_lit("track"));
+    json_writer_name(&w, SV("track"));
     json_writer_string(&w, trace_data_get_string(td, m->track->name_ref));
 
-    json_writer_name(&w, string_lit("ts_us"));
+    json_writer_name(&w, SV("ts_us"));
     json_writer_number_double(&w, (double)e->ts);
 
-    json_writer_name(&w, string_lit("dur_us"));
+    json_writer_name(&w, SV("dur_us"));
     json_writer_number_double(&w, (double)e->dur);
 
-    json_writer_name(&w, string_lit("depth"));
+    json_writer_name(&w, SV("depth"));
     json_writer_number_int(&w, (int64_t)m->depth);
 
     json_writer_end_object(&w);
@@ -928,19 +929,19 @@ int main(int argc, char* argv[]) {
     trace_data_t* td = trace_loader_load_file(args.trace_file, a, nullptr);
 
     if (td) {
-      string_t sub = string_from_cstr(args.subcommand);
+      string_view_t sub = string_view_from_cstr(args.subcommand);
 
-      if (string_eq(sub, string_lit("summary"))) {
+      if (string_view_eq(sub, SV("summary"))) {
         exit_code = handle_summary(td, args.pretty, a);
-      } else if (string_eq(sub, string_lit("tracks"))) {
+      } else if (string_view_eq(sub, SV("tracks"))) {
         exit_code = handle_tracks(td, args.pretty, a);
-      } else if (string_eq(sub, string_lit("heatmap"))) {
+      } else if (string_view_eq(sub, SV("heatmap"))) {
         exit_code = handle_heatmap(td, args.pretty, a);
-      } else if (string_eq(sub, string_lit("histogram"))) {
+      } else if (string_view_eq(sub, SV("histogram"))) {
         exit_code = handle_histogram(td, &args, a);
-      } else if (string_eq(sub, string_lit("inspect"))) {
+      } else if (string_view_eq(sub, SV("inspect"))) {
         exit_code = handle_inspect(td, &args, a);
-      } else if (string_eq(sub, string_lit("query"))) {
+      } else if (string_view_eq(sub, SV("query"))) {
         exit_code = handle_query(td, &args, a);
       } else {
         fprintf(stderr, "Error: Subcommand '%s' is not yet implemented.\n",

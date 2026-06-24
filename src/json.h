@@ -31,7 +31,7 @@ typedef enum json_token_type {
 
 typedef struct json_token {
   json_token_type_t type;
-  string_t str;
+  string_view_t str;
 } json_token_t;
 
 typedef struct json_reader {
@@ -61,8 +61,8 @@ static inline void json_reader_skip_whitespace(json_reader_t* r) {
 }
 
 void json_reader_init(json_reader_t* r, const char* buf, size_t len);
-bool json_reader_read_string(json_reader_t* r, string_t* out_val);
-bool json_reader_read_number(json_reader_t* r, string_t* out_val);
+bool json_reader_read_string(json_reader_t* r, string_view_t* out_val);
+bool json_reader_read_number(json_reader_t* r, string_view_t* out_val);
 bool json_reader_read_literal(json_reader_t* r, const char* literal,
                               json_token_type_t type, json_token_t* out_token);
 json_token_t json_reader_next(json_reader_t* r);
@@ -87,10 +87,10 @@ void json_writer_begin_array(json_writer_t* w);
 void json_writer_end_array(json_writer_t* w);
 
 // Write key names (only valid inside objects)
-void json_writer_name(json_writer_t* w, string_t name);
+void json_writer_name(json_writer_t* w, string_view_t name);
 
 // Write values (automatically handles leading commas based on nesting state)
-void json_writer_string(json_writer_t* w, string_t val);
+void json_writer_string(json_writer_t* w, string_view_t val);
 void json_writer_number_double(json_writer_t* w, double val);
 void json_writer_number_int(json_writer_t* w, int64_t val);
 void json_writer_bool(json_writer_t* w, bool val);

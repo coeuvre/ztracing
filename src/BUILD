@@ -81,6 +81,10 @@ cc_library(
 cc_library(
     name = "string",
     hdrs = ["string.h"],
+    deps = [
+        ":allocator",
+        ":assert",
+    ],
 )
 
 cc_library(
@@ -185,6 +189,16 @@ cc_test(
     srcs = ["array_list_test.cc"],
     deps = [
         ":array_list",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "string_test",
+    srcs = ["string_test.cc"],
+    deps = [
+        ":string",
+        ":allocator",
         "@googletest//:gtest_main",
     ],
 )

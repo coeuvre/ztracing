@@ -66,12 +66,9 @@ TEST_F(TrackRendererTest, CoalesceSameColor) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
   trace_data_add_event(td, allocator, theme_get_dark(), &e3);
 
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
-  *array_list_push(&t.event_indices, decltype((size_t)2), allocator) =
-      (size_t)2;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)2;
 
   array_list_resize(&t.depths, 3, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
@@ -125,7 +122,7 @@ TEST_F(TrackRendererTest, ThreadBucketingStability) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e3);
 
   for (size_t i = 0; i < 4; ++i)
-    *array_list_push(&t.event_indices, decltype(i), allocator) = i;
+    *array_list_push(&t.event_indices, size_t, allocator) = i;
   array_list_resize(&t.depths, 4, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 4; ++i) depths[i] = 0;
@@ -194,10 +191,8 @@ TEST_F(TrackRendererTest, CoalesceDifferentColors) {
   (((trace_event_persisted_t*)td->events.ptr)[0]).palette_index = 0;
   (((trace_event_persisted_t*)td->events.ptr)[1]).palette_index = 1;
 
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
   array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
@@ -235,10 +230,8 @@ TEST_F(TrackRendererTest, MultipleBlocksCloseTogether) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
 
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
   array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
@@ -298,7 +291,7 @@ TEST_F(TrackRendererTest, CullingAfterMergeFlush) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e5);
 
   for (size_t i = 0; i < 5; i++)
-    *array_list_push(&t.event_indices, decltype(i), allocator) = i;
+    *array_list_push(&t.event_indices, size_t, allocator) = i;
   array_list_resize(&t.depths, 5, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 5; i++) depths[i] = 0;
@@ -337,10 +330,8 @@ TEST_F(TrackRendererTest, SelectedEventNeverSkipped) {
   (((trace_event_persisted_t*)td->events.ptr)[0]).palette_index = 0;
   (((trace_event_persisted_t*)td->events.ptr)[1]).palette_index = 0;
 
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
   array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
@@ -348,7 +339,7 @@ TEST_F(TrackRendererTest, SelectedEventNeverSkipped) {
   t.max_depth = 0;
 
   array_list_t selected = {};
-  *array_list_push(&selected, decltype((int64_t)1), allocator) = (int64_t)1;
+  *array_list_push(&selected, int64_t, allocator) = (int64_t)1;
   track_renderer_update_selection_bitset(
       &state, td, (const array_list_t*)&selected, allocator);
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
@@ -383,7 +374,7 @@ TEST_F(TrackRendererTest, SameLaneOverlap) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
 
   for (size_t i = 0; i < 2; i++)
-    *array_list_push(&t.event_indices, decltype(i), allocator) = i;
+    *array_list_push(&t.event_indices, size_t, allocator) = i;
   array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
@@ -431,14 +422,14 @@ TEST_F(TrackRendererTest, SelectedEventOverlap) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e3);
 
   for (size_t i = 0; i < 3; i++)
-    *array_list_push(&t.event_indices, decltype(i), allocator) = i;
+    *array_list_push(&t.event_indices, size_t, allocator) = i;
   array_list_resize(&t.depths, 3, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 3; i++) depths[i] = 0;
   t.max_depth = 0;
 
   array_list_t selected = {};
-  *array_list_push(&selected, decltype((int64_t)1), allocator) = (int64_t)1;
+  *array_list_push(&selected, int64_t, allocator) = (int64_t)1;
   track_renderer_update_selection_bitset(
       &state, td, (const array_list_t*)&selected, allocator);
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
@@ -479,14 +470,14 @@ TEST_F(TrackRendererTest, SelectedEventNoOverlap) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e3);
 
   for (size_t i = 0; i < 3; i++)
-    *array_list_push(&t.event_indices, decltype(i), allocator) = i;
+    *array_list_push(&t.event_indices, size_t, allocator) = i;
   array_list_resize(&t.depths, 3, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 3; i++) depths[i] = 0;
   t.max_depth = 0;
 
   array_list_t selected = {};
-  *array_list_push(&selected, decltype((int64_t)1), allocator) = (int64_t)1;
+  *array_list_push(&selected, int64_t, allocator) = (int64_t)1;
   track_renderer_update_selection_bitset(
       &state, td, (const array_list_t*)&selected, allocator);
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
@@ -513,8 +504,7 @@ TEST_F(TrackRendererTest, ExtremeZoomOut) {
     e.ts = (int64_t)i * 2;
     e.dur = 1;
     trace_data_add_event(td, allocator, theme_get_dark(), &e);
-    *array_list_push(&t.event_indices, decltype((size_t)i), allocator) =
-        (size_t)i;
+    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)i;
   }
   array_list_resize(&t.depths, 1000, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
@@ -555,7 +545,7 @@ TEST_F(TrackRendererTest, CounterBucketing) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e4);
 
   for (size_t i = 0; i < 4; i++)
-    *array_list_push(&t.event_indices, decltype(i), allocator) = i;
+    *array_list_push(&t.event_indices, size_t, allocator) = i;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -587,10 +577,8 @@ TEST_F(TrackRendererTest, CounterFirstEventGap) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -620,10 +608,8 @@ TEST_F(TrackRendererTest, CounterMidViewport) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -651,10 +637,8 @@ TEST_F(TrackRendererTest, CounterDrawTooFarLeft) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -681,10 +665,8 @@ TEST_F(TrackRendererTest, CounterCanvasOffset) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -708,8 +690,7 @@ TEST_F(TrackRendererTest, CounterBeforeFirstEvent) {
   e1.name = "c";
   e1.ts = 100;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -731,8 +712,7 @@ TEST_F(TrackRendererTest, CounterFirstEventAtStart) {
   e1.name = "c";
   e1.ts = 100;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -759,10 +739,8 @@ TEST_F(TrackRendererTest, CounterClampedGapBug) {
   e2.ts = 100;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -787,8 +765,7 @@ TEST_F(TrackRendererTest, CounterViewportFarLeft) {
   e1.name = "c";
   e1.ts = 100;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -810,8 +787,7 @@ TEST_F(TrackRendererTest, CounterFirstEventJustBefore) {
   e1.name = "c";
   e1.ts = 90;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -838,10 +814,8 @@ TEST_F(TrackRendererTest, CounterSessionStartGap) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -870,10 +844,8 @@ TEST_F(TrackRendererTest, CounterExactStart) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -899,10 +871,8 @@ TEST_F(TrackRendererTest, CounterViewportNegative) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -930,10 +900,8 @@ TEST_F(TrackRendererTest, CounterPartialStart) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -957,8 +925,7 @@ TEST_F(TrackRendererTest, CounterViewportFarRight) {
   e1.name = "c";
   e1.ts = 100;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -984,10 +951,8 @@ TEST_F(TrackRendererTest, CounterLastEventAtEnd) {
   e2.ts = 200;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -1025,14 +990,10 @@ TEST_F(TrackRendererTest, CounterPeakPreservation) {
 
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
-  *array_list_push(
-      &t.counter_series,
-      decltype(trace_data_push_string(td, string_lit("a"), allocator)),
-      allocator) = trace_data_push_string(td, string_lit("a"), allocator);
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  *array_list_push(&t.counter_series, string_ref_t, allocator) =
+      trace_data_push_string(td, SV("a"), allocator);
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -1075,10 +1036,8 @@ TEST_F(TrackRendererTest, CounterBucketingStability) {
   e2.ts = 20;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
 
   array_list_t blocks_a_impl = {};
   counter_render_block_t* blocks_a = nullptr;
@@ -1158,8 +1117,7 @@ TEST_F(TrackRendererTest, CounterGapInitialState) {
   e1.name = "c";
   e1.ts = 50;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -1182,8 +1140,7 @@ TEST_F(TrackRendererTest, CounterStartIdxBug) {
   e1.name = "c";
   e1.ts = 50;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
@@ -1210,10 +1167,8 @@ TEST_F(TrackRendererTest, CounterMaxDurBug) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
   t.max_dur = 0;
 
   array_list_t c_blocks_impl = {};
@@ -1253,14 +1208,10 @@ TEST_F(TrackRendererTest, CounterDropStubFix) {
 
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
-  *array_list_push(
-      &t.counter_series,
-      decltype(trace_data_push_string(td, string_lit("a"), allocator)),
-      allocator) = trace_data_push_string(td, string_lit("a"), allocator);
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  *array_list_push(&t.counter_series, string_ref_t, allocator) =
+      trace_data_push_string(td, SV("a"), allocator);
 
   array_list_t counter_blocks_impl = {};
   counter_render_block_t* counter_blocks = nullptr;
@@ -1322,7 +1273,7 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityPanned) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e3);
 
   for (size_t i = 0; i < 4; ++i)
-    *array_list_push(&t.event_indices, decltype(i), allocator) = i;
+    *array_list_push(&t.event_indices, size_t, allocator) = i;
   array_list_resize(&t.depths, 4, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 4; ++i) depths[i] = 0;
@@ -1379,8 +1330,7 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityThreshold) {
   e0.dur = 30;
   trace_data_add_event(td, allocator, theme_get_dark(), &e0);
 
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
@@ -1446,7 +1396,7 @@ TEST_F(TrackRendererTest, ZoomedInSpanningEvent) {
   }
 
   for (size_t i = 0; i < 1000000; i++) {
-    *array_list_push(&t.event_indices, decltype(i), allocator) = i;
+    *array_list_push(&t.event_indices, size_t, allocator) = i;
   }
 
   array_list_resize(&t.depths, 1000000, sizeof(uint32_t), allocator);
@@ -1507,8 +1457,7 @@ TEST_F(TrackRendererTest, CorrectnessSpanningAndCoalesced) {
   e_spanning.ts = 0;
   e_spanning.dur = 2000;
   trace_data_add_event(td, allocator, theme_get_dark(), &e_spanning);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
 
   for (int i = 1; i < 1024; i++) {
     trace_event_t e = {};
@@ -1516,8 +1465,7 @@ TEST_F(TrackRendererTest, CorrectnessSpanningAndCoalesced) {
     e.ts = 0;
     e.dur = 10;
     trace_data_add_event(td, allocator, theme_get_dark(), &e);
-    *array_list_push(&t.event_indices, decltype((size_t)i), allocator) =
-        (size_t)i;
+    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)i;
   }
 
   // Block 1:
@@ -1528,8 +1476,7 @@ TEST_F(TrackRendererTest, CorrectnessSpanningAndCoalesced) {
     e.ts = 1000 + i * 2;
     e.dur = 1;
     trace_data_add_event(td, allocator, theme_get_dark(), &e);
-    *array_list_push(&t.event_indices, decltype((size_t)(1024 + i)),
-                     allocator) = (size_t)(1024 + i);
+    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)(1024 + i);
   }
 
   array_list_resize(&t.depths, 2048, sizeof(uint32_t), allocator);
@@ -1583,10 +1530,8 @@ TEST_F(TrackRendererTest, FocusedEventNeverSkipped) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
 
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
   array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
@@ -1646,14 +1591,10 @@ TEST_F(TrackRendererTest, CounterFocusedHighlight) {
   e2.args_count = 1;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
-  *array_list_push(
-      &t.counter_series,
-      decltype(trace_data_push_string(td, string_lit("value"), allocator)),
-      allocator) = trace_data_push_string(td, string_lit("value"), allocator);
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  *array_list_push(&t.counter_series, string_ref_t, allocator) =
+      trace_data_push_string(td, SV("value"), allocator);
 
   array_list_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;

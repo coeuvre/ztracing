@@ -78,12 +78,12 @@ TEST(json_test, writer_basic) {
 
   // {"a":1,"b":true,"c":"hello"}
   json_writer_begin_object(&w);
-  json_writer_name(&w, string_from_cstr("a"));
+  json_writer_name(&w, string_view_from_cstr("a"));
   json_writer_number_int(&w, 1);
-  json_writer_name(&w, string_from_cstr("b"));
+  json_writer_name(&w, string_view_from_cstr("b"));
   json_writer_bool(&w, true);
-  json_writer_name(&w, string_from_cstr("c"));
-  json_writer_string(&w, string_from_cstr("hello"));
+  json_writer_name(&w, string_view_from_cstr("c"));
+  json_writer_string(&w, string_view_from_cstr("hello"));
   json_writer_end_object(&w);
 
   std::string_view res(reinterpret_cast<const char*>(buf.ptr), buf.len);
@@ -100,8 +100,8 @@ TEST(json_test, writer_escaping) {
 
   // {"text":"line1\nline2\ttab\"quote"}
   json_writer_begin_object(&w);
-  json_writer_name(&w, string_from_cstr("text"));
-  json_writer_string(&w, string_from_cstr("line1\nline2\ttab\"quote"));
+  json_writer_name(&w, string_view_from_cstr("text"));
+  json_writer_string(&w, string_view_from_cstr("line1\nline2\ttab\"quote"));
   json_writer_end_object(&w);
 
   std::string_view res(reinterpret_cast<const char*>(buf.ptr), buf.len);
@@ -118,11 +118,11 @@ TEST(json_test, writer_nested) {
 
   // {"array":[1,{"nested":true},null]}
   json_writer_begin_object(&w);
-  json_writer_name(&w, string_from_cstr("array"));
+  json_writer_name(&w, string_view_from_cstr("array"));
   json_writer_begin_array(&w);
   json_writer_number_int(&w, 1);
   json_writer_begin_object(&w);
-  json_writer_name(&w, string_from_cstr("nested"));
+  json_writer_name(&w, string_view_from_cstr("nested"));
   json_writer_bool(&w, true);
   json_writer_end_object(&w);
   json_writer_null(&w);
@@ -280,7 +280,7 @@ TEST(json_test, writer_escaping_edge_cases) {
   // \b \f \r \\ and control chars \x01, \x1f
   const char text[] = "back\bform\ffeed\rslash\\\\control\x01\x1f";
   json_writer_begin_array(&w);
-  json_writer_string(&w, string_from_parts(text, sizeof(text) - 1));
+  json_writer_string(&w, string_view_from_parts(text, sizeof(text) - 1));
   json_writer_end_array(&w);
 
   std::string_view res(reinterpret_cast<const char*>(buf.ptr), buf.len);
@@ -355,9 +355,9 @@ TEST(json_test, writer_indentation) {
   //   ]
   // }
   json_writer_begin_object(&w);
-  json_writer_name(&w, string_from_cstr("a"));
+  json_writer_name(&w, string_view_from_cstr("a"));
   json_writer_number_int(&w, 1);
-  json_writer_name(&w, string_from_cstr("b"));
+  json_writer_name(&w, string_view_from_cstr("b"));
   json_writer_begin_array(&w);
   json_writer_number_int(&w, 2);
   json_writer_bool(&w, true);

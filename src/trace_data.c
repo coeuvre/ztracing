@@ -6,7 +6,7 @@
 #include "src/assert.h"
 #include "src/colors.h"
 
-static uint32_t compute_hash(string_t s) {
+static uint32_t compute_hash(string_view_t s) {
   uint32_t hash = 2166136261u;
   for (size_t i = 0; i < s.len; ++i) {
     hash ^= (uint8_t)s.ptr[i];
@@ -96,7 +96,7 @@ void trace_data_release(trace_data_t* td, allocator_t a) {
   }
 }
 
-string_ref_t trace_data_push_string(trace_data_t* td, string_t s,
+string_ref_t trace_data_push_string(trace_data_t* td, string_view_t s,
                                     allocator_t a) {
   string_ref_t result = 0;
   if (s.ptr == nullptr || s.len == 0) {
@@ -157,41 +157,41 @@ static uint8_t compute_event_palette_index(const trace_event_t* event) {
   bool resolved = false;
 
   if (event->cname.len > 0) {
-    if (string_eq(event->cname, string_lit("thread_state_running"))) {
+    if (string_view_eq(event->cname, SV("thread_state_running"))) {
       index = 3;
       resolved = true;
-    } else if (string_eq(event->cname, string_lit("thread_state_runnable"))) {
+    } else if (string_view_eq(event->cname, SV("thread_state_runnable"))) {
       index = 2;
       resolved = true;
-    } else if (string_eq(event->cname, string_lit("thread_state_sleeping"))) {
+    } else if (string_view_eq(event->cname, SV("thread_state_sleeping"))) {
       index = 4;
       resolved = true;
-    } else if (string_eq(event->cname,
-                         string_lit("thread_state_uninterruptible"))) {
+    } else if (string_view_eq(event->cname,
+                              SV("thread_state_uninterruptible"))) {
       index = 0;
       resolved = true;
-    } else if (string_eq(event->cname, string_lit("thread_state_iowait"))) {
+    } else if (string_view_eq(event->cname, SV("thread_state_iowait"))) {
       index = 1;
       resolved = true;
-    } else if (string_eq(event->cname, string_lit("rail_idle"))) {
+    } else if (string_view_eq(event->cname, SV("rail_idle"))) {
       index = 3;
       resolved = true;
-    } else if (string_eq(event->cname, string_lit("rail_animation"))) {
+    } else if (string_view_eq(event->cname, SV("rail_animation"))) {
       index = 6;
       resolved = true;
-    } else if (string_eq(event->cname, string_lit("rail_response"))) {
+    } else if (string_view_eq(event->cname, SV("rail_response"))) {
       index = 5;
       resolved = true;
-    } else if (string_eq(event->cname, string_lit("rail_load"))) {
+    } else if (string_view_eq(event->cname, SV("rail_load"))) {
       index = 1;
       resolved = true;
-    } else if (string_eq(event->cname, string_lit("background_memory_dump"))) {
+    } else if (string_view_eq(event->cname, SV("background_memory_dump"))) {
       index = 4;
       resolved = true;
-    } else if (string_eq(event->cname, string_lit("light_memory_dump"))) {
+    } else if (string_view_eq(event->cname, SV("light_memory_dump"))) {
       index = 5;
       resolved = true;
-    } else if (string_eq(event->cname, string_lit("detailed_memory_dump"))) {
+    } else if (string_view_eq(event->cname, SV("detailed_memory_dump"))) {
       index = 7;
       resolved = true;
     }
@@ -237,12 +237,12 @@ static void trace_data_merge_args(trace_data_t* td,
     trace_arg_persisted_t* td_args = (trace_arg_persisted_t*)td->args.ptr;
 
     for (size_t i = 0; i < e_ev->args_count; i++) {
-      string_t e_key = e_ev->args[i].key;
+      string_view_t e_key = e_ev->args[i].key;
       bool found = false;
       for (uint32_t j = 0; j < b_ev->args_count; j++) {
         const trace_arg_persisted_t* b_arg = &td_args[b_ev->args_offset + j];
-        string_t b_key = trace_data_get_string(td, b_arg->key_ref);
-        if (string_eq(b_key, e_key)) {
+        string_view_t b_key = trace_data_get_string(td, b_arg->key_ref);
+        if (string_view_eq(b_key, e_key)) {
           trace_arg_persisted_t* mutable_b_arg =
               &td_args[b_ev->args_offset + j];
           mutable_b_arg->val_ref =
@@ -307,7 +307,7 @@ static inline void trace_event_matcher_ensure_init(
 
 void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
                           trace_event_matcher_t* matcher, allocator_t a) {
-  string_t ph = event->ph;
+  string_view_t ph = event->ph;
   bool is_begin = (ph.len == 1 && (ph.ptr[0] == 'B' || ph.ptr[0] == 'b'));
   bool is_end = (ph.len == 1 && (ph.ptr[0] == 'E' || ph.ptr[0] == 'e'));
 

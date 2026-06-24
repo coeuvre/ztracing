@@ -88,16 +88,15 @@ TEST_F(TraceViewerTest, HitTestingThreadEvent) {
   e.dur = 100000;
   e.name_ref = 0;
   e.ph_ref = 0;  // thread event
-  *array_list_push(&td->events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
 
   // Add a track
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 1000000;
@@ -136,16 +135,15 @@ TEST_F(TraceViewerTest, ClickToFocusAndCenter) {
     e.dur = 1000;
     e.tid = i;
     size_t event_idx = td->events.len;
-    *array_list_push(&td->events, decltype(e), allocator) = e;
+    *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
 
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
     t.tid = i;
-    *array_list_push(&t.event_indices, decltype(event_idx), allocator) =
-        event_idx;
+    *array_list_push(&t.event_indices, size_t, allocator) = event_idx;
     track_update_max_dur(&t, td, allocator);
     track_calculate_depths(&t, td, allocator);
-    *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+    *array_list_push(&tv.tracks, track_t, allocator) = t;
   }
 
   tv.viewport.min_ts = 0;
@@ -194,15 +192,14 @@ TEST_F(TraceViewerTest, SelectionOnClick) {
   trace_event_persisted_t e = {};
   e.ts = 500000;
   e.dur = 100000;
-  *array_list_push(&td->events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 1000000;
@@ -348,15 +345,14 @@ TEST_F(TraceViewerTest, TimelineSnapping) {
   trace_event_persisted_t e = {};
   e.ts = 102;
   e.dur = 10;  // Ensure it's not a zero-width event
-  *array_list_push(&td->events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   trace_viewer_input_t input = {};
   input.canvas_x = 0.0f;
@@ -402,8 +398,8 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
   tv.selection_start_time = 400.0;
   tv.selection_end_time = 600.0;
   tv.last_inner_width = 1000.0f;
-  *array_list_push(&tv.selected_event_indices, decltype((int64_t)123),
-                   allocator) = (int64_t)123;
+  *array_list_push(&tv.selected_event_indices, int64_t, allocator) =
+      (int64_t)123;
   int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   std::sort(selected_event_indices,
@@ -413,15 +409,14 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
   trace_event_persisted_t e = {};
   e.ts = 100;
   e.dur = 50;
-  *array_list_push(&td->events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -454,8 +449,8 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
   tv.selection_start_time = 400.0;
   tv.selection_end_time = 600.0;
   tv.last_inner_width = 1000.0f;
-  *array_list_push(&tv.selected_event_indices, decltype((int64_t)123),
-                   allocator) = (int64_t)123;
+  *array_list_push(&tv.selected_event_indices, int64_t, allocator) =
+      (int64_t)123;
   int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   std::sort(selected_event_indices,
@@ -465,31 +460,29 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
   trace_arg_persisted_t arg = {};
   arg.key_ref = 1;
   arg.val_double = 1.0;
-  *array_list_push(&td->args, decltype(arg), allocator) = arg;
+  *array_list_push(&td->args, trace_arg_persisted_t, allocator) = arg;
 
   trace_event_persisted_t e1 = {};
   e1.ts = 100;
   e1.args_offset = 0;
   e1.args_count = 1;
-  *array_list_push(&td->events, decltype(e1), allocator) = e1;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
 
   trace_event_persisted_t e2 = {};
   e2.ts = 200;
   e2.args_offset = 0;
   e2.args_count = 1;
-  *array_list_push(&td->events, decltype(e2), allocator) = e2;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e2;
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
-  *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) =
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  *array_list_push(&t.counter_series, string_ref_t, allocator) =
       (string_ref_t)1;
   t.counter_max_total = 1.0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -528,8 +521,8 @@ TEST_F(TraceViewerTest, TimelineClickOutsideToClearTracks) {
   tv.last_tracks_y = 0.0f;
 
   // Add a dummy box selection
-  *array_list_push(&tv.selected_event_indices, decltype((int64_t)123),
-                   allocator) = (int64_t)123;
+  *array_list_push(&tv.selected_event_indices, int64_t, allocator) =
+      (int64_t)123;
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -603,31 +596,29 @@ TEST_F(TraceViewerTest, CounterInteractionInsideSelectionWorks) {
   trace_arg_persisted_t arg = {};
   arg.key_ref = 1;
   arg.val_double = 1.0;
-  *array_list_push(&td->args, decltype(arg), allocator) = arg;
+  *array_list_push(&td->args, trace_arg_persisted_t, allocator) = arg;
 
   trace_event_persisted_t e1 = {};
   e1.ts = 150;
   e1.args_offset = 0;
   e1.args_count = 1;
-  *array_list_push(&td->events, decltype(e1), allocator) = e1;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
 
   trace_event_persisted_t e2 = {};
   e2.ts = 300;
   e2.args_offset = 0;
   e2.args_count = 1;
-  *array_list_push(&td->events, decltype(e2), allocator) = e2;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e2;
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
-  *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) =
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  *array_list_push(&t.counter_series, string_ref_t, allocator) =
       (string_ref_t)1;
   t.counter_max_total = 1.0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -658,15 +649,14 @@ TEST_F(TraceViewerTest, SnappingOnlyInVisibleTracks) {
   trace_event_persisted_t e = {};
   e.ts = 102;
   e.dur = 10;
-  *array_list_push(&td->events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   trace_viewer_input_t input = {};
   input.canvas_x = 0.0f;
@@ -712,15 +702,14 @@ TEST_F(TraceViewerTest, SnappingDisabledWhenNotDragging) {
   trace_event_persisted_t e = {};
   e.ts = 102;
   e.dur = 10;
-  *array_list_push(&td->events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   trace_viewer_input_t input = {};
   input.canvas_x = 0;
@@ -861,14 +850,13 @@ TEST_F(TraceViewerTest, TimelineSnappedBoundaryDragTracks) {
   trace_event_persisted_t e = {};
   e.ts = 50;
   e.dur = 10;
-  *array_list_push(&td->events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -921,14 +909,12 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
     trace_event_persisted_t e2 = {};
     e2.ts = 200;
     e2.dur = 50;
-    *array_list_push(&td->events, decltype(e1), allocator) = e1;
-    *array_list_push(&td->events, decltype(e2), allocator) = e2;
+    *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
+    *array_list_push(&td->events, trace_event_persisted_t, allocator) = e2;
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
-    *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-        (size_t)0;
-    *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-        (size_t)1;
+    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
     uint32_t* depths = (uint32_t*)t.depths.ptr;
     (void)depths;
     array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
@@ -936,18 +922,17 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
     depths[0] = 0;
     depths[1] = 0;
     track_update_max_dur(&t, td, allocator);
-    *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+    *array_list_push(&tv.tracks, track_t, allocator) = t;
   }
   // track_t 2: Thread with 1 event in depth 1
   {
     trace_event_persisted_t e3 = {};
     e3.ts = 150;
     e3.dur = 100;
-    *array_list_push(&td->events, decltype(e3), allocator) = e3;
+    *array_list_push(&td->events, trace_event_persisted_t, allocator) = e3;
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
-    *array_list_push(&t.event_indices, decltype((size_t)2), allocator) =
-        (size_t)2;
+    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)2;
     uint32_t* depths = (uint32_t*)t.depths.ptr;
     (void)depths;
     array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
@@ -955,7 +940,7 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
     depths[0] = 1;
     track_update_max_dur(&t, td, allocator);
     t.max_depth = 1;
-    *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+    *array_list_push(&tv.tracks, track_t, allocator) = t;
   }
 
   tv.viewport.min_ts = 0;
@@ -1022,18 +1007,17 @@ TEST_F(TraceViewerTest, BoxSelectLongEvent) {
   trace_event_persisted_t e = {};
   e.ts = 0;
   e.dur = 1000;
-  *array_list_push(&td->events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   uint32_t* depths = (uint32_t*)t.depths.ptr;
   (void)depths;
   array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   tv.viewport.min_ts = 0;
   tv.viewport.max_ts = 1000;
@@ -1077,23 +1061,22 @@ TEST_F(TraceViewerTest, BoxSelectCounterHeaderIgnored) {
   trace_arg_persisted_t arg = {};
   arg.key_ref = 1;
   arg.val_double = 1.0;
-  *array_list_push(&td->args, decltype(arg), allocator) = arg;
+  *array_list_push(&td->args, trace_arg_persisted_t, allocator) = arg;
 
   trace_event_persisted_t e1 = {};
   e1.ts = 100;
   e1.args_offset = 0;
   e1.args_count = 1;
-  *array_list_push(&td->events, decltype(e1), allocator) = e1;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.counter_series, decltype((string_ref_t)1), allocator) =
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.counter_series, string_ref_t, allocator) =
       (string_ref_t)1;
   t.counter_max_total = 1.0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   tv.viewport.min_ts = 0;
   tv.viewport.max_ts = 1000;
@@ -1159,30 +1142,30 @@ TEST_F(TraceViewerTest, TrackHeaderNameFormatting) {
   // 1. Thread with name
   trace_data_t* td_local = trace_data_create(allocator);
   string_ref_t name_ref =
-      trace_data_push_string(td_local, string_lit("MainThread"), allocator);
+      trace_data_push_string(td_local, SV("MainThread"), allocator);
 
   track_t t1 = {};
   t1.type = TRACK_TYPE_THREAD;
   t1.name_ref = name_ref;
   t1.tid = 123;
-  *array_list_push(&tv.tracks, decltype(t1), allocator) = t1;
+  *array_list_push(&tv.tracks, track_t, allocator) = t1;
 
   // 2. Thread without name (fallback to TID)
   track_t t2 = {};
   t2.type = TRACK_TYPE_THREAD;
   t2.tid = 456;
-  *array_list_push(&tv.tracks, decltype(t2), allocator) = t2;
+  *array_list_push(&tv.tracks, track_t, allocator) = t2;
 
   // 3. Counter with name and ID
   string_ref_t c_name_ref =
-      trace_data_push_string(td_local, string_lit("Memory"), allocator);
+      trace_data_push_string(td_local, SV("Memory"), allocator);
   string_ref_t c_id_ref =
-      trace_data_push_string(td_local, string_lit("0x1"), allocator);
+      trace_data_push_string(td_local, SV("0x1"), allocator);
   track_t t3 = {};
   t3.type = TRACK_TYPE_COUNTER;
   t3.name_ref = c_name_ref;
   t3.id_ref = c_id_ref;
-  *array_list_push(&tv.tracks, decltype(t3), allocator) = t3;
+  *array_list_push(&tv.tracks, track_t, allocator) = t3;
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -1209,7 +1192,7 @@ TEST_F(TraceViewerTest, TrackLayoutAndCulling) {
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
     t.max_depth = 0;
-    *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+    *array_list_push(&tv.tracks, track_t, allocator) = t;
   }
 
   trace_viewer_input_t input = {};
@@ -1309,11 +1292,10 @@ TEST_F(TraceViewerTest, DoubleClickToZoomEdgeStability) {
   trace_data_add_event(td, allocator, theme, &ev);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   tv.viewport.min_ts = 0;
   tv.viewport.max_ts = 100000;
@@ -1380,11 +1362,10 @@ TEST_F(TraceViewerTest, DoubleClickToZoomSameFrameRelease) {
   trace_data_add_event(td, allocator, theme, &ev);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 10000;
@@ -1438,13 +1419,11 @@ TEST_F(TraceViewerTest, DoubleClickEventOutsideCurrentSelection) {
   trace_data_add_event(td, allocator, theme, &ev2);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 10000;
@@ -1492,15 +1471,13 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   trace_event_persisted_t e2 = {};
   e2.ts = 500;
   e2.dur = 50;
-  *array_list_push(&td->events, decltype(e1), allocator) = e1;
-  *array_list_push(&td->events, decltype(e2), allocator) = e2;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e2;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&t.event_indices, decltype((size_t)1), allocator) =
-      (size_t)1;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
   uint32_t* depths = (uint32_t*)t.depths.ptr;
   (void)depths;
   array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
@@ -1508,7 +1485,7 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   depths[0] = 0;
   depths[1] = 0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 1000;
@@ -1587,19 +1564,18 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
   trace_event_persisted_t e1 = {};
   e1.ts = 100;
   e1.dur = 50;
-  *array_list_push(&td->events, decltype(e1), allocator) = e1;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
   uint32_t* depths = (uint32_t*)t.depths.ptr;
   (void)depths;
   array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 1000;
@@ -1614,8 +1590,7 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
   tv.selection_end_time = 600.0;
 
   // 2. Add an event to box selection manually
-  *array_list_push(&tv.selected_event_indices, decltype((int64_t)0),
-                   allocator) = (int64_t)0;
+  *array_list_push(&tv.selected_event_indices, int64_t, allocator) = (int64_t)0;
 
   // 3. Click empty space inside timeline selection [500]
   trace_viewer_input_t input = {};
@@ -1637,11 +1612,10 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
 TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
   // Add a counter event (dur=0) at ts=5000
   trace_event_persisted_t e = {.ts = 5000, .dur = 0, .pid = 1, .tid = 1};
-  *array_list_push(&td->events, decltype(e), allocator) = e;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
   track_t t = {.type = TRACK_TYPE_COUNTER, .pid = 1, .tid = -1};
-  *array_list_push(&t.event_indices, decltype((size_t)0), allocator) =
-      (size_t)0;
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 10000;  // Zoom level: 10000 duration
@@ -1676,12 +1650,12 @@ TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
 TEST_F(TraceViewerTest, AsyncHistogramIntegrationForBoxSelect) {
   trace_event_persisted_t e1 = {.ts = 100, .dur = 50, .pid = 1, .tid = 1};
   trace_event_persisted_t e2 = {.ts = 200, .dur = 50, .pid = 1, .tid = 1};
-  *array_list_push(&td->events, decltype(e1), allocator) = e1;
-  *array_list_push(&td->events, decltype(e2), allocator) = e2;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
+  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e2;
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
-  *array_list_push(&t.event_indices, decltype(0ul), allocator) = 0ul;
-  *array_list_push(&t.event_indices, decltype(1ul), allocator) = 1ul;
+  *array_list_push(&t.event_indices, size_t, allocator) = 0ul;
+  *array_list_push(&t.event_indices, size_t, allocator) = 1ul;
   uint32_t* depths = (uint32_t*)t.depths.ptr;
   (void)depths;
   array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
@@ -1689,7 +1663,7 @@ TEST_F(TraceViewerTest, AsyncHistogramIntegrationForBoxSelect) {
   depths[0] = 0;
   depths[1] = 0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+  *array_list_push(&tv.tracks, track_t, allocator) = t;
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 1000;
@@ -1740,7 +1714,7 @@ TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
     t.tid = i;
     t.max_depth = 0;  // (max_depth + 2) * lane_height = (0 + 2) * 20 = 40px
                       // height per track
-    *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+    *array_list_push(&tv.tracks, track_t, allocator) = t;
   }
 
   tv.viewport.min_ts = 0;
@@ -1839,7 +1813,7 @@ TEST_F(TraceViewerTest, VerticalMinimapScrollingLayoutAndDragScroll) {
     t.type = TRACK_TYPE_THREAD;
     t.tid = i;
     t.max_depth = 0;  // 40px height per track
-    *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+    *array_list_push(&tv.tracks, track_t, allocator) = t;
   }
 
   tv.viewport.min_ts = 0;
@@ -1928,7 +1902,7 @@ TEST_F(TraceViewerTest, VerticalMinimapSliderFixedSizeAndBoundaryAlignment) {
     t.type = TRACK_TYPE_THREAD;
     t.tid = i;
     t.max_depth = 0;  // 40px height per track
-    *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+    *array_list_push(&tv.tracks, track_t, allocator) = t;
   }
 
   tv.viewport.min_ts = 0;
@@ -2024,7 +1998,7 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
     t.type = TRACK_TYPE_THREAD;
     t.tid = i;
     t.max_depth = 0;  // 40px height per track
-    *array_list_push(&tv.tracks, decltype(t), allocator) = t;
+    *array_list_push(&tv.tracks, track_t, allocator) = t;
   }
 
   tv.viewport.min_ts = 0;

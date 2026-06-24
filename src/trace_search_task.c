@@ -68,15 +68,15 @@ static void trace_search_run(void* arg) {
 
       const trace_event_persisted_t* e =
           array_list_get(&td->events, const trace_event_persisted_t, i);
-      string_t ph = trace_data_get_string(td, e->ph_ref);
+      string_view_t ph = trace_data_get_string(td, e->ph_ref);
       bool is_counter = (ph.len == 1 && ph.ptr[0] == 'C');
       bool is_metadata = (ph.len == 1 && ph.ptr[0] == 'M');
 
       if (is_counter && !task->include_counters) continue;
       if (!is_counter && !is_metadata && !task->include_threads) continue;
 
-      string_t name = trace_data_get_string(td, e->name_ref);
-      string_t cat = trace_data_get_string(td, e->cat_ref);
+      string_view_t name = trace_data_get_string(td, e->name_ref);
+      string_view_t cat = trace_data_get_string(td, e->cat_ref);
 
       bool match =
           trace_viewer_str_contains_case_insensitive(name, query_ptr,
@@ -89,7 +89,8 @@ static void trace_search_run(void* arg) {
               &((const trace_arg_persisted_t*)td->args.ptr)[e->args_offset + k];
 
           if (event_arg->val_ref != 0) {
-            string_t arg_val = trace_data_get_string(td, event_arg->val_ref);
+            string_view_t arg_val =
+                trace_data_get_string(td, event_arg->val_ref);
             if (trace_viewer_str_contains_case_insensitive(arg_val, query_ptr,
                                                            query_len)) {
               match = true;

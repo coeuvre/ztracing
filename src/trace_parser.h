@@ -17,11 +17,11 @@ extern "C" {
 #endif
 
 // A single argument parsed from an event.
-// string_t fields are non-owning views pointing into the parser's stream
+// string_view_t fields are non-owning views pointing into the parser's stream
 // buffer.
 typedef struct trace_arg {
-  string_t key;
-  string_t val;
+  string_view_t key;
+  string_view_t val;
   double val_double;
 } trace_arg_t;
 
@@ -33,11 +33,11 @@ typedef struct trace_arg {
 // any subsequent call to trace_parser_feed, trace_parser_next, or
 // trace_parser_deinit will invalidate this view and its pointers.
 typedef struct trace_event {
-  string_t name;
-  string_t cat;
-  string_t ph;
-  string_t cname;
-  string_t id;
+  string_view_t name;
+  string_view_t cat;
+  string_view_t ph;
+  string_view_t cname;
+  string_view_t id;
   int64_t ts;
   int64_t dur;
   int32_t pid;
@@ -75,7 +75,5 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a);
 #ifdef __cplusplus
 }
 #endif
-
-
 
 #endif  // ZTRACING_SRC_TRACE_PARSER_H_

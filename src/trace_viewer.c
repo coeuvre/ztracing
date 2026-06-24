@@ -43,8 +43,8 @@ static void trace_viewer_draw_vertical_minimap(const trace_viewer_t* tv,
     b = temp;         \
   } while (0)
 
-bool trace_viewer_str_contains_case_insensitive(string_t text, const char* q,
-                                                size_t q_len) {
+bool trace_viewer_str_contains_case_insensitive(string_view_t text,
+                                                const char* q, size_t q_len) {
   if (q_len == 0) return true;
   if (text.len < q_len) return false;
 
@@ -67,7 +67,7 @@ bool trace_viewer_str_contains_case_insensitive(string_t text, const char* q,
   return false;
 }
 
-static void trace_viewer_set_clipboard_string(string_t s,
+static void trace_viewer_set_clipboard_string(string_view_t s,
                                               allocator_t allocator) {
   if (s.len < 512) {
     char buf[512];
@@ -351,7 +351,7 @@ static void trace_viewer_draw_event(trace_viewer_t* tv, trace_data_t* td,
       float visible_x2 = min(x2, tracks_canvas_pos_x + inner_width);
 
       if (visible_x2 > visible_x1) {
-        string_t name = trace_data_get_string(td, name_ref);
+        string_view_t name = trace_data_get_string(td, name_ref);
         if (name.len > 0) {
           uint32_t text_col = theme->event_text;
           if (is_focused) {
@@ -383,7 +383,7 @@ static void trace_viewer_draw_event(trace_viewer_t* tv, trace_data_t* td,
 }
 
 static void trace_viewer_details_add_row(const char* field_label,
-                                         string_t value_str,
+                                         string_view_t value_str,
                                          const char* btn_id_suffix,
                                          bool show_copy_buttons, uint32_t color,
                                          bool has_color,
@@ -429,9 +429,9 @@ static void trace_viewer_draw_event_properties(
     const trace_data_t* td, const trace_event_persisted_t* e,
     double viewport_min_ts, bool show_copy_buttons, const track_t* t,
     const theme_t* theme, allocator_t allocator) {
-  string_t name = trace_data_get_string(td, e->name_ref);
-  string_t cat = trace_data_get_string(td, e->cat_ref);
-  string_t ph = trace_data_get_string(td, e->ph_ref);
+  string_view_t name = trace_data_get_string(td, e->name_ref);
+  string_view_t cat = trace_data_get_string(td, e->cat_ref);
+  string_view_t ph = trace_data_get_string(td, e->ph_ref);
 
   ig_spacing();
 
@@ -454,7 +454,7 @@ static void trace_viewer_draw_event_properties(
 
     // 1. Header Row / Event Name
     if (t != nullptr && t->type == TRACK_TYPE_COUNTER) {
-      string_t t_name = trace_data_get_string(td, t->name_ref);
+      string_view_t t_name = trace_data_get_string(td, t->name_ref);
       trace_viewer_details_add_row("Name", t_name, "Name", show_copy_buttons, 0,
                                    false, allocator);
     } else {
@@ -463,9 +463,9 @@ static void trace_viewer_draw_event_properties(
         trace_viewer_details_add_row("Name", name, "Name", show_copy_buttons, 0,
                                      false, allocator);
       } else {
-        trace_viewer_details_add_row("Name", (string_t){"(Counter Event)", 15},
-                                     "Name", show_copy_buttons, 0, false,
-                                     allocator);
+        trace_viewer_details_add_row(
+            "Name", (string_view_t){"(Counter Event)", 15}, "Name",
+            show_copy_buttons, 0, false, allocator);
       }
     }
 
@@ -477,15 +477,15 @@ static void trace_viewer_draw_event_properties(
     char ts_buf[32];
     format_duration(ts_buf, sizeof(ts_buf), (double)e->ts - viewport_min_ts,
                     0.0);
-    trace_viewer_details_add_row("Start", (string_t){ts_buf, strlen(ts_buf)},
-                                 nullptr, show_copy_buttons, 0, false,
-                                 allocator);
+    trace_viewer_details_add_row(
+        "Start", (string_view_t){ts_buf, strlen(ts_buf)}, nullptr,
+        show_copy_buttons, 0, false, allocator);
 
     if (e->dur > 0) {
       char dur_buf[32];
       format_duration(dur_buf, sizeof(dur_buf), (double)e->dur, 0.0);
       trace_viewer_details_add_row(
-          "Duration", (string_t){dur_buf, strlen(dur_buf)}, nullptr,
+          "Duration", (string_view_t){dur_buf, strlen(dur_buf)}, nullptr,
           show_copy_buttons, 0, false, allocator);
 
       if (t != nullptr && t->type == TRACK_TYPE_THREAD &&
@@ -518,7 +518,7 @@ static void trace_viewer_draw_event_properties(
           format_duration(self_dur_buf, sizeof(self_dur_buf), (double)self_dur,
                           0.0);
           trace_viewer_details_add_row(
-              "Self Time", (string_t){self_dur_buf, strlen(self_dur_buf)},
+              "Self Time", (string_view_t){self_dur_buf, strlen(self_dur_buf)},
               nullptr, show_copy_buttons, 0, false, allocator);
         }
       }
@@ -528,8 +528,8 @@ static void trace_viewer_draw_event_properties(
       char pid_tid_buf[64];
       snprintf(pid_tid_buf, sizeof(pid_tid_buf), "%d / %d", e->pid, e->tid);
       trace_viewer_details_add_row(
-          "PID / TID", (string_t){pid_tid_buf, strlen(pid_tid_buf)}, nullptr,
-          show_copy_buttons, 0, false, allocator);
+          "PID / TID", (string_view_t){pid_tid_buf, strlen(pid_tid_buf)},
+          nullptr, show_copy_buttons, 0, false, allocator);
     }
 
     size_t skip_count = 0;
@@ -537,10 +537,10 @@ static void trace_viewer_draw_event_properties(
 
     if (t != nullptr && t->type == TRACK_TYPE_COUNTER) {
       bool single_series_redundant = false;
-      string_t t_name = trace_data_get_string(td, t->name_ref);
+      string_view_t t_name = trace_data_get_string(td, t->name_ref);
 
       if (t->counter_series.len == 1) {
-        string_t s_name = trace_data_get_string(
+        string_view_t s_name = trace_data_get_string(
             td, ((const string_ref_t*)t->counter_series.ptr)[0]);
         bool match = false;
         if (s_name.len == t_name.len &&
@@ -579,7 +579,7 @@ static void trace_viewer_draw_event_properties(
 
         ig_table_next_column();
         if (val_s_ref != 0) {
-          string_t val_s = trace_data_get_string(td, val_s_ref);
+          string_view_t val_s = trace_data_get_string(td, val_s_ref);
           if (show_copy_buttons) {
             ig_text_wrapped("%.*s", (int)val_s.len, val_s.ptr);
           } else {
@@ -600,7 +600,7 @@ static void trace_viewer_draw_event_properties(
           size_t s_idx = t->counter_series.len - 1 - s_i;
           string_ref_t key_ref = series_ptr[s_idx];
 
-          string_t s_name = trace_data_get_string(td, key_ref);
+          string_view_t s_name = trace_data_get_string(td, key_ref);
           if ((s_name.len == 5 && memcmp(s_name.ptr, "total", 5) == 0) ||
               (s_name.len == 5 && memcmp(s_name.ptr, "Total", 5) == 0)) {
             has_total_series = true;
@@ -620,7 +620,7 @@ static void trace_viewer_draw_event_properties(
 
           char series_val_buf[64];
           if (val_s_ref != 0) {
-            string_t val_s = trace_data_get_string(td, val_s_ref);
+            string_view_t val_s = trace_data_get_string(td, val_s_ref);
             snprintf(series_val_buf, sizeof(series_val_buf), "%.*s",
                      (int)val_s.len, val_s.ptr);
           } else {
@@ -633,7 +633,7 @@ static void trace_viewer_draw_event_properties(
           name_buf[name_len] = '\0';
 
           trace_viewer_details_add_row(
-              name_buf, (string_t){series_val_buf, strlen(series_val_buf)},
+              name_buf, (string_view_t){series_val_buf, strlen(series_val_buf)},
               nullptr, show_copy_buttons,
               theme->event_palette[(
                   (const uint8_t*)t->counter_palette_indices.ptr)[s_idx]],
@@ -646,7 +646,7 @@ static void trace_viewer_draw_event_properties(
           char total_buf[64];
           snprintf(total_buf, sizeof(total_buf), "%.2f", total);
           trace_viewer_details_add_row(
-              "Total", (string_t){total_buf, strlen(total_buf)}, nullptr,
+              "Total", (string_view_t){total_buf, strlen(total_buf)}, nullptr,
               show_copy_buttons, 0, false, allocator);
         }
       }
@@ -668,7 +668,7 @@ static void trace_viewer_draw_event_properties(
       }
       if (skip) continue;
 
-      string_t key = trace_data_get_string(td, arg->key_ref);
+      string_view_t key = trace_data_get_string(td, arg->key_ref);
       char key_buf[128];
       size_t key_len = key.len < 127 ? key.len : 127;
       memcpy(key_buf, key.ptr, key_len);
@@ -678,13 +678,13 @@ static void trace_viewer_draw_event_properties(
       bool is_str = (arg->val_ref != 0);
 
       if (is_str) {
-        string_t val = trace_data_get_string(td, arg->val_ref);
+        string_view_t val = trace_data_get_string(td, arg->val_ref);
         trace_viewer_details_add_row(key_buf, val, key_buf, show_copy_buttons,
                                      0, false, allocator);
       } else {
         snprintf(val_buf, sizeof(val_buf), "%.2f", arg->val_double);
         trace_viewer_details_add_row(
-            key_buf, (string_t){val_buf, strlen(val_buf)}, nullptr,
+            key_buf, (string_view_t){val_buf, strlen(val_buf)}, nullptr,
             show_copy_buttons, 0, false, allocator);
       }
     }
@@ -1292,8 +1292,8 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
          vi->y <= input->canvas_y + input->canvas_height);
 
     // Format header name
-    string_t name_str = trace_data_get_string(td, t->name_ref);
-    string_t id_str = trace_data_get_string(td, t->id_ref);
+    string_view_t name_str = trace_data_get_string(td, t->name_ref);
+    string_view_t id_str = trace_data_get_string(td, t->id_ref);
 
     if (name_str.len == 0) {
       if (t->type == TRACK_TYPE_THREAD) {
@@ -2355,8 +2355,8 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
               for (int i = display_start; i < display_end; i++) {
                 size_t event_idx = (size_t)filtered_ptr[i];
                 const trace_event_persisted_t* e = &events[event_idx];
-                string_t name = trace_data_get_string(td, e->name_ref);
-                string_t cat = trace_data_get_string(td, e->cat_ref);
+                string_view_t name = trace_data_get_string(td, e->name_ref);
+                string_view_t cat = trace_data_get_string(td, e->cat_ref);
 
                 ig_table_next_row();
                 ig_table_next_column();
@@ -2413,7 +2413,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
         const trace_event_persisted_t* events =
             (const trace_event_persisted_t*)td->events.ptr;
         const trace_event_persisted_t* e = &events[tv->focused_event_idx];
-        string_t ph = trace_data_get_string(td, e->ph_ref);
+        string_view_t ph = trace_data_get_string(td, e->ph_ref);
         const track_t* target_track = nullptr;
 
         const track_t* tracks = (const track_t*)tv->tracks.ptr;
@@ -2483,7 +2483,7 @@ void trace_viewer_precompute_minimap_heatmap(trace_viewer_t* tv,
 
 struct sort_key {
   int64_t event_idx;
-  string_t text;
+  string_view_t text;
   int64_t numeric_val;
 };
 typedef struct sort_key sort_key_t;

@@ -32,7 +32,9 @@
 - `src/allocator`: Custom C-style allocator with `allocator_alloc`, `allocator_realloc`, and `allocator_free` helpers. Supports ZII via designated initializers.
     - **CountingAllocator**: A thread-safe decorator that tracks total allocated bytes using `std::atomic<size_t>`. It utilizes `memory_order_relaxed` for high-performance counter updates across the main UI thread and background parser threads.
     - **ImGui Integration**: Dear ImGui is configured to use the `CountingAllocator` for all internal allocations. A specialized wrapper handles the size-tracking requirement by prepending a 16-byte header to every ImGui-requested block, ensuring accurate memory reporting in the UI.
-- `src/str`: (Removed) Migrated to `std::string_view`. String-to-number utilities have been moved to their respective usage locations (e.g., `src/trace_parser.cc`) and now utilize `std::from_chars` for improved performance.
+- `src/string`: C-compatible string utility layer.
+    - **string_view_t**: A non-owning, C-compatible view of a string (pointer + length), not guaranteed to be null-terminated. In C++ mode, it provides seamless implicit conversion and operators for `std::string_view`.
+    - **string_t**: A growable, null-terminated C-style string buffer. Zero-Is-Initialization (ZII) compatible. Automatically manages memory growth and guarantees null-termination, making it safe for external C APIs.
 - `src/json`: Unified high-performance C23 JSON parser and writer engine.
     - **Streaming Reader**: Highly optimized, allocation-free C23 reader that maintains clean code separation (implemented in `json.c`). It parses names, numbers, strings, and literals on-the-fly via a highly efficient character-level scanning state machine.
     - **Streaming Writer**: Manages comma insertions and bracket stack scopes dynamically during trace formatting.

@@ -77,7 +77,7 @@ typedef struct trace_data {
 
   // Temporary storage for hashing during push
   struct {
-    string_t current_str;
+    string_view_t current_str;
     uint32_t current_hash;
   } tmp;
 
@@ -106,20 +106,20 @@ void trace_event_matcher_deinit(trace_event_matcher_t* matcher);
 struct Theme;
 typedef struct Theme theme_t;
 
-string_ref_t trace_data_push_string(trace_data_t* td, string_t s,
+string_ref_t trace_data_push_string(trace_data_t* td, string_view_t s,
                                     allocator_t a);
 
 void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
                           trace_event_matcher_t* matcher, allocator_t a);
 
-static inline string_t trace_data_get_string(const trace_data_t* td,
-                                             string_ref_t ref) {
-  string_t result = {};
+static inline string_view_t trace_data_get_string(const trace_data_t* td,
+                                                  string_ref_t ref) {
+  string_view_t result = {};
   if (ref > 0 && ref <= td->string_table.len) {
     const string_entry_t* table = (const string_entry_t*)td->string_table.ptr;
     const string_entry_t* e = &table[ref - 1];
-    result = string_from_parts((const char*)td->string_buffer.ptr + e->offset,
-                               e->len);
+    result = string_view_from_parts(
+        (const char*)td->string_buffer.ptr + e->offset, e->len);
   }
   return result;
 }

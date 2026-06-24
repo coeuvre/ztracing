@@ -235,8 +235,8 @@ void trace_viewer_adopt_search_results(trace_viewer_t* tv,
                                        trace_histogram_t* histogram,
                                        allocator_t allocator);
 
-bool trace_viewer_str_contains_case_insensitive(string_t text, const char* q,
-                                                size_t q_len);
+bool trace_viewer_str_contains_case_insensitive(string_view_t text,
+                                                const char* q, size_t q_len);
 
 void trace_viewer_search_job(void* user_data);
 void trace_viewer_submit_search_job(trace_viewer_t* tv);

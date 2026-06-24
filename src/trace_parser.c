@@ -35,7 +35,7 @@ size_t trace_parser_feed(trace_parser_t* p, const char* buf, size_t len,
   return discarded;
 }
 
-static double to_double(string_t s) {
+static double to_double(string_view_t s) {
   bool has_exponent = false;
   for (size_t i = 0; i < s.len; ++i) {
     if (s.ptr[i] == 'e' || s.ptr[i] == 'E') {
@@ -94,7 +94,7 @@ static double to_double(string_t s) {
   return val;
 }
 
-static int64_t to_int64(string_t s) {
+static int64_t to_int64(string_view_t s) {
   bool is_float = false;
   for (size_t i = 0; i < s.len; ++i) {
     if (s.ptr[i] == '.' || s.ptr[i] == 'e' || s.ptr[i] == 'E') {
@@ -132,7 +132,7 @@ static int64_t to_int64(string_t s) {
   return neg ? -val : val;
 }
 
-static int32_t to_int32(string_t s) {
+static int32_t to_int32(string_view_t s) {
   bool is_float = false;
   for (size_t i = 0; i < s.len; ++i) {
     if (s.ptr[i] == '.' || s.ptr[i] == 'e' || s.ptr[i] == 'E') {
@@ -191,70 +191,70 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
         break;
       }
 
-      string_t key = tok.str;
+      string_view_t key = tok.str;
       tok = json_reader_next(r);
       if (tok.type != JSON_TOKEN_COLON) {
         ok = false;
         break;
       }
 
-      if (string_eq(key, string_lit("name"))) {
+      if (string_view_eq(key, SV("name"))) {
         tok = json_reader_next(r);
         if (tok.type != JSON_TOKEN_STRING) {
           ok = false;
           break;
         }
         event->name = tok.str;
-      } else if (string_eq(key, string_lit("cat"))) {
+      } else if (string_view_eq(key, SV("cat"))) {
         tok = json_reader_next(r);
         if (tok.type != JSON_TOKEN_STRING) {
           ok = false;
           break;
         }
         event->cat = tok.str;
-      } else if (string_eq(key, string_lit("ph"))) {
+      } else if (string_view_eq(key, SV("ph"))) {
         tok = json_reader_next(r);
         if (tok.type != JSON_TOKEN_STRING) {
           ok = false;
           break;
         }
         event->ph = tok.str;
-      } else if (string_eq(key, string_lit("cname"))) {
+      } else if (string_view_eq(key, SV("cname"))) {
         tok = json_reader_next(r);
         if (tok.type != JSON_TOKEN_STRING) {
           ok = false;
           break;
         }
         event->cname = tok.str;
-      } else if (string_eq(key, string_lit("ts"))) {
+      } else if (string_view_eq(key, SV("ts"))) {
         tok = json_reader_next(r);
         if (tok.type != JSON_TOKEN_NUMBER) {
           ok = false;
           break;
         }
         event->ts = to_int64(tok.str);
-      } else if (string_eq(key, string_lit("dur"))) {
+      } else if (string_view_eq(key, SV("dur"))) {
         tok = json_reader_next(r);
         if (tok.type != JSON_TOKEN_NUMBER) {
           ok = false;
           break;
         }
         event->dur = to_int64(tok.str);
-      } else if (string_eq(key, string_lit("pid"))) {
+      } else if (string_view_eq(key, SV("pid"))) {
         tok = json_reader_next(r);
         if (tok.type != JSON_TOKEN_NUMBER) {
           ok = false;
           break;
         }
         event->pid = to_int32(tok.str);
-      } else if (string_eq(key, string_lit("tid"))) {
+      } else if (string_view_eq(key, SV("tid"))) {
         tok = json_reader_next(r);
         if (tok.type != JSON_TOKEN_NUMBER) {
           ok = false;
           break;
         }
         event->tid = to_int32(tok.str);
-      } else if (string_eq(key, string_lit("id"))) {
+      } else if (string_view_eq(key, SV("id"))) {
         tok = json_reader_next(r);
         if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER) {
           event->id = tok.str;
@@ -262,7 +262,7 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
           ok = false;
           break;
         }
-      } else if (string_eq(key, string_lit("args"))) {
+      } else if (string_view_eq(key, SV("args"))) {
         tok = json_reader_next(r);
         if (tok.type != JSON_TOKEN_OBJECT_START) {
           ok = false;
@@ -292,7 +292,7 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
               tok.type == JSON_TOKEN_NULL_VAL) {
             if (tok.type == JSON_TOKEN_NUMBER) {
               arg.val_double = to_double(tok.str);
-              arg.val = (string_t){};
+              arg.val = (string_view_t){};
             } else {
               arg.val = tok.str;
             }
@@ -310,7 +310,7 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
                 depth--;
               }
             }
-            arg.val = string_from_parts(r->buf + start, r->pos - start);
+            arg.val = string_view_from_parts(r->buf + start, r->pos - start);
           } else {
             ok = false;
             break;
@@ -406,7 +406,7 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
           p->state = TRACE_PARSER_STATE_COMPLETE;
           loop = false;  // done
         } else if (tok.type == JSON_TOKEN_STRING) {
-          bool is_trace_events = string_eq(tok.str, string_lit("traceEvents"));
+          bool is_trace_events = string_view_eq(tok.str, SV("traceEvents"));
           tok = json_reader_next(&r);
           if (tok.type != JSON_TOKEN_COLON) {
             loop = false;  // Error!

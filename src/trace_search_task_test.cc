@@ -58,27 +58,27 @@ TEST(trace_search_task_test, e2e_search_task) {
 
     // Event 0: name="foo", cat="bar"
     trace_event_t ev0 = {};
-    ev0.name = string_lit("foo");
-    ev0.cat = string_lit("bar");
-    ev0.ph = string_lit("X");
+    ev0.name = SV("foo");
+    ev0.cat = SV("bar");
+    ev0.ph = SV("X");
     ev0.ts = 100;
     ev0.dur = 50;
     trace_data_add_event(td, &ev0, &matcher, a);
 
     // Event 1: name="hello", cat="world"
     trace_event_t ev1 = {};
-    ev1.name = string_lit("hello");
-    ev1.cat = string_lit("world");
-    ev1.ph = string_lit("X");
+    ev1.name = SV("hello");
+    ev1.cat = SV("world");
+    ev1.ph = SV("X");
     ev1.ts = 200;
     ev1.dur = 10;
     trace_data_add_event(td, &ev1, &matcher, a);
 
     // Event 2: name="baz", cat="bar"
     trace_event_t ev2 = {};
-    ev2.name = string_lit("baz");
-    ev2.cat = string_lit("bar");
-    ev2.ph = string_lit("X");
+    ev2.name = SV("baz");
+    ev2.cat = SV("bar");
+    ev2.ph = SV("X");
     ev2.ts = 300;
     ev2.dur = 20;
     trace_data_add_event(td, &ev2, &matcher, a);
