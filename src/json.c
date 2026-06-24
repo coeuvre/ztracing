@@ -14,13 +14,39 @@
 // 1. JSON READER (Parser) Implementation
 // ==========================================
 
+// Returns the character at the current position, or '\0' if at the end of the buffer.
+// Does not advance the parser's position.
+static inline char json_reader_peek(const json_reader_t* r) {
+  return r->pos < r->len ? r->buf[r->pos] : 0;
+}
+
+// Advances the parsing position by one character if not already at the end.
+static inline void json_reader_advance(json_reader_t* r) {
+  if (r->pos < r->len) {
+    r->pos++;
+  }
+}
+
+// Skips any whitespace characters at the current parsing position.
+static inline void json_reader_skip_whitespace(json_reader_t* r) {
+  while (!json_reader_done(r) && isspace((unsigned char)json_reader_peek(r))) {
+    json_reader_advance(r);
+  }
+}
+
 void json_reader_init(json_reader_t* r, const char* buf, size_t len) {
   r->buf = buf;
   r->len = len;
   r->pos = 0;
 }
 
-bool json_reader_read_string(json_reader_t* r, string_view_t* out_val) {
+// Attempts to read a JSON string starting at the current position.
+// Expects the current character to be '"'.
+// On success, 'out_val' is populated with a view of the string content
+// (excluding the surrounding quotes) and the reader is advanced past the closing quote.
+// Handles escaped characters (e.g., \", \\).
+// Returns true on success, or false if a parsing error occurs (e.g., missing closing quote).
+static bool json_reader_read_string(json_reader_t* r, string_view_t* out_val) {
   bool success = false;
   if (json_reader_peek(r) == '"') {
     json_reader_advance(r);
@@ -46,7 +72,12 @@ bool json_reader_read_string(json_reader_t* r, string_view_t* out_val) {
   return success;
 }
 
-bool json_reader_read_number(json_reader_t* r, string_view_t* out_val) {
+// Attempts to read a JSON number starting at the current position.
+// On success, 'out_val' is populated with a view of the parsed number
+// and the reader is advanced past the number.
+// Performs basic validation for signs, decimals, and scientific notation.
+// Returns true on success (if at least one digit is parsed), or false otherwise.
+static bool json_reader_read_number(json_reader_t* r, string_view_t* out_val) {
   bool success = false;
   size_t start = r->pos;
   if (json_reader_peek(r) == '-') {
@@ -66,15 +97,19 @@ bool json_reader_read_number(json_reader_t* r, string_view_t* out_val) {
   return success;
 }
 
-bool json_reader_read_literal(json_reader_t* r, const char* literal,
-                              json_token_type_t type, json_token_t* out_token) {
+// Checks if the buffer starting at the current position matches 'literal'.
+// If a match is found, 'out_token' (if non-null) is populated with the specified 'type'
+// and a view of the matched text, and the reader is advanced past the literal.
+// Returns true if matched, or false otherwise.
+static bool json_reader_read_literal(json_reader_t* r, const char* literal,
+                                     json_token_type_t type, json_token_t* out_token) {
   bool success = false;
   size_t literal_len = strlen(literal);
   if (r->pos + literal_len <= r->len) {
     if (memcmp(r->buf + r->pos, literal, literal_len) == 0) {
       if (out_token) {
         out_token->type = type;
-        out_token->str = string_view_from_parts(r->buf + r->pos, literal_len);
+        out_token->val = string_view_from_parts(r->buf + r->pos, literal_len);
       }
       r->pos += literal_len;
       success = true;
@@ -88,67 +123,67 @@ json_token_t json_reader_next(json_reader_t* r) {
   json_reader_skip_whitespace(r);
 
   if (json_reader_done(r)) {
-    tok.type = JSON_TOKEN_NONE;
-    tok.str.ptr = NULL;
-    tok.str.len = 0;
+    tok.type = JSON_TOKEN_EOF;
+    tok.val.ptr = NULL;
+    tok.val.len = 0;
   } else {
     char c = json_reader_peek(r);
     switch (c) {
       case '{':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_OBJECT_START;
-        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
+        tok.val = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case '}':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_OBJECT_END;
-        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
+        tok.val = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case '[':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_ARRAY_START;
-        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
+        tok.val = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case ']':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_ARRAY_END;
-        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
+        tok.val = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case ':':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_COLON;
-        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
+        tok.val = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case ',':
         json_reader_advance(r);
         tok.type = JSON_TOKEN_COMMA;
-        tok.str = string_view_from_parts(r->buf + r->pos - 1, 1);
+        tok.val = string_view_from_parts(r->buf + r->pos - 1, 1);
         break;
       case '"':
         tok.type = JSON_TOKEN_STRING;
-        if (!json_reader_read_string(r, &tok.str)) {
+        if (!json_reader_read_string(r, &tok.val)) {
           tok.type = JSON_TOKEN_ERROR;
         }
         break;
       case 't':
-        if (!json_reader_read_literal(r, "true", JSON_TOKEN_BOOLEAN, &tok)) {
+        if (!json_reader_read_literal(r, "true", JSON_TOKEN_TRUE, &tok)) {
           tok.type = JSON_TOKEN_ERROR;
         }
         break;
       case 'f':
-        if (!json_reader_read_literal(r, "false", JSON_TOKEN_BOOLEAN, &tok)) {
+        if (!json_reader_read_literal(r, "false", JSON_TOKEN_FALSE, &tok)) {
           tok.type = JSON_TOKEN_ERROR;
         }
         break;
       case 'n':
-        if (!json_reader_read_literal(r, "null", JSON_TOKEN_NULL_VAL, &tok)) {
+        if (!json_reader_read_literal(r, "null", JSON_TOKEN_NULL, &tok)) {
           tok.type = JSON_TOKEN_ERROR;
         }
         break;
       default:
         if (isdigit((unsigned char)c) || c == '-') {
           tok.type = JSON_TOKEN_NUMBER;
-          if (!json_reader_read_number(r, &tok.str)) {
+          if (!json_reader_read_number(r, &tok.val)) {
             tok.type = JSON_TOKEN_ERROR;
           }
         } else {

@@ -15,15 +15,16 @@ extern "C" {
 #endif
 
 typedef enum json_token_type {
-  JSON_TOKEN_NONE,
+  JSON_TOKEN_EOF,
   JSON_TOKEN_OBJECT_START,  // {
   JSON_TOKEN_OBJECT_END,    // }
   JSON_TOKEN_ARRAY_START,   // [
   JSON_TOKEN_ARRAY_END,     // ]
   JSON_TOKEN_STRING,
   JSON_TOKEN_NUMBER,
-  JSON_TOKEN_BOOLEAN,
-  JSON_TOKEN_NULL_VAL,
+  JSON_TOKEN_TRUE,
+  JSON_TOKEN_FALSE,
+  JSON_TOKEN_NULL,
   JSON_TOKEN_COLON,  // :
   JSON_TOKEN_COMMA,  // ,
   JSON_TOKEN_ERROR,
@@ -31,40 +32,31 @@ typedef enum json_token_type {
 
 typedef struct json_token {
   json_token_type_t type;
-  string_view_t str;
+  string_view_t val;
 } json_token_t;
 
+// A lightweight, allocation-free, streaming JSON parser.
+// It parses names, numbers, strings, and literals on-the-fly directly from
+// a provided character buffer.
 typedef struct json_reader {
-  const char* buf;
-  size_t len;
-  size_t pos;
+  const char* buf; // Pointer to the JSON input buffer
+  size_t len;      // Total length of the input buffer
+  size_t pos;      // Current parsing position (offset from buf)
 } json_reader_t;
 
+// Returns true if the reader has reached the end of the input buffer.
 static inline bool json_reader_done(const json_reader_t* r) {
   return r->pos >= r->len;
 }
 
-static inline char json_reader_peek(const json_reader_t* r) {
-  return r->pos < r->len ? r->buf[r->pos] : 0;
-}
 
-static inline void json_reader_advance(json_reader_t* r) {
-  if (r->pos < r->len) {
-    r->pos++;
-  }
-}
-
-static inline void json_reader_skip_whitespace(json_reader_t* r) {
-  while (!json_reader_done(r) && isspace((unsigned char)json_reader_peek(r))) {
-    json_reader_advance(r);
-  }
-}
-
+// Initializes the JSON reader with the given buffer and length.
+// The buffer is not copied and must remain valid during parsing.
 void json_reader_init(json_reader_t* r, const char* buf, size_t len);
-bool json_reader_read_string(json_reader_t* r, string_view_t* out_val);
-bool json_reader_read_number(json_reader_t* r, string_view_t* out_val);
-bool json_reader_read_literal(json_reader_t* r, const char* literal,
-                              json_token_type_t type, json_token_t* out_token);
+
+// Parses and returns the next JSON token, skipping any leading whitespace.
+// Returns a token with type JSON_TOKEN_EOF if the end of the buffer is reached.
+// Returns a token with type JSON_TOKEN_ERROR on parsing failures.
 json_token_t json_reader_next(json_reader_t* r);
 
 // ==========================================

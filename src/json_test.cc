@@ -20,7 +20,7 @@ TEST(json_test, reader_basic) {
 
   tok = json_reader_next(&r);
   EXPECT_EQ(tok.type, JSON_TOKEN_STRING);
-  EXPECT_EQ(std::string_view(tok.str.ptr, tok.str.len), "key");
+  EXPECT_EQ(std::string_view(tok.val.ptr, tok.val.len), "key");
 
   tok = json_reader_next(&r);
   EXPECT_EQ(tok.type, JSON_TOKEN_COLON);
@@ -30,35 +30,35 @@ TEST(json_test, reader_basic) {
 
   tok = json_reader_next(&r);
   EXPECT_EQ(tok.type, JSON_TOKEN_NUMBER);
-  EXPECT_EQ(std::string_view(tok.str.ptr, tok.str.len), "1");
+  EXPECT_EQ(std::string_view(tok.val.ptr, tok.val.len), "1");
 
   tok = json_reader_next(&r);
   EXPECT_EQ(tok.type, JSON_TOKEN_COMMA);
 
   tok = json_reader_next(&r);
   EXPECT_EQ(tok.type, JSON_TOKEN_NUMBER);
-  EXPECT_EQ(std::string_view(tok.str.ptr, tok.str.len), "2.5");
+  EXPECT_EQ(std::string_view(tok.val.ptr, tok.val.len), "2.5");
 
   tok = json_reader_next(&r);
   EXPECT_EQ(tok.type, JSON_TOKEN_COMMA);
 
   tok = json_reader_next(&r);
-  EXPECT_EQ(tok.type, JSON_TOKEN_BOOLEAN);
-  EXPECT_EQ(std::string_view(tok.str.ptr, tok.str.len), "true");
+  EXPECT_EQ(tok.type, JSON_TOKEN_TRUE);
+  EXPECT_EQ(std::string_view(tok.val.ptr, tok.val.len), "true");
 
   tok = json_reader_next(&r);
   EXPECT_EQ(tok.type, JSON_TOKEN_COMMA);
 
   tok = json_reader_next(&r);
-  EXPECT_EQ(tok.type, JSON_TOKEN_BOOLEAN);
-  EXPECT_EQ(std::string_view(tok.str.ptr, tok.str.len), "false");
+  EXPECT_EQ(tok.type, JSON_TOKEN_FALSE);
+  EXPECT_EQ(std::string_view(tok.val.ptr, tok.val.len), "false");
 
   tok = json_reader_next(&r);
   EXPECT_EQ(tok.type, JSON_TOKEN_COMMA);
 
   tok = json_reader_next(&r);
-  EXPECT_EQ(tok.type, JSON_TOKEN_NULL_VAL);
-  EXPECT_EQ(std::string_view(tok.str.ptr, tok.str.len), "null");
+  EXPECT_EQ(tok.type, JSON_TOKEN_NULL);
+  EXPECT_EQ(std::string_view(tok.val.ptr, tok.val.len), "null");
 
   tok = json_reader_next(&r);
   EXPECT_EQ(tok.type, JSON_TOKEN_ARRAY_END);
@@ -67,7 +67,7 @@ TEST(json_test, reader_basic) {
   EXPECT_EQ(tok.type, JSON_TOKEN_OBJECT_END);
 
   tok = json_reader_next(&r);
-  EXPECT_EQ(tok.type, JSON_TOKEN_NONE);
+  EXPECT_EQ(tok.type, JSON_TOKEN_EOF);
 }
 
 TEST(json_test, writer_basic) {
@@ -156,13 +156,13 @@ TEST(json_test, reader_string_edge_cases) {
 
     json_token_t t1 = json_reader_next(&r);
     EXPECT_EQ(t1.type, JSON_TOKEN_STRING);
-    EXPECT_EQ(std::string_view(t1.str.ptr, t1.str.len), "hello\\\\world");
+    EXPECT_EQ(std::string_view(t1.val.ptr, t1.val.len), "hello\\\\world");
 
     EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_COMMA);
 
     json_token_t t2 = json_reader_next(&r);
     EXPECT_EQ(t2.type, JSON_TOKEN_STRING);
-    EXPECT_EQ(std::string_view(t2.str.ptr, t2.str.len), "hello\\\"world");
+    EXPECT_EQ(std::string_view(t2.val.ptr, t2.val.len), "hello\\\"world");
 
     EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_ARRAY_END);
   }
@@ -185,7 +185,7 @@ TEST(json_test, reader_string_edge_cases) {
     EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_ARRAY_START);
     json_token_t t = json_reader_next(&r);
     EXPECT_EQ(t.type, JSON_TOKEN_STRING);
-    EXPECT_EQ(t.str.len, 0u);
+    EXPECT_EQ(t.val.len, 0u);
     EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_ARRAY_END);
   }
 }
@@ -200,22 +200,22 @@ TEST(json_test, reader_number_edge_cases) {
 
     json_token_t t1 = json_reader_next(&r);
     EXPECT_EQ(t1.type, JSON_TOKEN_NUMBER);
-    EXPECT_EQ(std::string_view(t1.str.ptr, t1.str.len), "-123.456");
+    EXPECT_EQ(std::string_view(t1.val.ptr, t1.val.len), "-123.456");
     EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_COMMA);
 
     json_token_t t2 = json_reader_next(&r);
     EXPECT_EQ(t2.type, JSON_TOKEN_NUMBER);
-    EXPECT_EQ(std::string_view(t2.str.ptr, t2.str.len), "1e9");
+    EXPECT_EQ(std::string_view(t2.val.ptr, t2.val.len), "1e9");
     EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_COMMA);
 
     json_token_t t3 = json_reader_next(&r);
     EXPECT_EQ(t3.type, JSON_TOKEN_NUMBER);
-    EXPECT_EQ(std::string_view(t3.str.ptr, t3.str.len), "2.5e-4");
+    EXPECT_EQ(std::string_view(t3.val.ptr, t3.val.len), "2.5e-4");
     EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_COMMA);
 
     json_token_t t4 = json_reader_next(&r);
     EXPECT_EQ(t4.type, JSON_TOKEN_NUMBER);
-    EXPECT_EQ(std::string_view(t4.str.ptr, t4.str.len), "3.14e+2");
+    EXPECT_EQ(std::string_view(t4.val.ptr, t4.val.len), "3.14e+2");
 
     EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_ARRAY_END);
   }
@@ -247,7 +247,7 @@ TEST(json_test, reader_literal_edge_cases) {
     json_reader_t r;
     json_reader_init(&r, json, strlen(json));
     EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_ARRAY_START);
-    EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_NULL_VAL);
+    EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_NULL);
     EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_ERROR);  // error on "e]"
   }
 
@@ -267,7 +267,7 @@ TEST(json_test, reader_whitespace) {
   json_reader_init(&r, json, strlen(json));
   EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_ARRAY_START);
   EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_ARRAY_END);
-  EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_NONE);
+  EXPECT_EQ(json_reader_next(&r).type, JSON_TOKEN_EOF);
 }
 
 TEST(json_test, writer_escaping_edge_cases) {

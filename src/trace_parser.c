@@ -173,172 +173,135 @@ static int32_t to_int32(string_view_t s) {
 static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
                         trace_event_t* event) {
   bool success = false;
-  json_token_t tok = json_reader_next(r);
+  *event = (trace_event_t){};
+  array_list_clear(&p->args_buffer);
+  bool ok = true;
 
-  if (tok.type == JSON_TOKEN_OBJECT_START) {
-    *event = (trace_event_t){};
-    array_list_clear(&p->args_buffer);
-    bool ok = true;
+  while (ok) {
+    json_token_t tok = json_reader_next(r);
+    if (tok.type == JSON_TOKEN_OBJECT_END) {
+      success = true;
+      break;
+    }
+    if (tok.type != JSON_TOKEN_STRING) {
+      ok = false;
+      break;
+    }
 
-    while (ok) {
+    string_view_t key = tok.val;
+    tok = json_reader_next(r);
+    if (tok.type != JSON_TOKEN_COLON) {
+      ok = false;
+      break;
+    }
+
+    if (string_view_eq(key, SV("name"))) {
       tok = json_reader_next(r);
-      if (tok.type == JSON_TOKEN_OBJECT_END) {
-        success = true;
-        break;
-      }
       if (tok.type != JSON_TOKEN_STRING) {
         ok = false;
         break;
       }
-
-      string_view_t key = tok.str;
+      event->name = tok.val;
+    } else if (string_view_eq(key, SV("cat"))) {
       tok = json_reader_next(r);
-      if (tok.type != JSON_TOKEN_COLON) {
+      if (tok.type != JSON_TOKEN_STRING) {
         ok = false;
         break;
       }
-
-      if (string_view_eq(key, SV("name"))) {
-        tok = json_reader_next(r);
-        if (tok.type != JSON_TOKEN_STRING) {
-          ok = false;
-          break;
-        }
-        event->name = tok.str;
-      } else if (string_view_eq(key, SV("cat"))) {
-        tok = json_reader_next(r);
-        if (tok.type != JSON_TOKEN_STRING) {
-          ok = false;
-          break;
-        }
-        event->cat = tok.str;
-      } else if (string_view_eq(key, SV("ph"))) {
-        tok = json_reader_next(r);
-        if (tok.type != JSON_TOKEN_STRING) {
-          ok = false;
-          break;
-        }
-        event->ph = tok.str;
-      } else if (string_view_eq(key, SV("cname"))) {
-        tok = json_reader_next(r);
-        if (tok.type != JSON_TOKEN_STRING) {
-          ok = false;
-          break;
-        }
-        event->cname = tok.str;
-      } else if (string_view_eq(key, SV("ts"))) {
-        tok = json_reader_next(r);
-        if (tok.type != JSON_TOKEN_NUMBER) {
-          ok = false;
-          break;
-        }
-        event->ts = to_int64(tok.str);
-      } else if (string_view_eq(key, SV("dur"))) {
-        tok = json_reader_next(r);
-        if (tok.type != JSON_TOKEN_NUMBER) {
-          ok = false;
-          break;
-        }
-        event->dur = to_int64(tok.str);
-      } else if (string_view_eq(key, SV("pid"))) {
-        tok = json_reader_next(r);
-        if (tok.type != JSON_TOKEN_NUMBER) {
-          ok = false;
-          break;
-        }
-        event->pid = to_int32(tok.str);
-      } else if (string_view_eq(key, SV("tid"))) {
-        tok = json_reader_next(r);
-        if (tok.type != JSON_TOKEN_NUMBER) {
-          ok = false;
-          break;
-        }
-        event->tid = to_int32(tok.str);
-      } else if (string_view_eq(key, SV("id"))) {
-        tok = json_reader_next(r);
-        if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER) {
-          event->id = tok.str;
-        } else {
-          ok = false;
-          break;
-        }
-      } else if (string_view_eq(key, SV("args"))) {
-        tok = json_reader_next(r);
-        if (tok.type != JSON_TOKEN_OBJECT_START) {
-          ok = false;
-          break;
-        }
-        while (ok) {
-          tok = json_reader_next(r);
-          if (tok.type == JSON_TOKEN_OBJECT_END) {
-            break;
-          }
-          if (tok.type != JSON_TOKEN_STRING) {
-            ok = false;
-            break;
-          }
-          trace_arg_t arg = {};
-          arg.key = tok.str;
-          tok = json_reader_next(r);
-          if (tok.type != JSON_TOKEN_COLON) {
-            ok = false;
-            break;
-          }
-
-          tok = json_reader_next(r);
-          arg.val_double = 0.0;
-          if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER ||
-              tok.type == JSON_TOKEN_BOOLEAN ||
-              tok.type == JSON_TOKEN_NULL_VAL) {
-            if (tok.type == JSON_TOKEN_NUMBER) {
-              arg.val_double = to_double(tok.str);
-              arg.val = (string_view_t){};
-            } else {
-              arg.val = tok.str;
-            }
-          } else if (tok.type == JSON_TOKEN_OBJECT_START ||
-                     tok.type == JSON_TOKEN_ARRAY_START) {
-            size_t start = r->pos - tok.str.len;
-            int depth = 1;
-            while (depth > 0 && !json_reader_done(r)) {
-              tok = json_reader_next(r);
-              if (tok.type == JSON_TOKEN_OBJECT_START ||
-                  tok.type == JSON_TOKEN_ARRAY_START) {
-                depth++;
-              } else if (tok.type == JSON_TOKEN_OBJECT_END ||
-                         tok.type == JSON_TOKEN_ARRAY_END) {
-                depth--;
-              }
-            }
-            arg.val = string_view_from_parts(r->buf + start, r->pos - start);
-          } else {
-            ok = false;
-            break;
-          }
-
-          *array_list_push(&p->args_buffer, trace_arg_t, a) = arg;
-
-          tok = json_reader_next(r);
-          if (tok.type == JSON_TOKEN_COMMA) {
-            continue;
-          }
-          if (tok.type == JSON_TOKEN_OBJECT_END) {
-            break;
-          }
-          ok = false;
-          break;
-        }
-        if (!ok) {
-          break;
-        }
+      event->cat = tok.val;
+    } else if (string_view_eq(key, SV("ph"))) {
+      tok = json_reader_next(r);
+      if (tok.type != JSON_TOKEN_STRING) {
+        ok = false;
+        break;
+      }
+      event->ph = tok.val;
+    } else if (string_view_eq(key, SV("cname"))) {
+      tok = json_reader_next(r);
+      if (tok.type != JSON_TOKEN_STRING) {
+        ok = false;
+        break;
+      }
+      event->cname = tok.val;
+    } else if (string_view_eq(key, SV("ts"))) {
+      tok = json_reader_next(r);
+      if (tok.type != JSON_TOKEN_NUMBER) {
+        ok = false;
+        break;
+      }
+      event->ts = to_int64(tok.val);
+    } else if (string_view_eq(key, SV("dur"))) {
+      tok = json_reader_next(r);
+      if (tok.type != JSON_TOKEN_NUMBER) {
+        ok = false;
+        break;
+      }
+      event->dur = to_int64(tok.val);
+    } else if (string_view_eq(key, SV("pid"))) {
+      tok = json_reader_next(r);
+      if (tok.type != JSON_TOKEN_NUMBER) {
+        ok = false;
+        break;
+      }
+      event->pid = to_int32(tok.val);
+    } else if (string_view_eq(key, SV("tid"))) {
+      tok = json_reader_next(r);
+      if (tok.type != JSON_TOKEN_NUMBER) {
+        ok = false;
+        break;
+      }
+      event->tid = to_int32(tok.val);
+    } else if (string_view_eq(key, SV("id"))) {
+      tok = json_reader_next(r);
+      if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER) {
+        event->id = tok.val;
       } else {
-        // Unknown key, skip value
+        ok = false;
+        break;
+      }
+    } else if (string_view_eq(key, SV("args"))) {
+      tok = json_reader_next(r);
+      if (tok.type != JSON_TOKEN_OBJECT_START) {
+        ok = false;
+        break;
+      }
+      while (ok) {
         tok = json_reader_next(r);
-        if (tok.type == JSON_TOKEN_OBJECT_START ||
-            tok.type == JSON_TOKEN_ARRAY_START) {
+        if (tok.type == JSON_TOKEN_OBJECT_END) {
+          break;
+        }
+        if (tok.type != JSON_TOKEN_STRING) {
+          ok = false;
+          break;
+        }
+        trace_arg_t arg = {};
+        arg.key = tok.val;
+        tok = json_reader_next(r);
+        if (tok.type != JSON_TOKEN_COLON) {
+          ok = false;
+          break;
+        }
+
+        tok = json_reader_next(r);
+        arg.val_double = 0.0;
+        if (tok.type == JSON_TOKEN_STRING || tok.type == JSON_TOKEN_NUMBER ||
+            tok.type == JSON_TOKEN_TRUE || tok.type == JSON_TOKEN_FALSE ||
+            tok.type == JSON_TOKEN_NULL) {
+          if (tok.type == JSON_TOKEN_NUMBER) {
+            arg.val_double = to_double(tok.val);
+            arg.val = (string_view_t){};
+          } else {
+            arg.val = tok.val;
+          }
+        } else if (tok.type == JSON_TOKEN_OBJECT_START ||
+                   tok.type == JSON_TOKEN_ARRAY_START) {
+          size_t start = r->pos - tok.val.len;
           int depth = 1;
-          while (depth > 0 && !json_reader_done(r)) {
+          while (depth > 0) {
             tok = json_reader_next(r);
+            if (tok.type == JSON_TOKEN_EOF || tok.type == JSON_TOKEN_ERROR) {
+              break;
+            }
             if (tok.type == JSON_TOKEN_OBJECT_START ||
                 tok.type == JSON_TOKEN_ARRAY_START) {
               depth++;
@@ -347,20 +310,59 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
               depth--;
             }
           }
+          arg.val = string_view_from_parts(r->buf + start, r->pos - start);
+        } else {
+          ok = false;
+          break;
         }
-      }
 
-      tok = json_reader_next(r);
-      if (tok.type == JSON_TOKEN_COMMA) {
-        continue;
-      }
-      if (tok.type == JSON_TOKEN_OBJECT_END) {
-        success = true;
+        *array_list_push(&p->args_buffer, trace_arg_t, a) = arg;
+
+        tok = json_reader_next(r);
+        if (tok.type == JSON_TOKEN_COMMA) {
+          continue;
+        }
+        if (tok.type == JSON_TOKEN_OBJECT_END) {
+          break;
+        }
+        ok = false;
         break;
       }
-      ok = false;
+      if (!ok) {
+        break;
+      }
+    } else {
+      // Unknown key, skip value
+      tok = json_reader_next(r);
+      if (tok.type == JSON_TOKEN_OBJECT_START ||
+          tok.type == JSON_TOKEN_ARRAY_START) {
+        int depth = 1;
+        while (depth > 0) {
+          tok = json_reader_next(r);
+          if (tok.type == JSON_TOKEN_EOF || tok.type == JSON_TOKEN_ERROR) {
+            break;
+          }
+          if (tok.type == JSON_TOKEN_OBJECT_START ||
+              tok.type == JSON_TOKEN_ARRAY_START) {
+            depth++;
+          } else if (tok.type == JSON_TOKEN_OBJECT_END ||
+                     tok.type == JSON_TOKEN_ARRAY_END) {
+            depth--;
+          }
+        }
+      }
+    }
+
+    tok = json_reader_next(r);
+    if (tok.type == JSON_TOKEN_COMMA) {
+      continue;
+    }
+    if (tok.type == JSON_TOKEN_OBJECT_END) {
+      success = true;
       break;
     }
+    ok = false;
+    break;
   }
 
   if (success) {
@@ -378,35 +380,30 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
   while (loop && !found) {
     switch (p->state) {
       case TRACE_PARSER_STATE_INITIAL: {
-        json_reader_skip_whitespace(&r);
-        if (json_reader_done(&r)) {
+        json_token_t tok = json_reader_next(&r);
+        if (tok.type == JSON_TOKEN_EOF) {
           loop = false;  // need more data
+        } else if (tok.type == JSON_TOKEN_ARRAY_START) {
+          p->is_array_format = true;
+          p->state = TRACE_PARSER_STATE_IN_ARRAY;
+        } else if (tok.type == JSON_TOKEN_OBJECT_START) {
+          p->is_array_format = false;
+          p->state = TRACE_PARSER_STATE_LOOKING_FOR_TRACE_EVENTS;
         } else {
-          char c = json_reader_peek(&r);
-          if (c == '[') {
-            p->is_array_format = true;
-            p->state = TRACE_PARSER_STATE_IN_ARRAY;
-            json_reader_advance(&r);
-          } else if (c == '{') {
-            p->is_array_format = false;
-            p->state = TRACE_PARSER_STATE_LOOKING_FOR_TRACE_EVENTS;
-            json_reader_advance(&r);
-          } else {
-            loop = false;  // Error! Invalid start character
-          }
+          loop = false;  // Error! Invalid start character
         }
         break;
       }
 
       case TRACE_PARSER_STATE_LOOKING_FOR_TRACE_EVENTS: {
         json_token_t tok = json_reader_next(&r);
-        if (tok.type == JSON_TOKEN_NONE) {
+        if (tok.type == JSON_TOKEN_EOF) {
           loop = false;  // need more data
         } else if (tok.type == JSON_TOKEN_OBJECT_END) {
           p->state = TRACE_PARSER_STATE_COMPLETE;
           loop = false;  // done
         } else if (tok.type == JSON_TOKEN_STRING) {
-          bool is_trace_events = string_view_eq(tok.str, SV("traceEvents"));
+          bool is_trace_events = string_view_eq(tok.val, SV("traceEvents"));
           tok = json_reader_next(&r);
           if (tok.type != JSON_TOKEN_COLON) {
             loop = false;  // Error!
@@ -424,8 +421,11 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
               if (tok.type == JSON_TOKEN_OBJECT_START ||
                   tok.type == JSON_TOKEN_ARRAY_START) {
                 int depth = 1;
-                while (depth > 0 && !json_reader_done(&r)) {
+                while (depth > 0) {
                   tok = json_reader_next(&r);
+                  if (tok.type == JSON_TOKEN_EOF || tok.type == JSON_TOKEN_ERROR) {
+                    break;
+                  }
                   if (tok.type == JSON_TOKEN_OBJECT_START ||
                       tok.type == JSON_TOKEN_ARRAY_START) {
                     depth++;
@@ -442,11 +442,12 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
       }
 
       case TRACE_PARSER_STATE_IN_ARRAY: {
-        json_reader_skip_whitespace(&r);
-        if (json_reader_done(&r)) {
+        size_t checkpoint = r.pos;
+        json_token_t tok = json_reader_next(&r);
+
+        if (tok.type == JSON_TOKEN_EOF) {
           loop = false;  // need more data
-        } else if (json_reader_peek(&r) == ']') {
-          json_reader_advance(&r);
+        } else if (tok.type == JSON_TOKEN_ARRAY_END) {
           if (p->is_array_format) {
             p->state = TRACE_PARSER_STATE_COMPLETE;
             loop = false;  // done
@@ -454,26 +455,29 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
             p->state = TRACE_PARSER_STATE_LOOKING_FOR_TRACE_EVENTS;
           }
         } else {
-          if (json_reader_peek(&r) == ',') {
-            json_reader_advance(&r);
-            json_reader_skip_whitespace(&r);
+          // We expect either OBJECT_START (first event) or COMMA (subsequent events)
+          if (tok.type == JSON_TOKEN_COMMA) {
+            checkpoint = r.pos;
+            tok = json_reader_next(&r);
           }
-          if (json_reader_done(&r)) {
-            loop = false;  // need more data
-          } else {
-            size_t start_pos = r.pos;
+
+          if (tok.type == JSON_TOKEN_OBJECT_START) {
             if (parse_event(&r, p, a, event)) {
               p->pos = r.pos;
               found = true;
             } else {
-              // If it failed because it ran out of data, wait for more
               if (json_reader_done(&r)) {
-                r.pos = start_pos;
+                r.pos = checkpoint;
                 loop = false;  // need more data
               } else {
-                loop = false;  // Error! Invalid event JSON
+                loop = false;  // Real parsing error
               }
             }
+          } else if (tok.type == JSON_TOKEN_EOF) {
+            r.pos = checkpoint;
+            loop = false;  // need more data (chunk ended after comma)
+          } else {
+            loop = false;  // Error! Expected object start
           }
         }
         break;
