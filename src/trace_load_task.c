@@ -47,7 +47,6 @@ void trace_load_task_run(task_context_t* ctx) {
 
   // 1. Cooperative cancellation check
   if (task_should_abort(ctx)) {
-    LOG_DEBUG("trace_load_task: cancelled!");
     // Decrement buffered bytes
     atomic_fetch_sub(&task->buffered_bytes, chunk_size);
     return;
@@ -74,15 +73,12 @@ void trace_load_task_run(task_context_t* ctx) {
   // 5. EOF completion handling
   if (payload->is_eof) {
     double organize_start_time = platform_get_now();
-    LOG_DEBUG("trace_load_task: EOF reached! Organizing tracks.");
 
     array_list_t tracks = {};
     int64_t min_ts = 0;
     int64_t max_ts = 0;
-
     // Run track organization pass
     track_organize(task->td, &tracks, &min_ts, &max_ts, task->allocator);
-
     double organize_duration_ms = platform_get_now() - organize_start_time;
 
     double size_mb = (double)(task->total_discarded_bytes + task->parser.pos) /
@@ -141,8 +137,6 @@ void trace_load_task_run(task_context_t* ctx) {
 
 // Destroys the task context (called when reference count drops to 0)
 static void trace_load_task_destroy(trace_load_task_t* task) {
-  LOG_DEBUG("trace_load_task_destroy: destroying task context.");
-
   // Free streaming parser
   trace_parser_deinit(&task->parser, task->allocator);
 
@@ -184,8 +178,6 @@ trace_load_task_t* trace_load_task_create(task_queue_t* queue,
   // ZII-initialized)
   task->td = trace_data_create(allocator);
 
-  LOG_DEBUG("trace_load_task_create: started load task on stream %d",
-            stream_id);
   return task;
 }
 
@@ -223,7 +215,6 @@ void trace_load_task_prep_chunk(trace_load_task_t* task, task_submission_t* sub,
 // Aborts the loading task
 void trace_load_task_abort(trace_load_task_t* task) {
   if (task == nullptr) return;
-  LOG_DEBUG("trace_load_task_abort: aborting stream %d", task->stream_id);
 
   // Cancel all pending tasks for this stream in the task queue
   task_queue_cancel_stream(task->queue, task->stream_id);

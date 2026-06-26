@@ -563,8 +563,11 @@ cc_library(
     hdrs = ["trace_loader.h"],
     deps = [
         ":allocator",
+        ":platform",
+        ":task",
         ":trace_data",
-        ":trace_parser",
+        ":trace_load_task",
+        ":track",
         "@zlib//:zlib",
     ],
 )

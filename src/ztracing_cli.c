@@ -207,13 +207,7 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
 }
 
 // Handles the 'summary' subcommand.
-static int handle_summary(const trace_data_t* td, bool pretty, allocator_t a) {
-  // Organize tracks to get track count and exact timestamp bounds
-  array_list_t tracks = {};
-  int64_t min_ts = 0;
-  int64_t max_ts = 0;
-  track_organize(td, &tracks, &min_ts, &max_ts, a);
-
+static int handle_summary(const trace_data_t* td, size_t track_count, int64_t min_ts, int64_t max_ts, bool pretty, allocator_t a) {
   // Serialize summary
   array_list_t json_buf = {};
   json_writer_t w;
@@ -225,7 +219,7 @@ static int handle_summary(const trace_data_t* td, bool pretty, allocator_t a) {
   json_writer_number_int(&w, (int64_t)td->events.len);
 
   json_writer_name(&w, SV("track_count"));
-  json_writer_number_int(&w, (int64_t)tracks.len);
+  json_writer_number_int(&w, (int64_t)track_count);
 
   json_writer_name(&w, SV("min_ts_us"));
   json_writer_number_double(&w, (double)min_ts);
@@ -247,24 +241,11 @@ static int handle_summary(const trace_data_t* td, bool pretty, allocator_t a) {
   // Clean up
   array_list_deinit(&json_buf, a);
 
-  // Clean up organized tracks
-  track_t* tracks_data = (track_t*)tracks.ptr;
-  for (size_t i = 0; i < tracks.len; i++) {
-    track_deinit(&tracks_data[i], a);
-  }
-  array_list_deinit(&tracks, a);
-
   return 0;
 }
 
 // Handles the 'tracks' subcommand.
-static int handle_tracks(const trace_data_t* td, bool pretty, allocator_t a) {
-  // Organize tracks
-  array_list_t tracks = {};
-  int64_t min_ts = 0;
-  int64_t max_ts = 0;
-  track_organize(td, &tracks, &min_ts, &max_ts, a);
-
+static int handle_tracks(const trace_data_t* td, const array_list_t* tracks, bool pretty, allocator_t a) {
   // Serialize tracks
   array_list_t json_buf = {};
   json_writer_t w;
@@ -272,8 +253,8 @@ static int handle_tracks(const trace_data_t* td, bool pretty, allocator_t a) {
 
   json_writer_begin_array(&w);
 
-  track_t* tracks_data = (track_t*)tracks.ptr;
-  for (size_t i = 0; i < tracks.len; i++) {
+  track_t* tracks_data = (track_t*)tracks->ptr;
+  for (size_t i = 0; i < tracks->len; i++) {
     const track_t* t = &tracks_data[i];
 
     json_writer_begin_object(&w);
@@ -318,30 +299,18 @@ static int handle_tracks(const trace_data_t* td, bool pretty, allocator_t a) {
   // Clean up
   array_list_deinit(&json_buf, a);
 
-  // Clean up organized tracks
-  for (size_t i = 0; i < tracks.len; i++) {
-    track_deinit(&tracks_data[i], a);
-  }
-  array_list_deinit(&tracks, a);
-
   return 0;
 }
 
 // Handles the 'heatmap' subcommand.
-static int handle_heatmap(const trace_data_t* td, bool pretty, allocator_t a) {
-  // Organize tracks to get min/max ts and the tracks list
-  array_list_t tracks = {};
-  int64_t min_ts = 0;
-  int64_t max_ts = 0;
-  track_organize(td, &tracks, &min_ts, &max_ts, a);
-
+static int handle_heatmap(const trace_data_t* td, const array_list_t* tracks, int64_t min_ts, int64_t max_ts, bool pretty, allocator_t a) {
   // Preallocate the heatmap densities buffer (1 trace_heatmap_t per track)
   array_list_t heatmap_list = {};
-  array_list_resize(&heatmap_list, tracks.len, sizeof(trace_heatmap_t), a);
+  array_list_resize(&heatmap_list, tracks->len, sizeof(trace_heatmap_t), a);
   trace_heatmap_t* densities = (trace_heatmap_t*)heatmap_list.ptr;
 
   // Compute heatmap
-  trace_heatmap_compute(&tracks, td, min_ts, max_ts, densities);
+  trace_heatmap_compute(tracks, td, min_ts, max_ts, densities);
 
   // Serialize to JSON
   array_list_t json_buf = {};
@@ -350,8 +319,8 @@ static int handle_heatmap(const trace_data_t* td, bool pretty, allocator_t a) {
 
   json_writer_begin_array(&w);
 
-  track_t* tracks_data = (track_t*)tracks.ptr;
-  for (size_t i = 0; i < tracks.len; i++) {
+  track_t* tracks_data = (track_t*)tracks->ptr;
+  for (size_t i = 0; i < tracks->len; i++) {
     const track_t* t = &tracks_data[i];
     const trace_heatmap_t* h = &densities[i];
 
@@ -417,16 +386,12 @@ static int handle_heatmap(const trace_data_t* td, bool pretty, allocator_t a) {
   // Clean up
   array_list_deinit(&json_buf, a);
   array_list_deinit(&heatmap_list, a);
-  for (size_t i = 0; i < tracks.len; i++) {
-    track_deinit(&tracks_data[i], a);
-  }
-  array_list_deinit(&tracks, a);
 
   return 0;
 }
 
 // Handles the 'histogram' subcommand.
-static int handle_histogram(const trace_data_t* td, const cli_args_t* args,
+static int handle_histogram(const trace_data_t* td, const array_list_t* tracks, const cli_args_t* args,
                             allocator_t a) {
   // Gather all event indices matching the filters
   array_list_t selected_indices = {};
@@ -434,17 +399,11 @@ static int handle_histogram(const trace_data_t* td, const cli_args_t* args,
       (const trace_event_persisted_t*)td->events.ptr;
 
   bool has_track_filter = (args->track_filter != nullptr);
-  array_list_t tracks = {};
-  int64_t min_ts = 0;
-  int64_t max_ts = 0;
-  if (has_track_filter) {
-    track_organize(td, &tracks, &min_ts, &max_ts, a);
-  }
 
   if (has_track_filter) {
     string_view_t target_track = string_view_from_cstr(args->track_filter);
-    track_t* tracks_data = (track_t*)tracks.ptr;
-    for (size_t i = 0; i < tracks.len; i++) {
+    track_t* tracks_data = (track_t*)tracks->ptr;
+    for (size_t i = 0; i < tracks->len; i++) {
       const track_t* t = &tracks_data[i];
       string_view_t track_name = trace_data_get_string(td, t->name_ref);
       if (string_view_eq(track_name, target_track)) {
@@ -557,19 +516,12 @@ static int handle_histogram(const trace_data_t* td, const cli_args_t* args,
   // Clean up
   array_list_deinit(&json_buf, a);
   array_list_deinit(&selected_indices, a);
-  if (has_track_filter) {
-    track_t* tracks_data = (track_t*)tracks.ptr;
-    for (size_t i = 0; i < tracks.len; i++) {
-      track_deinit(&tracks_data[i], a);
-    }
-    array_list_deinit(&tracks, a);
-  }
 
   return 0;
 }
 
 // Handles the 'inspect' subcommand.
-static int handle_inspect(const trace_data_t* td, const cli_args_t* args,
+static int handle_inspect(const trace_data_t* td, const array_list_t* tracks, const cli_args_t* args,
                           allocator_t a) {
   if (!args->track_filter) {
     fprintf(stderr,
@@ -586,18 +538,12 @@ static int handle_inspect(const trace_data_t* td, const cli_args_t* args,
 
   int64_t target_ts = args->t_start;  // target ts in us
 
-  // Organize tracks
-  array_list_t tracks = {};
-  int64_t min_ts = 0;
-  int64_t max_ts = 0;
-  track_organize(td, &tracks, &min_ts, &max_ts, a);
-
   // Find the target track
   const track_t* target_track = nullptr;
   string_view_t target_track_name = string_view_from_cstr(args->track_filter);
-  track_t* tracks_data = (track_t*)tracks.ptr;
+  track_t* tracks_data = (track_t*)tracks->ptr;
 
-  for (size_t i = 0; i < tracks.len; i++) {
+  for (size_t i = 0; i < tracks->len; i++) {
     string_view_t track_name =
         trace_data_get_string(td, tracks_data[i].name_ref);
     if (string_view_eq(track_name, target_track_name)) {
@@ -608,10 +554,6 @@ static int handle_inspect(const trace_data_t* td, const cli_args_t* args,
 
   if (!target_track) {
     fprintf(stderr, "Error: Track '%s' not found.\n", args->track_filter);
-    for (size_t i = 0; i < tracks.len; i++) {
-      track_deinit(&tracks_data[i], a);
-    }
-    array_list_deinit(&tracks, a);
     return 1;
   }
 
@@ -739,10 +681,6 @@ static int handle_inspect(const trace_data_t* td, const cli_args_t* args,
 
   // Clean up
   array_list_deinit(&json_buf, a);
-  for (size_t i = 0; i < tracks.len; i++) {
-    track_deinit(&tracks_data[i], a);
-  }
-  array_list_deinit(&tracks, a);
 
   return 0;
 }
@@ -763,21 +701,15 @@ static int compare_query_matches(const void* a_ptr, const void* b_ptr) {
 }
 
 // Handles the 'query' subcommand.
-static int handle_query(const trace_data_t* td, const cli_args_t* args,
+static int handle_query(const trace_data_t* td, const array_list_t* tracks, const cli_args_t* args,
                         allocator_t a) {
-  // Organize tracks
-  array_list_t tracks = {};
-  int64_t min_ts = 0;
-  int64_t max_ts = 0;
-  track_organize(td, &tracks, &min_ts, &max_ts, a);
-
-  track_t* tracks_data = (track_t*)tracks.ptr;
+  track_t* tracks_data = (track_t*)tracks->ptr;
 
   // Find the target track if filtering by track
   const track_t* track_filter = nullptr;
   if (args->track_filter) {
     string_view_t target_track_name = string_view_from_cstr(args->track_filter);
-    for (size_t i = 0; i < tracks.len; i++) {
+    for (size_t i = 0; i < tracks->len; i++) {
       string_view_t track_name =
           trace_data_get_string(td, tracks_data[i].name_ref);
       if (string_view_eq(track_name, target_track_name)) {
@@ -787,10 +719,6 @@ static int handle_query(const trace_data_t* td, const cli_args_t* args,
     }
     if (!track_filter) {
       fprintf(stderr, "Error: Track '%s' not found.\n", args->track_filter);
-      for (size_t i = 0; i < tracks.len; i++) {
-        track_deinit(&tracks_data[i], a);
-      }
-      array_list_deinit(&tracks, a);
       return 1;
     }
   }
@@ -803,9 +731,9 @@ static int handle_query(const trace_data_t* td, const cli_args_t* args,
 
   // Loop over tracks (either the filtered one, or all of them)
   size_t start_track = 0;
-  size_t end_track = tracks.len;
+  size_t end_track = tracks->len;
   if (track_filter) {
-    for (size_t i = 0; i < tracks.len; i++) {
+    for (size_t i = 0; i < tracks->len; i++) {
       if (&tracks_data[i] == track_filter) {
         start_track = i;
         end_track = i + 1;
@@ -911,10 +839,6 @@ static int handle_query(const trace_data_t* td, const cli_args_t* args,
   // Clean up
   array_list_deinit(&json_buf, a);
   array_list_deinit(&matches, a);
-  for (size_t i = 0; i < tracks.len; i++) {
-    track_deinit(&tracks_data[i], a);
-  }
-  array_list_deinit(&tracks, a);
 
   return 0;
 }
@@ -926,29 +850,38 @@ int main(int argc, char* argv[]) {
 
   if (parse_arguments(argc, argv, &args)) {
     allocator_t a = allocator_get_default();
-    trace_data_t* td = trace_loader_load_file(args.trace_file, a, nullptr);
+    array_list_t tracks = {};
+    int64_t min_ts = 0;
+    int64_t max_ts = 0;
+    trace_data_t* td = trace_loader_load_file(args.trace_file, a, nullptr, &tracks, &min_ts, &max_ts, nullptr, nullptr);
 
     if (td) {
       string_view_t sub = string_view_from_cstr(args.subcommand);
 
       if (string_view_eq(sub, SV("summary"))) {
-        exit_code = handle_summary(td, args.pretty, a);
+        exit_code = handle_summary(td, tracks.len, min_ts, max_ts, args.pretty, a);
       } else if (string_view_eq(sub, SV("tracks"))) {
-        exit_code = handle_tracks(td, args.pretty, a);
+        exit_code = handle_tracks(td, &tracks, args.pretty, a);
       } else if (string_view_eq(sub, SV("heatmap"))) {
-        exit_code = handle_heatmap(td, args.pretty, a);
+        exit_code = handle_heatmap(td, &tracks, min_ts, max_ts, args.pretty, a);
       } else if (string_view_eq(sub, SV("histogram"))) {
-        exit_code = handle_histogram(td, &args, a);
+        exit_code = handle_histogram(td, &tracks, &args, a);
       } else if (string_view_eq(sub, SV("inspect"))) {
-        exit_code = handle_inspect(td, &args, a);
+        exit_code = handle_inspect(td, &tracks, &args, a);
       } else if (string_view_eq(sub, SV("query"))) {
-        exit_code = handle_query(td, &args, a);
+        exit_code = handle_query(td, &tracks, &args, a);
       } else {
         fprintf(stderr, "Error: Subcommand '%s' is not yet implemented.\n",
                 args.subcommand);
         exit_code = 1;
       }
 
+      // Clean up pre-organized tracks
+      track_t* tracks_data = (track_t*)tracks.ptr;
+      for (size_t i = 0; i < tracks.len; i++) {
+        track_deinit(&tracks_data[i], a);
+      }
+      array_list_deinit(&tracks, a);
       trace_data_release(td, a);
     } else {
       exit_code = 1;
