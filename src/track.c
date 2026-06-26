@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "src/arena.h"
+#include "core/arena.h"
 #include "src/colors.h"
 #include "src/hash_table.h"
 

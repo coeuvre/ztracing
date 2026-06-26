@@ -1,7 +1,7 @@
-#ifndef ZTRACING_SRC_TRACE_LOADER_H_
-#define ZTRACING_SRC_TRACE_LOADER_H_
+#ifndef SRC_TRACE_LOADER_H
+#define SRC_TRACE_LOADER_H
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/trace_data.h"
 
 #ifdef __cplusplus
@@ -24,8 +24,7 @@ extern "C" {
 trace_data_t* trace_loader_load_file(const char* filename, allocator_t a,
                                      size_t* out_decompressed_size,
                                      array_list_t* out_tracks,
-                                     int64_t* out_min_ts,
-                                     int64_t* out_max_ts,
+                                     int64_t* out_min_ts, int64_t* out_max_ts,
                                      double* out_ingest_duration_ms,
                                      double* out_organize_duration_ms);
 
@@ -33,4 +32,4 @@ trace_data_t* trace_loader_load_file(const char* filename, allocator_t a,
 }
 #endif
 
-#endif  // ZTRACING_SRC_TRACE_LOADER_H_
+#endif  // SRC_TRACE_LOADER_H

@@ -1,16 +1,18 @@
 #include "src/imgui_impl_wasm.h"
-#include "third_party/imgui/imgui.h"
 
 #include <emscripten.h>
 #include <emscripten/html5.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <string>
 
-#include "src/allocator.h"
-#include "src/logging.h"
+#include "core/allocator.h"
+#include "core/logging.h"
 #include "src/platform.h"
+#include "third_party/imgui/imgui.h"
 
+// clang-format off
 EM_JS(bool, js_is_software_renderer, (), {
   var canvas = document.createElement('canvas');
   var gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
@@ -24,6 +26,7 @@ EM_JS(bool, js_is_software_renderer, (), {
   }
   return false;
 });
+// clang-format on
 
 struct BackendData {
   allocator_t allocator;
@@ -34,6 +37,7 @@ struct BackendData {
   ImGuiMouseCursor last_cursor;
 };
 
+// clang-format off
 EM_JS(void, js_set_cursor, (const char* selector, const char* cursor), {
   var selectorStr = UTF8ToString(selector);
   var cursorStr = UTF8ToString(cursor);
@@ -42,7 +46,9 @@ EM_JS(void, js_set_cursor, (const char* selector, const char* cursor), {
     el.style.cursor = cursorStr;
   }
 });
+// clang-format on
 
+// clang-format off
 EM_JS(void, js_setup_paste_listener, (), {
   window.addEventListener("paste", function(e) {
     var text = e.clipboardData ? e.clipboardData.getData("text") : "";
@@ -56,11 +62,13 @@ EM_JS(void, js_setup_paste_listener, (), {
     }
   });
 });
+// clang-format on
 
 static std::string g_clipboard_buffer;
 
 extern "C" {
-EMSCRIPTEN_KEEPALIVE void imgui_impl_wasm_set_clipboard_text_from_js(const char* text) {
+EMSCRIPTEN_KEEPALIVE void imgui_impl_wasm_set_clipboard_text_from_js(
+    const char* text) {
   if (text) {
     g_clipboard_buffer = text;
     imgui_impl_wasm_request_update();
@@ -82,6 +90,7 @@ static const char* imgui_impl_wasm_get_clipboard_text(void* user_data) {
   return g_clipboard_buffer.c_str();
 }
 
+// clang-format off
 EM_JS(void, js_set_clipboard, (const char* text), {
   var str = UTF8ToString(text);
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -103,8 +112,10 @@ EM_JS(void, js_set_clipboard, (const char* text), {
     document.body.removeChild(textArea);
   }
 });
+// clang-format on
 
-static void imgui_impl_wasm_set_clipboard_text(void* user_data, const char* text) {
+static void imgui_impl_wasm_set_clipboard_text(void* user_data,
+                                               const char* text) {
   (void)user_data;
   if (text) {
     js_set_clipboard(text);
@@ -126,6 +137,7 @@ float imgui_impl_wasm_get_dpi_scale() {
   return (float)emscripten_get_device_pixel_ratio();
 }
 
+// clang-format off
 EM_JS(void, get_canvas_pos, (const char* selector, float* x, float* y), {
   var selectorStr = UTF8ToString(selector);
   var el = document.querySelector(selectorStr);
@@ -138,6 +150,7 @@ EM_JS(void, get_canvas_pos, (const char* selector, float* x, float* y), {
     window.Module.HEAPF32[y >> 2] = 0;
   }
 });
+// clang-format on
 
 void imgui_impl_wasm_request_update() {
   if (BackendData* bd = get_backend_data()) {
@@ -158,15 +171,33 @@ static void imgui_impl_wasm_update_mouse_cursor() {
     js_set_cursor(bd->canvas_selector, "none");
   } else {
     switch (imgui_cursor) {
-      case ImGuiMouseCursor_Arrow: js_set_cursor(bd->canvas_selector, "default"); break;
-      case ImGuiMouseCursor_TextInput: js_set_cursor(bd->canvas_selector, "text"); break;
-      case ImGuiMouseCursor_ResizeAll: js_set_cursor(bd->canvas_selector, "move"); break;
-      case ImGuiMouseCursor_ResizeNS: js_set_cursor(bd->canvas_selector, "ns-resize"); break;
-      case ImGuiMouseCursor_ResizeEW: js_set_cursor(bd->canvas_selector, "ew-resize"); break;
-      case ImGuiMouseCursor_ResizeNESW: js_set_cursor(bd->canvas_selector, "nesw-resize"); break;
-      case ImGuiMouseCursor_ResizeNWSE: js_set_cursor(bd->canvas_selector, "nwse-resize"); break;
-      case ImGuiMouseCursor_Hand: js_set_cursor(bd->canvas_selector, "pointer"); break;
-      case ImGuiMouseCursor_NotAllowed: js_set_cursor(bd->canvas_selector, "not-allowed"); break;
+      case ImGuiMouseCursor_Arrow:
+        js_set_cursor(bd->canvas_selector, "default");
+        break;
+      case ImGuiMouseCursor_TextInput:
+        js_set_cursor(bd->canvas_selector, "text");
+        break;
+      case ImGuiMouseCursor_ResizeAll:
+        js_set_cursor(bd->canvas_selector, "move");
+        break;
+      case ImGuiMouseCursor_ResizeNS:
+        js_set_cursor(bd->canvas_selector, "ns-resize");
+        break;
+      case ImGuiMouseCursor_ResizeEW:
+        js_set_cursor(bd->canvas_selector, "ew-resize");
+        break;
+      case ImGuiMouseCursor_ResizeNESW:
+        js_set_cursor(bd->canvas_selector, "nesw-resize");
+        break;
+      case ImGuiMouseCursor_ResizeNWSE:
+        js_set_cursor(bd->canvas_selector, "nwse-resize");
+        break;
+      case ImGuiMouseCursor_Hand:
+        js_set_cursor(bd->canvas_selector, "pointer");
+        break;
+      case ImGuiMouseCursor_NotAllowed:
+        js_set_cursor(bd->canvas_selector, "not-allowed");
+        break;
     }
   }
 }
@@ -277,8 +308,10 @@ static ImGuiKey string_to_imgui_key(const char* code) {
   if (strcmp(code, "ControlRight") == 0) return ImGuiKey_RightCtrl;
   if (strcmp(code, "AltLeft") == 0) return ImGuiKey_LeftAlt;
   if (strcmp(code, "AltRight") == 0) return ImGuiKey_RightAlt;
-  if (strcmp(code, "MetaLeft") == 0 || strcmp(code, "OSLeft") == 0) return ImGuiKey_LeftSuper;
-  if (strcmp(code, "MetaRight") == 0 || strcmp(code, "OSRight") == 0) return ImGuiKey_RightSuper;
+  if (strcmp(code, "MetaLeft") == 0 || strcmp(code, "OSLeft") == 0)
+    return ImGuiKey_LeftSuper;
+  if (strcmp(code, "MetaRight") == 0 || strcmp(code, "OSRight") == 0)
+    return ImGuiKey_RightSuper;
   if (strcmp(code, "Slash") == 0) return ImGuiKey_Slash;
   return ImGuiKey_None;
 }
@@ -300,13 +333,15 @@ static void release_all_non_modifier_keys() {
   }
 }
 
-static bool is_browser_control_shortcut(ImGuiKey key, const EmscriptenKeyboardEvent* key_event) {
+static bool is_browser_control_shortcut(
+    ImGuiKey key, const EmscriptenKeyboardEvent* key_event) {
   // Function keys F5, F11, F12 are always browser control
   if (key == ImGuiKey_F5 || key == ImGuiKey_F11 || key == ImGuiKey_F12) {
     return true;
   }
 
-  bool has_shortcut_modifier = platform_is_mac() ? key_event->metaKey : key_event->ctrlKey;
+  bool has_shortcut_modifier =
+      platform_is_mac() ? key_event->metaKey : key_event->ctrlKey;
 
   if (has_shortcut_modifier) {
     // Exclude standard browser shortcuts
@@ -319,7 +354,8 @@ static bool is_browser_control_shortcut(ImGuiKey key, const EmscriptenKeyboardEv
   return false;
 }
 
-static bool imgui_wants_key(ImGuiKey key, const EmscriptenKeyboardEvent* key_event) {
+static bool imgui_wants_key(ImGuiKey key,
+                            const EmscriptenKeyboardEvent* key_event) {
   if (key == ImGuiKey_None) {
     return false;
   }
@@ -339,11 +375,13 @@ static bool imgui_wants_key(ImGuiKey key, const EmscriptenKeyboardEvent* key_eve
 
   ImGuiIO& io = ImGui::GetIO();
 
-  // 1. If a text input is active, we want to capture all typing, editing, and clipboard shortcuts
+  // 1. If a text input is active, we want to capture all typing, editing, and
+  // clipboard shortcuts
   if (io.WantTextInput) {
     // Allow editing/navigation keys in text fields
-    if (key == ImGuiKey_Backspace || key == ImGuiKey_Delete || key == ImGuiKey_Tab ||
-        key == ImGuiKey_Enter || key == ImGuiKey_Escape || key == ImGuiKey_Space ||
+    if (key == ImGuiKey_Backspace || key == ImGuiKey_Delete ||
+        key == ImGuiKey_Tab || key == ImGuiKey_Enter ||
+        key == ImGuiKey_Escape || key == ImGuiKey_Space ||
         key == ImGuiKey_LeftArrow || key == ImGuiKey_RightArrow ||
         key == ImGuiKey_UpArrow || key == ImGuiKey_DownArrow ||
         key == ImGuiKey_Home || key == ImGuiKey_End) {
@@ -351,22 +389,25 @@ static bool imgui_wants_key(ImGuiKey key, const EmscriptenKeyboardEvent* key_eve
     }
 
     // Allow standard text editing shortcuts (Ctrl/Cmd + A, C, X, Z, Y)
-    // Note: ImGuiKey_V is intentionally excluded here to allow browser native paste event to trigger.
+    // Note: ImGuiKey_V is intentionally excluded here to allow browser native
+    // paste event to trigger.
     bool has_cmd_or_ctrl = key_event->metaKey || key_event->ctrlKey;
     if (has_cmd_or_ctrl) {
-      if (key == ImGuiKey_A || key == ImGuiKey_C ||
-          key == ImGuiKey_X || key == ImGuiKey_Z || key == ImGuiKey_Y) {
+      if (key == ImGuiKey_A || key == ImGuiKey_C || key == ImGuiKey_X ||
+          key == ImGuiKey_Z || key == ImGuiKey_Y) {
         return true;
       }
     }
 
-    // If it's a printable character without modifiers (other than Shift), we want it
+    // If it's a printable character without modifiers (other than Shift), we
+    // want it
     if (!key_event->ctrlKey && !key_event->metaKey && !key_event->altKey) {
       return true;
     }
   }
 
-  // 2. If we want to capture keyboard (even if not text input), we want navigation and custom shortcuts
+  // 2. If we want to capture keyboard (even if not text input), we want
+  // navigation and custom shortcuts
   if (io.WantCaptureKeyboard) {
     // Navigation keys
     if (io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) {
@@ -408,14 +449,16 @@ static EM_BOOL on_key(int event_type, const EmscriptenKeyboardEvent* key_event,
 
   ImGuiKey key = string_to_imgui_key(key_event->code);
   if (key != ImGuiKey_None) {
-    bool is_paste_shortcut = (key == ImGuiKey_V) && (key_event->ctrlKey || key_event->metaKey);
+    bool is_paste_shortcut =
+        (key == ImGuiKey_V) && (key_event->ctrlKey || key_event->metaKey);
     if (!is_paste_shortcut) {
       io.AddKeyEvent(key, event_type == EMSCRIPTEN_EVENT_KEYDOWN);
     }
   }
 
   if (event_type == EMSCRIPTEN_EVENT_KEYDOWN && strlen(key_event->key) == 1) {
-    bool is_shortcut = key_event->metaKey || (key_event->ctrlKey && !key_event->altKey);
+    bool is_shortcut =
+        key_event->metaKey || (key_event->ctrlKey && !key_event->altKey);
     if (!is_shortcut) {
       io.AddInputCharacter(key_event->key[0]);
     }
@@ -474,7 +517,7 @@ bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t allocator) {
   bd->last_time = 0.0;
   bd->frames_to_render = 20;
   bd->software_renderer = js_is_software_renderer();
-  bd->last_cursor = ImGuiMouseCursor_COUNT; // Force update
+  bd->last_cursor = ImGuiMouseCursor_COUNT;  // Force update
 
   if (bd->software_renderer) {
     LOG_INFO("software renderer detected, disabling hidpi");

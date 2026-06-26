@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-#include "src/task.h"
+#include "core/task.h"
 
 #include <errno.h>
 #include <pthread.h>
@@ -7,10 +7,10 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "src/allocator.h"
-#include "src/arena.h"
-#include "src/assert.h"
-#include "src/logging.h"
+#include "core/allocator.h"
+#include "core/arena.h"
+#include "core/assert.h"
+#include "core/logging.h"
 
 // ─── Internal Structures ─────────────────────────────────────────────────────
 

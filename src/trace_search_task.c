@@ -3,9 +3,9 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "src/assert.h"
-#include "src/logging.h"
-#include "src/task.h"
+#include "core/assert.h"
+#include "core/logging.h"
+#include "core/task.h"
 #include "src/trace_data.h"
 #include "src/trace_histogram.h"
 #include "src/trace_viewer.h"

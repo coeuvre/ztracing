@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/platform.h"
 #include "src/trace_data.h"
 

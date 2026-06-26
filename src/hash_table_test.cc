@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 static uint32_t int32_hash(const void* key, void* ctx) {
   (void)ctx;

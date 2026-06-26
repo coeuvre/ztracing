@@ -1,11 +1,11 @@
-#ifndef ZTRACING_SRC_TASK_H_
-#define ZTRACING_SRC_TASK_H_
+#ifndef CORE_TASK_H
+#define CORE_TASK_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "src/allocator.h"
-#include "src/arena.h"
+#include "core/allocator.h"
+#include "core/arena.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -201,4 +201,4 @@ void task_queue_remove_completion(task_queue_t* queue);
 }
 #endif
 
-#endif  // ZTRACING_SRC_TASK_H_
+#endif  // CORE_TASK_H

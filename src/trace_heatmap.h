@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_TRACE_HEATMAP_H_
-#define ZTRACING_SRC_TRACE_HEATMAP_H_
+#ifndef SRC_TRACE_HEATMAP_H
+#define SRC_TRACE_HEATMAP_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -41,4 +41,4 @@ void trace_heatmap_compute(const array_list_t* tracks, const trace_data_t* td,
 }
 #endif
 
-#endif  // ZTRACING_SRC_TRACE_HEATMAP_H_
+#endif  // SRC_TRACE_HEATMAP_H

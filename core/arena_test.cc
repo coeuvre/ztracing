@@ -1,8 +1,8 @@
-#include "src/arena.h"
+#include "core/arena.h"
 
 #include <gtest/gtest.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 TEST(arena_test, basic) {
   allocator_t backing = allocator_get_default();

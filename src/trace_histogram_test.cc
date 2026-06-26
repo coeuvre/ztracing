@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/trace_data.h"
 
 class trace_histogram_test : public ::testing::Test {

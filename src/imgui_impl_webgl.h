@@ -1,7 +1,7 @@
-#ifndef ZTRACING_SRC_IMGUI_IMPL_WEBGL_H_
-#define ZTRACING_SRC_IMGUI_IMPL_WEBGL_H_
+#ifndef SRC_IMGUI_IMPL_WEBGL_H
+#define SRC_IMGUI_IMPL_WEBGL_H
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 struct ig_draw_data;
 
@@ -20,4 +20,4 @@ void imgui_impl_webgl_destroy_fonts_texture(void);
 }
 #endif
 
-#endif  // ZTRACING_SRC_IMGUI_IMPL_WEBGL_H_
+#endif  // SRC_IMGUI_IMPL_WEBGL_H

@@ -1,4 +1,4 @@
-#include "src/task.h"
+#include "core/task.h"
 
 #include <gtest/gtest.h>
 
@@ -11,7 +11,7 @@
 #include <thread>
 #include <vector>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
 

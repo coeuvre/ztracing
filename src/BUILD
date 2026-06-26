@@ -31,62 +31,12 @@ cc_library(
 )
 
 cc_library(
-    name = "logging",
-    srcs = select({
-        ":wasm_build": ["logging_wasm.cc"],
-        "//conditions:default": ["logging_native.c"],
-    }),
-    hdrs = ["logging.h"],
-    copts = select({
-        ":wasm_build": ["-Wno-dollar-in-identifier-extension"],
-        "//conditions:default": [],
-    }),
-)
-
-cc_library(
-    name = "assert",
-    hdrs = ["assert.h"],
-    deps = [
-        ":logging",
-    ],
-)
-
-cc_library(
     name = "headless_gl",
     srcs = ["headless_gl_linux.c"],
     hdrs = ["headless_gl.h"],
     linkopts = ["-lEGL", "-lGLESv2"],
     deps = [
-        ":logging",
-    ],
-)
-
-cc_library(
-    name = "allocator",
-    srcs = ["allocator.c"],
-    hdrs = ["allocator.h"],
-    deps = [":logging"],
-)
-
-cc_library(
-    name = "arena",
-    srcs = ["arena.c"],
-    hdrs = ["arena.h"],
-    deps = [
-        ":allocator",
-        ":assert",
-    ],
-)
-
-cc_library(
-    name = "task",
-    srcs = ["task.c"],
-    hdrs = ["task.h"],
-    deps = [
-        ":allocator",
-        ":arena",
-        ":assert",
-        ":logging",
+        "//core:logging",
     ],
 )
 
@@ -94,8 +44,8 @@ cc_library(
     name = "string",
     hdrs = ["string.h"],
     deps = [
-        ":allocator",
-        ":assert",
+        "//core:allocator",
+        "//core:assert",
     ],
 )
 
@@ -108,7 +58,7 @@ cc_library(
 cc_library(
     name = "array_list",
     hdrs = ["array_list.h"],
-    deps = [":allocator"],
+    deps = ["//core:allocator"],
 )
 
 cc_library(
@@ -116,13 +66,13 @@ cc_library(
     srcs = ["trace_load_task.c"],
     hdrs = ["trace_load_task.h"],
     deps = [
-        ":allocator",
-        ":arena",
+        "//core:allocator",
+        "//core:arena",
         ":array_list",
-        ":assert",
+        "//core:assert",
         ":colors",
         ":platform",
-        ":task",
+        "//core:task",
         ":trace_data",
         ":trace_parser",
         ":track",
@@ -134,31 +84,13 @@ cc_library(
     srcs = ["trace_search_task.c"],
     hdrs = ["trace_search_task.h"],
     deps = [
-        ":allocator",
+        "//core:allocator",
         ":array_list",
-        ":assert",
-        ":task",
+        "//core:assert",
+        "//core:task",
         ":trace_data",
         ":trace_histogram",
         ":trace_viewer",
-    ],
-)
-
-cc_test(
-    name = "allocator_test",
-    srcs = ["allocator_test.cc"],
-    deps = [
-        ":allocator",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "arena_test",
-    srcs = ["arena_test.cc"],
-    deps = [
-        ":arena",
-        "@googletest//:gtest_main",
     ],
 )
 
@@ -185,17 +117,7 @@ cc_test(
     srcs = ["string_test.cc"],
     deps = [
         ":string",
-        ":allocator",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "task_test",
-    srcs = ["task_test.cc"],
-    deps = [
-        ":task",
-        ":allocator",
+        "//core:allocator",
         "@googletest//:gtest_main",
     ],
 )
@@ -214,9 +136,9 @@ cc_test(
     name = "trace_search_task_test",
     srcs = ["trace_search_task_test.cc"],
     deps = [
-        ":allocator",
+        "//core:allocator",
         ":platform",
-        ":task",
+        "//core:task",
         ":trace_data",
         ":trace_histogram",
         ":trace_search_task",
@@ -230,7 +152,7 @@ cc_library(
     srcs = ["json.c"],
     hdrs = ["json.h"],
     deps = [
-        ":allocator",
+        "//core:allocator",
         ":array_list",
         ":string",
     ],
@@ -241,7 +163,7 @@ cc_library(
     srcs = ["trace_parser.c"],
     hdrs = ["trace_parser.h"],
     deps = [
-        ":allocator",
+        "//core:allocator",
         ":array_list",
         ":string",
         ":json",
@@ -283,8 +205,8 @@ cc_library(
     hdrs = ["imgui_impl_wasm.h"],
     tags = ["wasm"],
     deps = [
-        ":allocator",
-        ":logging",
+        "//core:allocator",
+        "//core:logging",
         ":platform",
         "@imgui",
     ],
@@ -295,9 +217,9 @@ cc_library(
     srcs = ["imgui_impl_webgl.cc"],
     hdrs = ["imgui_impl_webgl.h"],
     deps = [
-        ":allocator",
+        "//core:allocator",
         ":array_list",
-        ":logging",
+        "//core:logging",
         "@imgui",
     ],
 )
@@ -317,9 +239,9 @@ cc_library(
     srcs = ["trace_data.c"],
     hdrs = ["trace_data.h"],
     deps = [
-        ":allocator",
+        "//core:allocator",
         ":array_list",
-        ":assert",
+        "//core:assert",
         ":colors",
         ":hash_table",
         ":string",
@@ -339,7 +261,7 @@ cc_test(
 cc_library(
     name = "hash_table",
     hdrs = ["hash_table.h"],
-    deps = [":allocator"],
+    deps = ["//core:allocator"],
 )
 
 cc_test(
@@ -358,8 +280,8 @@ cc_library(
     srcs = ["track.c"],
     hdrs = ["track.h"],
     deps = [
-        ":allocator",
-        ":arena",
+        "//core:allocator",
+        "//core:arena",
         ":array_list",
         ":colors",
         ":hash_table",
@@ -401,12 +323,12 @@ cc_library(
     srcs = ["trace_viewer.c"],
     hdrs = ["trace_viewer.h"],
     deps = [
-        ":allocator",
+        "//core:allocator",
         ":array_list",
         ":colors",
         ":format",
         ":imgui_c",
-        ":logging",
+        "//core:logging",
         ":platform",
         ":trace_data",
         ":trace_parser",
@@ -452,15 +374,15 @@ cc_library(
     srcs = ["app.c"],
     hdrs = ["app.h"],
     deps = [
-        ":allocator",
+        "//core:allocator",
         ":array_list",
         ":colors",
         ":format",
         ":imgui_c",
         ":loading_screen",
-        ":logging",
+        "//core:logging",
         ":platform",
-        ":task",
+        "//core:task",
         ":trace_data",
         ":trace_load_task",
         ":trace_parser",
@@ -500,11 +422,11 @@ cc_binary(
     ],
     deps = [
         ":app",
-        ":assert",
+        "//core:assert",
         ":imgui_c",
         ":imgui_impl_wasm",
         ":imgui_impl_webgl",
-        ":logging",
+        "//core:logging",
         ":platform",
     ],
 )
@@ -531,7 +453,7 @@ cc_test(
     srcs = ["trace_heatmap_test.cc"],
     deps = [
         ":trace_heatmap",
-        ":allocator",
+        "//core:allocator",
         ":track",
         "@googletest//:gtest_main",
     ],
@@ -552,7 +474,7 @@ cc_test(
     srcs = ["trace_histogram_test.cc"],
     deps = [
         ":trace_histogram",
-        ":allocator",
+        "//core:allocator",
         "@googletest//:gtest_main",
     ],
 )
@@ -562,9 +484,9 @@ cc_library(
     srcs = ["trace_loader.c"],
     hdrs = ["trace_loader.h"],
     deps = [
-        ":allocator",
+        "//core:allocator",
         ":platform",
-        ":task",
+        "//core:task",
         ":trace_data",
         ":trace_load_task",
         ":track",
@@ -582,7 +504,7 @@ cc_binary(
         ":json",
         ":track",
         ":trace_loader",
-        ":logging",
+        "//core:logging",
         ":platform",
     ],
 )
@@ -600,7 +522,7 @@ cc_library(
         ":headless_gl",
         ":imgui_c",
         ":imgui_impl_webgl",
-        ":logging",
+        "//core:logging",
         ":platform",
         "@imgui",
     ],

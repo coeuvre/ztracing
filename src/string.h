@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_STRING_H_
-#define ZTRACING_SRC_STRING_H_
+#ifndef SRC_STRING_H
+#define SRC_STRING_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -9,8 +9,8 @@
 #include <string_view>
 #endif
 
-#include "src/allocator.h"
-#include "src/assert.h"
+#include "core/allocator.h"
+#include "core/assert.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -212,4 +212,4 @@ inline constexpr bool string_view::operator==(std::string_view other) const {
 #define SV(lit) ((string_view_t){(lit ""), sizeof(lit "") - 1})
 #endif
 
-#endif  // ZTRACING_SRC_STRING_H_
+#endif  // SRC_STRING_H

@@ -3,7 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include "src/logging.h"
+#include "core/logging.h"
 
 extern "C" {
 

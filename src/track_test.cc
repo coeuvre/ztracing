@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "src/arena.h"
+#include "core/arena.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
 

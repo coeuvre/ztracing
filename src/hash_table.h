@@ -1,11 +1,11 @@
-#ifndef ZTRACING_SRC_HASH_TABLE_H_
-#define ZTRACING_SRC_HASH_TABLE_H_
+#ifndef SRC_HASH_TABLE_H
+#define SRC_HASH_TABLE_H
 
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,9 +29,9 @@ typedef struct hash_table {
   void* ctx;
 } hash_table_t;
 
-#define HASH_TABLE_ASSERT_INITIALIZED(ht)                                 \
-  assert((ht)->key_size > 0 && (ht)->entry_size > 0 &&                    \
-         (ht)->hash_fn != nullptr && (ht)->eq_fn != nullptr &&            \
+#define HASH_TABLE_ASSERT_INITIALIZED(ht)                      \
+  assert((ht)->key_size > 0 && (ht)->entry_size > 0 &&         \
+         (ht)->hash_fn != nullptr && (ht)->eq_fn != nullptr && \
          "HashTable must be initialized before use!")
 
 static inline void hash_table_calculate_layout(hash_table_t* ht) {
@@ -235,4 +235,4 @@ static inline void hash_table_resize(hash_table_t* ht, size_t new_capacity,
 }
 #endif
 
-#endif  // ZTRACING_SRC_HASH_TABLE_H_
+#endif  // SRC_HASH_TABLE_H

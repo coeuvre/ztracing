@@ -1,7 +1,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include "src/logging.h"
+#include "core/logging.h"
 
 void log_message(log_level_t level, const char* format, ...) {
   const char* level_str = "DEBUG";

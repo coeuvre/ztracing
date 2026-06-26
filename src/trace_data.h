@@ -1,9 +1,9 @@
-#ifndef ZTRACING_SRC_TRACE_DATA_H_
-#define ZTRACING_SRC_TRACE_DATA_H_
+#ifndef SRC_TRACE_DATA_H
+#define SRC_TRACE_DATA_H
 
 #include <stdint.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/array_list.h"
 #include "src/hash_table.h"
 #include "src/string.h"
@@ -165,4 +165,4 @@ static inline size_t trace_data_events_lower_bound(
 }
 #endif
 
-#endif  // ZTRACING_SRC_TRACE_DATA_H_
+#endif  // SRC_TRACE_DATA_H

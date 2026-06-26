@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_HEADLESS_GL_H_
-#define ZTRACING_SRC_HEADLESS_GL_H_
+#ifndef SRC_HEADLESS_GL_H
+#define SRC_HEADLESS_GL_H
 
 #include <stdbool.h>
 
@@ -26,4 +26,4 @@ void headless_gl_shutdown(headless_gl_context_t* ctx);
 }
 #endif
 
-#endif  // ZTRACING_SRC_HEADLESS_GL_H_
+#endif  // SRC_HEADLESS_GL_H

@@ -6,9 +6,9 @@
 #include <string.h>
 #include <zlib.h>
 
-#include "src/assert.h"
+#include "core/assert.h"
+#include "core/task.h"
 #include "src/platform.h"
-#include "src/task.h"
 #include "src/trace_load_task.h"
 #include "src/track.h"
 

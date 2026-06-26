@@ -2,7 +2,7 @@
 #include <cstdio>
 #include <vector>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
 #include "src/trace_loader.h"
@@ -35,7 +35,8 @@ int main(int argc, char** argv) {
   counting_allocator_t ca = counting_allocator_init(allocator_get_default());
   allocator_t a = counting_allocator_get_allocator(&ca);
 
-  // 1. Benchmark Ingestion (Read + Decompress + Parse + Add + Background Organize)
+  // 1. Benchmark Ingestion (Read + Decompress + Parse + Add + Background
+  // Organize)
   size_t decompressed_size = 0;
   array_list_t tracks = {};
   int64_t min_ts = 0;
@@ -44,8 +45,9 @@ int main(int argc, char** argv) {
   double background_organize_ms = 0.0;
 
   auto ingest_start = std::chrono::high_resolution_clock::now();
-  trace_data_t* td = trace_loader_load_file(filename, a, &decompressed_size, &tracks, &min_ts, &max_ts,
-                                            &background_ingest_ms, &background_organize_ms);
+  trace_data_t* td = trace_loader_load_file(
+      filename, a, &decompressed_size, &tracks, &min_ts, &max_ts,
+      &background_ingest_ms, &background_organize_ms);
   auto ingest_end = std::chrono::high_resolution_clock::now();
 
   if (!td) {
@@ -60,7 +62,8 @@ int main(int argc, char** argv) {
   // 2. Benchmark Track Organization (Adopts background pipeline duration)
   std::chrono::duration<double> organize_diff(background_organize_ms / 1000.0);
 
-  // Total wall-clock time represents the actual pipelined loading time (overlapped parsing + organization)
+  // Total wall-clock time represents the actual pipelined loading time
+  // (overlapped parsing + organization)
   std::chrono::duration<double> total_wall_clock = ingest_end - ingest_start;
   double total_time = total_wall_clock.count();
   size_t consumed_mem = counting_allocator_get_allocated_bytes(&ca);

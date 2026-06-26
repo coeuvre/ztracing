@@ -1,12 +1,12 @@
-#ifndef ZTRACING_SRC_JSON_H_
-#define ZTRACING_SRC_JSON_H_
+#ifndef SRC_JSON_H
+#define SRC_JSON_H
 
 #include <ctype.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/array_list.h"
 #include "src/string.h"
 
@@ -103,4 +103,4 @@ void json_writer_null(json_writer_t* w);
 }
 #endif
 
-#endif  // ZTRACING_SRC_JSON_H_
+#endif  // SRC_JSON_H

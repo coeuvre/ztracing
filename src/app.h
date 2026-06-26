@@ -1,14 +1,14 @@
-#ifndef ZTRACING_SRC_APP_H_
-#define ZTRACING_SRC_APP_H_
+#ifndef SRC_APP_H
+#define SRC_APP_H
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
+#include "core/task.h"
 #include "src/array_list.h"
 #include "src/colors.h"
-#include "src/task.h"
 #include "src/trace_data.h"
 #include "src/trace_viewer.h"
 
@@ -56,9 +56,9 @@ typedef struct app {
   // Background Task Schedulers
   task_queue_t* task_queue;  // Global background task queue scheduler
   struct trace_load_task*
-      trace_load_task;              // Active loading task handle (opaque)
+      trace_load_task;  // Active loading task handle (opaque)
   struct trace_search_task*
-      active_search_task;           // Active search task handle (opaque)
+      active_search_task;  // Active search task handle (opaque)
 
   // Background Loading State
   trace_loading_state_t loading;
@@ -104,4 +104,4 @@ size_t app_get_buffered_bytes(app_t* app);
 }
 #endif
 
-#endif  // ZTRACING_SRC_APP_H_
+#endif  // SRC_APP_H

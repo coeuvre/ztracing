@@ -1,9 +1,9 @@
-#ifndef ZTRACING_SRC_ASSERT_H_
-#define ZTRACING_SRC_ASSERT_H_
+#ifndef CORE_ASSERT_H
+#define CORE_ASSERT_H
 
 #include <stdlib.h>
 
-#include "src/logging.h"
+#include "core/logging.h"
 
 #ifndef unlikely
 #define unlikely(x) __builtin_expect(!!(x), 0)
@@ -19,4 +19,4 @@
   } while (0)
 #endif
 
-#endif  // ZTRACING_SRC_ASSERT_H_
+#endif  // CORE_ASSERT_H

@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_TRACE_PARSER_H_
-#define ZTRACING_SRC_TRACE_PARSER_H_
+#ifndef SRC_TRACE_PARSER_H
+#define SRC_TRACE_PARSER_H
 
 // This parser implements the Chrome Trace Event Format.
 // For the format specification, see:
@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/array_list.h"
 #include "src/string.h"
 
@@ -76,4 +76,4 @@ bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a);
 }
 #endif
 
-#endif  // ZTRACING_SRC_TRACE_PARSER_H_
+#endif  // SRC_TRACE_PARSER_H

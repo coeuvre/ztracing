@@ -4,7 +4,7 @@
 
 #include <string_view>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/array_list.h"
 #include "src/string.h"
 

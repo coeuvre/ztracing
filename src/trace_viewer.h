@@ -1,9 +1,9 @@
-#ifndef ZTRACING_SRC_TRACE_VIEWER_H_
-#define ZTRACING_SRC_TRACE_VIEWER_H_
+#ifndef SRC_TRACE_VIEWER_H
+#define SRC_TRACE_VIEWER_H
 
 #include <pthread.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/array_list.h"
 #include "src/colors.h"
 #include "src/imgui_c.h"
@@ -23,7 +23,6 @@
 
 #define tv_atomic_bool _Atomic(bool)
 #define tv_atomic_uint32 _Atomic(uint32_t)
-
 
 struct search_state {
   bool is_searching;
@@ -244,4 +243,4 @@ void trace_viewer_submit_search_job(trace_viewer_t* tv);
 }
 #endif
 
-#endif  // ZTRACING_SRC_TRACE_VIEWER_H_
+#endif  // SRC_TRACE_VIEWER_H

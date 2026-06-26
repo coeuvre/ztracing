@@ -14,7 +14,7 @@
 #include <wasm_simd128.h>
 #endif
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/array_list.h"
 #include "src/string.h"
 

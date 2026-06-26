@@ -1,9 +1,9 @@
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "src/logging.h"
+#include "core/logging.h"
 
 static void* allocator_default_alloc(void* ctx, void* ptr, size_t old_size,
                                      size_t new_size) {

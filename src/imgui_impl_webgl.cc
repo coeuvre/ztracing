@@ -1,14 +1,14 @@
 #include "src/imgui_impl_webgl.h"
-#include "third_party/imgui/imgui.h"
 
 #include <GLES3/gl3.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
+#include "core/logging.h"
 #include "src/array_list.h"
-#include "src/logging.h"
+#include "third_party/imgui/imgui.h"
 
 struct BackendData {
   allocator_t allocator;
@@ -31,18 +31,17 @@ static BackendData* get_backend_data() {
 static void setup_vertex_attributes(size_t vtx_offset) {
   BackendData* bd = get_backend_data();
 
-  glVertexAttribPointer((GLuint)bd->attrib_location_pos, 2, GL_FLOAT, GL_FALSE,
-                        sizeof(ImDrawVert),
-                        (GLvoid*)(vtx_offset * sizeof(ImDrawVert) +
-                                  offsetof(ImDrawVert, pos)));
-  glVertexAttribPointer((GLuint)bd->attrib_location_uv, 2, GL_FLOAT, GL_FALSE,
-                        sizeof(ImDrawVert),
-                        (GLvoid*)(vtx_offset * sizeof(ImDrawVert) +
-                                  offsetof(ImDrawVert, uv)));
-  glVertexAttribPointer((GLuint)bd->attrib_location_color, 4, GL_UNSIGNED_BYTE,
-                        GL_TRUE, sizeof(ImDrawVert),
-                        (GLvoid*)(vtx_offset * sizeof(ImDrawVert) +
-                                  offsetof(ImDrawVert, col)));
+  glVertexAttribPointer(
+      (GLuint)bd->attrib_location_pos, 2, GL_FLOAT, GL_FALSE,
+      sizeof(ImDrawVert),
+      (GLvoid*)(vtx_offset * sizeof(ImDrawVert) + offsetof(ImDrawVert, pos)));
+  glVertexAttribPointer(
+      (GLuint)bd->attrib_location_uv, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert),
+      (GLvoid*)(vtx_offset * sizeof(ImDrawVert) + offsetof(ImDrawVert, uv)));
+  glVertexAttribPointer(
+      (GLuint)bd->attrib_location_color, 4, GL_UNSIGNED_BYTE, GL_TRUE,
+      sizeof(ImDrawVert),
+      (GLvoid*)(vtx_offset * sizeof(ImDrawVert) + offsetof(ImDrawVert, col)));
 }
 
 static void setup_render_state(ImDrawData* draw_data, int fb_width,

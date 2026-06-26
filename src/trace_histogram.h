@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_TRACE_HISTOGRAM_H_
-#define ZTRACING_SRC_TRACE_HISTOGRAM_H_
+#ifndef SRC_TRACE_HISTOGRAM_H
+#define SRC_TRACE_HISTOGRAM_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -42,4 +42,4 @@ void trace_histogram_compute(const array_list_t* results,
 }
 #endif
 
-#endif  // ZTRACING_SRC_TRACE_HISTOGRAM_H_
+#endif  // SRC_TRACE_HISTOGRAM_H

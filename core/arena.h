@@ -1,9 +1,9 @@
-#ifndef ZTRACING_SRC_ARENA_H_
-#define ZTRACING_SRC_ARENA_H_
+#ifndef CORE_ARENA_H
+#define CORE_ARENA_H
 
 #include <stddef.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 typedef struct arena_block arena_block_t;
 
@@ -41,4 +41,4 @@ allocator_t arena_get_allocator(arena_t* arena);
 }
 #endif
 
-#endif  // ZTRACING_SRC_ARENA_H_
+#endif  // CORE_ARENA_H

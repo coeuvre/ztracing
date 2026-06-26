@@ -3,7 +3,7 @@
 #include <gtest/gtest.h>
 #include <string.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 TEST(StringTest, ZeroInitialization) {
   string_t s = {};

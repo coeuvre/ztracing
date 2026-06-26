@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "core/logging.h"
 #include "src/headless_gl.h"
-#include "src/logging.h"
 
 typedef struct HeadlessGLInternal {
   EGLDisplay display;

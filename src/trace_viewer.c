@@ -6,10 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/logging.h"
 #include "src/colors.h"
 #include "src/format.h"
 #include "src/imgui_c.h"
-#include "src/logging.h"
 #include "src/platform.h"
 
 static void trace_viewer_draw_selection_overlay(trace_viewer_t* tv,

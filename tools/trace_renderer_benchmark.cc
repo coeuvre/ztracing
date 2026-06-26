@@ -4,8 +4,8 @@
 #include <cstdio>
 #include <vector>
 
-#include "src/allocator.h"
-#include "src/arena.h"
+#include "core/allocator.h"
+#include "core/arena.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
 #include "src/trace_parser.h"

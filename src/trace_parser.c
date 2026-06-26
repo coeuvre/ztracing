@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/array_list.h"
 #include "src/json.h"
 #include "src/string.h"
@@ -179,9 +179,8 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
         arg.val_double = 0.0;
         if (tok.type == JSON_TOKEN_STRING ||
             tok.type == JSON_TOKEN_NUMBER_I64 ||
-            tok.type == JSON_TOKEN_NUMBER_F64 ||
-            tok.type == JSON_TOKEN_TRUE || tok.type == JSON_TOKEN_FALSE ||
-            tok.type == JSON_TOKEN_NULL) {
+            tok.type == JSON_TOKEN_NUMBER_F64 || tok.type == JSON_TOKEN_TRUE ||
+            tok.type == JSON_TOKEN_FALSE || tok.type == JSON_TOKEN_NULL) {
           if (tok.type == JSON_TOKEN_NUMBER_I64) {
             arg.val_double = (double)tok.val.i64;
             arg.val = (string_view_t){};

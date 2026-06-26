@@ -1,7 +1,7 @@
-#ifndef ZTRACING_SRC_IMGUI_IMPL_WASM_H_
-#define ZTRACING_SRC_IMGUI_IMPL_WASM_H_
+#ifndef SRC_IMGUI_IMPL_WASM_H
+#define SRC_IMGUI_IMPL_WASM_H
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,4 +20,4 @@ float imgui_impl_wasm_get_dpi_scale(void);
 }
 #endif
 
-#endif  // IMGUI_IMPL_WASM_H_  // ZTRACING_SRC_IMGUI_IMPL_WASM_H_
+#endif  // IMGUI_IMPL_WASM_H_  // SRC_IMGUI_IMPL_WASM_H

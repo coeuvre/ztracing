@@ -1,12 +1,12 @@
-#ifndef ZTRACING_SRC_ARRAY_LIST_H_
-#define ZTRACING_SRC_ARRAY_LIST_H_
+#ifndef SRC_ARRAY_LIST_H
+#define SRC_ARRAY_LIST_H
 
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -132,7 +132,6 @@ static inline void* array_list_append_(array_list_t* al, size_t count,
 #define array_list_append(al, count, type_t, a) \
   ((type_t*)array_list_append_((al), (count), sizeof(type_t), (a)))
 
-
 static inline void* array_list_get_(const array_list_t* al, size_t elem_size,
                                     size_t index) {
   (void)elem_size;
@@ -148,6 +147,4 @@ static inline void* array_list_get_(const array_list_t* al, size_t elem_size,
 }
 #endif
 
-
-
-#endif  // ZTRACING_SRC_ARRAY_LIST_H_
+#endif  // SRC_ARRAY_LIST_H

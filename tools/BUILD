@@ -6,7 +6,7 @@ cc_binary(
     name = "trace_benchmark",
     srcs = ["trace_benchmark.cc"],
     deps = [
-        "//src:allocator",
+        "//core:allocator",
         "//src:trace_loader",
         "//src:trace_data",
         "//src:track",
@@ -20,12 +20,12 @@ cc_binary(
     name = "trace_renderer_benchmark",
     srcs = ["trace_renderer_benchmark.cc"],
     deps = [
-        "//src:allocator",
+        "//core:allocator",
         "//src:trace_parser",
         "//src:trace_data",
         "//src:track",
         "//src:colors",
         "//src:track_renderer",
-        "//src:arena",
+        "//core:arena",
     ],
 )

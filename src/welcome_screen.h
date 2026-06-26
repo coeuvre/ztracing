@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_WELCOME_SCREEN_H_
-#define ZTRACING_SRC_WELCOME_SCREEN_H_
+#ifndef SRC_WELCOME_SCREEN_H
+#define SRC_WELCOME_SCREEN_H
 
 #include "src/colors.h"
 
@@ -13,4 +13,4 @@ void welcome_screen_draw(const theme_t* theme);
 }
 #endif
 
-#endif  // ZTRACING_SRC_WELCOME_SCREEN_H_
+#endif  // SRC_WELCOME_SCREEN_H

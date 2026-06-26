@@ -1,12 +1,12 @@
-#ifndef ZTRACING_SRC_TRACE_LOAD_TASK_H_
-#define ZTRACING_SRC_TRACE_LOAD_TASK_H_
+#ifndef SRC_TRACE_LOAD_TASK_H
+#define SRC_TRACE_LOAD_TASK_H
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#include "src/allocator.h"
-#include "src/task.h"
+#include "core/allocator.h"
+#include "core/task.h"
 #include "src/trace_data.h"
 
 #ifdef __cplusplus
@@ -97,4 +97,4 @@ void trace_load_task_run(task_context_t* ctx);
 }
 #endif
 
-#endif  // ZTRACING_SRC_TRACE_LOAD_TASK_H_
+#endif  // SRC_TRACE_LOAD_TASK_H

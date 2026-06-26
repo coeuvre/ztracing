@@ -1,9 +1,9 @@
-#ifndef ZTRACING_SRC_TRACK_RENDERER_H_
-#define ZTRACING_SRC_TRACK_RENDERER_H_
+#ifndef SRC_TRACK_RENDERER_H
+#define SRC_TRACK_RENDERER_H
 
 #include <stdint.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/array_list.h"
 #include "src/trace_data.h"
 #include "src/track.h"
@@ -106,4 +106,4 @@ void track_compute_counter_render_blocks(
 }
 #endif
 
-#endif  // ZTRACING_SRC_TRACK_RENDERER_H_
+#endif  // SRC_TRACK_RENDERER_H

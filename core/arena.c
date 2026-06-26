@@ -1,9 +1,9 @@
-#include "src/arena.h"
+#include "core/arena.h"
 
 #include <stdint.h>
 #include <string.h>
 
-#include "src/assert.h"
+#include "core/assert.h"
 
 #define ARENA_DEFAULT_BLOCK_SIZE (64 * 1024)
 #define ARENA_ALIGNMENT 8

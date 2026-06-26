@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "core/logging.h"
 #include "src/colors.h"
 #include "src/imgui_c.h"
 #include "src/loading_screen.h"
-#include "src/logging.h"
 #include "src/platform.h"
 #include "src/trace_load_task.h"
 #include "src/trace_search_task.h"

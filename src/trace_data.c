@@ -3,7 +3,7 @@
 #include <stdatomic.h>
 #include <string.h>
 
-#include "src/assert.h"
+#include "core/assert.h"
 #include "src/colors.h"
 
 static uint32_t compute_hash(string_view_t s) {
@@ -152,7 +152,8 @@ string_ref_t trace_data_push_string(trace_data_t* td, string_view_t s,
   return new_index;
 }
 
-static string_ref_t trace_data_push_string_cached(trace_data_t* td, string_view_t s,
+static string_ref_t trace_data_push_string_cached(trace_data_t* td,
+                                                  string_view_t s,
                                                   string_ref_t* cache_ref,
                                                   allocator_t a) {
   if (s.ptr == nullptr || s.len == 0) {
@@ -168,7 +169,6 @@ static string_ref_t trace_data_push_string_cached(trace_data_t* td, string_view_
   *cache_ref = new_ref;
   return new_ref;
 }
-
 
 static uint8_t compute_event_palette_index(const trace_data_t* td,
                                            string_ref_t name_ref,
@@ -267,8 +267,8 @@ static void trace_data_merge_args(trace_data_t* td,
 
     for (size_t i = 0; i < e_ev->args_count; i++) {
       size_t cache_idx = i < 4 ? i : 3;
-      e_key_refs[i] = trace_data_push_string_cached(td, e_ev->args[i].key,
-                                                    &td->last_arg_key_refs[cache_idx], a);
+      e_key_refs[i] = trace_data_push_string_cached(
+          td, e_ev->args[i].key, &td->last_arg_key_refs[cache_idx], a);
       e_val_refs[i] = trace_data_push_string(td, e_ev->args[i].val, a);
     }
 
@@ -364,9 +364,12 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
   if (is_begin) {
     trace_event_persisted_t p = {};
     p.name_ref = trace_data_push_string(td, event->name, a);
-    p.cat_ref = trace_data_push_string_cached(td, event->cat, &td->last_cat_ref, a);
-    p.ph_ref = trace_data_push_string_cached(td, event->ph, &td->last_ph_ref, a);
-    p.cname_ref = trace_data_push_string_cached(td, event->cname, &td->last_cname_ref, a);
+    p.cat_ref =
+        trace_data_push_string_cached(td, event->cat, &td->last_cat_ref, a);
+    p.ph_ref =
+        trace_data_push_string_cached(td, event->ph, &td->last_ph_ref, a);
+    p.cname_ref =
+        trace_data_push_string_cached(td, event->cname, &td->last_cname_ref, a);
     p.id_ref = trace_data_push_string(td, event->id, a);
     p.palette_index = compute_event_palette_index(td, p.name_ref, p.cname_ref);
     p.ts = event->ts;
@@ -379,8 +382,8 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
     for (size_t i = 0; i < event->args_count; ++i) {
       trace_arg_persisted_t arg = {};
       size_t cache_idx = i < 4 ? i : 3;
-      arg.key_ref = trace_data_push_string_cached(td, event->args[i].key,
-                                                  &td->last_arg_key_refs[cache_idx], a);
+      arg.key_ref = trace_data_push_string_cached(
+          td, event->args[i].key, &td->last_arg_key_refs[cache_idx], a);
       arg.val_ref = trace_data_push_string(td, event->args[i].val, a);
       arg.val_double = event->args[i].val_double;
       *array_list_push(&td->args, trace_arg_persisted_t, a) = arg;
@@ -431,9 +434,12 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
   } else {
     trace_event_persisted_t p = {};
     p.name_ref = trace_data_push_string(td, event->name, a);
-    p.cat_ref = trace_data_push_string_cached(td, event->cat, &td->last_cat_ref, a);
-    p.ph_ref = trace_data_push_string_cached(td, event->ph, &td->last_ph_ref, a);
-    p.cname_ref = trace_data_push_string_cached(td, event->cname, &td->last_cname_ref, a);
+    p.cat_ref =
+        trace_data_push_string_cached(td, event->cat, &td->last_cat_ref, a);
+    p.ph_ref =
+        trace_data_push_string_cached(td, event->ph, &td->last_ph_ref, a);
+    p.cname_ref =
+        trace_data_push_string_cached(td, event->cname, &td->last_cname_ref, a);
     p.id_ref = trace_data_push_string(td, event->id, a);
     p.palette_index = compute_event_palette_index(td, p.name_ref, p.cname_ref);
     p.ts = event->ts;
@@ -446,8 +452,8 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
     for (size_t i = 0; i < event->args_count; ++i) {
       trace_arg_persisted_t arg = {};
       size_t cache_idx = i < 4 ? i : 3;
-      arg.key_ref = trace_data_push_string_cached(td, event->args[i].key,
-                                                  &td->last_arg_key_refs[cache_idx], a);
+      arg.key_ref = trace_data_push_string_cached(
+          td, event->args[i].key, &td->last_arg_key_refs[cache_idx], a);
       arg.val_ref = trace_data_push_string(td, event->args[i].val, a);
       arg.val_double = event->args[i].val_double;
       *array_list_push(&td->args, trace_arg_persisted_t, a) = arg;

@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
 

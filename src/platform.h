@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_PLATFORM_H_
-#define ZTRACING_SRC_PLATFORM_H_
+#ifndef SRC_PLATFORM_H
+#define SRC_PLATFORM_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,4 +28,4 @@ bool platform_is_main_thread(void);
 typedef platform_job_fn_t PlatformJobFn;
 #endif
 
-#endif  // ZTRACING_SRC_PLATFORM_H_
+#endif  // SRC_PLATFORM_H

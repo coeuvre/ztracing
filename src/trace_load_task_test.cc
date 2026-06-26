@@ -2,8 +2,8 @@
 
 #include <gtest/gtest.h>
 
-#include "src/allocator.h"
-#include "src/task.h"
+#include "core/allocator.h"
+#include "core/task.h"
 #include "src/trace_data.h"
 #include "src/track.h"
 

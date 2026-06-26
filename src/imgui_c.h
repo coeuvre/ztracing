@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_IMGUI_C_H_
-#define ZTRACING_SRC_IMGUI_C_H_
+#ifndef SRC_IMGUI_C_H
+#define SRC_IMGUI_C_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -371,4 +371,4 @@ ig_vec4_t ig_color_convert_u32_to_float4(uint32_t in);
 }
 #endif
 
-#endif  // ZTRACING_SRC_IMGUI_C_H_
+#endif  // SRC_IMGUI_C_H

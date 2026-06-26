@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_ZTRACING_H_
-#define ZTRACING_SRC_ZTRACING_H_
+#ifndef SRC_ZTRACING_H
+#define SRC_ZTRACING_H
 
 #include <stddef.h>
 
@@ -68,4 +68,4 @@ EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed(bool is_dark);
 }
 #endif
 
-#endif  // ZTRACING_SRC_ZTRACING_H_
+#endif  // SRC_ZTRACING_H

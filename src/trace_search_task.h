@@ -1,12 +1,12 @@
-#ifndef ZTRACING_SRC_TRACE_SEARCH_TASK_H_
-#define ZTRACING_SRC_TRACE_SEARCH_TASK_H_
+#ifndef SRC_TRACE_SEARCH_TASK_H
+#define SRC_TRACE_SEARCH_TASK_H
 
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
+#include "core/task.h"
 #include "src/array_list.h"
-#include "src/task.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,4 +50,4 @@ void trace_search_task_run(task_context_t* ctx);
 }
 #endif
 
-#endif  // ZTRACING_SRC_TRACE_SEARCH_TASK_H_
+#endif  // SRC_TRACE_SEARCH_TASK_H

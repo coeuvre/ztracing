@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_FORMAT_H_
-#define ZTRACING_SRC_FORMAT_H_
+#ifndef SRC_FORMAT_H
+#define SRC_FORMAT_H
 
 #include <stddef.h>
 
@@ -21,4 +21,4 @@ double calculate_tick_interval(double duration, double width,
 }
 #endif
 
-#endif  // ZTRACING_SRC_FORMAT_H_
+#endif  // SRC_FORMAT_H

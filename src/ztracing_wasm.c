@@ -5,12 +5,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "core/assert.h"
+#include "core/logging.h"
 #include "src/app.h"
-#include "src/assert.h"
 #include "src/imgui_c.h"
 #include "src/imgui_impl_wasm.h"
 #include "src/imgui_impl_webgl.h"
-#include "src/logging.h"
 #include "src/platform.h"
 #include "src/ztracing.h"
 

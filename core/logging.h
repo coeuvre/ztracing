@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_LOGGING_H_
-#define ZTRACING_SRC_LOGGING_H_
+#ifndef CORE_LOGGING_H
+#define CORE_LOGGING_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,4 +55,4 @@ void log_message(log_level_t level, const char* format, ...)
 #define LOG_ERROR(format, ...) ((void)0)
 #endif
 
-#endif  // ZTRACING_SRC_LOGGING_H_
+#endif  // CORE_LOGGING_H

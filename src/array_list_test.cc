@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 TEST(array_list_test, zii) {
   // Completely zero-initialized, no init, no designated initializer!

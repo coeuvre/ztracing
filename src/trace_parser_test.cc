@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "src/allocator.h"
+#include "core/allocator.h"
 
 TEST(trace_parser_test, basic_array) {
   trace_parser_t p = {};

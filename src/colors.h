@@ -1,7 +1,8 @@
-#ifndef ZTRACING_SRC_COLORS_H_
-#define ZTRACING_SRC_COLORS_H_
+#ifndef SRC_COLORS_H
+#define SRC_COLORS_H
 
 #include <stdint.h>
+
 #include "src/imgui_c.h"
 
 #ifdef __cplusplus
@@ -77,4 +78,4 @@ const theme_t* theme_get_light();
 }
 #endif
 
-#endif  // ZTRACING_SRC_COLORS_H_
+#endif  // SRC_COLORS_H

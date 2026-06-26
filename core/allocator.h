@@ -1,5 +1,5 @@
-#ifndef ZTRACING_SRC_ALLOCATOR_H_
-#define ZTRACING_SRC_ALLOCATOR_H_
+#ifndef CORE_ALLOCATOR_H
+#define CORE_ALLOCATOR_H
 
 #ifdef __cplusplus
 #include <atomic>
@@ -12,7 +12,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 
-#include "src/logging.h"
+#include "core/logging.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,7 +63,6 @@ typedef struct counting_allocator {
   _Atomic(size_t) allocated_bytes;
 } counting_allocator_t;
 
-
 // Returns an initialized counting allocator that wraps a parent allocator.
 #ifdef __clang__
 #pragma clang diagnostic push
@@ -73,7 +72,6 @@ counting_allocator_t counting_allocator_init(allocator_t parent);
 #ifdef __clang__
 #pragma clang diagnostic pop
 #endif
-
 
 // Returns the allocator_t interface for the given counting allocator.
 allocator_t counting_allocator_get_allocator(counting_allocator_t* ca);
@@ -85,5 +83,4 @@ size_t counting_allocator_get_allocated_bytes(counting_allocator_t* ca);
 }
 #endif
 
-#endif  // ZTRACING_SRC_ALLOCATOR_H_
-
+#endif  // CORE_ALLOCATOR_H
