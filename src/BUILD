@@ -79,6 +79,18 @@ cc_library(
 )
 
 cc_library(
+    name = "task",
+    srcs = ["task.c"],
+    hdrs = ["task.h"],
+    deps = [
+        ":allocator",
+        ":arena",
+        ":assert",
+        ":logging",
+    ],
+)
+
+cc_library(
     name = "string",
     hdrs = ["string.h"],
     deps = [
@@ -198,6 +210,16 @@ cc_test(
     srcs = ["string_test.cc"],
     deps = [
         ":string",
+        ":allocator",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "task_test",
+    srcs = ["task_test.cc"],
+    deps = [
+        ":task",
         ":allocator",
         "@googletest//:gtest_main",
     ],
