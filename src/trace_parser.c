@@ -5,8 +5,8 @@
 #include <string.h>
 
 #include "core/allocator.h"
+#include "core/json_reader.h"
 #include "src/array_list.h"
-#include "src/json.h"
 #include "src/string.h"
 
 void trace_parser_deinit(trace_parser_t* p, allocator_t a) {

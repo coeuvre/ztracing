@@ -4,9 +4,9 @@
 #include <string.h>
 
 #include "core/allocator.h"
+#include "core/json_writer.h"
 #include "core/logging.h"
 #include "src/array_list.h"
-#include "src/json.h"
 #include "src/platform.h"
 #include "src/trace_data.h"
 #include "src/trace_heatmap.h"
