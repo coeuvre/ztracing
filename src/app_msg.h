@@ -17,30 +17,7 @@ extern "C" {
 typedef struct trace_data trace_data_t;
 typedef struct trace_histogram trace_histogram_t;
 
-// === 1. Loading Task Payloads ===
-
-// Ingestion progress payload (Value-semantic)
-typedef struct {
-  size_t event_count;
-  size_t total_bytes;
-} app_msg_trace_load_progress_t;
-
-// Ingestion completion payload (Value-semantic, transfers ownership of heap
-// pointers)
-typedef struct {
-  trace_data_t* trace_data;  // Heap-allocated trace data shell
-  array_list_t tracks;  // Organized tracks (value instance, heap array list)
-  int64_t min_ts;
-  int64_t max_ts;
-  channel_t* task_channel;  // Mailbox channel of the loader task
-} app_msg_trace_load_complete_t;
-
-// Ingestion aborted payload (Value-semantic)
-typedef struct {
-  channel_t* task_channel;  // Mailbox channel of the loader task
-} app_msg_trace_load_aborted_t;
-
-// === 2. Search Task Payloads ===
+// === 1. Search Task Payloads ===
 
 // Search completion payload (Value-semantic, transfers ownership of heap
 // pointers)
@@ -57,51 +34,27 @@ typedef struct {
   channel_t* task_channel;   // Mailbox channel of the aborted task
 } app_msg_trace_search_aborted_t;
 
-// === 3. Message Types (Received by the App UI Thread) ===
+// === 2. Message Types (Received by the App UI Thread) ===
 typedef enum {
-  // Loading pipeline events
-  APP_MSG_TRACE_LOAD_PROGRESS,
-  APP_MSG_TRACE_LOAD_COMPLETE,
-  APP_MSG_TRACE_LOAD_ABORTED,
-
   // Search pipeline events
   APP_MSG_TRACE_SEARCH_COMPLETE,
   APP_MSG_TRACE_SEARCH_ABORTED,
 } app_msg_type_t;
 
-// === 4. App Message Envelope ===
+// === 3. App Message Envelope ===
 typedef struct {
   app_msg_type_t type;
   allocator_t allocator;  // The allocator used to allocate the payload
   union {
-    app_msg_trace_load_progress_t trace_load_progress;
-    app_msg_trace_load_complete_t trace_load_complete;
-    app_msg_trace_load_aborted_t trace_load_aborted;
     app_msg_trace_search_complete_t trace_search_complete;
     app_msg_trace_search_aborted_t trace_search_aborted;
   } as;
 } app_msg_t;
 
-// === 5. Message Destructor (Single Source of Truth Cleanup) ===
+// === 4. Message Destructor (Single Source of Truth Cleanup) ===
 void app_msg_deinit(app_msg_t* msg);
 
-// === 6. Safe Message Sending APIs ===
-
-// Sends a progress update from the loader task. (Value-only, no allocation)
-bool app_send_trace_load_progress(channel_t* app_channel, size_t event_count,
-                                  size_t total_bytes);
-
-// Sends load completion, transferring ownership.
-bool app_send_trace_load_complete(channel_t* app_channel,
-                                  trace_data_t* trace_data, array_list_t tracks,
-                                  int64_t min_ts, int64_t max_ts,
-                                  channel_t* task_channel,
-                                  allocator_t allocator);
-
-// Sends load aborted signal.
-bool app_send_trace_load_aborted(channel_t* app_channel,
-                                 channel_t* task_channel,
-                                 allocator_t allocator);
+// === 5. Safe Message Sending APIs ===
 
 // Sends search completion, transferring ownership.
 bool app_send_trace_search_complete(channel_t* app_channel,

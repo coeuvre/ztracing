@@ -1,5 +1,7 @@
 (function() {
 let currentSessionId = 0;
+const MAX_BUFFERED_BYTES = 32 * 1024 * 1024; // 32MB backpressure threshold
+
 
 function setWasmMemory(ptr, value) {
   const size = value.length;
@@ -85,17 +87,15 @@ async function loadFromStream(stream, name, sizeHint, contentType) {
       const ptr = Module._ztracing_malloc(size);
       setWasmMemory(ptr, value);
 
-      let queueItems = Module._ztracing_handle_file_chunk(sessionId, ptr, size, inputProcessedBytes, false);
+      const bufferedBytes = Module._ztracing_handle_file_chunk(
+          sessionId, ptr, size, inputProcessedBytes, false);
 
-      const capacity = Module._ztracing_get_queue_capacity();
-      // Cap at capacity - 2 (with a minimum of 1) to ensure we backpressure
-      // BEFORE the queue actually fills up and drops chunks.
-      const maxQueueItems = Math.max(1, capacity - 2);
-      if (queueItems > maxQueueItems) {
-        while (queueItems > maxQueueItems) {
-          // Wait for the worker to process some chunks.
+      // Apply backpressure if the queue exceeds 32MB
+      if (bufferedBytes > MAX_BUFFERED_BYTES) {
+        let currentBuffered = bufferedBytes;
+        while (currentBuffered > MAX_BUFFERED_BYTES) {
           await new Promise(resolve => setTimeout(resolve, 10));
-          queueItems = Module._ztracing_get_queue_size();
+          currentBuffered = Module._ztracing_get_buffered_bytes();
         }
         lastYieldTime = performance.now();
       }

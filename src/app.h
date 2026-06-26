@@ -9,8 +9,11 @@
 #include "src/array_list.h"
 #include "src/channel.h"
 #include "src/colors.h"
+#include "src/task.h"
 #include "src/trace_data.h"
 #include "src/trace_viewer.h"
+
+struct trace_load_task;
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,6 +37,7 @@ typedef struct trace_loading_state {
   double start_time;         // Timestamp when loading session started
   bool active;               // True if an active loading session is running
   int session_id;            // Current active session ID
+  task_stream_t stream_id;   // Scheduler stream ID of the active session
   array_list_t filename;     // Name of the trace file being loaded
   bool request_update;       // Set to true when new frames should be drawn
 } trace_loading_state_t;
@@ -50,10 +54,11 @@ typedef struct app {
   bool show_about_window;
   bool show_shortcuts_window;
 
-  // Background Mailboxes (Actor Model)
-  channel_t* ui_channel;  // UI thread input mailbox (receives app_msg_t)
-  channel_t* trace_load_channel;    // Loader task input mailbox (opaque, see
-                                    // trace_load_task.h)
+  // Background Mailboxes & Task Schedulers
+  channel_t* ui_channel;     // UI thread input mailbox (receives app_msg_t)
+  task_queue_t* task_queue;  // Global background task queue scheduler
+  struct trace_load_task*
+      trace_load_task;              // Active loading task handle (opaque)
   channel_t* trace_search_channel;  // Search task input mailbox (opaque, see
                                     // trace_search_task.h)
 
@@ -94,11 +99,8 @@ size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
 // app.
 void app_stop_jobs(app_t* app);
 
-// Returns the current total size of chunks in the queue.
-size_t app_get_queue_size(app_t* app);
-
-// Returns the maximum capacity of the queue.
-size_t app_get_queue_capacity(app_t* app);
+// Returns the current total size of chunks in the queue in bytes.
+size_t app_get_buffered_bytes(app_t* app);
 
 #ifdef __cplusplus
 }

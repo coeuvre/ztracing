@@ -159,9 +159,9 @@ int ztracing_handle_file_chunk(int session_id, char* data, int size,
                                     (size_t)input_consumed_bytes, is_eof);
 }
 
-int ztracing_get_queue_size(void) {
+int ztracing_get_buffered_bytes(void) {
   assert(g_app != nullptr);
-  return (int)app_get_queue_size(g_app);
+  return (int)app_get_buffered_bytes(g_app);
 }
 
 void ztracing_on_theme_changed(bool is_dark) {

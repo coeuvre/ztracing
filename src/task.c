@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include "src/task.h"
 
 #include <errno.h>
@@ -11,8 +12,6 @@
 #include "src/assert.h"
 #include "src/logging.h"
 
-static void cancelled_task_placeholder(task_context_t* ctx) { (void)ctx; }
-
 // ─── Internal Structures ─────────────────────────────────────────────────────
 
 // Represents a node in the internal pending list.
@@ -23,6 +22,8 @@ typedef struct task_node {
   task_submission_t sub;
   // Link to the next node in the list
   struct task_node* next;
+  // True if this task was cancelled while pending in the queue
+  bool cancelled;
 } task_node_t;
 
 // Represents an active, stateful execution context in the background engine.
@@ -55,6 +56,8 @@ typedef struct {
 struct task_queue {
   // Staging array for submissions (the physical SQ)
   task_submission_t* sq_entries;
+  // Parallel array to track cancellation status of SQ entries
+  bool* sq_cancelled;
   // Array of completed entries ready for reaping (the physical CQ)
   task_completion_t* cq_entries;
   // The internal stateful execution contexts (the runtime engine)
@@ -99,12 +102,13 @@ struct task_queue {
 static void task_worker(void* arg);
 static bool has_active_stream_locked(task_queue_t* queue, task_stream_t stream,
                                      size_t exclude_exec_idx);
-static bool post_completion_locked(task_queue_t* queue, void* user_data,
-                                   task_status_t status);
+static bool post_completion_locked(task_queue_t* queue, task_t task,
+                                   void* user_data, task_status_t status);
 static void dispatch_pending_locked(task_queue_t* queue);
 static void cancel_stream_locked(task_queue_t* queue, task_stream_t stream);
 static bool pending_list_push_locked(task_queue_t* queue,
-                                     const task_submission_t* sub);
+                                     const task_submission_t* sub,
+                                     bool cancelled);
 
 // ─── Public API: Lifecycle ───────────────────────────────────────────────────
 
@@ -128,6 +132,7 @@ task_queue_t* task_queue_create(size_t cap, task_executor_t executor,
   // on OOM)
   queue->sq_entries =
       allocator_alloc(queue->allocator, sizeof(task_submission_t) * cap);
+  queue->sq_cancelled = allocator_alloc(queue->allocator, sizeof(bool) * cap);
   queue->cq_entries =
       allocator_alloc(queue->allocator, sizeof(task_completion_t) * cap);
   queue->executions =
@@ -145,6 +150,7 @@ task_queue_t* task_queue_create(size_t cap, task_executor_t executor,
   // Initialize the internal execution contexts and their task-local Arenas
   for (size_t i = 0; i < cap; ++i) {
     queue->sq_entries[i] = (task_submission_t){};
+    queue->sq_cancelled[i] = false;
     queue->cq_entries[i] = (task_completion_t){};
     queue->executions[i] = (task_execution_t){};
 
@@ -183,6 +189,8 @@ void task_queue_destroy(task_queue_t* queue) {
                  sizeof(task_execution_t) * queue->cap);
   allocator_free(queue->allocator, queue->sq_entries,
                  sizeof(task_submission_t) * queue->cap);
+  allocator_free(queue->allocator, queue->sq_cancelled,
+                 sizeof(bool) * queue->cap);
   allocator_free(queue->allocator, queue->cq_entries,
                  sizeof(task_completion_t) * queue->cap);
   allocator_free(queue->allocator, queue, sizeof(task_queue_t));
@@ -214,7 +222,7 @@ void task_queue_cancel_submission(task_queue_t* queue, void* user_data) {
     task_submission_t* sub = &queue->sq_entries[curr_sq % queue->cap];
     if (sub->user_data == user_data) {
       cascaded_stream = sub->stream;
-      sub->task = cancelled_task_placeholder;
+      queue->sq_cancelled[curr_sq % queue->cap] = true;
       break;
     }
     curr_sq++;
@@ -226,7 +234,7 @@ void task_queue_cancel_submission(task_queue_t* queue, void* user_data) {
     while (curr_node) {
       if (curr_node->sub.user_data == user_data) {
         cascaded_stream = curr_node->sub.stream;
-        curr_node->sub.task = cancelled_task_placeholder;
+        curr_node->cancelled = true;
         break;
       }
       curr_node = curr_node->next;
@@ -454,7 +462,8 @@ static void task_worker(void* arg) {
 
     // Post the completion to the CQ (guaranteed to succeed since we blocked for
     // space!)
-    bool posted = post_completion_locked(queue, exec->user_data, exec->status);
+    bool posted = post_completion_locked(queue, exec->task, exec->user_data,
+                                         exec->status);
     CHECK(posted);
 
     // Wake up any threads blocked in task_queue_wait_completion
@@ -526,7 +535,7 @@ static void task_worker(void* arg) {
           .arena = exec->arena,  // Preserve the pre-allocated Arena!
           .status = TASK_STATUS_OK,
           .active = true,
-          .cancelled = (next_node->sub.task == cancelled_task_placeholder),
+          .cancelled = next_node->cancelled,
       };
 
       // Remove the node from the pending list
@@ -574,12 +583,13 @@ static bool has_active_stream_locked(task_queue_t* queue, task_stream_t stream,
   return false;
 }
 
-static bool post_completion_locked(task_queue_t* queue, void* user_data,
-                                   task_status_t status) {
+static bool post_completion_locked(task_queue_t* queue, task_t task,
+                                   void* user_data, task_status_t status) {
   // Assumes queue->mutex is LOCKED on entry!
   size_t cq_next = queue->cq_tail;
   if (cq_next - queue->cq_head < queue->cap) {
     queue->cq_entries[cq_next % queue->cap] = (task_completion_t){
+        .task = task,
         .user_data = user_data,
         .status = status,
     };
@@ -604,9 +614,11 @@ static void dispatch_pending_locked(task_queue_t* queue) {
     while (queue->sq_head < queue->sq_sub_tail) {
       task_submission_t* sub = &queue->sq_entries[queue->sq_head % queue->cap];
       if (sub->task) {
-        if (!pending_list_push_locked(queue, sub)) {
+        bool cancelled = queue->sq_cancelled[queue->sq_head % queue->cap];
+        if (!pending_list_push_locked(queue, sub, cancelled)) {
           break;
         }
+        queue->sq_cancelled[queue->sq_head % queue->cap] = false;  // Reset!
         *sub = (task_submission_t){};
       }
       queue->sq_head++;
@@ -661,7 +673,7 @@ static void dispatch_pending_locked(task_queue_t* queue) {
         .arena = target_exec->arena,  // Preserve the pre-allocated Arena!
         .status = TASK_STATUS_OK,
         .active = true,
-        .cancelled = (target_node->sub.task == cancelled_task_placeholder),
+        .cancelled = target_node->cancelled,
     };
 
     // Pack the execution payload using the task's own scratch Arena
@@ -714,7 +726,7 @@ static void cancel_stream_locked(task_queue_t* queue, task_stream_t stream) {
   while (curr_sq != queue->sq_sub_tail) {
     task_submission_t* sub = &queue->sq_entries[curr_sq % queue->cap];
     if (sub->stream == stream) {
-      sub->task = cancelled_task_placeholder;
+      queue->sq_cancelled[curr_sq % queue->cap] = true;
     }
     curr_sq++;
   }
@@ -723,7 +735,7 @@ static void cancel_stream_locked(task_queue_t* queue, task_stream_t stream) {
   task_node_t* curr_node = queue->pending_head;
   while (curr_node) {
     if (curr_node->sub.stream == stream) {
-      curr_node->sub.task = cancelled_task_placeholder;
+      curr_node->cancelled = true;
     }
     curr_node = curr_node->next;
   }
@@ -739,7 +751,8 @@ static void cancel_stream_locked(task_queue_t* queue, task_stream_t stream) {
 }
 
 static bool pending_list_push_locked(task_queue_t* queue,
-                                     const task_submission_t* sub) {
+                                     const task_submission_t* sub,
+                                     bool cancelled) {
   // Assumes queue->mutex is LOCKED on entry!
   if (!queue->free_nodes) {
     return false;
@@ -749,6 +762,7 @@ static bool pending_list_push_locked(task_queue_t* queue,
   queue->free_nodes = node->next;
 
   node->sub = *sub;
+  node->cancelled = cancelled;
   node->next = nullptr;
 
   // Append to the pending list (FIFO)

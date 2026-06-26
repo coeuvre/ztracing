@@ -174,12 +174,8 @@ EMSCRIPTEN_KEEPALIVE int ztracing_handle_file_chunk(int session_id, char* data,
                                     (size_t)input_consumed_bytes, is_eof);
 }
 
-EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_size() {
-  return (int)app_get_queue_size(g_app);
-}
-
-EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_capacity() {
-  return (int)app_get_queue_capacity(g_app);
+EMSCRIPTEN_KEEPALIVE int ztracing_get_buffered_bytes() {
+  return (int)app_get_buffered_bytes(g_app);
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed(bool is_dark) {

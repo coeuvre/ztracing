@@ -713,6 +713,59 @@ TEST(task_queue_concurrent_test, executor_dispatch_reduction) {
   task_queue_destroy(queue);
 }
 
+// Verify that serialized streams process tasks in-place on the same thread,
+// reducing executor dispatches to exactly 1 even when the queue has vacant slots!
+TEST(task_queue_concurrent_test, serialized_stream_dispatch_reduction) {
+  allocator_t alloc = allocator_get_default();
+
+  // Reset the global mock dispatch counter
+  g_mock_dispatch_count.store(0);
+
+  // Create a queue of capacity 16 (plenty of vacant slots, so no SQ overflow)
+  task_queue_t* queue = task_queue_create(16, mock_dispatch_executor, alloc);
+  EXPECT_NE(queue, nullptr);
+
+  // Coordinating state
+  struct task_payload_t {
+    std::atomic<int> completed_count{0};
+  } payload;
+
+  auto task_fn = [](task_context_t* ctx) {
+    auto* p = static_cast<task_payload_t*>(ctx->user_data);
+    // Simulate some quick work
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    p->completed_count.fetch_add(1);
+  };
+
+  // Submit 5 tasks on the same serialized stream (Stream 1)
+  for (int i = 0; i < 5; ++i) {
+    task_submission_t* sub = task_queue_get_submission(queue);
+    EXPECT_NE(sub, nullptr);
+    sub->task = task_fn;
+    sub->user_data = &payload;
+    sub->stream = 1; // Serialized stream!
+  }
+  task_queue_submit(queue);
+
+  // Reap all 5 completions
+  for (int i = 0; i < 5; ++i) {
+    task_completion_t comp;
+    EXPECT_TRUE(wait_for_completion(queue, &comp));
+    task_queue_remove_completion(queue);
+  }
+
+  // Verify all 5 completed successfully
+  EXPECT_EQ(payload.completed_count.load(), 5);
+
+  // THE CRITICAL ASSERTION:
+  // Since the tasks are on a serialized stream, the first task should be dispatched
+  // to a worker, and the remaining 4 tasks MUST be pulled and executed in-place
+  // by that same worker thread, resulting in EXACTLY 1 executor dispatch!
+  EXPECT_EQ(g_mock_dispatch_count.load(), 1);
+
+  task_queue_destroy(queue);
+}
+
 // Verify that the scheduler prioritizes tasks with stream affinity over older
 // FIFO tasks
 TEST(task_queue_concurrent_test, stream_affinity_prioritization) {
@@ -1388,14 +1441,14 @@ TEST(task_queue_concurrent_test, cascading_cancellation) {
   ASSERT_NE(queue, nullptr);
 
   BlockerContext blocker;
-  auto blocking_task = [](task_context_t* ctx) {
+  task_t blocking_task = [](task_context_t* ctx) {
     auto* bc = static_cast<BlockerContext*>(ctx->user_data);
     std::unique_lock<std::mutex> lock(bc->mutex);
     bc->cv.wait(lock, [bc] { return bc->released; });
   };
 
   std::atomic<int> run_count{0};
-  auto dummy_task = [](task_context_t* ctx) {
+  task_t dummy_task = [](task_context_t* ctx) {
     auto* counter = static_cast<std::atomic<int>*>(ctx->user_data);
     counter->fetch_add(1);
   };
@@ -1431,17 +1484,20 @@ TEST(task_queue_concurrent_test, cascading_cancellation) {
   }
   blocker.cv.notify_all();
 
-  // 6. Reap blocker: Should be CANCELLED
+  // 6. Reap blocker: Should be CANCELLED, preserving task pointer!
   task_completion_t comp_block;
   EXPECT_TRUE(wait_for_completion(queue, &comp_block));
   EXPECT_EQ(comp_block.status, TASK_STATUS_CANCELLED);
+  EXPECT_EQ(comp_block.task, blocking_task);
   task_queue_remove_completion(queue);
 
-  // 7. Reap the 3 dummy tasks: All should be CANCELLED
+  // 7. Reap the 3 dummy tasks: All should be CANCELLED, preserving task
+  // pointers!
   for (int i = 0; i < 3; ++i) {
     task_completion_t comp;
     EXPECT_TRUE(wait_for_completion(queue, &comp));
     EXPECT_EQ(comp.status, TASK_STATUS_CANCELLED);
+    EXPECT_EQ(comp.task, dummy_task);
     task_queue_remove_completion(queue);
   }
 
@@ -1461,14 +1517,14 @@ TEST(task_queue_concurrent_test, cancel_submission) {
   ASSERT_NE(queue, nullptr);
 
   BlockerContext blocker;
-  auto blocking_task = [](task_context_t* ctx) {
+  task_t blocking_task = [](task_context_t* ctx) {
     auto* bc = static_cast<BlockerContext*>(ctx->user_data);
     std::unique_lock<std::mutex> lock(bc->mutex);
     bc->cv.wait(lock, [bc] { return bc->released; });
   };
 
   std::atomic<int> run_count{0};
-  auto dummy_task = [](task_context_t* ctx) {
+  task_t dummy_task = [](task_context_t* ctx) {
     auto* counter = static_cast<std::atomic<int>*>(ctx->user_data);
     counter->fetch_add(1);
   };
@@ -1509,24 +1565,26 @@ TEST(task_queue_concurrent_test, cancel_submission) {
   }
   blocker.cv.notify_all();
 
-  // 7. Reap blocker: Should be CANCELLED (due to cascading cancellation
-  // aborting the active task of the stream)
+  // 7. Reap blocker: Should be CANCELLED, preserving task pointer!
   task_completion_t comp_block;
   EXPECT_TRUE(wait_for_completion(queue, &comp_block));
   EXPECT_EQ(comp_block.status, TASK_STATUS_CANCELLED);
+  EXPECT_EQ(comp_block.task, blocking_task);
   task_queue_remove_completion(queue);
 
-  // 8. Reap Task 1: Should be CANCELLED
+  // 8. Reap Task 1: Should be CANCELLED, preserving task pointer!
   task_completion_t comp1;
   EXPECT_TRUE(wait_for_completion(queue, &comp1));
   EXPECT_EQ(comp1.status, TASK_STATUS_CANCELLED);
+  EXPECT_EQ(comp1.task, dummy_task);
   EXPECT_EQ(comp1.user_data, &run_count);
   task_queue_remove_completion(queue);
 
-  // 9. Reap Task 2: Should be CANCELLED (cascaded)
+  // 9. Reap Task 2: Should be CANCELLED (cascaded), preserving task pointer!
   task_completion_t comp2;
   EXPECT_TRUE(wait_for_completion(queue, &comp2));
   EXPECT_EQ(comp2.status, TASK_STATUS_CANCELLED);
+  EXPECT_EQ(comp2.task, dummy_task);
   EXPECT_EQ(comp2.user_data, nullptr);
   task_queue_remove_completion(queue);
 
@@ -2037,4 +2095,119 @@ TEST(task_queue_concurrent_test, stream_affinity_starvation) {
   task_queue_destroy(queue);
   delete g_single_threaded_executor;
   g_single_threaded_executor = nullptr;
+}
+
+// Verify that cancellation works correctly for tasks that are committed but
+// stuck in the SQ (because the engine's node pool is completely exhausted).
+// This explicitly exercises and verifies the 'sq_cancelled' parallel array
+// path.
+TEST(task_queue_concurrent_test, cancellation_of_tasks_stuck_in_sq) {
+  allocator_t alloc = allocator_get_default();
+  // Create a queue of capacity 2 (2 execution slots, 2 nodes)
+  task_queue_t* queue = task_queue_create(2, thread_executor, alloc);
+  ASSERT_NE(queue, nullptr);
+
+  struct stuck_payload_t {
+    std::atomic<bool> block_s1{true};
+    std::atomic<bool> blocker_s1_running{false};
+    std::atomic<int> target_run_count{0};
+  } payload;
+
+  task_t blocker_fn = [](task_context_t* ctx) {
+    auto* p = static_cast<stuck_payload_t*>(ctx->user_data);
+    p->blocker_s1_running.store(true);
+    while (p->block_s1.load()) {
+      std::this_thread::yield();
+    }
+  };
+
+  task_t dummy_fn = [](task_context_t*) {
+    // Does nothing, just occupies a node in the pending list!
+  };
+
+  task_t target_fn = [](task_context_t* ctx) {
+    auto* p = static_cast<stuck_payload_t*>(ctx->user_data);
+    p->target_run_count.fetch_add(1);
+  };
+
+  // 1. Submit Blocker and Dummy 1 (Batch 1)
+  task_submission_t* sub_b = task_queue_get_submission(queue);
+  ASSERT_NE(sub_b, nullptr);
+  sub_b->task = blocker_fn;
+  sub_b->user_data = &payload;
+  sub_b->stream = 1;  // Serialized stream
+
+  task_submission_t* sub_d1 = task_queue_get_submission(queue);
+  ASSERT_NE(sub_d1, nullptr);
+  sub_d1->task = dummy_fn;
+  sub_d1->user_data = nullptr;
+  sub_d1->stream = 1;
+
+  task_queue_submit(queue);  // Commits Batch 1, clearing SQ slots
+
+  // 1b. Submit Dummy 2 (Batch 2) to occupy the final node
+  task_submission_t* sub_d2 = task_queue_get_submission(queue);
+  ASSERT_NE(sub_d2, nullptr);
+  sub_d2->task = dummy_fn;
+  sub_d2->user_data = nullptr;
+  sub_d2->stream = 1;
+
+  task_queue_submit(
+      queue);  // Commits Batch 2, node pool is now 100% exhausted!
+
+  // Wait until the blocker is running.
+  while (!payload.blocker_s1_running.load()) {
+    std::this_thread::yield();
+  }
+
+  // 2. Submit Target Task 1 and Target Task 2 on Stream 3.
+  // Since both nodes are leased by Dummy 1 & 2, these two tasks MUST stay stuck
+  // in the SQ!
+  task_submission_t* sub3 = task_queue_get_submission(queue);
+  ASSERT_NE(sub3, nullptr);
+  sub3->task = target_fn;
+  sub3->user_data = &payload;
+  sub3->stream = 3;
+
+  task_submission_t* sub4 = task_queue_get_submission(queue);
+  ASSERT_NE(sub4, nullptr);
+  sub4->task = target_fn;
+  sub4->user_data = &payload;
+  sub4->stream = 3;
+
+  task_queue_submit(queue);
+
+  // 3. Cancel Stream 3 while the tasks are stuck in the SQ.
+  // This must flag them in the SQ using sq_cancelled.
+  task_queue_cancel_stream(queue, 3);
+
+  // 4. Release the blocker so the Stream 1 chain can complete and free its
+  // nodes, triggering the engine to flush the SQ.
+  payload.block_s1.store(false);
+
+  // 5. Reap completions:
+  // - Stream 1 tasks (3): Blocker + Dummy 1 + Dummy 2 -> TASK_STATUS_OK
+  // - Stream 3 tasks (2): Target 1 + Target 2 -> TASK_STATUS_CANCELLED
+  int ok_reaped = 0;
+  int cancelled_reaped = 0;
+  for (int i = 0; i < 5; ++i) {
+    task_completion_t comp;
+    if (wait_for_completion(queue, &comp, 500.0)) {
+      if (comp.status == TASK_STATUS_OK) {
+        ok_reaped++;
+      } else if (comp.status == TASK_STATUS_CANCELLED) {
+        cancelled_reaped++;
+        EXPECT_EQ(comp.task, target_fn);
+      }
+      task_queue_remove_completion(queue);
+    }
+  }
+
+  EXPECT_EQ(ok_reaped, 3);
+  EXPECT_EQ(cancelled_reaped, 2);
+
+  // CRITICAL ASSERTION: The targets must NEVER have executed!
+  EXPECT_EQ(payload.target_run_count.load(), 0);
+
+  task_queue_destroy(queue);
 }

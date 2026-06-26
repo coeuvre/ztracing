@@ -58,11 +58,8 @@ EMSCRIPTEN_KEEPALIVE int ztracing_handle_file_chunk(int session_id, char* data,
                                                     double input_consumed_bytes,
                                                     bool is_eof);
 
-// Returns the current total size of chunks in the queue.
-EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_size();
-
-// Returns the maximum capacity of the queue.
-EMSCRIPTEN_KEEPALIVE int ztracing_get_queue_capacity();
+// Returns the current total size of buffered chunks in bytes.
+EMSCRIPTEN_KEEPALIVE int ztracing_get_buffered_bytes();
 
 // Notifies the application that the system theme has changed.
 EMSCRIPTEN_KEEPALIVE void ztracing_on_theme_changed(bool is_dark);

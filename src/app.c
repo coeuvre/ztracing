@@ -80,12 +80,11 @@ static void app_apply_theme(app_t* app, const theme_t* theme) {
 }
 
 void app_stop_jobs(app_t* app) {
-  if (app->trace_load_channel != nullptr) {
-    // Send abort request to the loader task mailbox, then close our (tx) side.
-    // Asynchronous and 100% non-blocking!
-    trace_load_send_abort(app->trace_load_channel);
-    channel_close_tx(app->trace_load_channel);
-    app->trace_load_channel = nullptr;
+  if (app->trace_load_task != nullptr) {
+    trace_load_task_abort(app->trace_load_task);
+    trace_load_task_release(app->trace_load_task);
+    app->trace_load_task = nullptr;
+    app->loading.active = false;
   }
 
   // Abort active search task (if any)
@@ -106,9 +105,10 @@ void app_init(app_t* app, allocator_t parent) {
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
-  // Initialize the actor mailboxes
+  // Initialize the actor mailboxes & task queue
   app->ui_channel = channel_create(app_msg_t, 128, app_msg_deinit, allocator);
-  app->trace_load_channel = nullptr;
+  app->task_queue = task_queue_create(1024, platform_submit_job, allocator);
+  app->trace_load_task = nullptr;
   app->trace_search_channel = nullptr;
 
   trace_viewer_init(&app->trace_viewer);
@@ -124,6 +124,7 @@ void app_deinit(app_t* app) {
   channel_close_rx(app->ui_channel);
   channel_close_tx(app->ui_channel);
   channel_destroy(app->ui_channel);
+  task_queue_destroy(app->task_queue);
 
   // Deallocate structures
   trace_data_release(app->trace_data, allocator);
@@ -131,7 +132,94 @@ void app_deinit(app_t* app) {
   trace_viewer_deinit(&app->trace_viewer, allocator);
 }
 
+static void app_reap_task_completions(app_t* app) {
+  allocator_t allocator =
+      counting_allocator_get_allocator(&app->counting_allocator);
+  task_completion_t cqe;
+
+  // Drain all completed tasks from the global Completion Queue (CQ)
+  while (task_queue_peek_completion(app->task_queue, &cqe)) {
+    // 1. Identify the task type DIRECTLY by its function pointer address!
+    // Since the task engine now preserves the task pointer even on
+    // cancellation, we can rely on cqe.task being trace_load_task_run 100% of
+    // the time!
+    if (cqe.task == trace_load_task_run) {
+      trace_load_task_chunk_t* payload =
+          (trace_load_task_chunk_t*)cqe.user_data;
+      trace_load_task_t* task = payload->task;
+
+      // A. SUCCESS PATH
+      if (cqe.status == TASK_STATUS_OK) {
+        // Update UI progress metrics smooth as butter!
+        app->loading.event_count = payload->parsed_event_count;
+        app->loading.total_bytes = payload->processed_bytes;
+        app->loading.request_update = true;
+
+        // On EOF, adopt the final parsed results
+        if (payload->is_eof) {
+          LOG_DEBUG(
+              "app_reap_task_completions: loader task completed! Adopting "
+              "results.");
+
+          trace_data_release(app->trace_data, allocator);
+          app->trace_data = payload->completed_td;
+          app->trace_viewer.tracks = payload->completed_tracks;
+          app->trace_viewer.viewport.min_ts = payload->completed_min_ts;
+          app->trace_viewer.viewport.max_ts = payload->completed_max_ts;
+
+          app->trace_load_task = nullptr;
+          app->loading.active = false;
+
+          trace_load_task_release(task);  // Release UI thread reference
+
+          trace_viewer_reset_view(&app->trace_viewer);
+          trace_viewer_precompute_minimap_heatmap(&app->trace_viewer,
+                                                  app->trace_data, allocator);
+
+          // Print performance stats on the UI thread once adopted
+          if (payload->stats.ready) {
+            LOG_INFO(
+                "parsed %zu events, %.2f MB in %.3f ms (%.2f mb/s) [starvation: "
+                "%.3f ms (%.2f%%)]",
+                app->trace_data->events.len, payload->stats.size_mb,
+                payload->stats.ingestion_duration_ms, payload->stats.speed_mb_s,
+                payload->stats.starvation_ms, payload->stats.starvation_pct);
+
+            LOG_INFO("organized %zu tracks in %.3f ms", app->trace_viewer.tracks.len,
+                     payload->stats.organize_duration_ms);
+          }
+        }
+      }
+      // B. CANCELLATION / FAILURE PATH (Zero-Leak Guard)
+      else {
+        LOG_DEBUG(
+            "app_reap_task_completions: loader task cancelled or failed!");
+
+        if (payload->is_eof) {
+          app->trace_load_task = nullptr;
+          app->loading.active = false;
+          trace_load_task_release(task);  // Release UI thread reference
+        }
+      }
+
+      // Free the raw chunk data buffer managed by the caller!
+      if (payload->data != nullptr && payload->size > 0) {
+        allocator_free(allocator, payload->data, payload->size);
+      }
+
+      // Free the per-chunk payload and release the CQE reference
+      allocator_free(allocator, payload, sizeof(trace_load_task_chunk_t));
+      trace_load_task_release(task);  // Decrements active_tasks for the CQE
+    }
+    // Always remove the completion from the queue to free the slot!
+    task_queue_remove_completion(app->task_queue);
+  }
+}
+
 void app_poll_messages(app_t* app) {
+  // Reap and process completions from the background task queue
+  app_reap_task_completions(app);
+
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
@@ -140,55 +228,6 @@ void app_poll_messages(app_t* app) {
   while (channel_try_recv(app->ui_channel, &msg)) {
     app->loading.request_update = true;
     switch (msg.type) {
-      case APP_MSG_TRACE_LOAD_PROGRESS:
-        app->loading.event_count = msg.as.trace_load_progress.event_count;
-        app->loading.total_bytes = msg.as.trace_load_progress.total_bytes;
-        break;
-
-      case APP_MSG_TRACE_LOAD_COMPLETE: {
-        app_msg_trace_load_complete_t result = msg.as.trace_load_complete;
-        bool is_active = (app->trace_load_channel == result.task_channel);
-
-        if (is_active) {
-          // Adopt the completed parsed trace data and organized tracks
-          trace_data_release(app->trace_data, allocator);
-          app->trace_data = result.trace_data;
-          app->trace_viewer.tracks = result.tracks;
-          app->trace_viewer.viewport.min_ts = result.min_ts;
-          app->trace_viewer.viewport.max_ts = result.max_ts;
-
-          // Clear pointers in the message envelope so app_msg_deinit doesn't
-          // free/release them!
-          msg.as.trace_load_complete.trace_data = nullptr;
-          msg.as.trace_load_complete.tracks = (array_list_t){};
-
-          // Close our (tx) side (eager) and null the app pointer.
-          channel_close_tx(result.task_channel);
-          app->trace_load_channel = nullptr;
-          app->loading.active = false;
-
-          trace_viewer_reset_view(&app->trace_viewer);
-          trace_viewer_precompute_minimap_heatmap(&app->trace_viewer,
-                                                  app->trace_data, allocator);
-        }
-        // If stale (not active): a newer session has replaced this channel.
-        // Don't adopt — app_msg_deinit will release trace_data and deinit
-        // tracks. tx was already closed by the abort initiator.
-        break;
-      }
-
-      case APP_MSG_TRACE_LOAD_ABORTED: {
-        app_msg_trace_load_aborted_t aborted = msg.as.trace_load_aborted;
-        if (app->trace_load_channel == aborted.task_channel) {
-          app->trace_load_channel = nullptr;
-          app->loading.active = false;
-        }
-        // If stale: a newer session is active. Don't touch loading.active —
-        // the active session's COMPLETE/ABORTED will clear it. tx was already
-        // closed by the abort initiator.
-        break;
-      }
-
       case APP_MSG_TRACE_SEARCH_COMPLETE: {
         app_msg_trace_search_complete_t result = msg.as.trace_search_complete;
         bool is_active = (app->trace_search_channel == result.task_channel);
@@ -511,12 +550,14 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
     memcpy(dest, filename, len);
   }
 
-  // Reset the loader channel: since the old channel (if active) was aborted
-  // and set to null in app_stop_jobs, its ownership has been transferred to the
-  // exiting worker thread. It will be safely destroyed inside app_msg_deinit
-  // when the main thread processes the final abort message. We simply create a
-  // fresh channel for the new loader task.
-  app->trace_load_channel = trace_load_start(app->ui_channel, allocator);
+  // Reset the loading task: since the old task (if active) was aborted
+  // and set to null in app_stop_jobs, its ownership is managed by its own
+  // active task reference counter. We simply generate a new unique stream ID
+  // and start a fresh loading task on our background task queue.
+  task_stream_t stream_id = (task_stream_t)session_id;
+  app->loading.stream_id = stream_id;
+  app->trace_load_task =
+      trace_load_task_create(app->task_queue, stream_id, allocator);
 }
 
 size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
@@ -530,40 +571,41 @@ size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
     if (data && size > 0) {
       allocator_free(allocator, data, size);
     }
-    return app->trace_load_channel != nullptr
-               ? channel_get_size(app->trace_load_channel)
-               : 0;
+    return 0;
   }
 
   // Track consumed bytes for progress bar display
   app->loading.input_consumed_bytes = input_consumed_bytes;
 
-  // Push raw chunk through the safe helper.
-  // If the loader queue is full or closed, trace_load_send_chunk AUTOMATICALLY
-  // frees 'data'!
-  if (app->trace_load_channel != nullptr) {
-    trace_load_send_chunk(app->trace_load_channel, data, size,
-                          input_consumed_bytes, is_eof, allocator);
+  if (app->trace_load_task != nullptr) {
+    // 1. Obtain a vacant submission slot from the shared task queue
+    task_submission_t* sub = task_queue_get_submission(app->task_queue);
+    if (sub != nullptr) {
+      // 2. Prepare the chunk submission
+      trace_load_task_prep_chunk(app->trace_load_task, sub, data, size,
+                                 input_consumed_bytes, is_eof);
+      // 3. Submit and flush the queue!
+      task_queue_submit(app->task_queue);
+    } else {
+      // Queue is full! Free buffer immediately to prevent leaks
+      if (data && size > 0) {
+        allocator_free(allocator, data, size);
+      }
+    }
   } else {
     if (data && size > 0) {
       allocator_free(allocator, data, size);
     }
   }
 
-  // Return current queue size (in item count) to trigger backpressure
-  return app->trace_load_channel != nullptr
-             ? channel_get_size(app->trace_load_channel)
+  // Return the current buffered bytes in the task to trigger backpressure
+  return app->trace_load_task != nullptr
+             ? trace_load_task_get_buffered_bytes(app->trace_load_task)
              : 0;
 }
 
-size_t app_get_queue_size(app_t* app) {
-  return app->trace_load_channel != nullptr
-             ? channel_get_size(app->trace_load_channel)
-             : 0;
-}
-
-size_t app_get_queue_capacity(app_t* app) {
-  return app->trace_load_channel != nullptr
-             ? channel_get_capacity(app->trace_load_channel)
+size_t app_get_buffered_bytes(app_t* app) {
+  return app->trace_load_task != nullptr
+             ? trace_load_task_get_buffered_bytes(app->trace_load_task)
              : 0;
 }

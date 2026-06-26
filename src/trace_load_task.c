@@ -1,236 +1,248 @@
 #include "src/trace_load_task.h"
 
-#include <stdbool.h>
-#include <stddef.h>
+#include <stdatomic.h>
 
-#include "src/app_msg.h"
-#include "src/arena.h"
-#include "src/assert.h"
 #include "src/logging.h"
 #include "src/platform.h"
-#include "src/trace_data.h"
-#include "src/trace_parser.h"
 #include "src/track.h"
 
-// === Loader Channel Messages (private to this translation unit) ===
-typedef enum {
-  TRACE_LOAD_MSG_CHUNK,
-  TRACE_LOAD_MSG_ABORT,
-} trace_load_msg_type_t;
+// The concrete, opaque implementation of trace_load_task_t
+struct trace_load_task {
+  task_queue_t* queue;      // The shared task queue
+  task_stream_t stream_id;  // Serialized stream ID
+  allocator_t allocator;    // The allocator used to create this task context
 
-// Chunk payload (Value-semantic, transfers ownership of data buffer)
-typedef struct {
-  char* data;
-  size_t size;
-  size_t input_consumed_bytes;
-  bool is_eof;
-} trace_load_chunk_t;
+  // Streaming parser state
+  trace_parser_t parser;
+  trace_data_t* td;
+  trace_event_matcher_t matcher;
 
-// Loader message envelope
-typedef struct {
-  trace_load_msg_type_t type;
-  allocator_t allocator;  // The allocator used to allocate the chunk data
-  union {
-    trace_load_chunk_t chunk;
-  } as;
-} trace_load_msg_t;
+  // Progress tracking
+  size_t total_discarded_bytes;
 
-// Forward declaration: used by trace_load_start's channel_create before its
-// definition below.
-static void trace_load_msg_deinit(trace_load_msg_t* msg);
+  // Shared ownership & flow control metrics
+  _Atomic size_t
+      active_tasks;  // Reference counter (shared between UI and worker threads)
+  _Atomic size_t
+      buffered_bytes;  // Total unparsed raw bytes currently in-flight
 
-// Context structure for the background loader thread
-typedef struct {
-  channel_t* app_channel;
-  channel_t* trace_load_channel;
-  allocator_t allocator;
-  double start_time;
-} trace_load_task_t;
+  // Performance Benchmarking Stats (thread-safe metrics)
+  double
+      start_time;  // Wall-clock start time of the loading session (UI thread)
+  _Atomic uint64_t active_parse_time_ns;  // Total accumulated active parsing
+                                          // duration in nanoseconds
+};
 
-// Background worker thread function
-static void trace_load_run(void* arg) {
-  trace_load_task_t* task = (trace_load_task_t*)arg;
-  allocator_t allocator = task->allocator;
+// Background worker task (forward declared in header)
+void trace_load_task_run(task_context_t* ctx) {
+  trace_load_task_chunk_t* payload = (trace_load_task_chunk_t*)ctx->user_data;
+  CHECK(payload != nullptr);
 
-  LOG_DEBUG("trace_load_run background task started");
+  trace_load_task_t* task = payload->task;
+  CHECK(task != nullptr);
 
-  trace_parser_t parser = {};  // ZII
+  size_t chunk_size = payload->size;
 
-  arena_t arena = {};
-  arena_init(&arena, allocator, 0);
-  allocator_t arena_allocator = arena_get_allocator(&arena);
+  double chunk_start_time = platform_get_now();
 
-  trace_event_matcher_t matcher = {};
-  matcher.allocator = arena_allocator;
-
-  // Allocate the persistent trace data shell
-  trace_data_t* td = trace_data_create(allocator);
-
-  size_t total_discarded_bytes = 0;
-  size_t last_report_event_count = 0;
-  bool aborted = false;
-
-  double total_wait_time_ms = 0.0;
-  trace_load_msg_t msg;
-  // Block-receive loader commands (chunks or abort signals)
-  while (true) {
-    double wait_start = platform_get_now();
-    bool received = channel_recv(task->trace_load_channel, &msg);
-    double wait_duration = platform_get_now() - wait_start;
-
-    // Accumulate wait time only after we have received the first chunk
-    // to exclude initial stream startup latency.
-    if (td->events.len > 0) {
-      total_wait_time_ms += wait_duration;
-    }
-
-    if (!received) {
-      aborted = true;
-      break;
-    }
-    if (msg.type == TRACE_LOAD_MSG_ABORT) {
-      aborted = true;
-      break;
-    }
-
-    if (msg.type == TRACE_LOAD_MSG_CHUNK) {
-      trace_load_chunk_t chunk = msg.as.chunk;
-
-      // Feed raw chunk into parser
-      total_discarded_bytes += trace_parser_feed(
-          &parser, chunk.data, chunk.size, chunk.is_eof, allocator);
-
-      // Release the raw chunk buffer immediately after feeding to keep
-      // memory footprint low
-      allocator_free(allocator, chunk.data, chunk.size);
-
-      // Parse all available events in this chunk
-      trace_event_t event;
-      while (trace_parser_next(&parser, &event, allocator)) {
-        trace_data_add_event(td, &event, &matcher, allocator);
-
-        // Periodically check for abort signals mid-parse at chunk boundaries
-      }
-
-      // Throttled progress updates: notify UI thread every 5000 events
-      size_t current_count = td->events.len;
-      if (current_count - last_report_event_count >= 5000) {
-        last_report_event_count = current_count;
-        app_send_trace_load_progress(task->app_channel, current_count,
-                                     total_discarded_bytes + parser.pos);
-      }
-
-      // Break if EOF chunk parsed successfully
-      if (chunk.is_eof) {
-        break;
-      }
-    }
+  // 1. Cooperative cancellation check
+  if (task_should_abort(ctx)) {
+    LOG_DEBUG("trace_load_task: cancelled!");
+    // Decrement buffered bytes
+    atomic_fetch_sub(&task->buffered_bytes, chunk_size);
+    return;
   }
 
-  if (aborted) {
-    LOG_DEBUG("trace_load_run worker aborted by UI thread request");
-    trace_data_release(td, allocator);
+  // 2. Feed the raw chunk to the streaming parser
+  task->total_discarded_bytes +=
+      trace_parser_feed(&task->parser, payload->data, payload->size,
+                        payload->is_eof, task->allocator);
 
-    // Notify App UI thread that loading was aborted
-    channel_close_rx(task->trace_load_channel);
-    app_send_trace_load_aborted(task->app_channel, task->trace_load_channel,
-                                allocator);
-  } else {
-    double size_mb =
-        (double)(total_discarded_bytes + parser.pos) / (1024.0 * 1024.0);
-    double parse_end_time = platform_get_now();
-    double duration_ms = parse_end_time - task->start_time;
-    double duration_s = duration_ms / 1000.0;
-    double speed_mb_s = duration_s > 0.0 ? size_mb / duration_s : 0.0;
-    double starvation_pct =
-        duration_ms > 0.0 ? (total_wait_time_ms / duration_ms) * 100.0 : 0.0;
-    LOG_INFO(
-        "parsed %zu events, %.2f MB in %.3f ms (%.2f mb/s) [starvation: "
-        "%.3f ms (%.2f%%)]",
-        td->events.len, size_mb, duration_ms, speed_mb_s, total_wait_time_ms,
-        starvation_pct);
+  // 3. Parse all available events in this chunk
+  trace_event_t event;
+  while (trace_parser_next(&task->parser, &event, task->allocator)) {
+    trace_data_add_event(task->td, &event, &task->matcher, task->allocator);
+  }
 
-    LOG_DEBUG("trace_load_run completed parsing, starting track organization");
+  // Decrement buffered bytes since this chunk is parsed and memory is freed
+  atomic_fetch_sub(&task->buffered_bytes, chunk_size);
+
+  // 4. Record progress in the payload for the CQE
+  payload->parsed_event_count = task->td->events.len;
+  payload->processed_bytes = task->total_discarded_bytes + task->parser.pos;
+
+  // 5. EOF completion handling
+  if (payload->is_eof) {
     double organize_start_time = platform_get_now();
+    LOG_DEBUG("trace_load_task: EOF reached! Organizing tracks.");
 
-    // Organize events into tracks
-    array_list_t tracks = {};  // ZII
+    array_list_t tracks = {};
     int64_t min_ts = 0;
     int64_t max_ts = 0;
-    track_organize(td, &tracks, &min_ts, &max_ts, allocator);
+
+    // Run track organization pass
+    track_organize(task->td, &tracks, &min_ts, &max_ts, task->allocator);
 
     double organize_duration_ms = platform_get_now() - organize_start_time;
-    LOG_INFO("organized %zu tracks in %.3f ms", tracks.len,
-             organize_duration_ms);
 
-    // Transmit complete results.
-    // If the send fails, app_send_trace_load_complete AUTOMATICALLY cleans up
-    // td and tracks!
-    channel_close_rx(task->trace_load_channel);
-    app_send_trace_load_complete(task->app_channel, td, tracks, min_ts, max_ts,
-                                 task->trace_load_channel, allocator);
+    double size_mb = (double)(task->total_discarded_bytes + task->parser.pos) /
+                     (1024.0 * 1024.0);
+
+    // Ingestion duration is the time from the start until parsing completed (before organization began)
+    double ingestion_duration_ms = organize_start_time - task->start_time;
+    double ingestion_duration_s = ingestion_duration_ms / 1000.0;
+    double speed_mb_s =
+        ingestion_duration_s > 0.0 ? size_mb / ingestion_duration_s : 0.0;
+
+    double total_duration_ms = platform_get_now() - task->start_time;
+
+    // Accumulate this final chunk's parsing time (excluding track organization)
+    double final_chunk_parse_ms = organize_start_time - chunk_start_time;
+    uint64_t total_active_ns = atomic_load(&task->active_parse_time_ns) +
+                               (uint64_t)(final_chunk_parse_ms * 1000000.0);
+    double active_parse_ms = (double)total_active_ns / 1000000.0;
+
+    // Real starvation is the idle time where the parser was waiting for chunks.
+    // It excludes both active parsing time AND track organization time!
+    double starvation_ms = total_duration_ms - (active_parse_ms + organize_duration_ms);
+    if (starvation_ms < 0.0) {
+      starvation_ms = 0.0;  // Clamp against clock precision variances
+    }
+    double starvation_pct = ingestion_duration_ms > 0.0
+                                ? (starvation_ms / ingestion_duration_ms) * 100.0
+                                : 0.0;
+
+    // Populate performance stats structure in the completion payload
+    payload->stats.size_mb = size_mb;
+    payload->stats.ingestion_duration_ms = ingestion_duration_ms;
+    payload->stats.speed_mb_s = speed_mb_s;
+    payload->stats.starvation_ms = starvation_ms;
+    payload->stats.starvation_pct = starvation_pct;
+    payload->stats.organize_duration_ms = organize_duration_ms;
+    payload->stats.total_duration_ms = total_duration_ms;
+    payload->stats.ready = true;
+
+    // Transfer ownership of parsed trace data and tracks to payload for
+    // adoption
+    payload->completed_td = task->td;
+    payload->completed_tracks = tracks;
+    payload->completed_min_ts = min_ts;
+    payload->completed_max_ts = max_ts;
+
+    // Clear task pointer to prevent double-free during task destruction
+    task->td = nullptr;
+  } else {
+    // Accumulate active chunk parsing time
+    double chunk_duration_ms = platform_get_now() - chunk_start_time;
+    atomic_fetch_add(&task->active_parse_time_ns,
+                     (uint64_t)(chunk_duration_ms * 1000000.0));
   }
-
-  // Clean up parser and matcher local allocations
-  trace_parser_deinit(&parser, allocator);
-  arena_deinit(&arena);
-
-  // Clean up task context structure
-  allocator_free(allocator, task, sizeof(trace_load_task_t));
-
-  LOG_DEBUG("trace_load_run background task exiting");
 }
 
-channel_t* trace_load_start(channel_t* app_channel, allocator_t allocator) {
-  CHECK(app_channel != nullptr);
+// Destroys the task context (called when reference count drops to 0)
+static void trace_load_task_destroy(trace_load_task_t* task) {
+  LOG_DEBUG("trace_load_task_destroy: destroying task context.");
 
-  channel_t* trace_load_channel =
-      channel_create(trace_load_msg_t, 1024, trace_load_msg_deinit, allocator);
+  // Free streaming parser
+  trace_parser_deinit(&task->parser, task->allocator);
 
-  // Allocate and package thread context
+  // Free trace data if it wasn't reaped (e.g. on abort/failure)
+  if (task->td != nullptr) {
+    trace_data_release(task->td, task->allocator);
+  }
+
+  // Free matcher
+  trace_event_matcher_deinit(&task->matcher);
+
+  // Free the context structure itself
+  allocator_free(task->allocator, task, sizeof(trace_load_task_t));
+}
+
+// Creates a new loading task context
+trace_load_task_t* trace_load_task_create(task_queue_t* queue,
+                                          task_stream_t stream_id,
+                                          allocator_t allocator) {
+  CHECK(queue != nullptr);
+
   trace_load_task_t* task =
       (trace_load_task_t*)allocator_alloc(allocator, sizeof(trace_load_task_t));
-  task->app_channel = app_channel;
-  task->trace_load_channel = trace_load_channel;
-  task->allocator = allocator;
+
+  *task = (trace_load_task_t){
+      .queue = queue,
+      .stream_id = stream_id,
+      .allocator = allocator,
+  };
+
+  // Initialize atomic reference count to 1 (owned by UI thread)
+  atomic_store(&task->active_tasks, 1);
+  atomic_store(&task->buffered_bytes, 0);
+  atomic_store(&task->active_parse_time_ns, 0);
+
   task->start_time = platform_get_now();
 
-  // Submit background worker to the persistent platform thread pool
-  platform_submit_job(trace_load_run, task);
+  // Initialize streaming trace data storage (parser and matcher are
+  // ZII-initialized)
+  task->td = trace_data_create(allocator);
 
-  return trace_load_channel;
+  LOG_DEBUG("trace_load_task_create: started load task on stream %d",
+            stream_id);
+  return task;
 }
 
-static void trace_load_msg_deinit(trace_load_msg_t* msg) {
-  CHECK(msg != nullptr);
-  allocator_t allocator = msg->allocator;
-  if (msg->type == TRACE_LOAD_MSG_CHUNK) {
-    if (msg->as.chunk.data != nullptr && msg->as.chunk.size > 0) {
-      allocator_free(allocator, msg->as.chunk.data, msg->as.chunk.size);
-      msg->as.chunk.data = nullptr;
-    }
+// Prepares a chunk submission slot (SQE)
+void trace_load_task_prep_chunk(trace_load_task_t* task, task_submission_t* sub,
+                                char* data, size_t size,
+                                size_t input_consumed_bytes, bool is_eof) {
+  CHECK(sub != nullptr);
+  CHECK(task != nullptr);
+
+  // Allocate the chunk payload using the task's allocator
+  trace_load_task_chunk_t* payload = (trace_load_task_chunk_t*)allocator_alloc(
+      task->allocator, sizeof(trace_load_task_chunk_t));
+
+  *payload = (trace_load_task_chunk_t){
+      .task = task,
+      .data = data,
+      .size = size,
+      .input_consumed_bytes = input_consumed_bytes,
+      .is_eof = is_eof,
+  };
+
+  // Prepare the SQE
+  sub->task = trace_load_task_run;  // The background function to execute
+  sub->user_data = payload;         // Per-chunk payload
+  sub->stream = task->stream_id;    // Serialized stream ID
+
+  // Increment active tasks reference counter for the CQE
+  atomic_fetch_add(&task->active_tasks, 1);
+
+  // Increment buffered bytes for backpressure flow control
+  atomic_fetch_add(&task->buffered_bytes, size);
+}
+
+// Aborts the loading task
+void trace_load_task_abort(trace_load_task_t* task) {
+  if (task == nullptr) return;
+  LOG_DEBUG("trace_load_task_abort: aborting stream %d", task->stream_id);
+
+  // Cancel all pending tasks for this stream in the task queue
+  task_queue_cancel_stream(task->queue, task->stream_id);
+}
+
+// Releases the reference (Shared Ownership)
+void trace_load_task_release(trace_load_task_t* task) {
+  if (task == nullptr) return;
+
+  // Decrement reference count atomically
+  size_t prev_refs = atomic_fetch_sub(&task->active_tasks, 1);
+  if (prev_refs == 1) {
+    // Reference dropped to 0! Clean up the task context
+    trace_load_task_destroy(task);
   }
 }
 
-bool trace_load_send_chunk(channel_t* trace_load_channel, char* data,
-                           size_t size, size_t input_consumed_bytes,
-                           bool is_eof, allocator_t allocator) {
-  CHECK(trace_load_channel != nullptr);
-  CHECK(size == 0 || data != nullptr);
-
-  trace_load_msg_t msg = {
-      .type = TRACE_LOAD_MSG_CHUNK,
-      .allocator = allocator,
-      .as = {.chunk = {.data = data,
-                       .size = size,
-                       .input_consumed_bytes = input_consumed_bytes,
-                       .is_eof = is_eof}}};
-
-  return channel_try_send(trace_load_channel, &msg);
-}
-
-bool trace_load_send_abort(channel_t* trace_load_channel) {
-  CHECK(trace_load_channel != nullptr);
-  trace_load_msg_t msg = {.type = TRACE_LOAD_MSG_ABORT};
-  return channel_try_send(trace_load_channel, &msg);
+// Returns buffered bytes
+size_t trace_load_task_get_buffered_bytes(const trace_load_task_t* task) {
+  if (task == nullptr) return 0;
+  return atomic_load(&task->buffered_bytes);
 }

@@ -92,6 +92,8 @@ typedef enum {
 
 // Represents the output result. Allocated in the CQ, read by the caller.
 typedef struct {
+  // The background function pointer
+  task_t task;
   // Opaque user pointer copied from the submission
   void* user_data;
   // The final execution status of the task
