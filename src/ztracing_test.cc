@@ -1141,10 +1141,10 @@ TEST_F(ztracing_test, regression_rapid_session_restart_with_active_search) {
   app_t* app = get_app();
   // Verify that search has started
   ASSERT_TRUE(app->trace_viewer.search.is_searching);
-  ASSERT_NE(app->trace_search_channel, nullptr);
+  ASSERT_NE(app->active_search_task, nullptr);
 
   // 3. IMMEDIATELY start a new session (loading a different trace)
-  // This will close the old search channel, triggering the search task to
+  // This will cancel the old search task, triggering the search task to
   // abort. It will also release the main thread's reference to the old trace
   // data.
   const char* MOCK_NEW_TRACE =

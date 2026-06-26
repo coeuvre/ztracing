@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "src/app_msg.h"
 #include "src/colors.h"
 #include "src/imgui_c.h"
 #include "src/loading_screen.h"
@@ -87,11 +86,10 @@ void app_stop_jobs(app_t* app) {
     app->loading.active = false;
   }
 
-  // Abort active search task (if any)
-  if (app->trace_search_channel != nullptr) {
-    trace_search_send_abort(app->trace_search_channel);
-    channel_close_tx(app->trace_search_channel);
-    app->trace_search_channel = nullptr;
+  // Cancel active search task (if any)
+  if (app->active_search_task != nullptr) {
+    task_queue_cancel_submission(app->task_queue, app->active_search_task);
+    app->active_search_task = nullptr;
   }
 }
 
@@ -105,11 +103,10 @@ void app_init(app_t* app, allocator_t parent) {
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
-  // Initialize the actor mailboxes & task queue
-  app->ui_channel = channel_create(app_msg_t, 128, app_msg_deinit, allocator);
+  // Initialize the global background task queue
   app->task_queue = task_queue_create(1024, platform_submit_job, allocator);
   app->trace_load_task = nullptr;
-  app->trace_search_channel = nullptr;
+  app->active_search_task = nullptr;
 
   trace_viewer_init(&app->trace_viewer);
 }
@@ -121,9 +118,6 @@ void app_deinit(app_t* app) {
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
-  channel_close_rx(app->ui_channel);
-  channel_close_tx(app->ui_channel);
-  channel_destroy(app->ui_channel);
   task_queue_destroy(app->task_queue);
 
   // Deallocate structures
@@ -132,13 +126,16 @@ void app_deinit(app_t* app) {
   trace_viewer_deinit(&app->trace_viewer, allocator);
 }
 
-static void app_reap_task_completions(app_t* app) {
+void app_poll_completions(app_t* app) {
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
   task_completion_t cqe;
+  bool reaped_any = false;
 
   // Drain all completed tasks from the global Completion Queue (CQ)
   while (task_queue_peek_completion(app->task_queue, &cqe)) {
+    reaped_any = true;
+
     // 1. Identify the task type DIRECTLY by its function pointer address!
     // Since the task engine now preserves the task pointer even on
     // cancellation, we can rely on cqe.task being trace_load_task_run 100% of
@@ -158,7 +155,7 @@ static void app_reap_task_completions(app_t* app) {
         // On EOF, adopt the final parsed results
         if (payload->is_eof) {
           LOG_DEBUG(
-              "app_reap_task_completions: loader task completed! Adopting "
+              "app_poll_completions: loader task completed! Adopting "
               "results.");
 
           trace_data_release(app->trace_data, allocator);
@@ -193,7 +190,7 @@ static void app_reap_task_completions(app_t* app) {
       // B. CANCELLATION / FAILURE PATH (Zero-Leak Guard)
       else {
         LOG_DEBUG(
-            "app_reap_task_completions: loader task cancelled or failed!");
+            "app_poll_completions: loader task cancelled or failed!");
 
         if (payload->is_eof) {
           app->trace_load_task = nullptr;
@@ -210,62 +207,33 @@ static void app_reap_task_completions(app_t* app) {
       // Free the per-chunk payload and release the CQE reference
       allocator_free(allocator, payload, sizeof(trace_load_task_chunk_t));
       trace_load_task_release(task);  // Decrements active_tasks for the CQE
+    } else if (cqe.task == trace_search_task_run) {
+      trace_search_task_t* task = (trace_search_task_t*)cqe.user_data;
+      bool is_active = (app->active_search_task == task);
+
+      if (is_active) {
+        if (cqe.status == TASK_STATUS_OK) {
+          // Adopt results and histogram synchronously on the UI thread
+          trace_viewer_adopt_search_results(&app->trace_viewer, app->trace_data,
+                                            task->results, task->histogram,
+                                            allocator);
+          // Clear results in task context so trace_search_task_destroy doesn't free them
+          task->results = (array_list_t){};
+        }
+        app->active_search_task = nullptr;
+        app->trace_viewer.search.is_searching = false;
+      }
+
+      // Always destroy the task context and release trace_data reference
+      trace_data_release((trace_data_t*)task->td, allocator);
+      trace_search_task_destroy(task);
     }
     // Always remove the completion from the queue to free the slot!
     task_queue_remove_completion(app->task_queue);
   }
-}
 
-void app_poll_messages(app_t* app) {
-  // Reap and process completions from the background task queue
-  app_reap_task_completions(app);
-
-  allocator_t allocator =
-      counting_allocator_get_allocator(&app->counting_allocator);
-
-  // === Drain the Unified UI Actor Mailbox (Non-blocking loop) ===
-  app_msg_t msg;
-  while (channel_try_recv(app->ui_channel, &msg)) {
+  if (reaped_any) {
     app->loading.request_update = true;
-    switch (msg.type) {
-      case APP_MSG_TRACE_SEARCH_COMPLETE: {
-        app_msg_trace_search_complete_t result = msg.as.trace_search_complete;
-        bool is_active = (app->trace_search_channel == result.task_channel);
-
-        if (is_active) {
-          // Adopt results and histogram synchronously on the UI thread
-          trace_viewer_adopt_search_results(&app->trace_viewer, app->trace_data,
-                                            result.results, result.histogram,
-                                            allocator);
-          // Clear results in envelope so app_msg_deinit doesn't free them
-          msg.as.trace_search_complete.results = (array_list_t){};
-
-          // Close our (tx) side (eager). If this is a stale complete (channel
-          // was already aborted via app_stop_jobs / search replacement, which
-          // closed tx and nulled/replaced the pointer), is_active is false and
-          // we skip — tx already closed by the abort initiator.
-          channel_close_tx(result.task_channel);
-          app->trace_search_channel = nullptr;
-          app->trace_viewer.search.is_searching = false;
-        }
-        break;
-      }
-
-      case APP_MSG_TRACE_SEARCH_ABORTED: {
-        app_msg_trace_search_aborted_t aborted = msg.as.trace_search_aborted;
-
-        if (app->trace_search_channel == aborted.task_channel) {
-          app->trace_search_channel = nullptr;
-        }
-        break;
-      }
-
-      default:
-        break;
-    }
-
-    // Centralized message resource cleanup!
-    app_msg_deinit(&msg);
   }
 }
 
@@ -273,39 +241,30 @@ void app_update(app_t* app) {
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
-  // === 0. Search Coordination (Actor Model Spawning) ===
+  // === 0. Search Coordination (Task Queue Spawning) ===
   if (app->trace_viewer.search_query_dirty) {
     app->trace_viewer.search_query_dirty = false;
 
-    // Abort the previous running search task (if any), closing our (tx) side
-    // of its mailbox. The old channel is later destroyed by app_msg_deinit
-    // when the aborted message is polled.
-    if (app->trace_search_channel != nullptr) {
-      trace_search_send_abort(app->trace_search_channel);
-      channel_close_tx(app->trace_search_channel);
+    // Cancel the previous running search task (if any)
+    if (app->active_search_task != nullptr) {
+      task_queue_cancel_submission(app->task_queue, app->active_search_task);
+      app->active_search_task = nullptr;
     }
-
-    // Spawn a new search task for the new query (creates its own channel).
-    // The old channel remains alive and will be cleanly destroyed
-    // by the UI thread when it receives the aborted message.
-    app->trace_search_channel = nullptr;
 
     const char* query = (const char*)app->trace_viewer.search_query.ptr;
     if (query && query[0] != '\0' && app->trace_data != nullptr) {
       // Retain a reference to trace_data for the background task!
       trace_data_retain(app->trace_data);
 
-      // Spawn a new background search task!
-      app->trace_search_channel = trace_search_start(
+      // Spawn a new background search task on the shared global Task Queue!
+      app->active_search_task = trace_search_task_create(
           query, app->trace_data, !app->trace_viewer.exclude_thread_events,
-          !app->trace_viewer.exclude_counter_events, app->ui_channel,
+          !app->trace_viewer.exclude_counter_events, app->task_queue,
           allocator);
+      app->trace_viewer.search.is_searching = true;
     } else {
-      // For empty queries, clear the search results synchronously
-      array_list_clear(&app->trace_viewer.selected_event_indices);
-      app->trace_viewer.histogram = (trace_histogram_t){};  // ZII
-      app->trace_viewer.selected_events_dirty = true;
-      app->trace_viewer.search.is_searching = false;
+      // For empty queries, clear the search state cleanly
+      trace_viewer_clear_search(&app->trace_viewer, allocator);
     }
   }
 

@@ -112,42 +112,14 @@ cc_library(
 )
 
 cc_library(
-    name = "channel",
-    srcs = ["channel.c"],
-    hdrs = ["channel.h"],
-    deps = [
-        ":allocator",
-        ":assert",
-        ":platform",
-    ],
-)
-
-cc_library(
-    name = "app_msg",
-    srcs = ["app_msg.c"],
-    hdrs = ["app_msg.h"],
-    deps = [
-        ":allocator",
-        ":array_list",
-        ":assert",
-        ":channel",
-        ":task",
-        ":trace_data",
-        ":trace_viewer",
-    ],
-)
-
-cc_library(
     name = "trace_load_task",
     srcs = ["trace_load_task.c"],
     hdrs = ["trace_load_task.h"],
     deps = [
         ":allocator",
         ":arena",
-        ":app_msg",
         ":array_list",
         ":assert",
-        ":channel",
         ":colors",
         ":platform",
         ":task",
@@ -163,11 +135,12 @@ cc_library(
     hdrs = ["trace_search_task.h"],
     deps = [
         ":allocator",
-        ":app_msg",
         ":array_list",
         ":assert",
-        ":channel",
-        ":platform",
+        ":task",
+        ":trace_data",
+        ":trace_histogram",
+        ":trace_viewer",
     ],
 )
 
@@ -228,20 +201,9 @@ cc_test(
 )
 
 cc_test(
-    name = "channel_test",
-    srcs = ["channel_test.cc"],
-    deps = [
-        ":channel",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "trace_load_task_test",
     srcs = ["trace_load_task_test.cc"],
     deps = [
-        ":app_msg",
-        ":channel",
         ":trace_data",
         ":trace_load_task",
         "@googletest//:gtest_main",
@@ -252,22 +214,12 @@ cc_test(
     name = "trace_search_task_test",
     srcs = ["trace_search_task_test.cc"],
     deps = [
-        ":app_msg",
-        ":channel",
-        ":trace_load_task",
+        ":allocator",
+        ":platform",
+        ":task",
+        ":trace_data",
+        ":trace_histogram",
         ":trace_search_task",
-        ":trace_viewer",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "app_msg_test",
-    srcs = ["app_msg_test.cc"],
-    deps = [
-        ":app_msg",
-        ":channel",
-        ":trace_load_task",
         "@googletest//:gtest_main",
     ],
 )
@@ -501,9 +453,7 @@ cc_library(
     hdrs = ["app.h"],
     deps = [
         ":allocator",
-        ":app_msg",
         ":array_list",
-        ":channel",
         ":colors",
         ":format",
         ":imgui_c",

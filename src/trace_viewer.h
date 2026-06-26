@@ -24,11 +24,8 @@
 #define tv_atomic_bool _Atomic(bool)
 #define tv_atomic_uint32 _Atomic(uint32_t)
 
-typedef struct channel channel_t;
 
 struct search_state {
-  channel_t*
-      channel;  // Channel to send abort signals to active task (UI -> Task)
   bool is_searching;
 
   bool exclude_thread_events;
@@ -234,6 +231,8 @@ void trace_viewer_adopt_search_results(trace_viewer_t* tv,
                                        array_list_t results,
                                        trace_histogram_t* histogram,
                                        allocator_t allocator);
+
+void trace_viewer_clear_search(trace_viewer_t* tv, allocator_t allocator);
 
 bool trace_viewer_str_contains_case_insensitive(string_view_t text,
                                                 const char* q, size_t q_len);

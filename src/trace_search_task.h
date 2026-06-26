@@ -5,26 +5,49 @@
 #include <stddef.h>
 
 #include "src/allocator.h"
-#include "src/channel.h"
+#include "src/array_list.h"
+#include "src/task.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// === 1. Public Task API ===
-// Creates the search task input mailbox and spawns the background search task.
-// Returns the opaque channel the caller uses to send abort requests.
-// app_channel: output channel of app_msg_t (Task -> UI).
+// Forward declarations
 typedef struct trace_data trace_data_t;
+typedef struct trace_histogram trace_histogram_t;
 
-channel_t* trace_search_start(const char* query, const trace_data_t* td,
-                              bool include_threads, bool include_counters,
-                              channel_t* app_channel, allocator_t allocator);
+// Transparent search task context, representing a submitted search session and its outputs
+struct trace_search_task {
+  char* query;  // Heap-allocated copy of query string
+  const trace_data_t* td;
+  bool include_threads;
+  bool include_counters;
+  task_queue_t* queue;
+  allocator_t allocator;
 
-// === 2. Safe Input Sending APIs ===
+  // --- Outputs (written by worker on success, read by UI thread) ---
+  array_list_t results;
+  trace_histogram_t* histogram;
+};
 
-// Sends an abort request to the search task.
-bool trace_search_send_abort(channel_t* trace_search_channel);
+typedef struct trace_search_task trace_search_task_t;
+
+// Spawns a background search task on the shared global task queue.
+// Returns the task context pointer, which the UI thread stores to identify the
+// active search session and trigger cancellations.
+trace_search_task_t* trace_search_task_create(const char* query,
+                                               const trace_data_t* td,
+                                               bool include_threads,
+                                               bool include_counters,
+                                               task_queue_t* queue,
+                                               allocator_t allocator);
+
+// Destroys the search task context and frees all associated memory.
+// Safe to call from the UI thread on completed or cancelled search tasks.
+void trace_search_task_destroy(trace_search_task_t* task);
+
+// Opaque background worker function signature (passed to the task queue)
+void trace_search_task_run(task_context_t* ctx);
 
 #ifdef __cplusplus
 }

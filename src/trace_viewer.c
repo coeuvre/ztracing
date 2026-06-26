@@ -1012,6 +1012,15 @@ void trace_viewer_adopt_search_results(trace_viewer_t* tv,
   tv->search_histogram_dirty = true;
 }
 
+void trace_viewer_clear_search(trace_viewer_t* tv, allocator_t allocator) {
+  array_list_deinit(&tv->selected_event_indices, allocator);
+  array_list_deinit(&tv->filtered_event_indices, allocator);
+  tv->histogram = (trace_histogram_t){};  // ZII
+  tv->selected_events_dirty = true;
+  tv->search_histogram_dirty = true;
+  tv->search.is_searching = false;
+}
+
 void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
                        const trace_viewer_input_t* input,
                        allocator_t allocator) {
@@ -2121,8 +2130,8 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
                          tv->selected_event_indices.len);
         ig_same_line(0.0f, -1.0f);
         if (ig_small_button("Clear")) {
-          array_list_clear(&tv->selected_event_indices);
-          array_list_clear(&tv->filtered_event_indices);
+          array_list_deinit(&tv->selected_event_indices, allocator);
+          array_list_deinit(&tv->filtered_event_indices, allocator);
           tv->has_selected_histogram_bucket = false;
           tv->search_histogram_dirty = true;
           tv->selected_events_dirty = true;

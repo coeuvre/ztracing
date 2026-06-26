@@ -3,50 +3,14 @@
 #include <gtest/gtest.h>
 
 #include "src/allocator.h"
-#include "src/app_msg.h"
-#include "src/colors.h"
 #include "src/platform.h"
+#include "src/task.h"
 #include "src/trace_data.h"
 #include "src/trace_histogram.h"
 
-// Verify that app_send_trace_search_complete automatically cleans up results
-// and histogram on failure.
-TEST(trace_search_task_test,
-     safe_send_helper_search_complete_cleanup_on_failure) {
-  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
-  allocator_t a = counting_allocator_get_allocator(&ca);
-
-  {
-    // App channel
-    channel_t* chan = channel_create(app_msg_t, 5, app_msg_deinit, a);
-
-    // Allocate search results list and histogram on the heap
-    trace_histogram_t* hist =
-        (trace_histogram_t*)allocator_alloc(a, sizeof(trace_histogram_t));
-    *hist = {};  // Zero-initialize
-
-    array_list_t results = {};
-
-    // Create a mock trace data shell on the heap (ref_count = 1)
-    trace_data_t* td = trace_data_create(a);
-
-    // Close channel to force send failure!
-    channel_close_tx(chan);
-    channel_close_rx(chan);
-
-    // Send should fail and AUTOMATICALLY free results, hist, and release td!
-    EXPECT_FALSE(
-        app_send_trace_search_complete(chan, td, results, hist, nullptr, a));
-
-    channel_destroy(chan);
-  }
-
-  // If hist or td was not freed automatically, this check would fail!
-  EXPECT_EQ(counting_allocator_get_allocated_bytes(&ca), 0u);
-}
 
 // E2E test for the background trace search task.
-// Verifies event scanning, case-insensitive matching, and results delivery.
+// Verifies event scanning, case-insensitive matching, and results delivery via the Task Queue.
 TEST(trace_search_task_test, e2e_search_task) {
   counting_allocator_t ca = counting_allocator_init(allocator_get_default());
   allocator_t a = counting_allocator_get_allocator(&ca);
@@ -83,49 +47,43 @@ TEST(trace_search_task_test, e2e_search_task) {
     ev2.dur = 20;
     trace_data_add_event(td, &ev2, &matcher, a);
 
-    // Create coordination channels
-    channel_t* app_channel = channel_create(app_msg_t, 5, app_msg_deinit, a);
+    // Create global task queue
+    task_queue_t* queue = task_queue_create(64, platform_submit_job, a);
 
     // Retain td for the background task (ref_count: 1 -> 2)
     trace_data_retain(td);
 
-    // Start background search for "foo" (creates its own search channel,
-    // which is later destroyed by app_msg_deinit via task_channel)
-    trace_search_start("foo", td, true, true, app_channel, a);
+    // Start background search for "foo" on the Task Queue
+    trace_search_task_t* task =
+        trace_search_task_create("foo", td, true, true, queue, a);
+    EXPECT_NE(task, nullptr);
 
-    // Block-receive the result from app_channel
-    app_msg_t msg = {};
-    EXPECT_TRUE(channel_recv(app_channel, &msg));
-    EXPECT_EQ(msg.type, APP_MSG_TRACE_SEARCH_COMPLETE);
+    // Block and wait for the search task completion in the CQ
+    task_completion_t cqe = {};
+    task_queue_wait_completion(queue, &cqe);
+    EXPECT_EQ(cqe.task, trace_search_task_run);
+    EXPECT_EQ(cqe.user_data, task);
+    EXPECT_EQ(cqe.status, TASK_STATUS_OK);
 
-    app_msg_trace_search_complete_t result = msg.as.trace_search_complete;
-    EXPECT_EQ(result.results.len, 1u);
-    EXPECT_EQ(((int64_t*)result.results.ptr)[0], 0);  // Event index 0
+    // Verify search results inside the task context
+    EXPECT_EQ(task->results.len, 1u);
+    EXPECT_EQ(((int64_t*)task->results.ptr)[0], 0);  // Event index 0
 
-    EXPECT_NE(result.histogram, nullptr);
-    EXPECT_EQ(result.histogram->total_count, 1u);
+    EXPECT_NE(task->histogram, nullptr);
+    EXPECT_EQ(task->histogram->total_count, 1u);
 
-    // Centralized cleanup via app_msg_deinit!
-    // This will release the background task's reference to td (ref_count: 2 ->
-    // 1), deinit the results list, free the histogram shell, and destroy the
-    // search_channel.
-    // First close our (tx) side of the search channel, mirroring what
-    // app_poll_messages does in the SEARCH_COMPLETE handler before deinit.
-    channel_close_tx(result.task_channel);
-    app_msg_deinit(&msg);
+    // Clean up resources
+    task_queue_remove_completion(queue);
 
-    // Tear down channels and release our own reference to td (ref_count: 1
-    // -> 0, triggers free)
-    channel_close_tx(app_channel);
-    channel_close_rx(app_channel);
-    channel_destroy(app_channel);
+    // Release both references to td (ref_count: 2 -> 0, triggers free)
     trace_data_release(td, a);
-    trace_event_matcher_deinit(&matcher);
+    trace_data_release(td, a);
 
-    // Join the worker pool before checking allocations: the background search
-    // task frees its own task struct + query string asynchronously after
-    // channel_send returns, so without joining there's a race where those
-    // (~60 bytes) haven't been freed yet when we check below.
+    trace_event_matcher_deinit(&matcher);
+    trace_search_task_destroy(task);
+    task_queue_destroy(queue);
+
+    // Tear down workers to ensure all threads exit and free their resources
     platform_teardown_workers();
   }
 

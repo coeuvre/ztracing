@@ -37,8 +37,8 @@ static void imgui_free(void* ptr, void* user_data) {
 }
 
 static void main_loop() {
-  // 1. Poll and process all pending background messages first
-  app_poll_messages(g_app);
+  // 1. Poll and process all pending background task completions first
+  app_poll_completions(g_app);
 
   // 2. Check if a redraw has been requested by the app state
   bool request_update = false;

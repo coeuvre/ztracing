@@ -7,7 +7,6 @@
 
 #include "src/allocator.h"
 #include "src/array_list.h"
-#include "src/channel.h"
 #include "src/colors.h"
 #include "src/task.h"
 #include "src/trace_data.h"
@@ -54,13 +53,12 @@ typedef struct app {
   bool show_about_window;
   bool show_shortcuts_window;
 
-  // Background Mailboxes & Task Schedulers
-  channel_t* ui_channel;     // UI thread input mailbox (receives app_msg_t)
+  // Background Task Schedulers
   task_queue_t* task_queue;  // Global background task queue scheduler
   struct trace_load_task*
       trace_load_task;              // Active loading task handle (opaque)
-  channel_t* trace_search_channel;  // Search task input mailbox (opaque, see
-                                    // trace_search_task.h)
+  struct trace_search_task*
+      active_search_task;           // Active search task handle (opaque)
 
   // Background Loading State
   trace_loading_state_t loading;
@@ -76,8 +74,8 @@ void app_init(app_t* app, allocator_t allocator);
 // Deinitializes the application state and releases resources.
 void app_deinit(app_t* app);
 
-// Polls and processes all pending background messages.
-void app_poll_messages(app_t* app);
+// Polls and processes all pending background task completions.
+void app_poll_completions(app_t* app);
 
 // Updates the application state and UI for a single frame.
 void app_update(app_t* app);
