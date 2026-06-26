@@ -11,7 +11,7 @@
 #include "third_party/imgui/imgui.h"
 
 struct BackendData {
-  allocator_t allocator;
+  allocator_t* allocator;
   GLuint shader_program;
   GLuint vbo, ebo;
   GLuint vao;
@@ -89,7 +89,7 @@ void imgui_impl_webgl_render_draw_data(struct ig_draw_data* draw_data_opaque) {
   if (fb_width <= 0 || fb_height <= 0) return;
 
   BackendData* bd = get_backend_data();
-  allocator_t allocator = bd->allocator;
+  allocator_t* allocator = bd->allocator;
 
   // 1. Calculate total counts and prepare staging buffers
   size_t total_vtx_count = 0;
@@ -169,7 +169,7 @@ void imgui_impl_webgl_render_draw_data(struct ig_draw_data* draw_data_opaque) {
   }
 }
 
-bool imgui_impl_webgl_init(allocator_t allocator) {
+bool imgui_impl_webgl_init(allocator_t* allocator) {
   ImGuiIO& io = ImGui::GetIO();
   BackendData* bd =
       (BackendData*)allocator_alloc(allocator, sizeof(BackendData));
@@ -294,7 +294,7 @@ void imgui_impl_webgl_shutdown() {
   glDeleteBuffers(1, &bd->ebo);
   glDeleteProgram(bd->shader_program);
   imgui_impl_webgl_destroy_fonts_texture();
-  allocator_t allocator = bd->allocator;
+  allocator_t* allocator = bd->allocator;
   array_list_deinit(&bd->vtx_staging, allocator);
   array_list_deinit(&bd->idx_staging, allocator);
   allocator_free(allocator, bd, sizeof(BackendData));

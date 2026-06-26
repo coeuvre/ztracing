@@ -3,11 +3,12 @@
 #include <gtest/gtest.h>
 
 #include "core/allocator.h"
+#include "core/counting_allocator.h"
 
 TEST(array_list_test, zii) {
   // Completely zero-initialized, no init, no designated initializer!
   array_list_t al = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   EXPECT_EQ(al.ptr, nullptr);
   EXPECT_EQ(al.len, 0u);
@@ -30,7 +31,7 @@ TEST(array_list_test, zii) {
 
 TEST(array_list_test, push) {
   array_list_t al = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   for (size_t i = 0; i < 100; ++i) {
     int* slot = array_list_push(&al, int, a);
@@ -54,7 +55,7 @@ TEST(array_list_test, push) {
 
 TEST(array_list_test, pop) {
   array_list_t al = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   *array_list_push(&al, int, a) = 10;
   *array_list_push(&al, int, a) = 20;
@@ -84,7 +85,7 @@ TEST(array_list_test, pop) {
 
 TEST(array_list_test, clear) {
   array_list_t al = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   *array_list_push(&al, int, a) = 1;
   *array_list_push(&al, int, a) = 2;
@@ -98,8 +99,9 @@ TEST(array_list_test, clear) {
 }
 
 TEST(array_list_test, memory_leak) {
-  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
-  allocator_t a = counting_allocator_get_allocator(&ca);
+  counting_allocator_t ca;
+  counting_allocator_init(&ca, c_allocator());
+  allocator_t* a = counting_allocator_get_allocator(&ca);
 
   {
     array_list_t al = {};
@@ -115,7 +117,7 @@ TEST(array_list_test, memory_leak) {
 
 TEST(array_list_test, reserve) {
   array_list_t al = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   array_list_reserve(&al, 100, sizeof(int), a);
   EXPECT_EQ(al.len, 0u);
@@ -137,7 +139,7 @@ TEST(array_list_test, reserve) {
 
 TEST(array_list_test, resize) {
   array_list_t al = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   array_list_resize(&al, 100, sizeof(int), a);
   EXPECT_EQ(al.len, 100u);

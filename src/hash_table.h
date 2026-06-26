@@ -3,9 +3,11 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "core/allocator.h"
+#include "core/logging.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -102,7 +104,7 @@ static inline bool* hash_table_entry_occupied(const hash_table_t* ht,
   return (bool*)((char*)entry + ht->occupied_offset);
 }
 
-static inline void hash_table_deinit(hash_table_t* ht, allocator_t a) {
+static inline void hash_table_deinit(hash_table_t* ht, allocator_t* a) {
   if (ht->entries != nullptr) {
     allocator_free(a, ht->entries, ht->capacity * ht->entry_size);
   }
@@ -111,10 +113,10 @@ static inline void hash_table_deinit(hash_table_t* ht, allocator_t a) {
 }
 
 static inline void hash_table_resize(hash_table_t* ht, size_t new_capacity,
-                                     allocator_t a);
+                                     allocator_t* a);
 
 static inline void* hash_table_put_with_hash(hash_table_t* ht, const void* key,
-                                             uint32_t h, allocator_t a) {
+                                             uint32_t h, allocator_t* a) {
   HASH_TABLE_ASSERT_INITIALIZED(ht);
   if (ht->capacity == 0 || ht->size * 2 > ht->capacity) {
     size_t new_capacity = ht->capacity == 0 ? 16 : ht->capacity * 2;
@@ -147,7 +149,7 @@ static inline void* hash_table_put_with_hash(hash_table_t* ht, const void* key,
 }
 
 static inline void* hash_table_put(hash_table_t* ht, const void* key,
-                                   allocator_t a) {
+                                   allocator_t* a) {
   HASH_TABLE_ASSERT_INITIALIZED(ht);
   uint32_t h = ht->hash_fn(key, ht->ctx);
   void* result = hash_table_put_with_hash(ht, key, h, a);
@@ -193,7 +195,7 @@ static inline void hash_table_clear(hash_table_t* ht) {
 }
 
 static inline void hash_table_resize(hash_table_t* ht, size_t new_capacity,
-                                     allocator_t a) {
+                                     allocator_t* a) {
   HASH_TABLE_ASSERT_INITIALIZED(ht);
   if (new_capacity < 4) {
     new_capacity = 4;

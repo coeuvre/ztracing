@@ -7,7 +7,7 @@
 extern "C" {
 #endif
 
-bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t allocator);
+bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t* allocator);
 void imgui_impl_wasm_shutdown(void);
 void imgui_impl_wasm_new_frame(void);
 

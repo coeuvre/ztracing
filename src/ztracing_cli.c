@@ -5,9 +5,7 @@
 
 #include "core/allocator.h"
 #include "core/json_writer.h"
-#include "core/logging.h"
 #include "src/array_list.h"
-#include "src/platform.h"
 #include "src/trace_data.h"
 #include "src/trace_heatmap.h"
 #include "src/trace_histogram.h"
@@ -209,7 +207,7 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
 // Handles the 'summary' subcommand.
 static int handle_summary(const trace_data_t* td, size_t track_count,
                           int64_t min_ts, int64_t max_ts, bool pretty,
-                          allocator_t a) {
+                          allocator_t* a) {
   // Serialize summary
   array_list_t json_buf = {};
   json_writer_t w;
@@ -248,7 +246,7 @@ static int handle_summary(const trace_data_t* td, size_t track_count,
 
 // Handles the 'tracks' subcommand.
 static int handle_tracks(const trace_data_t* td, const array_list_t* tracks,
-                         bool pretty, allocator_t a) {
+                         bool pretty, allocator_t* a) {
   // Serialize tracks
   array_list_t json_buf = {};
   json_writer_t w;
@@ -308,7 +306,7 @@ static int handle_tracks(const trace_data_t* td, const array_list_t* tracks,
 // Handles the 'heatmap' subcommand.
 static int handle_heatmap(const trace_data_t* td, const array_list_t* tracks,
                           int64_t min_ts, int64_t max_ts, bool pretty,
-                          allocator_t a) {
+                          allocator_t* a) {
   // Preallocate the heatmap densities buffer (1 trace_heatmap_t per track)
   array_list_t heatmap_list = {};
   array_list_resize(&heatmap_list, tracks->len, sizeof(trace_heatmap_t), a);
@@ -397,7 +395,7 @@ static int handle_heatmap(const trace_data_t* td, const array_list_t* tracks,
 
 // Handles the 'histogram' subcommand.
 static int handle_histogram(const trace_data_t* td, const array_list_t* tracks,
-                            const cli_args_t* args, allocator_t a) {
+                            const cli_args_t* args, allocator_t* a) {
   // Gather all event indices matching the filters
   array_list_t selected_indices = {};
   const trace_event_persisted_t* events =
@@ -527,7 +525,7 @@ static int handle_histogram(const trace_data_t* td, const array_list_t* tracks,
 
 // Handles the 'inspect' subcommand.
 static int handle_inspect(const trace_data_t* td, const array_list_t* tracks,
-                          const cli_args_t* args, allocator_t a) {
+                          const cli_args_t* args, allocator_t* a) {
   if (!args->track_filter) {
     fprintf(stderr,
             "Error: Missing required option '--track <name>' for inspect "
@@ -707,7 +705,7 @@ static int compare_query_matches(const void* a_ptr, const void* b_ptr) {
 
 // Handles the 'query' subcommand.
 static int handle_query(const trace_data_t* td, const array_list_t* tracks,
-                        const cli_args_t* args, allocator_t a) {
+                        const cli_args_t* args, allocator_t* a) {
   track_t* tracks_data = (track_t*)tracks->ptr;
 
   // Find the target track if filtering by track
@@ -854,7 +852,7 @@ int main(int argc, char* argv[]) {
   cli_args_t args = {};
 
   if (parse_arguments(argc, argv, &args)) {
-    allocator_t a = allocator_get_default();
+    allocator_t* a = c_allocator();
     array_list_t tracks = {};
     int64_t min_ts = 0;
     int64_t max_ts = 0;

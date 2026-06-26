@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "core/allocator.h"
+#include "core/counting_allocator.h"
 #include "src/array_list.h"
 #include "src/trace_data.h"
 #include "src/track.h"
@@ -10,15 +11,14 @@
 class trace_heatmap_test : public ::testing::Test {
  protected:
   counting_allocator_t ca_;
-  allocator_t allocator_;
+  allocator_t* allocator_;
   trace_data_t* td_;
   array_list_t tracks_;
 
-  trace_heatmap_test()
-      : ca_(counting_allocator_init(allocator_get_default())),
-        allocator_(counting_allocator_get_allocator(&ca_)),
-        td_(nullptr),
-        tracks_({}) {}
+  trace_heatmap_test() : td_(nullptr), tracks_({}) {
+    counting_allocator_init(&ca_, c_allocator());
+    allocator_ = counting_allocator_get_allocator(&ca_);
+  }
 
   void SetUp() override { td_ = trace_data_create(allocator_); }
 

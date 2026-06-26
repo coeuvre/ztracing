@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "core/allocator.h"
+#include "core/counting_allocator.h"
 #include "core/task.h"
 #include "src/array_list.h"
 #include "src/colors.h"
@@ -69,7 +70,7 @@ typedef struct app {
 } app_t;
 
 // Initializes the application state.
-void app_init(app_t* app, allocator_t allocator);
+void app_init(app_t* app, allocator_t* allocator);
 
 // Deinitializes the application state and releases resources.
 void app_deinit(app_t* app);

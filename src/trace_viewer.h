@@ -214,24 +214,24 @@ extern "C" {
 #endif
 
 void trace_viewer_init(trace_viewer_t* tv);
-void trace_viewer_deinit(trace_viewer_t* tv, allocator_t allocator);
+void trace_viewer_deinit(trace_viewer_t* tv, allocator_t* allocator);
 void trace_viewer_reset_view(trace_viewer_t* tv);
 void trace_viewer_precompute_minimap_heatmap(trace_viewer_t* tv,
                                              const trace_data_t* td,
-                                             allocator_t allocator);
+                                             allocator_t* allocator);
 void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
                        const trace_viewer_input_t* input,
-                       allocator_t allocator);
+                       allocator_t* allocator);
 void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
-                       allocator_t allocator, const theme_t* theme);
+                       allocator_t* allocator, const theme_t* theme);
 
 void trace_viewer_adopt_search_results(trace_viewer_t* tv,
                                        const trace_data_t* td,
                                        array_list_t results,
                                        trace_histogram_t* histogram,
-                                       allocator_t allocator);
+                                       allocator_t* allocator);
 
-void trace_viewer_clear_search(trace_viewer_t* tv, allocator_t allocator);
+void trace_viewer_clear_search(trace_viewer_t* tv, allocator_t* allocator);
 
 bool trace_viewer_str_contains_case_insensitive(string_view_t text,
                                                 const char* q, size_t q_len);

@@ -15,7 +15,7 @@ static bool int32_eq(const void* a, const void* b, void* ctx) {
 }
 
 TEST(hash_table_test, basic) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   hash_table_t ht =
       hash_table_init(int32_t, int, int32_hash, int32_eq, nullptr);
 
@@ -49,7 +49,7 @@ static uint32_t colliding_hash(const void* key, void* ctx) {
 }
 
 TEST(hash_table_test, collision) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   hash_table_t ht =
       hash_table_init(int32_t, int, colliding_hash, int32_eq, nullptr);
 
@@ -88,7 +88,7 @@ static uint32_t context_hash(const void* key, void* ctx) {
 }
 
 TEST(hash_table_test, context) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   HashCtx ctx = {.multiplier = 137};
   hash_table_t ht = hash_table_init(int32_t, int, context_hash, int32_eq, &ctx);
 
@@ -109,7 +109,7 @@ TEST(hash_table_test, context) {
 }
 
 TEST(hash_table_test, growth) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   hash_table_t ht =
       hash_table_init(int32_t, int, int32_hash, int32_eq, nullptr);
   hash_table_resize(&ht, 4, a);
@@ -133,7 +133,7 @@ TEST(hash_table_test, growth) {
 }
 
 TEST(hash_table_test, clear) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   hash_table_t ht =
       hash_table_init(int32_t, int32_t, int32_hash, int32_eq, nullptr);
 
@@ -150,7 +150,7 @@ TEST(hash_table_test, clear) {
 #ifndef NDEBUG
 TEST(hash_table_test, uninitialized_assertion) {
   hash_table_t ht = {};  // Completely zero-initialized, no init!
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   int32_t key = 1;
 
   // Attempting to put, get, or resize should trigger safety assertions and

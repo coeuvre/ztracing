@@ -58,7 +58,7 @@ typedef struct track_renderer_state {
 } track_renderer_state_t;
 
 static inline void track_renderer_state_deinit(track_renderer_state_t* state,
-                                               allocator_t a) {
+                                               allocator_t* a) {
   array_list_deinit(&state->thread_bucket_states, a);
   array_list_deinit(&state->thread_depth_blocked_until, a);
   array_list_deinit(&state->counter_current_values, a);
@@ -86,7 +86,7 @@ extern "C" {
 
 void track_renderer_update_selection_bitset(
     track_renderer_state_t* state, const trace_data_t* trace_data,
-    const array_list_t* selected_event_indices, allocator_t a);
+    const array_list_t* selected_event_indices, allocator_t* a);
 
 void track_compute_render_blocks(const track_t* track,
                                  const trace_data_t* trace_data,
@@ -94,13 +94,13 @@ void track_compute_render_blocks(const track_t* track,
                                  float inner_width, float tracks_canvas_pos_x,
                                  int64_t focused_event_idx,
                                  track_renderer_state_t* state,
-                                 array_list_t* out_blocks, allocator_t a);
+                                 array_list_t* out_blocks, allocator_t* a);
 
 void track_compute_counter_render_blocks(
     const track_t* track, const trace_data_t* trace_data, double viewport_start,
     double viewport_end, float inner_width, float tracks_canvas_pos_x,
     int64_t focused_event_idx, track_renderer_state_t* state,
-    array_list_t* out_blocks, allocator_t a);
+    array_list_t* out_blocks, allocator_t* a);
 
 #ifdef __cplusplus
 }

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "core/counting_allocator.h"
 #include "core/logging.h"
 #include "src/colors.h"
 #include "src/imgui_c.h"
@@ -93,14 +94,14 @@ void app_stop_jobs(app_t* app) {
   }
 }
 
-void app_init(app_t* app, allocator_t parent) {
+void app_init(app_t* app, allocator_t* parent) {
   *app = (app_t){
-      .counting_allocator = counting_allocator_init(parent),
       .power_save_mode = true,
       .first_frame = true,
   };
+  counting_allocator_init(&app->counting_allocator, parent);
 
-  allocator_t allocator =
+  allocator_t* allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
   // Initialize the global background task queue
@@ -115,7 +116,7 @@ void app_deinit(app_t* app) {
   // Signal background jobs to cancel and close channels
   app_stop_jobs(app);
 
-  allocator_t allocator =
+  allocator_t* allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
   task_queue_destroy(app->task_queue);
@@ -127,7 +128,7 @@ void app_deinit(app_t* app) {
 }
 
 void app_poll_completions(app_t* app) {
-  allocator_t allocator =
+  allocator_t* allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
   task_completion_t cqe;
   bool reaped_any = false;
@@ -236,7 +237,7 @@ void app_poll_completions(app_t* app) {
 }
 
 void app_update(app_t* app) {
-  allocator_t allocator =
+  allocator_t* allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
   // === 0. Search Coordination (Task Queue Spawning) ===
@@ -486,7 +487,7 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
   // Stop any active running session (non-blocking abort)
   app_stop_jobs(app);
 
-  allocator_t allocator =
+  allocator_t* allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
   // Reset the trace viewer state
@@ -529,7 +530,7 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
 size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
                              size_t size, size_t input_consumed_bytes,
                              bool is_eof) {
-  allocator_t allocator =
+  allocator_t* allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
   size_t result = 0;

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "core/counting_allocator.h"
 #include "core/logging.h"
 #include "src/app.h"
 #include "src/headless_gl.h"
@@ -20,7 +21,7 @@ static void* imgui_alloc(size_t sz, void* user_data) {
   allocator_t* a = (allocator_t*)user_data;
   size_t header_size = 16;  // Ensure 16-byte alignment
   size_t total_size = sz + header_size;
-  void* ptr = allocator_alloc(*a, total_size);
+  void* ptr = allocator_alloc(a, total_size);
   if (!ptr) return nullptr;
   *(size_t*)ptr = total_size;
   return (char*)ptr + header_size;
@@ -31,20 +32,20 @@ static void imgui_free(void* ptr, void* user_data) {
   allocator_t* a = (allocator_t*)user_data;
   size_t header_size = 16;
   void* real_ptr = (char*)ptr - header_size;
-  allocator_free(*a, real_ptr, *(size_t*)real_ptr);
+  allocator_free(a, real_ptr, *(size_t*)real_ptr);
 }
 
 int ztracing_init(const char* canvas_selector) {
   (void)canvas_selector;
 
-  allocator_t default_allocator = allocator_get_default();
+  allocator_t* default_allocator = c_allocator();
   g_app = (app_t*)allocator_alloc(default_allocator, sizeof(app_t));
   app_init(g_app, default_allocator);
 
-  static allocator_t imgui_allocator;
+  static allocator_t* imgui_allocator;
   imgui_allocator =
       counting_allocator_get_allocator(&g_app->counting_allocator);
-  ig_set_allocator_functions(imgui_alloc, imgui_free, &imgui_allocator);
+  ig_set_allocator_functions(imgui_alloc, imgui_free, imgui_allocator);
 
   ig_create_context();
   ig_io_add_config_flags(IG_CONFIG_FLAGS_NAV_ENABLE_KEYBOARD |
@@ -96,7 +97,7 @@ void ztracing_deinit(void) {
 
   platform_teardown_workers();
 
-  allocator_t app_allocator =
+  allocator_t* app_allocator =
       counting_allocator_get_allocator(&g_app->counting_allocator);
   if (g_font_data.ptr) {
     array_list_deinit(&g_font_data, app_allocator);
@@ -107,7 +108,7 @@ void ztracing_deinit(void) {
   ig_destroy_context();
   headless_gl_shutdown(&g_gl_ctx);
 
-  allocator_t default_allocator = allocator_get_default();
+  allocator_t* default_allocator = c_allocator();
   allocator_free(default_allocator, g_app, sizeof(app_t));
   g_app = nullptr;
   LOG_INFO("Headless ztracing deinitialized.");
@@ -121,7 +122,7 @@ void ztracing_set_font_data(unsigned char* font_data, int font_size) {
   assert(g_app != nullptr);
 
   array_list_clear(&g_font_data);
-  allocator_t allocator =
+  allocator_t* allocator =
       counting_allocator_get_allocator(&g_app->counting_allocator);
   size_t len = (size_t)font_size;
   unsigned char* dest = (unsigned char*)array_list_append_(
@@ -136,13 +137,13 @@ void ztracing_set_font_data(unsigned char* font_data, int font_size) {
 
 void* ztracing_malloc(int size) {
   assert(g_app != nullptr);
-  allocator_t a = counting_allocator_get_allocator(&g_app->counting_allocator);
+  allocator_t* a = counting_allocator_get_allocator(&g_app->counting_allocator);
   return allocator_alloc(a, (size_t)size);
 }
 
 void ztracing_free(void* ptr, int size) {
   assert(g_app != nullptr);
-  allocator_t a = counting_allocator_get_allocator(&g_app->counting_allocator);
+  allocator_t* a = counting_allocator_get_allocator(&g_app->counting_allocator);
   allocator_free(a, ptr, (size_t)size);
 }
 

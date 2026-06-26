@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "core/allocator.h"
+#include "core/counting_allocator.h"
 #include "core/task.h"
 #include "src/trace_data.h"
 #include "src/track.h"
@@ -12,8 +13,9 @@
 static void inline_executor(void (*work_fn)(void*), void* arg) { work_fn(arg); }
 
 TEST(trace_load_task_test, success_path_reaps_correctly) {
-  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
-  allocator_t a = counting_allocator_get_allocator(&ca);
+  counting_allocator_t ca;
+  counting_allocator_init(&ca, c_allocator());
+  allocator_t* a = counting_allocator_get_allocator(&ca);
 
   {
     task_queue_t* queue = task_queue_create(32, inline_executor, a);
@@ -86,8 +88,9 @@ TEST(trace_load_task_test, success_path_reaps_correctly) {
 }
 
 TEST(trace_load_task_test, cancellation_path_cleans_up_without_leaks) {
-  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
-  allocator_t a = counting_allocator_get_allocator(&ca);
+  counting_allocator_t ca;
+  counting_allocator_init(&ca, c_allocator());
+  allocator_t* a = counting_allocator_get_allocator(&ca);
 
   {
     task_queue_t* queue = task_queue_create(32, inline_executor, a);

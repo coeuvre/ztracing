@@ -85,7 +85,7 @@ static inline bool string_view_eq(string_view_t a, string_view_t b) {
 // Convert a string_view_t to a null-terminated C string using the provided
 // allocator. The returned pointer must be freed by the caller using
 // allocator_free().
-static inline char* string_view_to_cstr(string_view_t s, allocator_t a) {
+static inline char* string_view_to_cstr(string_view_t s, allocator_t* a) {
   char* str = (char*)allocator_alloc(a, s.len + 1);
   memcpy(str, s.ptr, s.len);
   str[s.len] = '\0';
@@ -94,7 +94,7 @@ static inline char* string_view_to_cstr(string_view_t s, allocator_t a) {
 
 // Growable string functions
 
-static inline void string_deinit(string_t* s, allocator_t a) {
+static inline void string_deinit(string_t* s, allocator_t* a) {
   if (s->ptr != nullptr) {
     allocator_free(a, s->ptr, s->cap);
   }
@@ -122,7 +122,7 @@ static inline size_t string_calculate_new_capacity(size_t current_capacity,
   return new_capacity;
 }
 
-static inline void string_reserve(string_t* s, size_t new_cap, allocator_t a) {
+static inline void string_reserve(string_t* s, size_t new_cap, allocator_t* a) {
   if (new_cap > s->cap) {
     void* new_ptr = allocator_realloc(a, s->ptr, s->cap, new_cap);
     s->ptr = (char*)new_ptr;
@@ -131,7 +131,7 @@ static inline void string_reserve(string_t* s, size_t new_cap, allocator_t a) {
 }
 
 static inline void string_ensure_capacity(string_t* s, size_t min_capacity,
-                                          allocator_t a) {
+                                          allocator_t* a) {
   if (min_capacity > s->cap) {
     size_t new_cap = string_calculate_new_capacity(s->cap, min_capacity);
     string_reserve(s, new_cap, a);
@@ -139,7 +139,7 @@ static inline void string_ensure_capacity(string_t* s, size_t min_capacity,
 }
 
 static inline void string_append_view(string_t* s, string_view_t sv,
-                                      allocator_t a) {
+                                      allocator_t* a) {
   if (sv.len > 0) {
     string_ensure_capacity(s, s->len + sv.len + 1, a);
     memcpy(s->ptr + s->len, sv.ptr, sv.len);
@@ -149,7 +149,7 @@ static inline void string_append_view(string_t* s, string_view_t sv,
 }
 
 static inline void string_append_cstr(string_t* s, const char* str,
-                                      allocator_t a) {
+                                      allocator_t* a) {
   CHECK(str != nullptr);
   size_t len = strlen(str);
   if (len > 0) {
@@ -160,7 +160,7 @@ static inline void string_append_cstr(string_t* s, const char* str,
   }
 }
 
-static inline void string_append_char(string_t* s, char c, allocator_t a) {
+static inline void string_append_char(string_t* s, char c, allocator_t* a) {
   string_ensure_capacity(s, s->len + 2, a);
   s->ptr[s->len] = c;
   s->len++;

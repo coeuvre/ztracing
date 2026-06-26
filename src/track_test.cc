@@ -14,19 +14,18 @@
     trace_event_matcher_deinit(&matcher);              \
   } while (0)
 
-#define track_organize(td, theme, out_tracks, out_min_ts, out_max_ts,     \
-                       allocator)                                         \
-  do {                                                                    \
-    arena_t scratch_arena = {};                                           \
-    arena_init(&scratch_arena, (allocator), 0);                           \
-    ((void)(theme),                                                       \
-     (track_organize)((td), (out_tracks), (out_min_ts), (out_max_ts),     \
-                      (allocator), arena_get_allocator(&scratch_arena))); \
-    arena_deinit(&scratch_arena);                                         \
+#define track_organize(td, theme, out_tracks, out_min_ts, out_max_ts,    \
+                       allocator)                                        \
+  do {                                                                   \
+    arena_t* scratch_arena = arena_create_with_allocator(allocator);     \
+    ((void)(theme),                                                      \
+     (track_organize)((td), (out_tracks), (out_min_ts), (out_max_ts),    \
+                      (allocator), arena_get_allocator(scratch_arena))); \
+    arena_destroy(scratch_arena);                                        \
   } while (0)
 
 TEST(track_test, sort_events) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   trace_event_t ev1 = {};
@@ -52,7 +51,7 @@ TEST(track_test, sort_events) {
 }
 
 TEST(track_test, update_max_dur) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   trace_event_t ev1 = {};
@@ -76,7 +75,7 @@ TEST(track_test, update_max_dur) {
 }
 
 TEST(track_test, find_visible_start_index) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   // Event 0: [0, 100]
@@ -134,7 +133,7 @@ TEST(track_test, find_visible_start_index) {
 }
 
 TEST(track_test, calculate_depths) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   // [0, 100]
@@ -213,7 +212,7 @@ TEST(track_test, calculate_depths) {
 }
 
 TEST(track_test, calculate_depths_siblings) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   // Parent [0, 100]
@@ -257,7 +256,7 @@ TEST(track_test, calculate_depths_siblings) {
 }
 
 TEST(track_test, calculate_depths_duplicates) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   // Two events with same ts and dur
@@ -294,7 +293,7 @@ TEST(track_test, calculate_depths_duplicates) {
 }
 
 TEST(track_test, calculate_depths_non_strict) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   // Parent [0, 100]
@@ -340,7 +339,7 @@ TEST(track_test, calculate_depths_non_strict) {
 }
 
 TEST(track_test, organize_tracks_empty) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   array_list_t tracks = {};
@@ -357,7 +356,7 @@ TEST(track_test, organize_tracks_empty) {
 }
 
 TEST(track_test, organize_tracks_sorting) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   auto add_event = [&](int32_t pid, int32_t tid, int64_t ts) {
@@ -425,7 +424,7 @@ TEST(track_test, organize_tracks_sorting) {
 }
 
 TEST(track_test, organize_tracks_metadata_only) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   trace_event_t m = {};
@@ -457,7 +456,7 @@ TEST(track_test, organize_tracks_metadata_only) {
 }
 
 TEST(track_test, organize_tracks_mixed_order) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   // 1. Regular event
@@ -522,7 +521,7 @@ TEST(track_test, organize_tracks_mixed_order) {
 }
 
 TEST(track_test, organize_tracks_counters) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   // 1. Regular thread event
@@ -596,7 +595,7 @@ TEST(track_test, organize_tracks_counters) {
 }
 
 TEST(track_test, organize_tracks_counters_sorting) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   // Add counter events in non-alphabetical order
@@ -656,7 +655,7 @@ TEST(track_test, organize_tracks_counters_sorting) {
 }
 
 TEST(track_test, organize_tracks_counters_sorting_ignore_case) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   // Add counter events with mixed case names

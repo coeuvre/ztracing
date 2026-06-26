@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "core/assert.h"
+#include "core/counting_allocator.h"
 #include "core/logging.h"
 #include "src/app.h"
 #include "src/imgui_c.h"
@@ -22,7 +23,7 @@ static void* imgui_alloc(size_t sz, void* user_data) {
   allocator_t* a = (allocator_t*)user_data;
   size_t header_size = 16;  // Ensure 16-byte alignment
   size_t total_size = sz + header_size;
-  void* ptr = allocator_alloc(*a, total_size);
+  void* ptr = allocator_alloc(a, total_size);
   if (!ptr) return nullptr;
   *(size_t*)ptr = total_size;
   return (char*)ptr + header_size;
@@ -33,7 +34,7 @@ static void imgui_free(void* ptr, void* user_data) {
   allocator_t* a = (allocator_t*)user_data;
   size_t header_size = 16;
   void* real_ptr = (char*)ptr - header_size;
-  allocator_free(*a, real_ptr, *(size_t*)real_ptr);
+  allocator_free(a, real_ptr, *(size_t*)real_ptr);
 }
 
 static void main_loop() {
@@ -74,20 +75,20 @@ static void main_loop() {
 }
 
 EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
-  allocator_t default_allocator = allocator_get_default();
+  allocator_t* default_allocator = c_allocator();
   g_app = (app_t*)allocator_alloc(default_allocator, sizeof(app_t));
   app_init(g_app, default_allocator);
 
-  static allocator_t imgui_allocator;
+  static allocator_t* imgui_allocator;
   imgui_allocator =
       counting_allocator_get_allocator(&g_app->counting_allocator);
-  ig_set_allocator_functions(imgui_alloc, imgui_free, &imgui_allocator);
+  ig_set_allocator_functions(imgui_alloc, imgui_free, imgui_allocator);
 
   ig_create_context();
   ig_io_add_config_flags(IG_CONFIG_FLAGS_NAV_ENABLE_KEYBOARD |
                          IG_CONFIG_FLAGS_DOCKING_ENABLE);
 
-  allocator_t allocator = imgui_allocator;
+  allocator_t* allocator = imgui_allocator;
   array_list_clear(&g_canvas_selector);
   size_t len = strlen(canvas_selector) + 1;
   char* dest = (char*)array_list_append_(&g_canvas_selector, len, sizeof(char),
@@ -132,7 +133,7 @@ EMSCRIPTEN_KEEPALIVE void ztracing_start() {
 EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
                                                  int font_size) {
   array_list_clear(&g_font_data);
-  allocator_t allocator =
+  allocator_t* allocator =
       counting_allocator_get_allocator(&g_app->counting_allocator);
   size_t len = (size_t)font_size;
   unsigned char* dest = (unsigned char*)array_list_append_(
@@ -149,13 +150,13 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
 
 EMSCRIPTEN_KEEPALIVE void* ztracing_malloc(int size) {
   CHECK(g_app != nullptr);
-  allocator_t a = counting_allocator_get_allocator(&g_app->counting_allocator);
+  allocator_t* a = counting_allocator_get_allocator(&g_app->counting_allocator);
   return allocator_alloc(a, (size_t)size);
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_free(void* ptr, int size) {
   CHECK(g_app != nullptr);
-  allocator_t a = counting_allocator_get_allocator(&g_app->counting_allocator);
+  allocator_t* a = counting_allocator_get_allocator(&g_app->counting_allocator);
   allocator_free(a, ptr, (size_t)size);
 }
 

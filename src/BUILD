@@ -108,6 +108,7 @@ cc_test(
     srcs = ["array_list_test.cc"],
     deps = [
         ":array_list",
+        "//core:counting_allocator",
         "@googletest//:gtest_main",
     ],
 )
@@ -128,6 +129,7 @@ cc_test(
     deps = [
         ":trace_data",
         ":trace_load_task",
+        "//core:counting_allocator",
         "@googletest//:gtest_main",
     ],
 )
@@ -137,6 +139,7 @@ cc_test(
     srcs = ["trace_search_task_test.cc"],
     deps = [
         "//core:allocator",
+        "//core:counting_allocator",
         ":platform",
         "//core:task",
         ":trace_data",
@@ -164,6 +167,7 @@ cc_test(
     srcs = ["trace_parser_test.cc"],
     deps = [
         ":trace_parser",
+        "//core:counting_allocator",
         "@googletest//:gtest_main",
     ],
 )
@@ -353,6 +357,7 @@ cc_library(
     hdrs = ["app.h"],
     deps = [
         "//core:allocator",
+        "//core:counting_allocator",
         ":array_list",
         ":colors",
         ":format",
@@ -406,6 +411,7 @@ cc_binary(
         ":imgui_impl_webgl",
         "//core:logging",
         ":platform",
+        "//core:counting_allocator",
     ],
 )
 
@@ -432,6 +438,7 @@ cc_test(
     deps = [
         ":trace_heatmap",
         "//core:allocator",
+        "//core:counting_allocator",
         ":track",
         "@googletest//:gtest_main",
     ],
@@ -453,6 +460,7 @@ cc_test(
     deps = [
         ":trace_histogram",
         "//core:allocator",
+        "//core:counting_allocator",
         "@googletest//:gtest_main",
     ],
 )
@@ -503,6 +511,7 @@ cc_library(
         "//core:logging",
         ":platform",
         "@imgui",
+        "//core:counting_allocator",
     ],
 )
 

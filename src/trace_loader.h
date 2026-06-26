@@ -21,7 +21,7 @@ extern "C" {
 // decompressed bytes fed to the parser.
 // The returned pointer must be released by the caller using
 // trace_data_release().
-trace_data_t* trace_loader_load_file(const char* filename, allocator_t a,
+trace_data_t* trace_loader_load_file(const char* filename, allocator_t* a,
                                      size_t* out_decompressed_size,
                                      array_list_t* out_tracks,
                                      int64_t* out_min_ts, int64_t* out_max_ts,

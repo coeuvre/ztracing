@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "core/allocator.h"
+#include "core/counting_allocator.h"
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
 
@@ -55,7 +56,7 @@ INSTANTIATE_TEST_SUITE_P(any_executor, task_queue_test,
 
 // Basic Submission and Completion
 TEST_P(task_queue_test, basic_execution) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(16, get_executor(), alloc);
   EXPECT_NE(queue, nullptr);
 
@@ -93,7 +94,7 @@ TEST_P(task_queue_test, basic_execution) {
 
 // Serialized Sequential Execution (Stream > 0)
 TEST_P(task_queue_test, serialized_execution) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(16, get_executor(), alloc);
   EXPECT_NE(queue, nullptr);
 
@@ -163,7 +164,7 @@ TEST_P(task_queue_test, serialized_execution) {
 
 // Cascading Failure
 TEST_P(task_queue_test, cascading_failure) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(16, get_executor(), alloc);
   EXPECT_NE(queue, nullptr);
 
@@ -225,7 +226,7 @@ TEST_P(task_queue_test, cascading_failure) {
 
 // Completion Peeking (Non-destructive Read)
 TEST_P(task_queue_test, peek_completion) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(16, get_executor(), alloc);
   EXPECT_NE(queue, nullptr);
 
@@ -272,7 +273,7 @@ TEST_P(task_queue_test, peek_completion) {
 
 // SQ Full Boundary Condition
 TEST_P(task_queue_test, sq_full_boundary) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   // Create a queue of capacity 2
   task_queue_t* queue = task_queue_create(2, get_executor(), alloc);
   EXPECT_NE(queue, nullptr);
@@ -308,7 +309,7 @@ TEST_P(task_queue_test, sq_full_boundary) {
 
 // Indefinite Blocking Wait (CPU-free)
 TEST_P(task_queue_test, wait_completion_indefinite) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(16, get_executor(), alloc);
   EXPECT_NE(queue, nullptr);
 
@@ -342,7 +343,7 @@ TEST_P(task_queue_test, wait_completion_indefinite) {
 // and potential race windows: a task in a serialized stream must never execute
 // if its predecessor in the same stream has failed.
 TEST_P(task_queue_test, cascading_failure_sequential_safety) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
 
   // Helper RAII class to ensure queue is destroyed even if assertions fail
   struct scoped_queue {
@@ -416,7 +417,7 @@ TEST_P(task_queue_test, cascading_failure_sequential_safety) {
 
 // Instant SQ Reuse
 TEST(task_queue_concurrent_test, instant_sq_reuse) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   // Create a queue of capacity 1
   task_queue_t* queue = task_queue_create(1, thread_executor, alloc);
   EXPECT_NE(queue, nullptr);
@@ -469,7 +470,7 @@ TEST(task_queue_concurrent_test, instant_sq_reuse) {
 
 // CQ Backpressure Blocking
 TEST(task_queue_concurrent_test, cq_backpressure_blocking) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   // Create a queue of capacity 1
   task_queue_t* queue = task_queue_create(1, thread_executor, alloc);
   EXPECT_NE(queue, nullptr);
@@ -542,7 +543,7 @@ TEST(task_queue_concurrent_test, cq_backpressure_blocking) {
 
 // SQ Overflow Auto-Dispatch (Self-Regulation Verification)
 TEST(task_queue_concurrent_test, sq_overflow_auto_dispatch) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   // Create a queue of capacity 2 (maximum 2 concurrent executions)
   task_queue_t* queue = task_queue_create(2, thread_executor, alloc);
   EXPECT_NE(queue, nullptr);
@@ -619,7 +620,7 @@ TEST(task_queue_concurrent_test, sq_overflow_auto_dispatch) {
 
 // Timed Blocking Wait Expiration (CPU-free timeout)
 TEST(task_queue_concurrent_test, wait_completion_timeout_expire) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(16, thread_executor, alloc);
   EXPECT_NE(queue, nullptr);
 
@@ -635,7 +636,7 @@ TEST(task_queue_concurrent_test, wait_completion_timeout_expire) {
 // Verify that the persistent worker loop reduces executor dispatches by reusing
 // threads in-place
 TEST(task_queue_concurrent_test, executor_dispatch_reduction) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
 
   // Reset the global mock dispatch counter
   g_mock_dispatch_count.store(0);
@@ -717,7 +718,7 @@ TEST(task_queue_concurrent_test, executor_dispatch_reduction) {
 // reducing executor dispatches to exactly 1 even when the queue has vacant
 // slots!
 TEST(task_queue_concurrent_test, serialized_stream_dispatch_reduction) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
 
   // Reset the global mock dispatch counter
   g_mock_dispatch_count.store(0);
@@ -771,7 +772,7 @@ TEST(task_queue_concurrent_test, serialized_stream_dispatch_reduction) {
 // Verify that the scheduler prioritizes tasks with stream affinity over older
 // FIFO tasks
 TEST(task_queue_concurrent_test, stream_affinity_prioritization) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
 
   // Create a queue of capacity 2 (enables 2 parallel slots, leaving space in
   // the SQ)
@@ -902,7 +903,7 @@ TEST(task_queue_concurrent_test, stream_affinity_prioritization) {
 // Verify that a blocked serialized stream does not prevent independent streams
 // from executing when there are idle workers (no Head-of-Line blocking).
 TEST(task_queue_concurrent_test, no_head_of_line_blocking) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
 
   // Capacity 2: allows 2 parallel tasks
   task_queue_t* queue = task_queue_create(2, thread_executor, alloc);
@@ -1003,7 +1004,7 @@ TEST(task_queue_concurrent_test, no_head_of_line_blocking) {
 // Verify that cancelling a pending task while the CQ is completely full
 // does not silently drop the completion event (resolving lost completions).
 TEST(task_queue_concurrent_test, lost_completion_on_cancellation_when_cq_full) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
 
   // Capacity 2: allows 2 parallel tasks, CQ size 2
   task_queue_t* queue = task_queue_create(2, thread_executor, alloc);
@@ -1153,7 +1154,7 @@ TEST(task_queue_concurrent_test, lost_completion_on_cancellation_when_cq_full) {
 
 // Synchronous Inline Executor (Deadlock-Free Verification)
 TEST(task_queue_inline_test, inline_executor_synchronous) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
 
   // Create the queue using the inline executor
   task_queue_t* queue = task_queue_create(16, inline_executor, alloc);
@@ -1196,7 +1197,7 @@ TEST(task_queue_inline_test, inline_executor_synchronous) {
 // does NOT retroactively mark it as CANCELLED. It should complete as OK.
 TEST(task_queue_concurrent_test,
      cancel_completed_task_blocked_on_cq_fails_to_cancel) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   // Capacity 1: CQ size 1, maximum 1 execution slot
   task_queue_t* queue = task_queue_create(1, thread_executor, alloc);
   ASSERT_NE(queue, nullptr);
@@ -1281,7 +1282,7 @@ TEST(task_queue_concurrent_test,
 // freed.
 TEST(task_queue_concurrent_test,
      independent_stream_progress_under_node_pressure) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   const size_t cap = 4;
   task_queue_t* queue = task_queue_create(cap, thread_executor, alloc);
   ASSERT_NE(queue, nullptr);
@@ -1379,7 +1380,7 @@ TEST(task_queue_concurrent_test,
 // Stress test to expose data races between main thread preparing submissions
 // and background/other threads triggering stream cancellation.
 TEST(task_queue_concurrent_test, cancellation_race_stress) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(8, thread_executor, alloc);
   ASSERT_NE(queue, nullptr);
 
@@ -1438,7 +1439,7 @@ struct BlockerContext {
 };
 
 TEST(task_queue_concurrent_test, cascading_cancellation) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(16, thread_executor, alloc);
   ASSERT_NE(queue, nullptr);
 
@@ -1514,7 +1515,7 @@ TEST(task_queue_concurrent_test, cascading_cancellation) {
 // trigger a cascading cancellation of the entire stream (including the
 // active blocker and other pending tasks).
 TEST(task_queue_concurrent_test, cancel_submission) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(16, thread_executor, alloc);
   ASSERT_NE(queue, nullptr);
 
@@ -1599,7 +1600,7 @@ TEST(task_queue_concurrent_test, cancel_submission) {
 // Test that a running task can cooperatively detect cancellation using
 // task_should_abort()
 TEST(task_queue_concurrent_test, cooperative_cancellation_polling) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(8, thread_executor, alloc);
   ASSERT_NE(queue, nullptr);
 
@@ -1666,7 +1667,7 @@ TEST(task_queue_concurrent_test, cooperative_cancellation_polling) {
 // request has been processed, but BEFORE the active cancelled task has
 // finished, does NOT result in the new task being cancelled.
 TEST(task_queue_concurrent_test, late_submission_to_cancelled_stream_runs) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(4, thread_executor, alloc);
   ASSERT_NE(queue, nullptr);
 
@@ -1757,7 +1758,7 @@ TEST(task_queue_concurrent_test, late_submission_to_cancelled_stream_runs) {
 // Verify that if a task is cancelled, and subsequently calls task_set_failed(),
 // its final status is still reported as TASK_STATUS_CANCELLED, not FAILED.
 TEST(task_queue_concurrent_test, cancellation_precedence_over_failure) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   task_queue_t* queue = task_queue_create(4, thread_executor, alloc);
   ASSERT_NE(queue, nullptr);
 
@@ -1821,7 +1822,7 @@ TEST(task_queue_concurrent_test, cancellation_precedence_over_failure) {
 
 // Test that creating a queue with zero capacity causes a crash.
 TEST(task_queue_death_test, zero_capacity) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   // This must terminate abnormally (either via segfault or CHECK failure)
   EXPECT_DEATH(task_queue_create(0, thread_executor, alloc), "");
 }
@@ -1829,7 +1830,7 @@ TEST(task_queue_death_test, zero_capacity) {
 // Verify that using a synchronous executor and exceeding CQ capacity
 // without reaping triggers the deadlock detector and crashes (fail-fast).
 TEST(task_queue_death_test, sync_executor_cq_deadlock_detection) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   // Capacity 1: CQ size 1
   task_queue_t* queue = task_queue_create(1, inline_executor, alloc);
   ASSERT_NE(queue, nullptr);
@@ -1919,7 +1920,7 @@ static void single_threaded_executor_dispatch(void (*work_fn)(void*),
 // Verify that the stream affinity optimization can lead to indefinite
 // starvation of independent streams if a stream has a continuous flow of tasks.
 TEST(task_queue_concurrent_test, stream_affinity_starvation) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
 
   // Setup the single-threaded executor
   g_single_threaded_executor = new SingleThreadedExecutor();
@@ -2104,7 +2105,7 @@ TEST(task_queue_concurrent_test, stream_affinity_starvation) {
 // This explicitly exercises and verifies the 'sq_cancelled' parallel array
 // path.
 TEST(task_queue_concurrent_test, cancellation_of_tasks_stuck_in_sq) {
-  allocator_t alloc = allocator_get_default();
+  allocator_t* alloc = c_allocator();
   // Create a queue of capacity 2 (2 execution slots, 2 nodes)
   task_queue_t* queue = task_queue_create(2, thread_executor, alloc);
   ASSERT_NE(queue, nullptr);
@@ -2215,8 +2216,9 @@ TEST(task_queue_concurrent_test, cancellation_of_tasks_stuck_in_sq) {
 }
 
 TEST(task_queue_test, task_local_arena_lifetime) {
-  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
-  allocator_t a = counting_allocator_get_allocator(&ca);
+  counting_allocator_t ca;
+  counting_allocator_init(&ca, c_allocator());
+  allocator_t* a = counting_allocator_get_allocator(&ca);
 
   {
     // Create queue of capacity 2
@@ -2228,7 +2230,7 @@ TEST(task_queue_test, task_local_arena_lifetime) {
     ASSERT_NE(sub, nullptr);
 
     // Allocate user_data from sub->arena (the task-local arena)
-    allocator_t sub_allocator = arena_get_allocator(sub->arena);
+    allocator_t* sub_allocator = arena_get_allocator(sub->arena);
     struct test_payload {
       int value;
       char* text;

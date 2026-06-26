@@ -19,12 +19,12 @@ static void trace_viewer_draw_selection_overlay(trace_viewer_t* tv,
                                                 bool draw_duration_text);
 
 static void trace_viewer_draw_search_section(trace_viewer_t* tv,
-                                             allocator_t allocator);
+                                             allocator_t* allocator);
 
 static void trace_viewer_sort_results(const trace_data_t* td,
                                       array_list_t* results, int sort_column,
                                       bool sort_ascending, bool sort_none,
-                                      allocator_t allocator);
+                                      allocator_t* allocator);
 
 static void trace_viewer_step_vertical_minimap(
     trace_viewer_t* tv, const trace_viewer_input_t* input);
@@ -68,7 +68,7 @@ bool trace_viewer_str_contains_case_insensitive(string_view_t text,
 }
 
 static void trace_viewer_set_clipboard_string(string_view_t s,
-                                              allocator_t allocator) {
+                                              allocator_t* allocator) {
   if (s.len < 512) {
     char buf[512];
     memcpy(buf, s.ptr, s.len);
@@ -164,7 +164,7 @@ const double TRACE_VIEWER_MIN_ZOOM_DURATION = 1000.0;  // 1ms = 1000us
 
 void trace_viewer_init(trace_viewer_t* tv) { *tv = (trace_viewer_t){}; }
 
-void trace_viewer_deinit(trace_viewer_t* tv, allocator_t allocator) {
+void trace_viewer_deinit(trace_viewer_t* tv, allocator_t* allocator) {
   track_t* tracks = (track_t*)tv->tracks.ptr;
   for (size_t i = 0; i < tv->tracks.len; i++) {
     track_deinit(&tracks[i], allocator);
@@ -387,7 +387,7 @@ static void trace_viewer_details_add_row(const char* field_label,
                                          const char* btn_id_suffix,
                                          bool show_copy_buttons, uint32_t color,
                                          bool has_color,
-                                         allocator_t allocator) {
+                                         allocator_t* allocator) {
   ig_table_next_row();
 
   // Column 0: Label
@@ -428,7 +428,7 @@ static void trace_viewer_details_add_row(const char* field_label,
 static void trace_viewer_draw_event_properties(
     const trace_data_t* td, const trace_event_persisted_t* e,
     double viewport_min_ts, bool show_copy_buttons, const track_t* t,
-    const theme_t* theme, allocator_t allocator) {
+    const theme_t* theme, allocator_t* allocator) {
   string_view_t name = trace_data_get_string(td, e->name_ref);
   string_view_t cat = trace_data_get_string(td, e->cat_ref);
   string_view_t ph = trace_data_get_string(td, e->ph_ref);
@@ -698,7 +698,7 @@ static void trace_viewer_draw_tooltip(trace_viewer_t* tv, trace_data_t* td,
                                       float inner_width,
                                       float tracks_canvas_pos_x,
                                       const theme_t* theme,
-                                      allocator_t allocator) {
+                                      allocator_t* allocator) {
   const track_render_block_t* rb = &best_hm->rb;
   if (rb->count == 1) {
     const track_t* t =
@@ -738,7 +738,7 @@ static void trace_viewer_draw_counter_track(
     const track_t* t, ig_vec2_t pos, float width, float height,
     double viewport_start, double viewport_end, const theme_t* theme,
     ig_vec2_t mouse_pos, bool track_list_hovered, int64_t focused_event_idx,
-    allocator_t allocator) {
+    allocator_t* allocator) {
   if (t->event_indices.len == 0) return;
 
   double duration = viewport_end - viewport_start;
@@ -854,7 +854,7 @@ static void trace_viewer_draw_counter_track(
 }
 
 static void trace_viewer_box_select_update(trace_viewer_t* tv, trace_data_t* td,
-                                           allocator_t allocator) {
+                                           allocator_t* allocator) {
   float x1 = tv->box_select_start.x;
   float x2 = tv->box_select_end.x;
   float y1 = tv->box_select_start.y;
@@ -994,7 +994,7 @@ void trace_viewer_adopt_search_results(trace_viewer_t* tv,
                                        const trace_data_t* td,
                                        array_list_t results,
                                        trace_histogram_t* histogram,
-                                       allocator_t allocator) {
+                                       allocator_t* allocator) {
   // 1. Deinit and adopt results list
   array_list_deinit(&tv->selected_event_indices, allocator);
   tv->selected_event_indices = results;
@@ -1012,7 +1012,7 @@ void trace_viewer_adopt_search_results(trace_viewer_t* tv,
   tv->search_histogram_dirty = true;
 }
 
-void trace_viewer_clear_search(trace_viewer_t* tv, allocator_t allocator) {
+void trace_viewer_clear_search(trace_viewer_t* tv, allocator_t* allocator) {
   array_list_deinit(&tv->selected_event_indices, allocator);
   array_list_deinit(&tv->filtered_event_indices, allocator);
   tv->histogram = (trace_histogram_t){};  // ZII
@@ -1023,7 +1023,7 @@ void trace_viewer_clear_search(trace_viewer_t* tv, allocator_t allocator) {
 
 void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
                        const trace_viewer_input_t* input,
-                       allocator_t allocator) {
+                       allocator_t* allocator) {
   // 0. Handle focus requests
   if (tv->has_target_focused_event) {
     size_t event_idx = tv->target_focused_event_idx;
@@ -1809,7 +1809,7 @@ static void trace_viewer_draw_vertical_minimap(const trace_viewer_t* tv,
 }
 
 void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
-                       allocator_t allocator, const theme_t* theme_ptr) {
+                       allocator_t* allocator, const theme_t* theme_ptr) {
   const theme_t* theme = theme_ptr;
 
   if (td->events.len > 0) {
@@ -2482,7 +2482,7 @@ void trace_viewer_reset_view(trace_viewer_t* tv) {
 
 void trace_viewer_precompute_minimap_heatmap(trace_viewer_t* tv,
                                              const trace_data_t* td,
-                                             allocator_t a) {
+                                             allocator_t* a) {
   array_list_resize(&tv->vertical_minimap.track_heatmap_densities,
                     tv->tracks.len, sizeof(trace_heatmap_t), a);
   trace_heatmap_compute(
@@ -2541,7 +2541,7 @@ static int trace_viewer_sort_key_compare(const void* va, const void* vb) {
 static void trace_viewer_sort_results(const trace_data_t* td,
                                       array_list_t* results, int sort_column,
                                       bool sort_ascending, bool sort_none,
-                                      allocator_t allocator) {
+                                      allocator_t* allocator) {
   if (results->len > 1) {
     if (sort_none) {
       qsort(results->ptr, results->len, sizeof(int64_t),
@@ -2603,7 +2603,7 @@ static void trace_viewer_sort_results(const trace_data_t* td,
 
 struct InputTextCallback_UserData {
   array_list_t* al;
-  allocator_t allocator;
+  allocator_t* allocator;
 };
 typedef struct InputTextCallback_UserData InputTextCallback_UserData;
 
@@ -2623,7 +2623,7 @@ static int trace_viewer_search_input_callback(
 }
 
 static void trace_viewer_draw_search_section(trace_viewer_t* tv,
-                                             allocator_t allocator) {
+                                             allocator_t* allocator) {
   ig_text_disabled("Search Events");
   if (tv->focus_search_input) {
     ig_set_keyboard_focus_here(0);

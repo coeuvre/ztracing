@@ -9,13 +9,13 @@
 #include "src/array_list.h"
 #include "src/string.h"
 
-void trace_parser_deinit(trace_parser_t* p, allocator_t a) {
+void trace_parser_deinit(trace_parser_t* p, allocator_t* a) {
   array_list_deinit(&p->buffer, a);
   array_list_deinit(&p->args_buffer, a);
 }
 
 size_t trace_parser_feed(trace_parser_t* p, const char* buf, size_t len,
-                         bool is_eof, allocator_t a) {
+                         bool is_eof, allocator_t* a) {
   size_t discarded = 0;
   if (p->pos > 0 && p->pos > p->buffer.len / 2) {
     if (p->pos < p->buffer.len) {
@@ -41,7 +41,7 @@ static inline int32_t clamp_to_int32(int64_t val) {
   return (int32_t)val;
 }
 
-static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
+static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t* a,
                         trace_event_t* event) {
   bool success = false;
   *event = (trace_event_t){};
@@ -269,7 +269,8 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t a,
   return success;
 }
 
-bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a) {
+bool trace_parser_next(trace_parser_t* p, trace_event_t* event,
+                       allocator_t* a) {
   bool found = false;
   json_reader_t r = {p->buffer.ptr, p->buffer.len, p->pos};
   bool loop = !json_reader_done(&r);

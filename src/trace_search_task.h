@@ -23,7 +23,7 @@ struct trace_search_task {
   const trace_data_t* td;
   bool include_threads;
   bool include_counters;
-  allocator_t allocator;
+  allocator_t* allocator;
 
   // --- Outputs (written by worker on success, read by UI thread) ---
   array_list_t results;
@@ -37,7 +37,7 @@ typedef struct trace_search_task trace_search_task_t;
 // active search session and trigger cancellations.
 trace_search_task_t* trace_search_task_create(
     const char* query, const trace_data_t* td, bool include_threads,
-    bool include_counters, task_submission_t* sub, allocator_t allocator);
+    bool include_counters, task_submission_t* sub, allocator_t* allocator);
 
 // Destroys the search task context and frees all associated memory.
 // Safe to call from the UI thread on completed or cancelled search tasks.

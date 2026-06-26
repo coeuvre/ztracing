@@ -17,7 +17,7 @@
 class TrackRendererTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    allocator = allocator_get_default();
+    allocator = c_allocator();
     td = trace_data_create(allocator);
     state = {};
     blocks_impl = {};
@@ -32,7 +32,7 @@ class TrackRendererTest : public ::testing::Test {
     trace_data_release(td, allocator);
   }
 
-  allocator_t allocator;
+  allocator_t* allocator;
   trace_data_t* td;
   track_renderer_state_t state;
   array_list_t blocks_impl;

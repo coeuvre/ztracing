@@ -9,6 +9,15 @@
 #include "src/string.h"
 #include "src/trace_parser.h"
 
+#ifdef __cplusplus
+#include <atomic>
+#ifndef _Atomic
+#define _Atomic(T) std::atomic<T>
+#endif
+#else
+#include <stdatomic.h>
+#endif
+
 // A reference to a string in the TraceData string pool.
 // TODO: Turn string_ref_t into a struct wrapping a single uint32_t once
 // the entire project has been fully migrated to C23. This will provide
@@ -89,9 +98,9 @@ typedef struct trace_data {
   _Atomic(int) ref_count;
 } trace_data_t;
 
-trace_data_t* trace_data_create(allocator_t a);
+trace_data_t* trace_data_create(allocator_t* a);
 void trace_data_retain(trace_data_t* td);
-void trace_data_release(trace_data_t* td, allocator_t a);
+void trace_data_release(trace_data_t* td, allocator_t* a);
 
 typedef struct active_event_b {
   size_t event_idx;
@@ -103,7 +112,7 @@ typedef struct thread_stack {
 
 typedef struct trace_event_matcher {
   hash_table_t active_b_events;
-  allocator_t allocator;
+  allocator_t* allocator;
 } trace_event_matcher_t;
 
 void trace_event_matcher_deinit(trace_event_matcher_t* matcher);
@@ -112,10 +121,10 @@ struct Theme;
 typedef struct Theme theme_t;
 
 string_ref_t trace_data_push_string(trace_data_t* td, string_view_t s,
-                                    allocator_t a);
+                                    allocator_t* a);
 
 void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
-                          trace_event_matcher_t* matcher, allocator_t a);
+                          trace_event_matcher_t* matcher, allocator_t* a);
 
 static inline string_view_t trace_data_get_string(const trace_data_t* td,
                                                   string_ref_t ref) {

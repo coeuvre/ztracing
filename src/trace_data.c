@@ -27,7 +27,7 @@ static bool eq_uint64(const void* a, const void* b, void* ctx) {
 }
 
 static void string_lookup_table_resize(string_lookup_table_t* lt,
-                                       size_t new_capacity, allocator_t a) {
+                                       size_t new_capacity, allocator_t* a) {
   size_t cap = 16;
   while (cap < new_capacity) {
     cap <<= 1;
@@ -61,7 +61,7 @@ static void string_lookup_table_resize(string_lookup_table_t* lt,
   lt->capacity_mask = mask;
 }
 
-static void trace_data_deinit(trace_data_t* td, allocator_t a) {
+static void trace_data_deinit(trace_data_t* td, allocator_t* a) {
   array_list_deinit(&td->string_buffer, a);
   array_list_deinit(&td->string_table, a);
   if (td->string_lookup.entries != nullptr) {
@@ -73,7 +73,7 @@ static void trace_data_deinit(trace_data_t* td, allocator_t a) {
   *td = (trace_data_t){};
 }
 
-trace_data_t* trace_data_create(allocator_t a) {
+trace_data_t* trace_data_create(allocator_t* a) {
   trace_data_t* td = (trace_data_t*)allocator_alloc(a, sizeof(trace_data_t));
   CHECK(td != nullptr);
   *td = (trace_data_t){.ref_count = 1};
@@ -86,7 +86,7 @@ void trace_data_retain(trace_data_t* td) {
   CHECK(prev > 0);
 }
 
-void trace_data_release(trace_data_t* td, allocator_t a) {
+void trace_data_release(trace_data_t* td, allocator_t* a) {
   if (td == nullptr) return;
   int prev = atomic_fetch_sub_explicit(&td->ref_count, 1, memory_order_acq_rel);
   CHECK(prev > 0);
@@ -97,7 +97,7 @@ void trace_data_release(trace_data_t* td, allocator_t a) {
 }
 
 string_ref_t trace_data_push_string(trace_data_t* td, string_view_t s,
-                                    allocator_t a) {
+                                    allocator_t* a) {
   string_ref_t result = 0;
   if (s.ptr == nullptr || s.len == 0) {
     return result;
@@ -155,7 +155,7 @@ string_ref_t trace_data_push_string(trace_data_t* td, string_view_t s,
 static string_ref_t trace_data_push_string_cached(trace_data_t* td,
                                                   string_view_t s,
                                                   string_ref_t* cache_ref,
-                                                  allocator_t a) {
+                                                  allocator_t* a) {
   if (s.ptr == nullptr || s.len == 0) {
     return 0;
   }
@@ -232,8 +232,8 @@ static uint8_t compute_event_palette_index(const trace_data_t* td,
 }
 
 void trace_event_matcher_deinit(trace_event_matcher_t* matcher) {
-  allocator_t a = matcher->allocator;
-  if (a.alloc == nullptr) return;
+  allocator_t* a = matcher->allocator;
+  if (a == nullptr) return;
   if (matcher->active_b_events.entries != nullptr) {
     for (size_t i = 0; i < matcher->active_b_events.capacity; i++) {
       void* entry = (char*)matcher->active_b_events.entries +
@@ -250,7 +250,7 @@ void trace_event_matcher_deinit(trace_event_matcher_t* matcher) {
 
 static void trace_data_merge_args(trace_data_t* td,
                                   trace_event_persisted_t* b_ev,
-                                  const trace_event_t* e_ev, allocator_t a) {
+                                  const trace_event_t* e_ev, allocator_t* a) {
   if (e_ev->args_count > 0) {
     // 1. Pre-resolve/push all end event argument keys and values.
     // This populates the string table and gives us stable integer references.
@@ -345,10 +345,10 @@ static void trace_data_merge_args(trace_data_t* td,
 }
 
 static inline void trace_event_matcher_ensure_init(
-    trace_event_matcher_t* matcher, allocator_t default_allocator) {
+    trace_event_matcher_t* matcher, allocator_t* default_allocator) {
   if (matcher->active_b_events.hash_fn == nullptr) {
-    allocator_t a = matcher->allocator.alloc != nullptr ? matcher->allocator
-                                                        : default_allocator;
+    allocator_t* a =
+        matcher->allocator != nullptr ? matcher->allocator : default_allocator;
     matcher->active_b_events = hash_table_init(uint64_t, thread_stack_t,
                                                hash_uint64, eq_uint64, nullptr);
     matcher->allocator = a;
@@ -356,7 +356,7 @@ static inline void trace_event_matcher_ensure_init(
 }
 
 void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
-                          trace_event_matcher_t* matcher, allocator_t a) {
+                          trace_event_matcher_t* matcher, allocator_t* a) {
   string_view_t ph = event->ph;
   bool is_begin = (ph.len == 1 && (ph.ptr[0] == 'B' || ph.ptr[0] == 'b'));
   bool is_end = (ph.len == 1 && (ph.ptr[0] == 'E' || ph.ptr[0] == 'e'));

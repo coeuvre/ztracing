@@ -9,7 +9,7 @@
 #include "src/string.h"
 
 TEST(json_writer_test, basic) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   array_list_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
@@ -31,7 +31,7 @@ TEST(json_writer_test, basic) {
 }
 
 TEST(json_writer_test, escaping) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   array_list_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
@@ -49,7 +49,7 @@ TEST(json_writer_test, escaping) {
 }
 
 TEST(json_writer_test, nested) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   array_list_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
@@ -74,7 +74,7 @@ TEST(json_writer_test, nested) {
 }
 
 TEST(json_writer_test, escaping_edge_cases) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   array_list_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
@@ -94,7 +94,7 @@ TEST(json_writer_test, escaping_edge_cases) {
 }
 
 TEST(json_writer_test, double_and_bool) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   array_list_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
@@ -112,7 +112,7 @@ TEST(json_writer_test, double_and_bool) {
 }
 
 TEST(json_writer_test, depth_clamping) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   array_list_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
@@ -144,7 +144,7 @@ TEST(json_writer_test, depth_clamping) {
 }
 
 TEST(json_writer_test, indentation) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   array_list_t buf = {};
   json_writer_t w;
   json_writer_init(&w, true, &buf, a);

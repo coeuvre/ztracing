@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "core/allocator.h"
+#include "core/counting_allocator.h"
 #include "core/task.h"
 #include "src/platform.h"
 #include "src/trace_data.h"
@@ -12,8 +13,9 @@
 // Verifies event scanning, case-insensitive matching, and results delivery via
 // the Task Queue.
 TEST(trace_search_task_test, e2e_search_task) {
-  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
-  allocator_t a = counting_allocator_get_allocator(&ca);
+  counting_allocator_t ca;
+  counting_allocator_init(&ca, c_allocator());
+  allocator_t* a = counting_allocator_get_allocator(&ca);
 
   {
     // Construct a mock trace data with 3 events on the heap (ref_count = 1)

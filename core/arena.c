@@ -1,142 +1,235 @@
 #include "core/arena.h"
 
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-#include "core/assert.h"
+// Minimum additional chunk size (64 KB).
+#define ARENA_MIN_CHUNK ((size_t)(64 * 1024))
 
-#define ARENA_DEFAULT_BLOCK_SIZE (64 * 1024)
-#define ARENA_ALIGNMENT 8
+// ─── helpers ────────────────────────────────────────────────────────────────
 
-typedef struct arena_block {
-  struct arena_block* next;
-  size_t capacity;
-  size_t offset;
-  uint8_t data[];
-} arena_block_t;
-
-static inline size_t align_up(size_t size, size_t alignment) {
-  return (size + alignment - 1) & ~(alignment - 1);
+// Round a size up to multiples of ARENA_MIN_CHUNK, then (if the backing
+// allocator is a page allocator) to page_size.
+static size_t backing_round_alloc_size(allocator_t* backing, size_t size) {
+  size_t mc = ARENA_MIN_CHUNK;
+  size = (size + mc - 1) & ~(mc - 1);
+  if (backing->page_size != 0) {
+    size_t ps = backing->page_size;
+    size = (size + ps - 1) & ~(ps - 1);
+  }
+  return size;
 }
 
-void arena_init(arena_t* arena, allocator_t backing_allocator,
-                size_t block_size) {
-  arena->backing_allocator = backing_allocator;
-  arena->first_block = nullptr;
-  arena->current_block = nullptr;
-  arena->block_size = block_size > 0 ? block_size : ARENA_DEFAULT_BLOCK_SIZE;
+// ─── chunk helpers ──────────────────────────────────────────────────────────
+
+// Create a standalone chunk (arena struct is NOT embedded in it).
+// Memory is obtained from a->backing.
+static arena_chunk_t* chunk_create(arena_t* a, size_t data_size) {
+  if (data_size > SIZE_MAX - sizeof(arena_chunk_t)) {
+    fprintf(stderr, "arena: chunk size overflow\n");
+    abort();
+  }
+  size_t total =
+      backing_round_alloc_size(a->backing, sizeof(arena_chunk_t) + data_size);
+  void* mem = allocator_alloc_uninitialized(a->backing, total);
+  arena_chunk_t* c = (arena_chunk_t*)mem;
+  c->data = (char*)mem + sizeof(arena_chunk_t);
+  c->size = total - sizeof(arena_chunk_t);
+  c->next = nullptr;
+  c->prev = nullptr;
+  return c;
 }
 
-void arena_deinit(arena_t* arena) {
-  arena_block_t* block = arena->first_block;
-  while (block != nullptr) {
-    arena_block_t* next = block->next;
-    allocator_free(arena->backing_allocator, block,
-                   sizeof(arena_block_t) + block->capacity);
-    block = next;
-  }
-  arena->first_block = nullptr;
-  arena->current_block = nullptr;
+// The first chunk is embedded right after the arena struct.
+arena_chunk_t* arena_get_first_chunk(arena_t* a) {
+  return (arena_chunk_t*)((char*)a + sizeof(arena_t));
 }
 
-static arena_block_t* arena_new_block(arena_t* arena, size_t capacity) {
-  size_t alloc_size = sizeof(arena_block_t) + capacity;
-  arena_block_t* block =
-      (arena_block_t*)allocator_alloc(arena->backing_allocator, alloc_size);
-  if (block == nullptr) return nullptr;
-  block->next = nullptr;
-  block->capacity = capacity;
-  block->offset = 0;
-  return block;
+static void chunk_free_all(arena_t* a) {
+  arena_chunk_t* first = arena_get_first_chunk(a);
+  arena_chunk_t* cur = first->next;
+  while (cur) {
+    arena_chunk_t* next = cur->next;
+    allocator_free(a->backing, cur, sizeof(arena_chunk_t) + cur->size);
+    cur = next;
+  }
 }
 
-void* arena_alloc(arena_t* arena, size_t size) {
-  if (size == 0) return nullptr;
+// ─── allocator callbacks (slow-path) ────────────────────────────────────────
 
-  size = align_up(size, ARENA_ALIGNMENT);
+static void* arena_alloc(allocator_t* self, size_t size, size_t alignment) {
+  arena_t* a = (arena_t*)self;
 
-  arena_block_t* block = arena->current_block;
-
-  // If we have a block, try to allocate from it
-  if (block != nullptr) {
-    if (block->offset + size <= block->capacity) {
-      void* ptr = &block->data[block->offset];
-      block->offset += size;
-      return ptr;
-    }
-
-    // If not enough space, try next block in the chain if it exists
-    if (block->next != nullptr) {
-      arena->current_block = block->next;
-      return arena_alloc(arena, size);
-    }
+  if (alignment == 0 || (alignment & (alignment - 1)) != 0) {
+    fprintf(stderr, "Invalid alignment: %zu\n", alignment);
+    abort();
   }
 
-  // No block or no space in the chain. Allocate a new block.
-  size_t new_capacity = arena->block_size;
-  if (size > new_capacity) {
-    new_capacity = size;
+  // Advance through pre-existing free chunks (e.g. after a reset).
+  // Chunks are appended at the tail, so current->next is always a
+  // free chunk — either created fresh or reclaimed from a reset.
+  if (a->current->next) {
+    a->current = a->current->next;
+    a->super.beg = a->current->data;
+    a->super.end = a->current->data + a->current->size;
+    return allocator_alloc_align_uninitialized(self, size, alignment);
   }
 
-  arena_block_t* new_blk = arena_new_block(arena, new_capacity);
-  CHECK(new_blk != nullptr);
-
-  if (arena->first_block == nullptr) {
-    arena->first_block = new_blk;
-  } else {
-    // Append to the end of the chain
-    arena_block_t* curr = arena->first_block;
-    while (curr->next != nullptr) {
-      curr = curr->next;
-    }
-    curr->next = new_blk;
+  // No more free chunks — create a new one and append at the tail.
+  size_t prev_size = a->current->size;
+  size_t data_size = prev_size * 2;
+  size_t min_data = size + alignment - 1;
+  if (data_size < min_data) {
+    data_size = min_data;
+  }
+  if (data_size < ARENA_MIN_CHUNK) {
+    data_size = ARENA_MIN_CHUNK;
   }
 
-  arena->current_block = new_blk;
+  arena_chunk_t* c = chunk_create(a, data_size);
+  // Append at the tail (current is always the last chunk).
+  a->current->next = c;
+  c->prev = a->current;
+  a->current = c;
+  a->super.beg = c->data;
+  a->super.end = c->data + c->size;
 
-  void* ptr = &new_blk->data[new_blk->offset];
-  new_blk->offset += size;
-  return ptr;
+  a->peak += sizeof(arena_chunk_t) + c->size;
+
+  return allocator_alloc_align_uninitialized(self, size, alignment);
 }
 
-void arena_reset(arena_t* arena) {
-  arena_block_t* block = arena->first_block;
-  while (block != nullptr) {
-    block->offset = 0;
-    block = block->next;
-  }
-  arena->current_block = arena->first_block;
-}
-
-static void* arena_allocator_fn(void* ctx, void* ptr, size_t old_size,
-                                size_t new_size) {
-  arena_t* arena = (arena_t*)ctx;
-
-  // 1. Free operation
-  if (new_size == 0) {
-    return nullptr;
+static void* arena_realloc(allocator_t* self, void* ptr, size_t old_size,
+                           size_t new_size, size_t alignment) {
+  if (alignment == 0 || (alignment & (alignment - 1)) != 0) {
+    fprintf(stderr, "Invalid alignment: %zu\n", alignment);
+    abort();
   }
 
-  // 2. Alloc operation
-  if (ptr == nullptr) {
-    return arena_alloc(arena, new_size);
-  }
-
-  // 3. Realloc operation
-  if (new_size <= old_size) {
-    return ptr;
-  }
-
-  void* new_ptr = arena_alloc(arena, new_size);
-  if (new_ptr != nullptr && old_size > 0) {
-    memcpy(new_ptr, ptr, old_size);
+  void* new_ptr =
+      allocator_alloc_align_uninitialized(self, new_size, alignment);
+  if (new_ptr && old_size > 0) {
+    memcpy(new_ptr, ptr, old_size < new_size ? old_size : new_size);
   }
   return new_ptr;
 }
 
-allocator_t arena_get_allocator(arena_t* arena) {
-  return (allocator_t){
-      .alloc = arena_allocator_fn,
-      .ctx = arena,
-  };
+static void arena_free(allocator_t* self, void* ptr, size_t size,
+                       size_t alignment) {
+  (void)self;
+  (void)ptr;
+  (void)size;
+  (void)alignment;
+}
+
+// ─── lifecycle ──────────────────────────────────────────────────────────────
+
+arena_t* arena_create_with_allocator(allocator_t* backing) {
+  // ARENA_MIN_CHUNK must be a power of two for the round-up arithmetic.
+  if (ARENA_MIN_CHUNK == 0 || (ARENA_MIN_CHUNK & (ARENA_MIN_CHUNK - 1)) != 0) {
+    fprintf(stderr, "arena: ARENA_MIN_CHUNK %zu is not a power of two\n",
+            ARENA_MIN_CHUNK);
+    abort();
+  }
+  if (backing->page_size != 0 &&
+      (backing->page_size & (backing->page_size - 1)) != 0) {
+    fprintf(stderr,
+            "arena: backing allocator page_size %zu is not a power of two\n",
+            backing->page_size);
+    abort();
+  }
+
+  size_t total = backing_round_alloc_size(backing, ARENA_MIN_CHUNK);
+
+  void* mem = allocator_alloc_uninitialized(backing, total);
+  arena_t* a = (arena_t*)mem;
+  arena_chunk_t* c = (arena_chunk_t*)((char*)mem + sizeof(arena_t));
+  c->data = (char*)mem + sizeof(arena_t) + sizeof(arena_chunk_t);
+  c->size = total - sizeof(arena_t) - sizeof(arena_chunk_t);
+  c->next = nullptr;
+  c->prev = nullptr;
+
+  a->backing = backing;
+  a->current = c;
+  a->peak = total;
+
+  a->super.alloc = arena_alloc;
+  a->super.realloc = arena_realloc;
+  a->super.dealloc = arena_free;
+  a->super.beg = c->data;
+  a->super.end = c->data + c->size;
+  a->super.page_size = 0;
+
+  return a;
+}
+
+arena_t* arena_create(void) {
+  return arena_create_with_allocator(page_allocator());
+}
+
+void arena_destroy(arena_t* a) {
+  chunk_free_all(a);
+  arena_chunk_t* first = arena_get_first_chunk(a);
+  size_t total = sizeof(arena_t) + sizeof(arena_chunk_t) + first->size;
+  allocator_free(a->backing, a, total);
+}
+
+void arena_reset(arena_t* a) {
+  arena_chunk_t* first = arena_get_first_chunk(a);
+
+  // With append-at-tail, a->head is always first.  0 or 1 extra chunk
+  // means first->next is nullptr or first->next->next is nullptr.
+  if (first->next == nullptr || first->next->next == nullptr) {
+    a->current = first;
+    a->super.beg = first->data;
+    a->super.end = first->data + first->size;
+    return;
+  }
+
+  // Many extra chunks — consolidate into one large chunk.
+  chunk_free_all(a);
+  first->next = nullptr;
+
+  size_t first_total = sizeof(arena_t) + sizeof(arena_chunk_t) + first->size;
+  if (a->peak > first_total) {
+    size_t data_size = a->peak - first_total;
+    if (data_size < ARENA_MIN_CHUNK) {
+      data_size = ARENA_MIN_CHUNK;
+    }
+    arena_chunk_t* c = chunk_create(a, data_size);
+    c->prev = first;
+    first->next = c;
+  }
+
+  a->current = first;
+  a->super.beg = first->data;
+  a->super.end = first->data + first->size;
+
+  // Peak reflects the actual post-reset allocation (≥ old peak).
+  size_t new_peak = first_total;
+  if (first->next) {
+    new_peak += sizeof(arena_chunk_t) + first->next->size;
+  }
+  if (new_peak > a->peak) {
+    a->peak = new_peak;
+  }
+}
+
+size_t arena_get_capacity(arena_t* a) {
+  return (size_t)(a->super.end - a->super.beg);
+}
+
+arena_checkpoint_t arena_get_checkpoint(arena_t* a) {
+  arena_checkpoint_t cp;
+  cp.chunk = a->current;
+  cp.beg = a->super.beg;
+  return cp;
+}
+
+void arena_reset_to_checkpoint(arena_t* a, arena_checkpoint_t checkpoint) {
+  a->current = checkpoint.chunk;
+  a->super.beg = checkpoint.beg;
+  a->super.end = checkpoint.chunk->data + checkpoint.chunk->size;
 }

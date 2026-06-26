@@ -18,12 +18,12 @@
 
 class TraceViewerTest : public ::testing::Test {
  protected:
-  allocator_t allocator;
+  allocator_t* allocator;
   trace_viewer_t tv;
   trace_data_t* td;
 
   void SetUp() override {
-    allocator = allocator_get_default();
+    allocator = c_allocator();
     tv.~trace_viewer_t();
     new (&tv) trace_viewer_t();
     trace_viewer_init(&tv);

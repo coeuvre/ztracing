@@ -31,6 +31,13 @@ cc_library(
 )
 
 cc_library(
+    name = "counting_allocator",
+    srcs = ["counting_allocator.c"],
+    hdrs = ["counting_allocator.h"],
+    deps = [":allocator"],
+)
+
+cc_library(
     name = "arena",
     srcs = ["arena.c"],
     hdrs = ["arena.h"],
@@ -76,6 +83,7 @@ cc_test(
     deps = [
         ":task",
         ":allocator",
+        ":counting_allocator",
         "@googletest//:gtest_main",
     ],
 )

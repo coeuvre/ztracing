@@ -3,10 +3,11 @@
 #include <gtest/gtest.h>
 
 #include "core/allocator.h"
+#include "core/counting_allocator.h"
 
 TEST(trace_parser_test, basic_array) {
   trace_parser_t p = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   const char* json =
       "[{\"name\":\"foo\",\"cat\":\"bar\",\"ph\":\"B\",\"ts\":123,\"pid\":1,"
@@ -30,7 +31,7 @@ TEST(trace_parser_test, basic_array) {
 
 TEST(trace_parser_test, basic_object) {
   trace_parser_t p = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   const char* json = "{\"traceEvents\":[{\"name\":\"foo\"}],\"other\":123}";
   trace_parser_feed(&p, json, strlen(json), true, a);
@@ -46,7 +47,7 @@ TEST(trace_parser_test, basic_object) {
 
 TEST(trace_parser_test, streaming) {
   trace_parser_t p = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   const char* chunk1 = "[{\"name\":\"fo";
   const char* chunk2 = "o\"},{\"name\":\"bar\"}]";
@@ -69,7 +70,7 @@ TEST(trace_parser_test, streaming) {
 
 TEST(trace_parser_test, streaming_middle_of_second_event) {
   trace_parser_t p = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   const char* chunk1 = "[{\"name\":\"foo\"},{\"name\":\"ba";
   const char* chunk2 = "r\"}]";
@@ -91,7 +92,7 @@ TEST(trace_parser_test, streaming_middle_of_second_event) {
 
 TEST(trace_parser_test, args) {
   trace_parser_t p = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   const char* json =
       "[{\"name\":\"a\",\"args\":{\"url\":\"http://"
@@ -115,7 +116,7 @@ TEST(trace_parser_test, args) {
 TEST(trace_parser_test, empty) {
   {
     trace_parser_t p = {};
-    allocator_t a = allocator_get_default();
+    allocator_t* a = c_allocator();
     const char* json = "[]";
     trace_parser_feed(&p, json, strlen(json), true, a);
     trace_event_t ev;
@@ -124,7 +125,7 @@ TEST(trace_parser_test, empty) {
   }
   {
     trace_parser_t p = {};
-    allocator_t a = allocator_get_default();
+    allocator_t* a = c_allocator();
     const char* json = "{\"traceEvents\":[]}";
     trace_parser_feed(&p, json, strlen(json), true, a);
     trace_event_t ev;
@@ -134,8 +135,9 @@ TEST(trace_parser_test, empty) {
 }
 
 TEST(trace_parser_test, memory_leak) {
-  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
-  allocator_t a = counting_allocator_get_allocator(&ca);
+  counting_allocator_t ca;
+  counting_allocator_init(&ca, c_allocator());
+  allocator_t* a = counting_allocator_get_allocator(&ca);
 
   {
     trace_parser_t p = {};
@@ -157,7 +159,7 @@ TEST(trace_parser_test, memory_leak) {
 
 TEST(trace_parser_test, float_numbers) {
   trace_parser_t p = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   // "ts", "dur", "pid", "tid" as floating point numbers in JSON
   const char* json =
@@ -179,7 +181,7 @@ TEST(trace_parser_test, float_numbers) {
 
 TEST(trace_parser_test, exponent_numbers) {
   trace_parser_t p = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   const char* json = "[{\"name\":\"foo\",\"ts\":1e2,\"dur\":1e1}]";
   trace_parser_feed(&p, json, strlen(json), true, a);
@@ -194,7 +196,7 @@ TEST(trace_parser_test, exponent_numbers) {
 
 TEST(trace_parser_test, infinite_loop_on_invalid_char_in_skip) {
   trace_parser_t p = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   // "unknown" is an unknown key, its value has an invalid char 'x' inside an
   // object.
@@ -213,7 +215,7 @@ TEST(trace_parser_test, infinite_loop_on_invalid_char_in_skip) {
 
 TEST(trace_parser_test, malformed_numbers) {
   trace_parser_t p = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   // "12+34" is tokenized as a single number token because it only contains
   // [0-9.eE+-]. Our custom numeric parser must strictly validate and stop at
@@ -229,7 +231,7 @@ TEST(trace_parser_test, malformed_numbers) {
 
 TEST(trace_parser_test, integer_overflow) {
   trace_parser_t p = {};
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
 
   // Test numbers exceeding limits
   const char* json =

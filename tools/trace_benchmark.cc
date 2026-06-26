@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "core/allocator.h"
+#include "core/counting_allocator.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
 #include "src/trace_loader.h"
@@ -32,8 +33,9 @@ int main(int argc, char** argv) {
 
   bool is_gzip = (magic_read == 2 && magic[0] == 0x1f && magic[1] == 0x8b);
 
-  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
-  allocator_t a = counting_allocator_get_allocator(&ca);
+  counting_allocator_t ca;
+  counting_allocator_init(&ca, c_allocator());
+  allocator_t* a = counting_allocator_get_allocator(&ca);
 
   // 1. Benchmark Ingestion (Read + Decompress + Parse + Add + Background
   // Organize)

@@ -9,7 +9,7 @@ struct ig_draw_data;
 extern "C" {
 #endif
 
-bool imgui_impl_webgl_init(allocator_t allocator);
+bool imgui_impl_webgl_init(allocator_t* allocator);
 void imgui_impl_webgl_shutdown(void);
 void imgui_impl_webgl_new_frame(void);
 void imgui_impl_webgl_render_draw_data(struct ig_draw_data* draw_data);

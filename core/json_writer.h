@@ -15,7 +15,7 @@ extern "C" {
 
 typedef struct json_writer {
   array_list_t* buf;  // Destination buffer (dynamic array of char)
-  allocator_t allocator;
+  allocator_t* allocator;
   bool first_item[32];  // Nesting stack to track if we need to write commas
   size_t depth;
   bool after_key;  // State flag: true if we just wrote a key name
@@ -23,7 +23,7 @@ typedef struct json_writer {
 } json_writer_t;
 
 void json_writer_init(json_writer_t* w, bool indent, array_list_t* out_buf,
-                      allocator_t a);
+                      allocator_t* a);
 void json_writer_begin_object(json_writer_t* w);
 void json_writer_end_object(json_writer_t* w);
 void json_writer_begin_array(json_writer_t* w);

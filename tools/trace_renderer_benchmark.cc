@@ -6,6 +6,7 @@
 
 #include "core/allocator.h"
 #include "core/arena.h"
+#include "core/counting_allocator.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
 #include "src/trace_parser.h"
@@ -29,8 +30,9 @@ int main(int argc, char** argv) {
   size_t file_size = (size_t)ftell(f);
   fseek(f, 0, SEEK_SET);
 
-  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
-  allocator_t a = counting_allocator_get_allocator(&ca);
+  counting_allocator_t ca;
+  counting_allocator_init(&ca, c_allocator());
+  allocator_t* a = counting_allocator_get_allocator(&ca);
 
   trace_parser_t p = {};
   trace_data_t* td = trace_data_create(a);
@@ -55,11 +57,10 @@ int main(int argc, char** argv) {
   // Organize Tracks
   array_list_t tracks = {};
   int64_t min_ts, max_ts;
-  arena_t scratch_arena = {};
-  arena_init(&scratch_arena, a, 0);
+  arena_t* scratch_arena = arena_create_with_allocator(a);
   track_organize(td, &tracks, &min_ts, &max_ts, a,
-                 arena_get_allocator(&scratch_arena));
-  arena_deinit(&scratch_arena);
+                 arena_get_allocator(scratch_arena));
+  arena_destroy(scratch_arena);
 
   // 1. Vertical Scan: Find the heaviest contiguous block of N tracks (Viewport)
   // that contains the maximum total number of events when fully zoomed out.

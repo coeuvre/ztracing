@@ -3,18 +3,19 @@
 #include <gtest/gtest.h>
 
 #include "core/allocator.h"
+#include "core/counting_allocator.h"
 #include "src/trace_data.h"
 
 class trace_histogram_test : public ::testing::Test {
  protected:
   counting_allocator_t ca_;
-  allocator_t allocator_;
+  allocator_t* allocator_;
   trace_data_t* td_;
 
-  trace_histogram_test()
-      : ca_(counting_allocator_init(allocator_get_default())),
-        allocator_(counting_allocator_get_allocator(&ca_)),
-        td_(nullptr) {}
+  trace_histogram_test() : td_(nullptr) {
+    counting_allocator_init(&ca_, c_allocator());
+    allocator_ = counting_allocator_get_allocator(&ca_);
+  }
 
   void SetUp() override { td_ = trace_data_create(allocator_); }
 

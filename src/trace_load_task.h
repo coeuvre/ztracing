@@ -62,7 +62,7 @@ typedef struct {
 // Returns a pointer to the opaque task context handle.
 trace_load_task_t* trace_load_task_create(task_queue_t* queue,
                                           task_stream_t stream_id,
-                                          allocator_t allocator);
+                                          allocator_t* allocator);
 
 // Prepares a chunk submission slot (SQE) for the task queue.
 // Internally copies the transient input 'data' buffer into the task-local

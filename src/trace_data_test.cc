@@ -5,7 +5,7 @@
 #include "src/colors.h"
 
 TEST(trace_data_test, basic) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   trace_event_t ev = {};
@@ -55,7 +55,7 @@ TEST(trace_data_test, basic) {
 }
 
 TEST(trace_data_test, de_duplication) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
   string_ref_t ref1 = trace_data_push_string(td, SV("foo"), a);
@@ -73,7 +73,7 @@ TEST(trace_data_test, de_duplication) {
 }
 
 TEST(trace_data_test, begin_end_events_basic) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
   trace_event_matcher_t matcher = {};
 
@@ -110,7 +110,7 @@ TEST(trace_data_test, begin_end_events_basic) {
 }
 
 TEST(trace_data_test, begin_end_events_nested_and_thread_isolated) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
   trace_event_matcher_t matcher = {};
 
@@ -163,7 +163,7 @@ TEST(trace_data_test, begin_end_events_nested_and_thread_isolated) {
 }
 
 TEST(trace_data_test, begin_end_events_args_merging) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
   trace_event_matcher_t matcher = {};
 

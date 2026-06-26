@@ -10,7 +10,7 @@
 struct trace_load_task {
   task_queue_t* queue;      // The shared task queue
   task_stream_t stream_id;  // Serialized stream ID
-  allocator_t allocator;    // The allocator used to create this task context
+  allocator_t* allocator;   // The allocator used to create this task context
 
   // Streaming parser state
   trace_parser_t parser;
@@ -78,7 +78,7 @@ void trace_load_task_run(task_context_t* ctx) {
     int64_t min_ts = 0;
     int64_t max_ts = 0;
     // Run track organization pass
-    allocator_t scratch_allocator = arena_get_allocator(ctx->arena);
+    allocator_t* scratch_allocator = arena_get_allocator(ctx->arena);
     track_organize(task->td, &tracks, &min_ts, &max_ts, task->allocator,
                    scratch_allocator);
     double organize_duration_ms = platform_get_now() - organize_start_time;
@@ -160,7 +160,7 @@ static void trace_load_task_destroy(trace_load_task_t* task) {
 // Creates a new loading task context
 trace_load_task_t* trace_load_task_create(task_queue_t* queue,
                                           task_stream_t stream_id,
-                                          allocator_t allocator) {
+                                          allocator_t* allocator) {
   CHECK(queue != nullptr);
 
   trace_load_task_t* task =
@@ -194,7 +194,7 @@ void trace_load_task_prep_chunk(trace_load_task_t* task, task_submission_t* sub,
   CHECK(task != nullptr);
 
   // Derive the allocator from the submission's arena
-  allocator_t sub_allocator = arena_get_allocator(sub->arena);
+  allocator_t* sub_allocator = arena_get_allocator(sub->arena);
 
   // Allocate the chunk payload using the task-local submission allocator
   trace_load_task_chunk_t* payload = (trace_load_task_chunk_t*)allocator_alloc(

@@ -39,7 +39,7 @@ static size_t json_escaped_len(string_view_t s) {
 }
 
 static void json_writer_write_escaped(array_list_t* out_buf, string_view_t s,
-                                      allocator_t a) {
+                                      allocator_t* a) {
   size_t escaped_len = json_escaped_len(s);
   if (escaped_len == s.len) {
     char* dest = array_list_append(out_buf, s.len, char, a);
@@ -107,7 +107,7 @@ static void json_writer_append_str(json_writer_t* w, const char* str) {
 }
 
 void json_writer_init(json_writer_t* w, bool indent, array_list_t* out_buf,
-                      allocator_t a) {
+                      allocator_t* a) {
   w->buf = out_buf;
   w->allocator = a;
   w->depth = 0;

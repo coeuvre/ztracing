@@ -7,6 +7,7 @@ cc_binary(
     srcs = ["trace_benchmark.cc"],
     deps = [
         "//core:allocator",
+        "//core:counting_allocator",
         "//src:trace_loader",
         "//src:trace_data",
         "//src:track",
@@ -21,6 +22,7 @@ cc_binary(
     srcs = ["trace_renderer_benchmark.cc"],
     deps = [
         "//core:allocator",
+        "//core:counting_allocator",
         "//src:trace_parser",
         "//src:trace_data",
         "//src:track",

@@ -15,7 +15,7 @@ void trace_search_task_run(task_context_t* ctx) {
   trace_search_task_t* task = (trace_search_task_t*)ctx->user_data;
   CHECK(task != nullptr);
 
-  allocator_t allocator = task->allocator;
+  allocator_t* allocator = task->allocator;
   const trace_data_t* td = task->td;
 
   LOG_DEBUG("trace_search_task_run background task started (query: '%s')",
@@ -103,12 +103,12 @@ void trace_search_task_run(task_context_t* ctx) {
 
 trace_search_task_t* trace_search_task_create(
     const char* query, const trace_data_t* td, bool include_threads,
-    bool include_counters, task_submission_t* sub, allocator_t allocator) {
+    bool include_counters, task_submission_t* sub, allocator_t* allocator) {
   CHECK(td != nullptr);
   CHECK(sub != nullptr);
 
   // Derive the allocator from the submission's arena
-  allocator_t sub_allocator = arena_get_allocator(sub->arena);
+  allocator_t* sub_allocator = arena_get_allocator(sub->arena);
 
   // 1. Allocate the task context from the task-local submission allocator
   trace_search_task_t* task = (trace_search_task_t*)allocator_alloc(
@@ -137,7 +137,7 @@ trace_search_task_t* trace_search_task_create(
 
 void trace_search_task_destroy(trace_search_task_t* task) {
   if (!task) return;
-  allocator_t a = task->allocator;
+  allocator_t* a = task->allocator;
   array_list_deinit(&task->results, a);
   if (task->histogram) {
     allocator_free(a, task->histogram, sizeof(trace_histogram_t));

@@ -29,7 +29,7 @@ EM_JS(bool, js_is_software_renderer, (), {
 // clang-format on
 
 struct BackendData {
-  allocator_t allocator;
+  allocator_t* allocator;
   char* canvas_selector;
   double last_time;
   int frames_to_render;
@@ -505,7 +505,7 @@ static EM_BOOL on_resize(int event_type, const EmscriptenUiEvent* ui_event,
   return EM_TRUE;
 }
 
-bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t allocator) {
+bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t* allocator) {
   ImGuiIO& io = ImGui::GetIO();
 
   BackendData* bd =
@@ -562,7 +562,7 @@ bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t allocator) {
 
 void imgui_impl_wasm_shutdown() {
   BackendData* bd = get_backend_data();
-  allocator_t allocator = bd->allocator;
+  allocator_t* allocator = bd->allocator;
   allocator_free(allocator, bd->canvas_selector,
                  strlen(bd->canvas_selector) + 1);
   allocator_free(allocator, bd, sizeof(BackendData));

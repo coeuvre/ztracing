@@ -62,15 +62,15 @@ typedef struct trace_parser {
   bool is_array_format;
 } trace_parser_t;
 
-void trace_parser_deinit(trace_parser_t* p, allocator_t a);
+void trace_parser_deinit(trace_parser_t* p, allocator_t* a);
 
 // Feed data to the parser. Returns the number of bytes discarded from the
 // internal buffer.
 size_t trace_parser_feed(trace_parser_t* p, const char* buf, size_t len,
-                         bool is_eof, allocator_t a);
+                         bool is_eof, allocator_t* a);
 
 // Pull the next event.
-bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t a);
+bool trace_parser_next(trace_parser_t* p, trace_event_t* event, allocator_t* a);
 
 #ifdef __cplusplus
 }

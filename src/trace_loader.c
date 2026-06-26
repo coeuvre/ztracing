@@ -25,7 +25,7 @@ static bool reap_completion_sync(task_queue_t* queue, trace_data_t** out_td,
                                  int64_t* out_max_ts,
                                  double* out_ingest_duration_ms,
                                  double* out_organize_duration_ms,
-                                 size_t* out_reaped_count, allocator_t a) {
+                                 size_t* out_reaped_count, allocator_t* a) {
   task_completion_t cqe;
   if (!task_queue_peek_completion(queue, &cqe)) {
     return true;
@@ -81,7 +81,7 @@ static bool reap_completion_sync(task_queue_t* queue, trace_data_t** out_td,
 
 // Synchronously loads a Chrome trace file, preferring success path under if and
 // SESE.
-trace_data_t* trace_loader_load_file(const char* filename, allocator_t a,
+trace_data_t* trace_loader_load_file(const char* filename, allocator_t* a,
                                      size_t* out_decompressed_size,
                                      array_list_t* out_tracks,
                                      int64_t* out_min_ts, int64_t* out_max_ts,

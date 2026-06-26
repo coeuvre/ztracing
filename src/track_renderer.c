@@ -7,7 +7,7 @@ void track_flush_bucket_depth(array_list_t* out_blocks, double viewport_start,
                               double inv_duration, float tracks_canvas_pos_x,
                               double current_bucket_ts, double next_bucket_ts,
                               uint32_t depth, thread_bucket_state_t* s,
-                              const trace_data_t* trace_data, allocator_t a) {
+                              const trace_data_t* trace_data, allocator_t* a) {
   if (s->count == 0) return;
 
   float x1 = (float)(tracks_canvas_pos_x +
@@ -38,7 +38,7 @@ void track_flush_bucket_depth(array_list_t* out_blocks, double viewport_start,
 
 void track_renderer_update_selection_bitset(
     track_renderer_state_t* state, const trace_data_t* trace_data,
-    const array_list_t* selected_event_indices, allocator_t a) {
+    const array_list_t* selected_event_indices, allocator_t* a) {
   array_list_resize(&state->selected_events_bitset, trace_data->events.len,
                     sizeof(uint8_t), a);
   if (state->selected_events_bitset.len > 0) {
@@ -61,7 +61,7 @@ void track_compute_render_blocks(const track_t* track,
                                  float inner_width, float tracks_canvas_pos_x,
                                  int64_t focused_event_idx,
                                  track_renderer_state_t* state,
-                                 array_list_t* out_blocks, allocator_t a) {
+                                 array_list_t* out_blocks, allocator_t* a) {
   array_list_clear(out_blocks);
   if (track->event_indices.len > 0) {
     double duration = viewport_end - viewport_start;
@@ -269,7 +269,7 @@ void track_compute_counter_render_blocks(
     const track_t* track, const trace_data_t* trace_data, double viewport_start,
     double viewport_end, float width, float tracks_canvas_pos_x,
     int64_t focused_event_idx, track_renderer_state_t* state,
-    array_list_t* out_blocks, allocator_t a) {
+    array_list_t* out_blocks, allocator_t* a) {
   array_list_clear(out_blocks);
   array_list_clear(&state->counter_peaks);
   if (track->event_indices.len > 0) {

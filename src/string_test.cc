@@ -17,7 +17,7 @@ TEST(StringTest, ZeroInitialization) {
 }
 
 TEST(StringTest, AppendChar) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   string_t s = {};
 
   string_append_char(&s, 'a', a);
@@ -36,7 +36,7 @@ TEST(StringTest, AppendChar) {
 }
 
 TEST(StringTest, AppendCstr) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   string_t s = {};
 
   string_append_cstr(&s, "hello", a);
@@ -56,7 +56,7 @@ TEST(StringTest, AppendCstr) {
 }
 
 TEST(StringTest, AppendStringView) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   string_t s = {};
 
   string_view_t sv1 = SV("hello");
@@ -73,7 +73,7 @@ TEST(StringTest, AppendStringView) {
 }
 
 TEST(StringTest, Clear) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   string_t s = {};
 
   string_append_cstr(&s, "hello", a);
@@ -92,7 +92,7 @@ TEST(StringTest, Clear) {
 }
 
 TEST(StringTest, ToView) {
-  allocator_t a = allocator_get_default();
+  allocator_t* a = c_allocator();
   string_t s = {};
 
   string_append_cstr(&s, "hello", a);

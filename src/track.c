@@ -213,7 +213,7 @@ static bool track_key_eq(const void* a, const void* b, void* ctx) {
          ka->name_ref == kb->name_ref && ka->id_ref == kb->id_ref;
 }
 
-void track_deinit(track_t* t, allocator_t a) {
+void track_deinit(track_t* t, allocator_t* a) {
   array_list_deinit(&t->event_indices, a);
   array_list_deinit(&t->depths, a);
   array_list_deinit(&t->self_durs, a);
@@ -223,7 +223,7 @@ void track_deinit(track_t* t, allocator_t a) {
   *t = (track_t){};
 }
 
-void track_sort_events(track_t* t, const trace_data_t* td, allocator_t a) {
+void track_sort_events(track_t* t, const trace_data_t* td, allocator_t* a) {
   if (t->event_indices.len > 1) {
     sort_key_t* keys = nullptr;
     sort_key_t stack_keys[1024];
@@ -258,7 +258,7 @@ void track_sort_events(track_t* t, const trace_data_t* td, allocator_t a) {
   }
 }
 
-void track_update_max_dur(track_t* t, const trace_data_t* td, allocator_t a) {
+void track_update_max_dur(track_t* t, const trace_data_t* td, allocator_t* a) {
   int64_t max_dur = 0;
   size_t num_blocks =
       (t->event_indices.len + TRACK_BLOCK_SIZE - 1) / TRACK_BLOCK_SIZE;
@@ -291,7 +291,8 @@ void track_update_max_dur(track_t* t, const trace_data_t* td, allocator_t a) {
   t->max_dur = max_dur;
 }
 
-void track_calculate_depths(track_t* t, const trace_data_t* td, allocator_t a) {
+void track_calculate_depths(track_t* t, const trace_data_t* td,
+                            allocator_t* a) {
   array_list_resize(&t->depths, t->event_indices.len, sizeof(uint32_t), a);
   array_list_resize(&t->self_durs, t->event_indices.len, sizeof(int64_t), a);
   t->max_depth = 0;
@@ -402,8 +403,8 @@ size_t track_find_visible_start_index(const track_t* t, const trace_data_t* td,
 
 void track_organize(const trace_data_t* td, array_list_t* out_tracks,
                     int64_t* out_min_ts, int64_t* out_max_ts,
-                    allocator_t output_allocator,
-                    allocator_t scratch_allocator) {
+                    allocator_t* output_allocator,
+                    allocator_t* scratch_allocator) {
   track_t* out_tracks_data = (track_t*)out_tracks->ptr;
   for (size_t i = 0; i < out_tracks->len; i++) {
     track_deinit(&out_tracks_data[i], output_allocator);

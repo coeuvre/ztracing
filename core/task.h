@@ -126,7 +126,7 @@ typedef struct {
 // Creates a new task queue with the specified capacity (number of pre-allocated
 // slots). Dispatches background work using the provided abstract executor.
 task_queue_t* task_queue_create(size_t cap, task_executor_t executor,
-                                allocator_t allocator);
+                                allocator_t* allocator);
 void task_queue_destroy(task_queue_t* queue);
 
 // Cancels all pending submissions for a specific stream.

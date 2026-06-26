@@ -38,17 +38,17 @@ typedef struct track {
 extern "C" {
 #endif
 
-void track_deinit(track_t* t, allocator_t a);
-void track_sort_events(track_t* t, const trace_data_t* td, allocator_t a);
-void track_update_max_dur(track_t* t, const trace_data_t* td, allocator_t a);
-void track_calculate_depths(track_t* t, const trace_data_t* td, allocator_t a);
+void track_deinit(track_t* t, allocator_t* a);
+void track_sort_events(track_t* t, const trace_data_t* td, allocator_t* a);
+void track_update_max_dur(track_t* t, const trace_data_t* td, allocator_t* a);
+void track_calculate_depths(track_t* t, const trace_data_t* td, allocator_t* a);
 size_t track_find_visible_start_index(const track_t* t, const trace_data_t* td,
                                       int64_t viewport_start_ts);
 
 void track_organize(const trace_data_t* td, array_list_t* out_tracks,
                     int64_t* out_min_ts, int64_t* out_max_ts,
-                    allocator_t output_allocator,
-                    allocator_t scratch_allocator);
+                    allocator_t* output_allocator,
+                    allocator_t* scratch_allocator);
 
 #ifdef __cplusplus
 }
