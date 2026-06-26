@@ -42,7 +42,8 @@ typedef struct {
   int64_t completed_min_ts;
   int64_t completed_max_ts;
 
-  // --- Performance Telemetry (written by EOF worker on success, read by UI thread) ---
+  // --- Performance Telemetry (written by EOF worker on success, read by UI
+  // thread) ---
   struct {
     double size_mb;
     double ingestion_duration_ms;
@@ -64,14 +65,14 @@ trace_load_task_t* trace_load_task_create(task_queue_t* queue,
                                           allocator_t allocator);
 
 // Prepares a chunk submission slot (SQE) for the task queue.
-// sub: The vacant slot obtained from the queue by the caller.
-// task: The active loading task context.
-// data: The raw chunk buffer.
-// size: The size of the chunk buffer.
+// Internally copies the transient input 'data' buffer into the task-local
+// arena. sub: The vacant slot obtained from the queue by the caller. task: The
+// active loading task context. data: The raw chunk buffer (internally copied,
+// safe to free immediately after return). size: The size of the chunk buffer.
 // input_consumed_bytes: Cumulative input bytes consumed.
 // is_eof: True if this is the last chunk.
 void trace_load_task_prep_chunk(trace_load_task_t* task, task_submission_t* sub,
-                                char* data, size_t size,
+                                const char* data, size_t size,
                                 size_t input_consumed_bytes, bool is_eof);
 
 // Aborts the loading task, cancelling all remaining tasks in the stream.

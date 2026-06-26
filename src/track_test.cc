@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 
+#include "src/arena.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
 
@@ -13,10 +14,16 @@
     trace_event_matcher_deinit(&matcher);              \
   } while (0)
 
-#define track_organize(td, theme, out_tracks, out_min_ts, out_max_ts, \
-                       allocator)                                     \
-  ((void)(theme), (track_organize)((td), (out_tracks), (out_min_ts),  \
-                                   (out_max_ts), (allocator)))
+#define track_organize(td, theme, out_tracks, out_min_ts, out_max_ts,     \
+                       allocator)                                         \
+  do {                                                                    \
+    arena_t scratch_arena = {};                                           \
+    arena_init(&scratch_arena, (allocator), 0);                           \
+    ((void)(theme),                                                       \
+     (track_organize)((td), (out_tracks), (out_min_ts), (out_max_ts),     \
+                      (allocator), arena_get_allocator(&scratch_arena))); \
+    arena_deinit(&scratch_arena);                                         \
+  } while (0)
 
 TEST(track_test, sort_events) {
   allocator_t a = allocator_get_default();

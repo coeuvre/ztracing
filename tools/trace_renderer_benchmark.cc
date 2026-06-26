@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "src/allocator.h"
+#include "src/arena.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
 #include "src/trace_parser.h"
@@ -54,7 +55,11 @@ int main(int argc, char** argv) {
   // Organize Tracks
   array_list_t tracks = {};
   int64_t min_ts, max_ts;
-  track_organize(td, &tracks, &min_ts, &max_ts, a);
+  arena_t scratch_arena = {};
+  arena_init(&scratch_arena, a, 0);
+  track_organize(td, &tracks, &min_ts, &max_ts, a,
+                 arena_get_allocator(&scratch_arena));
+  arena_deinit(&scratch_arena);
 
   // 1. Vertical Scan: Find the heaviest contiguous block of N tracks (Viewport)
   // that contains the maximum total number of events when fully zoomed out.

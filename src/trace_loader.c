@@ -13,14 +13,16 @@
 #include "src/track.h"
 
 static const size_t BACKPRESSURE_THRESHOLD = 32 * 1024 * 1024;
-static const size_t IN_BUF_SIZE = 256 * 1024;    // 256KB compressed buffer
-static const size_t OUT_BUF_SIZE = 1024 * 1024;  // 1MB decompressed chunk buffer
+static const size_t IN_BUF_SIZE = 256 * 1024;  // 256KB compressed buffer
+static const size_t OUT_BUF_SIZE =
+    1024 * 1024;  // 1MB decompressed chunk buffer
 
 // Helper to reap a completed chunk completion from the queue.
-// Decrements active reference counts, frees payload data, and adopts the completed
-// trace data (and optionally organized tracks/stats) on EOF.
+// Decrements active reference counts, frees payload data, and adopts the
+// completed trace data (and optionally organized tracks/stats) on EOF.
 static bool reap_completion_sync(task_queue_t* queue, trace_data_t** out_td,
-                                 array_list_t* out_tracks, int64_t* out_min_ts, int64_t* out_max_ts,
+                                 array_list_t* out_tracks, int64_t* out_min_ts,
+                                 int64_t* out_max_ts,
                                  double* out_ingest_duration_ms,
                                  double* out_organize_duration_ms,
                                  size_t* out_reaped_count, allocator_t a) {
@@ -42,15 +44,18 @@ static bool reap_completion_sync(task_queue_t* queue, trace_data_t** out_td,
       *out_td = payload->completed_td;
 
       // Extract background telemetry stats
-      if (out_ingest_duration_ms) *out_ingest_duration_ms = payload->stats.ingestion_duration_ms;
-      if (out_organize_duration_ms) *out_organize_duration_ms = payload->stats.organize_duration_ms;
+      if (out_ingest_duration_ms)
+        *out_ingest_duration_ms = payload->stats.ingestion_duration_ms;
+      if (out_organize_duration_ms)
+        *out_organize_duration_ms = payload->stats.organize_duration_ms;
 
       // Adopt organized tracks and timestamps if requested
       if (out_tracks) {
         *out_tracks = payload->completed_tracks;
         if (out_min_ts) *out_min_ts = payload->completed_min_ts;
         if (out_max_ts) *out_max_ts = payload->completed_max_ts;
-        // Clear payload array list to transfer ownership and prevent deinitialization below
+        // Clear payload array list to transfer ownership and prevent
+        // deinitialization below
         payload->completed_tracks = (array_list_t){};
       }
 
@@ -64,30 +69,30 @@ static bool reap_completion_sync(task_queue_t* queue, trace_data_t** out_td,
   }
 
   // Clean up completion payload resources
-  if (payload->data != nullptr && payload->size > 0) {
-    allocator_free(a, payload->data, payload->size);
-  }
+  // Note: payload->data and payload itself are allocated from the task-local
+  // arena and will be automatically reclaimed when task_queue_remove_completion
+  // is called.
   trace_load_task_t* t = payload->task;
-  allocator_free(a, payload, sizeof(trace_load_task_chunk_t));
   trace_load_task_release(t);
   task_queue_remove_completion(queue);
 
   return success;
 }
 
-// Synchronously loads a Chrome trace file, preferring success path under if and SESE.
+// Synchronously loads a Chrome trace file, preferring success path under if and
+// SESE.
 trace_data_t* trace_loader_load_file(const char* filename, allocator_t a,
                                      size_t* out_decompressed_size,
                                      array_list_t* out_tracks,
-                                     int64_t* out_min_ts,
-                                     int64_t* out_max_ts,
+                                     int64_t* out_min_ts, int64_t* out_max_ts,
                                      double* out_ingest_duration_ms,
                                      double* out_organize_duration_ms) {
   trace_data_t* td = nullptr;
   FILE* f = fopen(filename, "rb");
 
   if (f) {
-    // 1. Create a concurrent Task Queue (dispatched to background thread pool) and Loading Task
+    // 1. Create a concurrent Task Queue (dispatched to background thread pool)
+    // and Loading Task
     task_queue_t* queue = task_queue_create(1024, platform_submit_job, a);
     trace_load_task_t* load_task = trace_load_task_create(queue, 1, a);
 
@@ -142,12 +147,16 @@ trace_data_t* trace_loader_load_file(const char* filename, allocator_t a,
             if (decompressed_size > 0) {
               bool parser_eof = (status == Z_STREAM_END);
 
-              // A. Apply backpressure: Block-wait if too many bytes are buffered in-flight
-              while (trace_load_task_get_buffered_bytes(load_task) > BACKPRESSURE_THRESHOLD && init_success) {
+              // A. Apply backpressure: Block-wait if too many bytes are
+              // buffered in-flight
+              while (trace_load_task_get_buffered_bytes(load_task) >
+                         BACKPRESSURE_THRESHOLD &&
+                     init_success) {
                 task_completion_t cqe;
                 task_queue_wait_completion(queue, &cqe);
-                if (!reap_completion_sync(queue, &td, out_tracks, out_min_ts, out_max_ts,
-                                          out_ingest_duration_ms, out_organize_duration_ms,
+                if (!reap_completion_sync(queue, &td, out_tracks, out_min_ts,
+                                          out_max_ts, out_ingest_duration_ms,
+                                          out_organize_duration_ms,
                                           &reaped_chunks, a)) {
                   init_success = false;
                 }
@@ -156,33 +165,33 @@ trace_data_t* trace_loader_load_file(const char* filename, allocator_t a,
               if (!init_success) break;
 
               // B. Submit the chunk to the background thread pool
-              char* chunk_data = (char*)allocator_alloc(a, decompressed_size);
-              memcpy(chunk_data, out_buf, decompressed_size);
-
               task_submission_t* sub = task_queue_get_submission(queue);
               if (sub == nullptr) {
-                allocator_free(a, chunk_data, decompressed_size);
                 init_success = false;
                 break;
               }
 
               decompressed_size_accum += decompressed_size;
-              trace_load_task_prep_chunk(load_task, sub, chunk_data, decompressed_size,
-                                         file_bytes_read, parser_eof);
+              trace_load_task_prep_chunk(load_task, sub, out_buf,
+                                         decompressed_size, file_bytes_read,
+                                         parser_eof);
               task_queue_submit(queue);
               submitted_chunks++;
 
-              // C. Non-blocking poll of completed chunks to keep the queue draining
+              // C. Non-blocking poll of completed chunks to keep the queue
+              // draining
               task_completion_t cqe;
               while (task_queue_peek_completion(queue, &cqe)) {
-                if (!reap_completion_sync(queue, &td, out_tracks, out_min_ts, out_max_ts,
-                                          out_ingest_duration_ms, out_organize_duration_ms,
+                if (!reap_completion_sync(queue, &td, out_tracks, out_min_ts,
+                                          out_max_ts, out_ingest_duration_ms,
+                                          out_organize_duration_ms,
                                           &reaped_chunks, a)) {
                   init_success = false;
                 }
               }
             }
-          } while (strm.avail_out == 0 && status != Z_STREAM_END && init_success);
+          } while (strm.avail_out == 0 && status != Z_STREAM_END &&
+                   init_success);
         }
         inflateEnd(&strm);
       } else {
@@ -198,13 +207,17 @@ trace_data_t* trace_loader_load_file(const char* filename, allocator_t a,
           is_eof = true;
         }
 
-        // A. Apply backpressure: Block-wait if too many bytes are buffered in-flight
-        while (trace_load_task_get_buffered_bytes(load_task) > BACKPRESSURE_THRESHOLD && init_success) {
+        // A. Apply backpressure: Block-wait if too many bytes are buffered
+        // in-flight
+        while (trace_load_task_get_buffered_bytes(load_task) >
+                   BACKPRESSURE_THRESHOLD &&
+               init_success) {
           task_completion_t cqe;
           task_queue_wait_completion(queue, &cqe);
-          if (!reap_completion_sync(queue, &td, out_tracks, out_min_ts, out_max_ts,
-                                    out_ingest_duration_ms, out_organize_duration_ms,
-                                    &reaped_chunks, a)) {
+          if (!reap_completion_sync(queue, &td, out_tracks, out_min_ts,
+                                    out_max_ts, out_ingest_duration_ms,
+                                    out_organize_duration_ms, &reaped_chunks,
+                                    a)) {
             init_success = false;
           }
         }
@@ -212,34 +225,33 @@ trace_data_t* trace_loader_load_file(const char* filename, allocator_t a,
         if (!init_success) break;
 
         // B. Submit the chunk to the background thread pool
-        char* chunk_data = (char*)allocator_alloc(a, n);
-        memcpy(chunk_data, out_buf, n);
-
         task_submission_t* sub = task_queue_get_submission(queue);
         if (sub == nullptr) {
-          allocator_free(a, chunk_data, n);
           init_success = false;
           break;
         }
 
         decompressed_size_accum += n;
-        trace_load_task_prep_chunk(load_task, sub, chunk_data, n, file_bytes_read, is_eof);
+        trace_load_task_prep_chunk(load_task, sub, out_buf, n, file_bytes_read,
+                                   is_eof);
         task_queue_submit(queue);
         submitted_chunks++;
 
         // C. Non-blocking poll of completed chunks to keep the queue draining
         task_completion_t cqe;
         while (task_queue_peek_completion(queue, &cqe)) {
-          if (!reap_completion_sync(queue, &td, out_tracks, out_min_ts, out_max_ts,
-                                    out_ingest_duration_ms, out_organize_duration_ms,
-                                    &reaped_chunks, a)) {
+          if (!reap_completion_sync(queue, &td, out_tracks, out_min_ts,
+                                    out_max_ts, out_ingest_duration_ms,
+                                    out_organize_duration_ms, &reaped_chunks,
+                                    a)) {
             init_success = false;
           }
         }
       }
     }
 
-    // 2. Abort if any error occurred, then drain all remaining in-flight chunks to prevent leaks
+    // 2. Abort if any error occurred, then drain all remaining in-flight chunks
+    // to prevent leaks
     if (!init_success) {
       trace_load_task_abort(load_task);
     }

@@ -714,7 +714,8 @@ TEST(task_queue_concurrent_test, executor_dispatch_reduction) {
 }
 
 // Verify that serialized streams process tasks in-place on the same thread,
-// reducing executor dispatches to exactly 1 even when the queue has vacant slots!
+// reducing executor dispatches to exactly 1 even when the queue has vacant
+// slots!
 TEST(task_queue_concurrent_test, serialized_stream_dispatch_reduction) {
   allocator_t alloc = allocator_get_default();
 
@@ -743,7 +744,7 @@ TEST(task_queue_concurrent_test, serialized_stream_dispatch_reduction) {
     EXPECT_NE(sub, nullptr);
     sub->task = task_fn;
     sub->user_data = &payload;
-    sub->stream = 1; // Serialized stream!
+    sub->stream = 1;  // Serialized stream!
   }
   task_queue_submit(queue);
 
@@ -758,9 +759,10 @@ TEST(task_queue_concurrent_test, serialized_stream_dispatch_reduction) {
   EXPECT_EQ(payload.completed_count.load(), 5);
 
   // THE CRITICAL ASSERTION:
-  // Since the tasks are on a serialized stream, the first task should be dispatched
-  // to a worker, and the remaining 4 tasks MUST be pulled and executed in-place
-  // by that same worker thread, resulting in EXACTLY 1 executor dispatch!
+  // Since the tasks are on a serialized stream, the first task should be
+  // dispatched to a worker, and the remaining 4 tasks MUST be pulled and
+  // executed in-place by that same worker thread, resulting in EXACTLY 1
+  // executor dispatch!
   EXPECT_EQ(g_mock_dispatch_count.load(), 1);
 
   task_queue_destroy(queue);
@@ -2210,4 +2212,72 @@ TEST(task_queue_concurrent_test, cancellation_of_tasks_stuck_in_sq) {
   EXPECT_EQ(payload.target_run_count.load(), 0);
 
   task_queue_destroy(queue);
+}
+
+TEST(task_queue_test, task_local_arena_lifetime) {
+  counting_allocator_t ca = counting_allocator_init(allocator_get_default());
+  allocator_t a = counting_allocator_get_allocator(&ca);
+
+  {
+    // Create queue of capacity 2
+    task_queue_t* queue = task_queue_create(2, thread_executor, a);
+    ASSERT_NE(queue, nullptr);
+
+    // Get submission
+    task_submission_t* sub = task_queue_get_submission(queue);
+    ASSERT_NE(sub, nullptr);
+
+    // Allocate user_data from sub->arena (the task-local arena)
+    allocator_t sub_allocator = arena_get_allocator(sub->arena);
+    struct test_payload {
+      int value;
+      char* text;
+    };
+    test_payload* payload =
+        (test_payload*)allocator_alloc(sub_allocator, sizeof(test_payload));
+    payload->value = 42;
+    // Allocate text from the same allocator
+    payload->text = (char*)allocator_alloc(sub_allocator, 12);
+    memcpy(payload->text, "hello world", 12);
+
+    // Prepare task
+    sub->task = [](task_context_t* ctx) {
+      test_payload* p = (test_payload*)ctx->user_data;
+      EXPECT_EQ(p->value, 42);
+      EXPECT_STREQ(p->text, "hello world");
+      // Modify payload to prove we ran
+      p->value = 100;
+    };
+    sub->user_data = payload;
+    sub->stream = 0;
+
+    // Submit task
+    task_queue_submit(queue);
+
+    // Wait for completion
+    task_completion_t cqe;
+    ASSERT_TRUE(wait_for_completion(queue, &cqe));
+    EXPECT_EQ(cqe.status, TASK_STATUS_OK);
+
+    // Read payload in CQE (valid because arena is still alive!)
+    test_payload* reaped_payload = (test_payload*)cqe.user_data;
+    EXPECT_EQ(reaped_payload->value, 100);
+    EXPECT_STREQ(reaped_payload->text, "hello world");
+
+    // Total allocated bytes should be > 0 (queue structures + our payload)
+    size_t allocated_before_remove =
+        counting_allocator_get_allocated_bytes(&ca);
+    EXPECT_GT(allocated_before_remove, 0u);
+
+    // Remove completion -> this should deinit the arena and free our payload
+    // and text!
+    task_queue_remove_completion(queue);
+
+    // Destroy the queue -> this frees the rest of the queue structures
+    task_queue_destroy(queue);
+  }
+
+  // CRITICAL ASSERTION: All memory, including the arena-allocated payload, must
+  // be cleanly freed!
+  EXPECT_EQ(counting_allocator_get_allocated_bytes(&ca), 0u);
 }

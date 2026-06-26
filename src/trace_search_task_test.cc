@@ -8,9 +8,9 @@
 #include "src/trace_data.h"
 #include "src/trace_histogram.h"
 
-
 // E2E test for the background trace search task.
-// Verifies event scanning, case-insensitive matching, and results delivery via the Task Queue.
+// Verifies event scanning, case-insensitive matching, and results delivery via
+// the Task Queue.
 TEST(trace_search_task_test, e2e_search_task) {
   counting_allocator_t ca = counting_allocator_init(allocator_get_default());
   allocator_t a = counting_allocator_get_allocator(&ca);
@@ -54,9 +54,14 @@ TEST(trace_search_task_test, e2e_search_task) {
     trace_data_retain(td);
 
     // Start background search for "foo" on the Task Queue
+    task_submission_t* sub = task_queue_get_submission(queue);
+    ASSERT_NE(sub, nullptr);
+
     trace_search_task_t* task =
-        trace_search_task_create("foo", td, true, true, queue, a);
+        trace_search_task_create("foo", td, true, true, sub, a);
     EXPECT_NE(task, nullptr);
+
+    task_queue_submit(queue);
 
     // Block and wait for the search task completion in the CQ
     task_completion_t cqe = {};

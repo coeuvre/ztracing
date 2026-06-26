@@ -176,21 +176,22 @@ void app_poll_completions(app_t* app) {
           // Print performance stats on the UI thread once adopted
           if (payload->stats.ready) {
             LOG_INFO(
-                "parsed %zu events, %.2f MB in %.3f ms (%.2f mb/s) [starvation: "
+                "parsed %zu events, %.2f MB in %.3f ms (%.2f mb/s) "
+                "[starvation: "
                 "%.3f ms (%.2f%%)]",
                 app->trace_data->events.len, payload->stats.size_mb,
                 payload->stats.ingestion_duration_ms, payload->stats.speed_mb_s,
                 payload->stats.starvation_ms, payload->stats.starvation_pct);
 
-            LOG_INFO("organized %zu tracks in %.3f ms", app->trace_viewer.tracks.len,
+            LOG_INFO("organized %zu tracks in %.3f ms",
+                     app->trace_viewer.tracks.len,
                      payload->stats.organize_duration_ms);
           }
         }
       }
       // B. CANCELLATION / FAILURE PATH (Zero-Leak Guard)
       else {
-        LOG_DEBUG(
-            "app_poll_completions: loader task cancelled or failed!");
+        LOG_DEBUG("app_poll_completions: loader task cancelled or failed!");
 
         if (payload->is_eof) {
           app->trace_load_task = nullptr;
@@ -199,13 +200,9 @@ void app_poll_completions(app_t* app) {
         }
       }
 
-      // Free the raw chunk data buffer managed by the caller!
-      if (payload->data != nullptr && payload->size > 0) {
-        allocator_free(allocator, payload->data, payload->size);
-      }
-
-      // Free the per-chunk payload and release the CQE reference
-      allocator_free(allocator, payload, sizeof(trace_load_task_chunk_t));
+      // Note: payload->data and payload itself are allocated from the
+      // task-local arena and will be automatically reclaimed when
+      // task_queue_remove_completion is called.
       trace_load_task_release(task);  // Decrements active_tasks for the CQE
     } else if (cqe.task == trace_search_task_run) {
       trace_search_task_t* task = (trace_search_task_t*)cqe.user_data;
@@ -217,7 +214,8 @@ void app_poll_completions(app_t* app) {
           trace_viewer_adopt_search_results(&app->trace_viewer, app->trace_data,
                                             task->results, task->histogram,
                                             allocator);
-          // Clear results in task context so trace_search_task_destroy doesn't free them
+          // Clear results in task context so trace_search_task_destroy doesn't
+          // free them
           task->results = (array_list_t){};
         }
         app->active_search_task = nullptr;
@@ -253,15 +251,24 @@ void app_update(app_t* app) {
 
     const char* query = (const char*)app->trace_viewer.search_query.ptr;
     if (query && query[0] != '\0' && app->trace_data != nullptr) {
-      // Retain a reference to trace_data for the background task!
-      trace_data_retain(app->trace_data);
+      // 1. Lease a submission slot from the shared task queue
+      task_submission_t* sub = task_queue_get_submission(app->task_queue);
+      if (sub != nullptr) {
+        // Retain a reference to trace_data for the background task!
+        trace_data_retain(app->trace_data);
 
-      // Spawn a new background search task on the shared global Task Queue!
-      app->active_search_task = trace_search_task_create(
-          query, app->trace_data, !app->trace_viewer.exclude_thread_events,
-          !app->trace_viewer.exclude_counter_events, app->task_queue,
-          allocator);
-      app->trace_viewer.search.is_searching = true;
+        // 2. Prepare the search task context using the submission slot
+        app->active_search_task = trace_search_task_create(
+            query, app->trace_data, !app->trace_viewer.exclude_thread_events,
+            !app->trace_viewer.exclude_counter_events, sub, allocator);
+
+        // 3. Submit and flush the queue!
+        task_queue_submit(app->task_queue);
+
+        app->trace_viewer.search.is_searching = true;
+      } else {
+        LOG_DEBUG("app_update: Task Queue is full! Dropping search query.");
+      }
     } else {
       // For empty queries, clear the search state cleanly
       trace_viewer_clear_search(&app->trace_viewer, allocator);
@@ -525,42 +532,36 @@ size_t app_handle_file_chunk(app_t* app, int session_id, char* data,
   allocator_t allocator =
       counting_allocator_get_allocator(&app->counting_allocator);
 
-  // Stale session safety check: immediately clean up chunk and discard
-  if (session_id != app->loading.session_id) {
-    if (data && size > 0) {
-      allocator_free(allocator, data, size);
-    }
-    return 0;
-  }
+  size_t result = 0;
 
-  // Track consumed bytes for progress bar display
-  app->loading.input_consumed_bytes = input_consumed_bytes;
+  // 1. Process only if the session is still active/valid
+  if (session_id == app->loading.session_id) {
+    // Track consumed bytes for progress bar display
+    app->loading.input_consumed_bytes = input_consumed_bytes;
 
-  if (app->trace_load_task != nullptr) {
-    // 1. Obtain a vacant submission slot from the shared task queue
-    task_submission_t* sub = task_queue_get_submission(app->task_queue);
-    if (sub != nullptr) {
-      // 2. Prepare the chunk submission
-      trace_load_task_prep_chunk(app->trace_load_task, sub, data, size,
-                                 input_consumed_bytes, is_eof);
-      // 3. Submit and flush the queue!
-      task_queue_submit(app->task_queue);
-    } else {
-      // Queue is full! Free buffer immediately to prevent leaks
-      if (data && size > 0) {
-        allocator_free(allocator, data, size);
+    if (app->trace_load_task != nullptr) {
+      // Obtain a vacant submission slot from the shared task queue
+      task_submission_t* sub = task_queue_get_submission(app->task_queue);
+      if (sub != nullptr) {
+        // Prepare the chunk submission (internally copies the transient buffer
+        // to the arena!)
+        trace_load_task_prep_chunk(app->trace_load_task, sub, data, size,
+                                   input_consumed_bytes, is_eof);
+        // Submit and flush the queue!
+        task_queue_submit(app->task_queue);
       }
-    }
-  } else {
-    if (data && size > 0) {
-      allocator_free(allocator, data, size);
+
+      // Fetch buffered bytes for backpressure flow control
+      result = trace_load_task_get_buffered_bytes(app->trace_load_task);
     }
   }
 
-  // Return the current buffered bytes in the task to trigger backpressure
-  return app->trace_load_task != nullptr
-             ? trace_load_task_get_buffered_bytes(app->trace_load_task)
-             : 0;
+  // 2. Single-Exit Cleanup: Always free the incoming buffer (caller-allocated)
+  if (data && size > 0) {
+    allocator_free(allocator, data, size);
+  }
+
+  return result;
 }
 
 size_t app_get_buffered_bytes(app_t* app) {

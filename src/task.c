@@ -20,6 +20,8 @@
 typedef struct task_node {
   // The carried task submission data
   task_submission_t sub;
+  // The arena carrying the task's inputs/scratch
+  arena_t arena;
   // Link to the next node in the list
   struct task_node* next;
   // True if this task was cancelled while pending in the queue
@@ -56,6 +58,10 @@ typedef struct {
 struct task_queue {
   // Staging array for submissions (the physical SQ)
   task_submission_t* sq_entries;
+  // Arenas associated with each SQ slot
+  arena_t* sq_arenas;
+  // Arenas associated with each CQ slot
+  arena_t* cq_arenas;
   // Parallel array to track cancellation status of SQ entries
   bool* sq_cancelled;
   // Array of completed entries ready for reaping (the physical CQ)
@@ -103,12 +109,13 @@ static void task_worker(void* arg);
 static bool has_active_stream_locked(task_queue_t* queue, task_stream_t stream,
                                      size_t exclude_exec_idx);
 static bool post_completion_locked(task_queue_t* queue, task_t task,
-                                   void* user_data, task_status_t status);
+                                   void* user_data, task_status_t status,
+                                   arena_t* arena);
 static void dispatch_pending_locked(task_queue_t* queue);
 static void cancel_stream_locked(task_queue_t* queue, task_stream_t stream);
 static bool pending_list_push_locked(task_queue_t* queue,
                                      const task_submission_t* sub,
-                                     bool cancelled);
+                                     arena_t* arena, bool cancelled);
 
 // ─── Public API: Lifecycle ───────────────────────────────────────────────────
 
@@ -132,6 +139,8 @@ task_queue_t* task_queue_create(size_t cap, task_executor_t executor,
   // on OOM)
   queue->sq_entries =
       allocator_alloc(queue->allocator, sizeof(task_submission_t) * cap);
+  queue->sq_arenas = allocator_alloc(queue->allocator, sizeof(arena_t) * cap);
+  queue->cq_arenas = allocator_alloc(queue->allocator, sizeof(arena_t) * cap);
   queue->sq_cancelled = allocator_alloc(queue->allocator, sizeof(bool) * cap);
   queue->cq_entries =
       allocator_alloc(queue->allocator, sizeof(task_completion_t) * cap);
@@ -150,12 +159,11 @@ task_queue_t* task_queue_create(size_t cap, task_executor_t executor,
   // Initialize the internal execution contexts and their task-local Arenas
   for (size_t i = 0; i < cap; ++i) {
     queue->sq_entries[i] = (task_submission_t){};
+    queue->sq_arenas[i] = (arena_t){};
+    queue->cq_arenas[i] = (arena_t){};
     queue->sq_cancelled[i] = false;
     queue->cq_entries[i] = (task_completion_t){};
     queue->executions[i] = (task_execution_t){};
-
-    // Initialize the Arena in-place using the backing allocator
-    arena_init(&queue->executions[i].arena, allocator, 0);
   }
 
   // Initialize the synchronization mutex (fail-fast via native CHECK)
@@ -177,9 +185,25 @@ void task_queue_destroy(task_queue_t* queue) {
   CHECK(pthread_cond_destroy(&queue->cond_reap) == 0);
   CHECK(pthread_cond_destroy(&queue->cond_space) == 0);
 
-  // Deinitialize all task-local Arenas
+  // 1. Deinit any active arenas in CQ
+  for (size_t i = queue->cq_head; i < queue->cq_tail; ++i) {
+    arena_deinit(&queue->cq_arenas[i % queue->cap]);
+  }
+  // 2. Deinit any active arenas in SQ (up to sq_sub_tail)
+  for (size_t i = queue->sq_head; i < queue->sq_sub_tail; ++i) {
+    arena_deinit(&queue->sq_arenas[i % queue->cap]);
+  }
+  // 3. Deinit any active arenas in pending list
+  task_node_t* curr_node = queue->pending_head;
+  while (curr_node) {
+    arena_deinit(&curr_node->arena);
+    curr_node = curr_node->next;
+  }
+  // 4. Deinit any active arenas in executions
   for (size_t i = 0; i < queue->cap; ++i) {
-    arena_deinit(&queue->executions[i].arena);
+    if (queue->executions[i].active) {
+      arena_deinit(&queue->executions[i].arena);
+    }
   }
 
   // Free the node pool, ring buffers, and the queue structure itself
@@ -189,6 +213,10 @@ void task_queue_destroy(task_queue_t* queue) {
                  sizeof(task_execution_t) * queue->cap);
   allocator_free(queue->allocator, queue->sq_entries,
                  sizeof(task_submission_t) * queue->cap);
+  allocator_free(queue->allocator, queue->sq_arenas,
+                 sizeof(arena_t) * queue->cap);
+  allocator_free(queue->allocator, queue->cq_arenas,
+                 sizeof(arena_t) * queue->cap);
   allocator_free(queue->allocator, queue->sq_cancelled,
                  sizeof(bool) * queue->cap);
   allocator_free(queue->allocator, queue->cq_entries,
@@ -279,11 +307,14 @@ task_submission_t* task_queue_get_submission(task_queue_t* queue) {
 
   // Return the next vacant staging slot and instantly increment the prepared
   // tail!
-  task_submission_t* sub = &queue->sq_entries[queue->sq_tail % queue->cap];
+  size_t idx = queue->sq_tail % queue->cap;
+  task_submission_t* sub = &queue->sq_entries[idx];
   queue->sq_tail++;
 
-  // Clean the slot before leasing
+  // Clean the slot before leasing and associate a fresh task-local arena
   *sub = (task_submission_t){};
+  arena_init(&queue->sq_arenas[idx], queue->allocator, 0);
+  sub->arena = &queue->sq_arenas[idx];
 
   CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
   return sub;
@@ -387,6 +418,9 @@ void task_queue_remove_completion(task_queue_t* queue) {
   CHECK(pthread_mutex_lock(&queue->mutex) == 0);
 
   if (queue->cq_head < queue->cq_tail) {
+    size_t idx = queue->cq_head % queue->cap;
+    arena_deinit(&queue->cq_arenas[idx]);
+    queue->cq_arenas[idx] = (arena_t){};
     queue->cq_head++;
     // Signal any worker threads blocked waiting for space in the CQ!
     CHECK(pthread_cond_signal(&queue->cond_space) == 0);
@@ -427,11 +461,7 @@ static void task_worker(void* arg) {
       exec->task(&internal_ctx.public_ctx);
     }
 
-    // 3. Reset the task-local Arena immediately to lower peak memory usage!
-    // This runs concurrently outside the global mutex lock.
-    arena_reset(&exec->arena);
-
-    // 4. Lock the mutex to commit the result and check for next streams
+    // 3. Lock the mutex to commit the result and check for next streams
     CHECK(pthread_mutex_lock(&queue->mutex) == 0);
 
     // Update status based on task context feedback.
@@ -462,8 +492,10 @@ static void task_worker(void* arg) {
 
     // Post the completion to the CQ (guaranteed to succeed since we blocked for
     // space!)
+    // Note: This transfers ownership of exec->arena to the CQ slot, and clears
+    // exec->arena
     bool posted = post_completion_locked(queue, exec->task, exec->user_data,
-                                         exec->status);
+                                         exec->status, &exec->arena);
     CHECK(posted);
 
     // Wake up any threads blocked in task_queue_wait_completion
@@ -532,11 +564,13 @@ static void task_worker(void* arg) {
           .task = next_node->sub.task,
           .user_data = next_node->sub.user_data,
           .stream = next_node->sub.stream,
-          .arena = exec->arena,  // Preserve the pre-allocated Arena!
+          .arena = next_node->arena,  // Transfer the task's arena to execution!
           .status = TASK_STATUS_OK,
           .active = true,
           .cancelled = next_node->cancelled,
       };
+      next_node->arena =
+          (arena_t){};  // Clear node arena (ownership transferred)
 
       // Remove the node from the pending list
       task_node_t* next_next = next_node->next;
@@ -584,15 +618,19 @@ static bool has_active_stream_locked(task_queue_t* queue, task_stream_t stream,
 }
 
 static bool post_completion_locked(task_queue_t* queue, task_t task,
-                                   void* user_data, task_status_t status) {
+                                   void* user_data, task_status_t status,
+                                   arena_t* arena) {
   // Assumes queue->mutex is LOCKED on entry!
   size_t cq_next = queue->cq_tail;
   if (cq_next - queue->cq_head < queue->cap) {
-    queue->cq_entries[cq_next % queue->cap] = (task_completion_t){
+    size_t idx = cq_next % queue->cap;
+    queue->cq_entries[idx] = (task_completion_t){
         .task = task,
         .user_data = user_data,
         .status = status,
     };
+    queue->cq_arenas[idx] = *arena;  // Transfer arena to CQ slot
+    *arena = (arena_t){};            // Clear source (ownership transferred)
     queue->cq_tail++;
     return true;
   }
@@ -612,13 +650,15 @@ static void dispatch_pending_locked(task_queue_t* queue) {
     // nodes. This ensures that deferred tasks are immediately recovered as soon
     // as nodes are freed, preventing starvation of independent streams.
     while (queue->sq_head < queue->sq_sub_tail) {
-      task_submission_t* sub = &queue->sq_entries[queue->sq_head % queue->cap];
+      size_t sq_idx = queue->sq_head % queue->cap;
+      task_submission_t* sub = &queue->sq_entries[sq_idx];
       if (sub->task) {
-        bool cancelled = queue->sq_cancelled[queue->sq_head % queue->cap];
-        if (!pending_list_push_locked(queue, sub, cancelled)) {
+        bool cancelled = queue->sq_cancelled[sq_idx];
+        if (!pending_list_push_locked(queue, sub, &queue->sq_arenas[sq_idx],
+                                      cancelled)) {
           break;
         }
-        queue->sq_cancelled[queue->sq_head % queue->cap] = false;  // Reset!
+        queue->sq_cancelled[sq_idx] = false;  // Reset!
         *sub = (task_submission_t){};
       }
       queue->sq_head++;
@@ -670,11 +710,13 @@ static void dispatch_pending_locked(task_queue_t* queue) {
         .task = target_node->sub.task,
         .user_data = target_node->sub.user_data,
         .stream = target_node->sub.stream,
-        .arena = target_exec->arena,  // Preserve the pre-allocated Arena!
+        .arena = target_node->arena,  // Transfer the task's arena to execution!
         .status = TASK_STATUS_OK,
         .active = true,
         .cancelled = target_node->cancelled,
     };
+    target_node->arena =
+        (arena_t){};  // Clear node arena (ownership transferred)
 
     // Pack the execution payload using the task's own scratch Arena
     typedef struct {
@@ -752,7 +794,7 @@ static void cancel_stream_locked(task_queue_t* queue, task_stream_t stream) {
 
 static bool pending_list_push_locked(task_queue_t* queue,
                                      const task_submission_t* sub,
-                                     bool cancelled) {
+                                     arena_t* arena, bool cancelled) {
   // Assumes queue->mutex is LOCKED on entry!
   if (!queue->free_nodes) {
     return false;
@@ -762,6 +804,8 @@ static bool pending_list_push_locked(task_queue_t* queue,
   queue->free_nodes = node->next;
 
   node->sub = *sub;
+  node->arena = *arena;  // Copy the arena
+  *arena = (arena_t){};  // Clear source (ownership transferred)
   node->cancelled = cancelled;
   node->next = nullptr;
 

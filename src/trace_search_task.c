@@ -10,7 +10,6 @@
 #include "src/trace_histogram.h"
 #include "src/trace_viewer.h"
 
-
 // Background worker thread function (conforms to task_t signature)
 void trace_search_task_run(task_context_t* ctx) {
   trace_search_task_t* task = (trace_search_task_t*)ctx->user_data;
@@ -31,7 +30,8 @@ void trace_search_task_run(task_context_t* ctx) {
     size_t n_events = td->events.len;
 
     for (size_t i = 0; i < n_events; i++) {
-      // Periodically check for abort signals from the Task Queue (every 2048 events)
+      // Periodically check for abort signals from the Task Queue (every 2048
+      // events)
       if ((i & 2047) == 0) {
         if (task_should_abort(ctx)) {
           aborted = true;
@@ -84,7 +84,8 @@ void trace_search_task_run(task_context_t* ctx) {
     array_list_deinit(&results, allocator);
   } else {
     LOG_DEBUG(
-        "trace_search_task_run background task completed, generating histogram");
+        "trace_search_task_run background task completed, generating "
+        "histogram");
 
     // Calculate the duration histogram of the search results
     trace_histogram_t* histogram = (trace_histogram_t*)allocator_alloc(
@@ -100,45 +101,36 @@ void trace_search_task_run(task_context_t* ctx) {
   LOG_DEBUG("trace_search_task_run background task exiting");
 }
 
-trace_search_task_t* trace_search_task_create(const char* query,
-                                              const trace_data_t* td,
-                                              bool include_threads,
-                                              bool include_counters,
-                                              task_queue_t* queue,
-                                              allocator_t allocator) {
+trace_search_task_t* trace_search_task_create(
+    const char* query, const trace_data_t* td, bool include_threads,
+    bool include_counters, task_submission_t* sub, allocator_t allocator) {
   CHECK(td != nullptr);
-  CHECK(queue != nullptr);
+  CHECK(sub != nullptr);
 
+  // Derive the allocator from the submission's arena
+  allocator_t sub_allocator = arena_get_allocator(sub->arena);
+
+  // 1. Allocate the task context from the task-local submission allocator
   trace_search_task_t* task = (trace_search_task_t*)allocator_alloc(
-      allocator, sizeof(trace_search_task_t));
+      sub_allocator, sizeof(trace_search_task_t));
   *task = (trace_search_task_t){
       .td = td,
       .include_threads = include_threads,
       .include_counters = include_counters,
-      .queue = queue,
       .allocator = allocator,
   };
 
-  // Copy query string
+  // 2. Copy query string into the same task-local arena
   if (query) {
     size_t len = strlen(query) + 1;
-    task->query = (char*)allocator_alloc(allocator, len);
+    task->query = (char*)allocator_alloc(sub_allocator, len);
     memcpy(task->query, query, len);
   }
 
-  // Submit the search task to the global Task Queue on Stream 2 (serialized search stream)
-  task_submission_t* sub = task_queue_get_submission(queue);
-  if (sub == nullptr) {
-    LOG_DEBUG("trace_search_task_create: Task Queue is full! Dropping search task.");
-    trace_search_task_destroy(task);
-    return nullptr;
-  }
-
+  // 3. Prepare the SQE
   sub->task = trace_search_task_run;
   sub->user_data = task;
-  sub->stream = 2; // Stream 2 for serialized search execution
-
-  task_queue_submit(queue);
+  sub->stream = 2;  // Stream 2 for serialized search execution
 
   return task;
 }
@@ -146,12 +138,11 @@ trace_search_task_t* trace_search_task_create(const char* query,
 void trace_search_task_destroy(trace_search_task_t* task) {
   if (!task) return;
   allocator_t a = task->allocator;
-  if (task->query) {
-    allocator_free(a, task->query, strlen(task->query) + 1);
-  }
   array_list_deinit(&task->results, a);
   if (task->histogram) {
     allocator_free(a, task->histogram, sizeof(trace_histogram_t));
   }
-  allocator_free(a, task, sizeof(trace_search_task_t));
+  // Note: task itself and task->query are allocated from the task-local arena
+  // and will be automatically reclaimed when task_queue_remove_completion is
+  // called.
 }

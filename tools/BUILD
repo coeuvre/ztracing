@@ -26,5 +26,6 @@ cc_binary(
         "//src:track",
         "//src:colors",
         "//src:track_renderer",
+        "//src:arena",
     ],
 )

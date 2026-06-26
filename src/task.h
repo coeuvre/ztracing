@@ -31,7 +31,8 @@ typedef struct task_queue task_queue_t;
 typedef struct {
   // Opaque user pointer passed from the submission
   void* user_data;
-  // The task-local Arena, managed and automatically cleared by the queue
+  // The task-local Arena for transient, temporary work.
+  // Automatically reclaimed after the task returns.
   arena_t* arena;
 } task_context_t;
 
@@ -73,6 +74,26 @@ typedef struct {
   //        the queue engine automatically aborts all subsequent pending tasks
   //        in that stream to preserve state safety.
   task_stream_t stream;
+  // The task-local Arena for preparing inputs.
+  // Use this to allocate the 'user_data' payload, raw input buffers, or any
+  // transient parameters that are needed during task preparation and execution.
+  //
+  // ─── Memory Lifetime Guarantees ────────────────────────────────────────────
+  // - LIFETIME START: Available as soon as task_queue_get_submission() returns.
+  // - STABILITY: All allocations remain 100% valid and stable during
+  // scheduling,
+  //   background execution, and after completion (available to the UI thread).
+  // - AUTOMATIC RECLAIM: The entire arena is deinitialized and all allocations
+  //   are reclaimed at once when task_queue_remove_completion() is called for
+  //   this task, OR when the queue is destroyed via task_queue_destroy().
+  //
+  // ⚠️ CRITICAL CONSTRAINTS:
+  // 1. DO NOT access any memory allocated from this arena after calling
+  //    task_queue_remove_completion() for this task.
+  // 2. DO NOT use this arena to allocate final output data that must survive
+  //    reaping. For outputs, use a persistent task-provided output allocator
+  //    instead.
+  arena_t* arena;
 } task_submission_t;
 
 // ─── Status Types ────────────────────────────────────────────────────────────

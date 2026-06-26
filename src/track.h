@@ -46,7 +46,9 @@ size_t track_find_visible_start_index(const track_t* t, const trace_data_t* td,
                                       int64_t viewport_start_ts);
 
 void track_organize(const trace_data_t* td, array_list_t* out_tracks,
-                    int64_t* out_min_ts, int64_t* out_max_ts, allocator_t a);
+                    int64_t* out_min_ts, int64_t* out_max_ts,
+                    allocator_t output_allocator,
+                    allocator_t scratch_allocator);
 
 #ifdef __cplusplus
 }

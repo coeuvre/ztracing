@@ -78,13 +78,16 @@ void trace_load_task_run(task_context_t* ctx) {
     int64_t min_ts = 0;
     int64_t max_ts = 0;
     // Run track organization pass
-    track_organize(task->td, &tracks, &min_ts, &max_ts, task->allocator);
+    allocator_t scratch_allocator = arena_get_allocator(ctx->arena);
+    track_organize(task->td, &tracks, &min_ts, &max_ts, task->allocator,
+                   scratch_allocator);
     double organize_duration_ms = platform_get_now() - organize_start_time;
 
     double size_mb = (double)(task->total_discarded_bytes + task->parser.pos) /
                      (1024.0 * 1024.0);
 
-    // Ingestion duration is the time from the start until parsing completed (before organization began)
+    // Ingestion duration is the time from the start until parsing completed
+    // (before organization began)
     double ingestion_duration_ms = organize_start_time - task->start_time;
     double ingestion_duration_s = ingestion_duration_ms / 1000.0;
     double speed_mb_s =
@@ -100,13 +103,15 @@ void trace_load_task_run(task_context_t* ctx) {
 
     // Real starvation is the idle time where the parser was waiting for chunks.
     // It excludes both active parsing time AND track organization time!
-    double starvation_ms = total_duration_ms - (active_parse_ms + organize_duration_ms);
+    double starvation_ms =
+        total_duration_ms - (active_parse_ms + organize_duration_ms);
     if (starvation_ms < 0.0) {
       starvation_ms = 0.0;  // Clamp against clock precision variances
     }
-    double starvation_pct = ingestion_duration_ms > 0.0
-                                ? (starvation_ms / ingestion_duration_ms) * 100.0
-                                : 0.0;
+    double starvation_pct =
+        ingestion_duration_ms > 0.0
+            ? (starvation_ms / ingestion_duration_ms) * 100.0
+            : 0.0;
 
     // Populate performance stats structure in the completion payload
     payload->stats.size_mb = size_mb;
@@ -183,18 +188,28 @@ trace_load_task_t* trace_load_task_create(task_queue_t* queue,
 
 // Prepares a chunk submission slot (SQE)
 void trace_load_task_prep_chunk(trace_load_task_t* task, task_submission_t* sub,
-                                char* data, size_t size,
+                                const char* data, size_t size,
                                 size_t input_consumed_bytes, bool is_eof) {
   CHECK(sub != nullptr);
   CHECK(task != nullptr);
 
-  // Allocate the chunk payload using the task's allocator
+  // Derive the allocator from the submission's arena
+  allocator_t sub_allocator = arena_get_allocator(sub->arena);
+
+  // Allocate the chunk payload using the task-local submission allocator
   trace_load_task_chunk_t* payload = (trace_load_task_chunk_t*)allocator_alloc(
-      task->allocator, sizeof(trace_load_task_chunk_t));
+      sub_allocator, sizeof(trace_load_task_chunk_t));
+
+  // Copy the transient input chunk data into the task-local arena
+  char* arena_data = nullptr;
+  if (data && size > 0) {
+    arena_data = (char*)allocator_alloc(sub_allocator, size);
+    memcpy(arena_data, data, size);
+  }
 
   *payload = (trace_load_task_chunk_t){
       .task = task,
-      .data = data,
+      .data = arena_data,
       .size = size,
       .input_consumed_bytes = input_consumed_bytes,
       .is_eof = is_eof,

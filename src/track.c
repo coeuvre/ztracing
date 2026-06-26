@@ -401,10 +401,12 @@ size_t track_find_visible_start_index(const track_t* t, const trace_data_t* td,
 // resolved dynamically at draw time.
 
 void track_organize(const trace_data_t* td, array_list_t* out_tracks,
-                    int64_t* out_min_ts, int64_t* out_max_ts, allocator_t a) {
+                    int64_t* out_min_ts, int64_t* out_max_ts,
+                    allocator_t output_allocator,
+                    allocator_t scratch_allocator) {
   track_t* out_tracks_data = (track_t*)out_tracks->ptr;
   for (size_t i = 0; i < out_tracks->len; i++) {
-    track_deinit(&out_tracks_data[i], a);
+    track_deinit(&out_tracks_data[i], output_allocator);
   }
   array_list_clear(out_tracks);
 
@@ -412,10 +414,6 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
     int64_t min_ts = 0;
     int64_t max_ts = 0;
     bool first_event = true;
-
-    arena_t arena = {};
-    arena_init(&arena, a, 0);
-    allocator_t arena_alloc = arena_get_allocator(&arena);
 
     hash_table_t track_map = hash_table_init(
         track_key_t, size_t, track_key_hash, track_key_eq, nullptr);
@@ -433,7 +431,7 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
 
     // Allocate temporary array to store resolved track index for each event
     uint32_t* event_track_indices = (uint32_t*)allocator_alloc(
-        arena_alloc, td->events.len * sizeof(uint32_t));
+        scratch_allocator, td->events.len * sizeof(uint32_t));
 
     // Pass 1: Discovery, Counting, Metadata, and Index Caching!
     for (size_t i = 0; i < td->events.len; i++) {
@@ -470,10 +468,11 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
               .name_ref = is_counter ? e->name_ref : 0,
               .id_ref = is_counter ? e->id_ref : 0,
           };
-          *array_list_push(out_tracks, track_t, a) = t;
+          *array_list_push(out_tracks, track_t, output_allocator) = t;
           track_idx = out_tracks->len - 1;
-          *(size_t*)hash_table_put(&track_map, &key, arena_alloc) = track_idx;
-          *array_list_push(&event_counts, size_t, arena_alloc) = 0;
+          *(size_t*)hash_table_put(&track_map, &key, scratch_allocator) =
+              track_idx;
+          *array_list_push(&event_counts, size_t, scratch_allocator) = 0;
         } else {
           track_idx = *track_idx_ptr;
         }
@@ -536,7 +535,7 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
     track_t* tracks_data = (track_t*)out_tracks->ptr;
     for (size_t i = 0; i < out_tracks->len; i++) {
       array_list_reserve(&tracks_data[i].event_indices, counts_data[i],
-                         sizeof(size_t), a);
+                         sizeof(size_t), output_allocator);
     }
 
     // Pass 2: Grouping (Zero reallocations, zero lookups, zero cache checks!)
@@ -544,7 +543,7 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
       uint32_t track_idx = event_track_indices[i];
       if (track_idx != (uint32_t)-1) {
         track_t* t = &tracks_data[track_idx];
-        *array_list_push(&t->event_indices, size_t, a) = i;
+        *array_list_push(&t->event_indices, size_t, output_allocator) = i;
       }
     }
 
@@ -552,22 +551,22 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
     tracks_data = (track_t*)out_tracks->ptr;
     for (size_t i = 0; i < out_tracks->len; i++) {
       track_t* t = &tracks_data[i];
-      track_sort_events(t, td, a);
-      track_update_max_dur(t, td, a);
+      track_sort_events(t, td, output_allocator);
+      track_update_max_dur(t, td, output_allocator);
       if (t->type == TRACK_TYPE_THREAD) {
-        track_calculate_depths(t, td, a);
+        track_calculate_depths(t, td, output_allocator);
       } else {
         // Counter tracks don't have nested depths.
         t->max_depth = 0;
         array_list_resize(&t->depths, t->event_indices.len, sizeof(uint32_t),
-                          a);
+                          output_allocator);
         uint32_t* depths = (uint32_t*)t->depths.ptr;
         for (size_t k = 0; k < t->depths.len; k++) {
           depths[k] = 0;
         }
 
         array_list_resize(&t->self_durs, t->event_indices.len, sizeof(int64_t),
-                          a);
+                          output_allocator);
         int64_t* self_durs = (int64_t*)t->self_durs.ptr;
         for (size_t k = 0; k < t->self_durs.len; k++) {
           self_durs[k] = 0;
@@ -595,7 +594,8 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
               }
             }
             if (!found) {
-              *array_list_push(&t->counter_series, string_ref_t, a) = key_ref;
+              *array_list_push(&t->counter_series, string_ref_t,
+                               output_allocator) = key_ref;
             }
             event_total += arg->val_double;
           }
@@ -611,7 +611,8 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
           counter_keys = stack_counter_keys;
         } else {
           counter_keys = (counter_sort_key_t*)allocator_alloc(
-              a, t->counter_series.len * sizeof(counter_sort_key_t));
+              scratch_allocator,
+              t->counter_series.len * sizeof(counter_sort_key_t));
         }
 
         const string_ref_t* counter_series_data =
@@ -632,13 +633,13 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
         }
 
         if (t->counter_series.len > 32) {
-          allocator_free(a, counter_keys,
+          allocator_free(scratch_allocator, counter_keys,
                          t->counter_series.len * sizeof(counter_sort_key_t));
         }
 
         // Cache palette indices
         array_list_resize(&t->counter_palette_indices, t->counter_series.len,
-                          sizeof(uint8_t), a);
+                          sizeof(uint8_t), output_allocator);
 
         string_ref_t* counter_series = (string_ref_t*)t->counter_series.ptr;
         uint8_t* counter_palette_indices =
@@ -663,7 +664,7 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
       keys = stack_keys;
     } else {
       keys = (track_sort_key_t*)allocator_alloc(
-          arena_alloc, out_tracks->len * sizeof(track_sort_key_t));
+          scratch_allocator, out_tracks->len * sizeof(track_sort_key_t));
     }
 
     tracks_data = (track_t*)out_tracks->ptr;
@@ -686,7 +687,7 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
     bool use_heap_sorted = out_tracks->len > 64;
     if (use_heap_sorted) {
       sorted_tracks = (track_t*)allocator_alloc(
-          arena_alloc, out_tracks->len * sizeof(track_t));
+          scratch_allocator, out_tracks->len * sizeof(track_t));
     } else {
       sorted_tracks = stack_sorted_tracks;
     }
@@ -696,7 +697,5 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
     memcpy(out_tracks->ptr, sorted_tracks, out_tracks->len * sizeof(track_t));
     *out_min_ts = min_ts;
     *out_max_ts = max_ts;
-
-    arena_deinit(&arena);
   }
 }

@@ -33,11 +33,9 @@ TEST(trace_load_task_test, success_path_reaps_correctly) {
       {"name": "event1", "cat": "test", "ph": "E", "ts": 2000, "pid": 1, "tid": 1}
     ])";
     size_t data_len = strlen(dummy_json) + 1;
-    char* data = (char*)allocator_alloc(a, data_len);
-    memcpy(data, dummy_json, data_len);
-
-    // Prepare and submit (runs inline/synchronously!)
-    trace_load_task_prep_chunk(task, sub, data, data_len, data_len,
+    // Prepare and submit (runs inline/synchronously! Internally copies
+    // dummy_json to arena)
+    trace_load_task_prep_chunk(task, sub, dummy_json, data_len, data_len,
                                true /* is_eof */);
     task_queue_submit(queue);
 
@@ -70,11 +68,9 @@ TEST(trace_load_task_test, success_path_reaps_correctly) {
     trace_data_release(td, a);
     array_list_deinit(&tracks, a);
 
-    // Free raw data buffer and payload
-    if (payload->data != nullptr && payload->size > 0) {
-      allocator_free(a, payload->data, payload->size);
-    }
-    allocator_free(a, payload, sizeof(trace_load_task_chunk_t));
+    // Note: payload->data and payload itself are allocated from the task-local
+    // arena and will be automatically reclaimed when
+    // task_queue_remove_completion is called.
     trace_load_task_release(task);  // Release CQE reference
 
     task_queue_remove_completion(queue);
@@ -117,10 +113,8 @@ TEST(trace_load_task_test, cancellation_path_cleans_up_without_leaks) {
 
     const char* dummy_json = "[]";
     size_t data_len = strlen(dummy_json) + 1;
-    char* data = (char*)allocator_alloc(a, data_len);
-    memcpy(data, dummy_json, data_len);
-
-    trace_load_task_prep_chunk(task, sub2, data, data_len, data_len,
+    // Internally copies dummy_json to arena
+    trace_load_task_prep_chunk(task, sub2, dummy_json, data_len, data_len,
                                false /* is_eof */);
 
     // 4. Submit the queue.
@@ -150,9 +144,9 @@ TEST(trace_load_task_test, cancellation_path_cleans_up_without_leaks) {
     ASSERT_NE(payload, nullptr);
     EXPECT_NE(payload->data, nullptr);  // Raw buffer was never consumed!
 
-    // Free raw data buffer and payload
-    allocator_free(a, payload->data, payload->size);
-    allocator_free(a, payload, sizeof(trace_load_task_chunk_t));
+    // Note: payload->data and payload itself are allocated from the task-local
+    // arena and will be automatically reclaimed when
+    // task_queue_remove_completion is called.
 
     trace_load_task_release(task);  // Release CQE reference
     task_queue_remove_completion(queue);
