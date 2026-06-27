@@ -3,6 +3,7 @@
 #include <stdatomic.h>
 
 #include "core/logging.h"
+#include "core/assert.h"
 #include "src/platform.h"
 #include "src/track.h"
 

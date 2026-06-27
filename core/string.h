@@ -1,215 +1,238 @@
 #ifndef CORE_STRING_H
 #define CORE_STRING_H
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
 
 #ifdef __cplusplus
+#include <ostream>
 #include <string_view>
 #endif
 
-#include "core/allocator.h"
-#include "core/assert.h"
+// Forward declaration
+typedef struct allocator allocator_t;
 
+// ─── string_view: counted string slice (not null-terminated) ────────────────
+
+typedef struct string_view {
+  const char* ptr;  // pointer to string data
+  size_t len;       // length excluding null terminator
+#ifdef __cplusplus
+  // Constructors
+  constexpr string_view() : ptr(nullptr), len(0) {}
+  constexpr string_view(std::string_view sv) : ptr(sv.data()), len(sv.size()) {}
+  constexpr string_view(const char* str) : ptr(str), len(str ? std::string_view(str).size() : 0) {}
+  constexpr string_view(const char* p, size_t l) : ptr(p), len(l) {}
+
+  // Implicit conversion to std::string_view
+  operator std::string_view() const { return std::string_view(ptr, len); }
+
+  // Helper methods
+  constexpr const char* data() const { return ptr; }
+  constexpr size_t size() const { return len; }
+  constexpr bool empty() const { return len == 0; }
+
+  // C++ Helper Operators
+  constexpr bool operator==(std::string_view other) const {
+    return std::string_view(ptr, len) == other;
+  }
+
+  friend std::ostream& operator<<(std::ostream& os, string_view s) {
+    return os << std::string_view(s);
+  }
+#endif
+} string_view_t;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-// A string representation consisting of a character pointer and an explicit
-// length.
-//
-// CRITICAL API SAFETY WARNING:
-// 1. This string is NOT guaranteed to be null-terminated.
-// 2. You MUST NEVER pass `ptr` directly to standard C library functions that
-//    expect null-terminated strings (e.g., `strlen`, `strcmp`, `printf("%s")`,
-//    `atof`, etc.) as this will cause buffer overreads or segmentation faults.
-// 3. To print the string safely, always specify the length using precision
-//    formatting: `printf("%.*s", (int)s.len, s.ptr)`.
-// 4. If a null-terminated string is strictly required by an external API, you
-//    must first copy the content to a null-terminated stack or heap buffer.
-typedef struct string_view {
-  const char* ptr;
-  size_t len;
-
 #ifdef __cplusplus
-  constexpr string_view();
-  constexpr string_view(std::string_view sv);
-  constexpr string_view(const char* str);
-  explicit constexpr string_view(const char* p, size_t l);
+// Create from a C string literal (length computed at compile time).
+#define SV(s) string_view_t{(const char*)(s ""), sizeof(s) - 1}
+// Brace initializer for static arrays.
+#define SV_INIT(s) {(const char*)(s), sizeof(s) - 1}
 
-  constexpr operator std::string_view() const;
-
-  constexpr string_view& operator=(std::string_view sv);
-  constexpr string_view& operator=(const char* str);
-
-  constexpr const char* data() const;
-  constexpr size_t size() const;
-  constexpr bool empty() const;
-
-  constexpr bool operator==(std::string_view other) const;
-#endif
-} string_view_t;
-
-// A growable, null-terminated string buffer.
-// Zero-Is-Initialization (ZII) compatible.
-typedef struct string {
-  char* ptr;
-  size_t len;
-  size_t cap;
-} string_t;
+static inline string_view_t string_view_from_cstr(const char* s) {
+  if (!s) {
+    return SV("");
+  }
+  return string_view_t{s, strlen(s)};
+}
 
 static inline string_view_t string_view_from_parts(const char* ptr,
                                                    size_t len) {
-  string_view_t sv;
-  sv.ptr = ptr;
-  sv.len = len;
-  return sv;
+  return string_view_t{ptr, len};
+}
+#else
+// Create from a C string literal (length computed at compile time).
+#define SV(s) ((string_view_t){(const char*)(s ""), sizeof(s) - 1})
+// Brace initializer for static arrays.
+#define SV_INIT(s) {(const char*)(s), sizeof(s) - 1}
+
+static inline string_view_t string_view_from_cstr(const char* s) {
+  if (!s) {
+    return SV("");
+  }
+  return (string_view_t){s, strlen(s)};
 }
 
-static inline string_view_t string_view_from_cstr(const char* str) {
-  string_view_t sv;
-  sv.ptr = str;
-  sv.len = str ? strlen(str) : 0;
-  return sv;
+static inline string_view_t string_view_from_parts(const char* ptr,
+                                                   size_t len) {
+  return (string_view_t){ptr, len};
 }
+#endif
 
+// Return true if the string view is zero-length.
+static inline bool string_view_is_empty(string_view_t s) { return s.len == 0; }
+
+// Compare two string_view_t values for equality (uses memcmp on known lengths).
 static inline bool string_view_eq(string_view_t a, string_view_t b) {
-  bool result = false;
-  if (a.len == b.len) {
-    result = memcmp(a.ptr, b.ptr, a.len) == 0;
+  if (a.len != b.len) {
+    return false;
   }
-  return result;
-}
-
-// Convert a string_view_t to a null-terminated C string using the provided
-// allocator. The returned pointer must be freed by the caller using
-// allocator_free().
-static inline char* string_view_to_cstr(string_view_t s, allocator_t* a) {
-  char* str = (char*)allocator_alloc(a, s.len + 1);
-  memcpy(str, s.ptr, s.len);
-  str[s.len] = '\0';
-  return str;
-}
-
-// Growable string functions
-
-static inline void string_deinit(string_t* s, allocator_t* a) {
-  if (s->ptr != nullptr) {
-    allocator_free(a, s->ptr, s->cap);
+  if (a.len == 0) {
+    return true;
   }
-  string_t empty = {};
-  *s = empty;
+  return memcmp(a.ptr, b.ptr, a.len) == 0;
 }
 
-static inline void string_clear(string_t* s) {
+// Slice a string view from start to end (exclusive).
+static inline string_view_t string_view_slice(string_view_t s, size_t start,
+                                              size_t end) {
+  if (start >= s.len || start >= end) {
+    return SV("");
+  }
+  if (end > s.len) {
+    end = s.len;
+  }
+  return string_view_from_parts(s.ptr + start, end - start);
+}
+
+// Substring of a string view from start with a given length.
+static inline string_view_t string_view_substr(string_view_t s, size_t start,
+                                               size_t len) {
+  if (start >= s.len || len == 0) {
+    return SV("");
+  }
+  if (start + len > s.len) {
+    len = s.len - start;
+  }
+  return string_view_from_parts(s.ptr + start, len);
+}
+
+// Find the last occurrence of character `c` in the string view.
+// Returns true if found, writing the index to *out_index.
+static inline bool string_view_rfind_char(string_view_t s, char c,
+                                          size_t* out_index) {
+  bool found = false;
+  for (size_t i = s.len; i > 0; i--) {
+    if (s.ptr[i - 1] == c) {
+      *out_index = i - 1;
+      found = true;
+      break;
+    }
+  }
+  return found;
+}
+
+// ─── string: an owned, growable null-terminated string buffer ───────────────
+
+typedef struct string {
+  char* ptr;   // pointer to null-terminated owned buffer
+  size_t len;  // current string length (not including null terminator)
+  size_t cap;  // capacity (including space for null terminator)
+} string_t;
+
+// Zero-initialize to get an empty string. No allocation happens until
+// the first append. Example: string_t s = {};
+
+// Reset length to 0, keeping allocated capacity for reuse.
+static inline void string_reset(string_t* s) {
   s->len = 0;
-  if (s->ptr != nullptr) {
+  if (s->ptr) {
     s->ptr[0] = '\0';
   }
 }
 
-static inline size_t string_calculate_new_capacity(size_t current_capacity,
-                                                   size_t min_capacity) {
-  size_t new_capacity = current_capacity == 0 ? 16 : current_capacity * 2;
-  if (new_capacity < min_capacity) {
-    new_capacity = min_capacity;
+// Return true if the string is empty.
+static inline bool string_is_empty(const string_t* s) { return s->len == 0; }
+
+// Compare two string_t values for equality.
+static inline bool string_eq(const string_t* a, const string_t* b) {
+  if (a->len != b->len) {
+    return false;
   }
-  // Check for overflow
-  if (new_capacity < current_capacity) {
-    new_capacity = (size_t)-1;
+  if (a->len == 0) {
+    return true;
   }
-  return new_capacity;
+  return memcmp(a->ptr, b->ptr, a->len) == 0;
 }
 
-static inline void string_reserve(string_t* s, size_t new_cap, allocator_t* a) {
-  if (new_cap > s->cap) {
-    void* new_ptr = allocator_realloc(a, s->ptr, s->cap, new_cap);
-    s->ptr = (char*)new_ptr;
-    s->cap = new_cap;
+// Compare a string_t and a string_view_t for equality.
+static inline bool string_eq_view(const string_t* a, string_view_t b) {
+  if (a->len != b.len) {
+    return false;
   }
-}
-
-static inline void string_ensure_capacity(string_t* s, size_t min_capacity,
-                                          allocator_t* a) {
-  if (min_capacity > s->cap) {
-    size_t new_cap = string_calculate_new_capacity(s->cap, min_capacity);
-    string_reserve(s, new_cap, a);
+  if (a->len == 0) {
+    return true;
   }
+  return memcmp(a->ptr, b.ptr, a->len) == 0;
 }
 
-static inline void string_append_view(string_t* s, string_view_t sv,
-                                      allocator_t* a) {
-  if (sv.len > 0) {
-    string_ensure_capacity(s, s->len + sv.len + 1, a);
-    memcpy(s->ptr + s->len, sv.ptr, sv.len);
-    s->len += sv.len;
-    s->ptr[s->len] = '\0';
+// Return the current content as a string_view_t (aliases internal buffer).
+static inline string_view_t string_get_view(const string_t* s) {
+  if (!s->ptr) {
+    return SV("");
   }
-}
-
-static inline void string_append_cstr(string_t* s, const char* str,
-                                      allocator_t* a) {
-  CHECK(str != nullptr);
-  size_t len = strlen(str);
-  if (len > 0) {
-    string_ensure_capacity(s, s->len + len + 1, a);
-    memcpy(s->ptr + s->len, str, len);
-    s->len += len;
-    s->ptr[s->len] = '\0';
-  }
-}
-
-static inline void string_append_char(string_t* s, char c, allocator_t* a) {
-  string_ensure_capacity(s, s->len + 2, a);
-  s->ptr[s->len] = c;
-  s->len++;
-  s->ptr[s->len] = '\0';
-}
-
-static inline string_view_t string_to_view(const string_t* s) {
   return string_view_from_parts(s->ptr, s->len);
 }
 
+// Return a const char* for use with %s / C APIs. Guaranteed to be
+// null-terminated.
+static inline const char* string_get_cstr(const string_t* s) {
+  if (!s->ptr) {
+    return "";
+  }
+  return s->ptr;
+}
+
+// ─── Allocator-aware string functions ───────────────────────────────────────
+
+// Free an allocated string_t.
+void string_free(string_t s, allocator_t* a);
+
+// Consume the string: shrink the allocation to exactly `len + 1` bytes,
+// return the content as a string_t, and reset the original string struct to
+// empty.
+string_t string_into_owned(string_t* s, allocator_t* a);
+
+// Duplicate a C string into a string_t allocated from the given allocator.
+string_t string_from_cstr(const char* s, allocator_t* a);
+
+// Duplicate a string_view_t into a new string_t (allocates fresh copy).
+string_t string_from_view(string_view_t s, allocator_t* a);
+
+// Ensure at least `needed` bytes of free space (not counting null).
+void string_ensure(string_t* s, size_t needed, allocator_t* a);
+
+// Append a C string (null-terminated).
+void string_append_cstr(string_t* s, const char* str, allocator_t* a);
+
+// Append a string view.
+void string_append(string_t* s, string_view_t view, allocator_t* a);
+
+// Append a single character.
+void string_append_char(string_t* s, char c, allocator_t* a);
+
+// printf-style format/append. No fixed-size stack buffer is used internally.
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((format(printf, 3, 4)))
+#endif
+void string_printf(string_t* s, allocator_t* a, const char* fmt, ...);
+
 #ifdef __cplusplus
-}  // extern "C"
-
-// C++ Compatibility Layer Definitions
-inline constexpr string_view::string_view() : ptr(nullptr), len(0) {}
-inline constexpr string_view::string_view(std::string_view sv)
-    : ptr(sv.data()), len(sv.size()) {}
-inline constexpr string_view::string_view(const char* str)
-    : ptr(str), len(str ? std::string_view(str).size() : 0) {}
-inline constexpr string_view::string_view(const char* p, size_t l)
-    : ptr(p), len(l) {}
-
-inline constexpr string_view::operator std::string_view() const {
-  return std::string_view(ptr, len);
 }
-
-inline constexpr string_view& string_view::operator=(std::string_view sv) {
-  ptr = sv.data();
-  len = sv.size();
-  return *this;
-}
-
-inline constexpr string_view& string_view::operator=(const char* str) {
-  ptr = str;
-  len = str ? std::string_view(str).size() : 0;
-  return *this;
-}
-
-inline constexpr const char* string_view::data() const { return ptr; }
-inline constexpr size_t string_view::size() const { return len; }
-inline constexpr bool string_view::empty() const { return len == 0; }
-
-inline constexpr bool string_view::operator==(std::string_view other) const {
-  return std::string_view(ptr, len) == other;
-}
-
-#define SV(lit) (string_view_t{(lit ""), sizeof(lit "") - 1})
-#else
-#define SV(lit) ((string_view_t){(lit ""), sizeof(lit "") - 1})
 #endif
 
 #endif  // CORE_STRING_H

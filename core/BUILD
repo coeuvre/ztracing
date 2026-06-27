@@ -39,6 +39,7 @@ cc_library(
 
 cc_library(
     name = "string",
+    srcs = ["string.c"],
     hdrs = ["string.h"],
     deps = [
         ":allocator",
@@ -103,6 +104,7 @@ cc_test(
     deps = [
         ":string",
         ":allocator",
+        ":arena",
         "@googletest//:gtest_main",
     ],
 )
