@@ -7,7 +7,7 @@
 #include "core/allocator.h"
 #include "core/json_reader.h"
 #include "src/array_list.h"
-#include "src/string.h"
+#include "core/string.h"
 
 void trace_parser_deinit(trace_parser_t* p, allocator_t* a) {
   array_list_deinit(&p->buffer, a);

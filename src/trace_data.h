@@ -6,7 +6,7 @@
 #include "core/allocator.h"
 #include "src/array_list.h"
 #include "src/hash_table.h"
-#include "src/string.h"
+#include "core/string.h"
 #include "src/trace_parser.h"
 
 #ifdef __cplusplus

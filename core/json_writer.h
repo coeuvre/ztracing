@@ -7,7 +7,7 @@
 
 #include "core/allocator.h"
 #include "src/array_list.h"
-#include "src/string.h"
+#include "core/string.h"
 
 #ifdef __cplusplus
 extern "C" {

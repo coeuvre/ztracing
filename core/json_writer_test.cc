@@ -6,7 +6,7 @@
 
 #include "core/allocator.h"
 #include "src/array_list.h"
-#include "src/string.h"
+#include "core/string.h"
 
 TEST(json_writer_test, basic) {
   allocator_t* a = c_allocator();

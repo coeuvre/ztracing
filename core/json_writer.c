@@ -7,7 +7,7 @@
 
 #include "core/allocator.h"
 #include "src/array_list.h"
-#include "src/string.h"
+#include "core/string.h"
 
 // 2. JSON WRITER (Formatter) Implementation
 // ==========================================

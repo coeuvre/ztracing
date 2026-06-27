@@ -1,5 +1,5 @@
-#ifndef SRC_STRING_H
-#define SRC_STRING_H
+#ifndef CORE_STRING_H
+#define CORE_STRING_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -212,4 +212,4 @@ inline constexpr bool string_view::operator==(std::string_view other) const {
 #define SV(lit) ((string_view_t){(lit ""), sizeof(lit "") - 1})
 #endif
 
-#endif  // SRC_STRING_H
+#endif  // CORE_STRING_H

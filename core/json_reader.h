@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "src/string.h"
+#include "core/string.h"
 
 #ifdef __cplusplus
 extern "C" {

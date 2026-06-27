@@ -38,6 +38,15 @@ cc_library(
 )
 
 cc_library(
+    name = "string",
+    hdrs = ["string.h"],
+    deps = [
+        ":allocator",
+        ":assert",
+    ],
+)
+
+cc_library(
     name = "arena",
     srcs = ["arena.c"],
     hdrs = ["arena.h"],
@@ -88,12 +97,22 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "string_test",
+    srcs = ["string_test.cc"],
+    deps = [
+        ":string",
+        ":allocator",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "json_reader",
     srcs = ["json_reader.c"],
     hdrs = ["json_reader.h"],
     deps = [
-        "//src:string",
+        ":string",
     ],
 )
 
@@ -104,7 +123,7 @@ cc_library(
     deps = [
         ":allocator",
         "//src:array_list",
-        "//src:string",
+        ":string",
     ],
 )
 

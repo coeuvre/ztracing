@@ -14,7 +14,7 @@
 #include <wasm_simd128.h>
 #endif
 
-#include "src/string.h"
+#include "core/string.h"
 
 // ==========================================
 // 1. JSON READER (Parser) Implementation

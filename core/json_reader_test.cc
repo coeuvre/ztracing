@@ -4,7 +4,7 @@
 
 #include <string_view>
 
-#include "src/string.h"
+#include "core/string.h"
 
 TEST(json_reader_test, basic) {
   const char* json = "{\"key\": [1, 2.5, true, false, null]}";

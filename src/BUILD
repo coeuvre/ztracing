@@ -41,15 +41,6 @@ cc_library(
 )
 
 cc_library(
-    name = "string",
-    hdrs = ["string.h"],
-    deps = [
-        "//core:allocator",
-        "//core:assert",
-    ],
-)
-
-cc_library(
     name = "format",
     srcs = ["format.c"],
     hdrs = ["format.h"],
@@ -114,16 +105,6 @@ cc_test(
 )
 
 cc_test(
-    name = "string_test",
-    srcs = ["string_test.cc"],
-    deps = [
-        ":string",
-        "//core:allocator",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "trace_load_task_test",
     srcs = ["trace_load_task_test.cc"],
     deps = [
@@ -157,7 +138,7 @@ cc_library(
     deps = [
         "//core:allocator",
         ":array_list",
-        ":string",
+        "//core:string",
         "//core:json_reader",
     ],
 )
@@ -226,7 +207,7 @@ cc_library(
         "//core:assert",
         ":colors",
         ":hash_table",
-        ":string",
+        "//core:string",
         ":trace_parser",
     ],
 )
