@@ -381,7 +381,6 @@ cc_binary(
         "-sALLOW_MEMORY_GROWTH=1",
         "-sASSERTIONS=1",
         "-sSTACK_OVERFLOW_CHECK=1",
-        "-g",
         "--pre-js src/ztracing.js",
     ],
     deps = [

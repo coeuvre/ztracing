@@ -132,7 +132,7 @@ trace_data_t* trace_loader_load_file(const char* filename, allocator_t* a,
 
           do {
             strm.next_out = (Bytef*)out_buf;
-            strm.avail_out = OUT_BUF_SIZE;
+            strm.avail_out = (uInt)OUT_BUF_SIZE;
 
             status = inflate(&strm, Z_NO_FLUSH);
             if (status == Z_NEED_DICT || status == Z_DATA_ERROR ||
