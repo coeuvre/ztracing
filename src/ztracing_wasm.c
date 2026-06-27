@@ -149,13 +149,13 @@ EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
 }
 
 EMSCRIPTEN_KEEPALIVE void* ztracing_malloc(int size) {
-  CHECK(g_app != nullptr);
+  expect(g_app != nullptr);
   allocator_t* a = counting_allocator_get_allocator(&g_app->counting_allocator);
   return allocator_alloc(a, (size_t)size);
 }
 
 EMSCRIPTEN_KEEPALIVE void ztracing_free(void* ptr, int size) {
-  CHECK(g_app != nullptr);
+  expect(g_app != nullptr);
   allocator_t* a = counting_allocator_get_allocator(&g_app->counting_allocator);
   allocator_free(a, ptr, (size_t)size);
 }

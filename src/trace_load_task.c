@@ -2,7 +2,6 @@
 
 #include <stdatomic.h>
 
-#include "core/logging.h"
 #include "core/assert.h"
 #include "src/platform.h"
 #include "src/track.h"
@@ -37,10 +36,10 @@ struct trace_load_task {
 // Background worker task (forward declared in header)
 void trace_load_task_run(task_context_t* ctx) {
   trace_load_task_chunk_t* payload = (trace_load_task_chunk_t*)ctx->user_data;
-  CHECK(payload != nullptr);
+  expect(payload != nullptr);
 
   trace_load_task_t* task = payload->task;
-  CHECK(task != nullptr);
+  expect(task != nullptr);
 
   size_t chunk_size = payload->size;
 
@@ -162,7 +161,7 @@ static void trace_load_task_destroy(trace_load_task_t* task) {
 trace_load_task_t* trace_load_task_create(task_queue_t* queue,
                                           task_stream_t stream_id,
                                           allocator_t* allocator) {
-  CHECK(queue != nullptr);
+  expect(queue != nullptr);
 
   trace_load_task_t* task =
       (trace_load_task_t*)allocator_alloc(allocator, sizeof(trace_load_task_t));
@@ -191,8 +190,8 @@ trace_load_task_t* trace_load_task_create(task_queue_t* queue,
 void trace_load_task_prep_chunk(trace_load_task_t* task, task_submission_t* sub,
                                 const char* data, size_t size,
                                 size_t input_consumed_bytes, bool is_eof) {
-  CHECK(sub != nullptr);
-  CHECK(task != nullptr);
+  expect(sub != nullptr);
+  expect(task != nullptr);
 
   // Derive the allocator from the submission's arena
   allocator_t* sub_allocator = arena_get_allocator(sub->arena);

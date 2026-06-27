@@ -121,8 +121,8 @@ static bool pending_list_push_locked(task_queue_t* queue,
 
 task_queue_t* task_queue_create(size_t cap, task_executor_t executor,
                                 allocator_t* allocator) {
-  CHECK(cap > 0);
-  CHECK(executor != nullptr);
+  expect(cap > 0);
+  expect(executor != nullptr);
 
   // Allocate the queue structure itself (never returns NULL, aborts on OOM)
   task_queue_t* queue = allocator_alloc(allocator, sizeof(task_queue_t));
@@ -166,24 +166,24 @@ task_queue_t* task_queue_create(size_t cap, task_executor_t executor,
     queue->executions[i] = (task_execution_t){};
   }
 
-  // Initialize the synchronization mutex (fail-fast via native CHECK)
-  CHECK(pthread_mutex_init(&queue->mutex, nullptr) == 0);
+  // Initialize the synchronization mutex (fail-fast via native check)
+  expect(pthread_mutex_init(&queue->mutex, nullptr) == 0);
 
-  // Initialize the condition variables (fail-fast via native CHECK)
-  CHECK(pthread_cond_init(&queue->cond_reap, nullptr) == 0);
-  CHECK(pthread_cond_init(&queue->cond_space, nullptr) == 0);
+  // Initialize the condition variables (fail-fast via native check)
+  expect(pthread_cond_init(&queue->cond_reap, nullptr) == 0);
+  expect(pthread_cond_init(&queue->cond_space, nullptr) == 0);
 
   return queue;
 }
 
 void task_queue_destroy(task_queue_t* queue) {
-  CHECK(pthread_equal(pthread_self(), queue->owner_thread));
+  expect(pthread_equal(pthread_self(), queue->owner_thread));
 
   // Mutex and conds are destroyed first, failing fast on any error via native
-  // CHECK
-  CHECK(pthread_mutex_destroy(&queue->mutex) == 0);
-  CHECK(pthread_cond_destroy(&queue->cond_reap) == 0);
-  CHECK(pthread_cond_destroy(&queue->cond_space) == 0);
+  // check
+  expect(pthread_mutex_destroy(&queue->mutex) == 0);
+  expect(pthread_cond_destroy(&queue->cond_reap) == 0);
+  expect(pthread_cond_destroy(&queue->cond_space) == 0);
 
   // 1. Destroy all arenas in SQ and CQ
   for (size_t i = 0; i < queue->cap; ++i) {
@@ -232,16 +232,16 @@ void task_queue_destroy(task_queue_t* queue) {
 void task_queue_cancel_stream(task_queue_t* queue, task_stream_t stream) {
   if (stream == 0) return;
 
-  CHECK(pthread_mutex_lock(&queue->mutex) == 0);
+  expect(pthread_mutex_lock(&queue->mutex) == 0);
   // Perform the cancellation while holding the lock to ensure safety
   cancel_stream_locked(queue, stream);
-  CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+  expect(pthread_mutex_unlock(&queue->mutex) == 0);
 }
 
 void task_queue_cancel_submission(task_queue_t* queue, void* user_data) {
   if (!user_data) return;
 
-  CHECK(pthread_mutex_lock(&queue->mutex) == 0);
+  expect(pthread_mutex_lock(&queue->mutex) == 0);
 
   task_stream_t cascaded_stream = 0;
 
@@ -291,20 +291,20 @@ void task_queue_cancel_submission(task_queue_t* queue, void* user_data) {
     cancel_stream_locked(queue, cascaded_stream);
   }
 
-  CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+  expect(pthread_mutex_unlock(&queue->mutex) == 0);
 }
 
 // ─── Submission Queue (SQ) ───────────────────────────────────────────────────
 
 task_submission_t* task_queue_get_submission(task_queue_t* queue) {
-  CHECK(pthread_equal(pthread_self(), queue->owner_thread));
+  expect(pthread_equal(pthread_self(), queue->owner_thread));
 
-  CHECK(pthread_mutex_lock(&queue->mutex) == 0);
+  expect(pthread_mutex_lock(&queue->mutex) == 0);
 
   // Check if the staging SQ has space based on the prepared tail pointer!
   size_t prepared = queue->sq_tail - queue->sq_head;
   if (prepared >= queue->cap) {
-    CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+    expect(pthread_mutex_unlock(&queue->mutex) == 0);
     return nullptr;
   }
 
@@ -319,14 +319,14 @@ task_submission_t* task_queue_get_submission(task_queue_t* queue) {
   queue->sq_arenas[idx] = arena_create_with_allocator(queue->allocator);
   sub->arena = queue->sq_arenas[idx];
 
-  CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+  expect(pthread_mutex_unlock(&queue->mutex) == 0);
   return sub;
 }
 
 void task_queue_submit(task_queue_t* queue) {
-  CHECK(pthread_equal(pthread_self(), queue->owner_thread));
+  expect(pthread_equal(pthread_self(), queue->owner_thread));
 
-  CHECK(pthread_mutex_lock(&queue->mutex) == 0);
+  expect(pthread_mutex_lock(&queue->mutex) == 0);
 
   // Flush-commit all prepared tasks by advancing the committed pointer!
   queue->sq_sub_tail = queue->sq_tail;
@@ -334,7 +334,7 @@ void task_queue_submit(task_queue_t* queue) {
   // Dispatch will automatically flush the SQ to the pending list first
   dispatch_pending_locked(queue);
 
-  CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+  expect(pthread_mutex_unlock(&queue->mutex) == 0);
 }
 
 // ─── Completion Queue (CQ) ───────────────────────────────────────────────────
@@ -343,31 +343,31 @@ bool task_queue_peek_completion(task_queue_t* queue,
                                 task_completion_t* out_completed) {
   if (!out_completed) return false;
 
-  CHECK(pthread_equal(pthread_self(), queue->owner_thread));
+  expect(pthread_equal(pthread_self(), queue->owner_thread));
 
-  CHECK(pthread_mutex_lock(&queue->mutex) == 0);
+  expect(pthread_mutex_lock(&queue->mutex) == 0);
 
   if (queue->cq_head == queue->cq_tail) {
-    CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+    expect(pthread_mutex_unlock(&queue->mutex) == 0);
     return false;
   }
 
   // Peek the oldest completed entry
   *out_completed = queue->cq_entries[queue->cq_head % queue->cap];
 
-  CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+  expect(pthread_mutex_unlock(&queue->mutex) == 0);
   return true;
 }
 
 void task_queue_wait_completion(task_queue_t* queue,
                                 task_completion_t* out_completed) {
-  CHECK(pthread_equal(pthread_self(), queue->owner_thread));
+  expect(pthread_equal(pthread_self(), queue->owner_thread));
 
-  CHECK(pthread_mutex_lock(&queue->mutex) == 0);
+  expect(pthread_mutex_lock(&queue->mutex) == 0);
 
   // Block the calling thread (CPU-free sleep) while the CQ is completely empty
   while (queue->cq_head == queue->cq_tail) {
-    CHECK(pthread_cond_wait(&queue->cond_reap, &queue->mutex) == 0);
+    expect(pthread_cond_wait(&queue->cond_reap, &queue->mutex) == 0);
   }
 
   // Peek the oldest completed entry
@@ -375,15 +375,15 @@ void task_queue_wait_completion(task_queue_t* queue,
     *out_completed = queue->cq_entries[queue->cq_head % queue->cap];
   }
 
-  CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+  expect(pthread_mutex_unlock(&queue->mutex) == 0);
 }
 
 bool task_queue_wait_completion_timeout(task_queue_t* queue,
                                         task_completion_t* out_completed,
                                         uint64_t timeout_ns) {
-  CHECK(pthread_equal(pthread_self(), queue->owner_thread));
+  expect(pthread_equal(pthread_self(), queue->owner_thread));
 
-  CHECK(pthread_mutex_lock(&queue->mutex) == 0);
+  expect(pthread_mutex_lock(&queue->mutex) == 0);
 
   // 1. Calculate absolute target timespec with native nanosecond precision
   struct timespec ts;
@@ -402,7 +402,7 @@ bool task_queue_wait_completion_timeout(task_queue_t* queue,
     rc = pthread_cond_timedwait(&queue->cond_reap, &queue->mutex, &ts);
     // Crash immediately on any real error, but allow ETIMEDOUT as a valid
     // result
-    CHECK(rc == 0 || rc == ETIMEDOUT);
+    expect(rc == 0 || rc == ETIMEDOUT);
   }
 
   // 3. Check if we actually have a completion
@@ -411,14 +411,14 @@ bool task_queue_wait_completion_timeout(task_queue_t* queue,
     *out_completed = queue->cq_entries[queue->cq_head % queue->cap];
   }
 
-  CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+  expect(pthread_mutex_unlock(&queue->mutex) == 0);
   return success;
 }
 
 void task_queue_remove_completion(task_queue_t* queue) {
-  CHECK(pthread_equal(pthread_self(), queue->owner_thread));
+  expect(pthread_equal(pthread_self(), queue->owner_thread));
 
-  CHECK(pthread_mutex_lock(&queue->mutex) == 0);
+  expect(pthread_mutex_lock(&queue->mutex) == 0);
 
   if (queue->cq_head < queue->cq_tail) {
     size_t idx = queue->cq_head % queue->cap;
@@ -428,10 +428,10 @@ void task_queue_remove_completion(task_queue_t* queue) {
     }
     queue->cq_head++;
     // Signal any worker threads blocked waiting for space in the CQ!
-    CHECK(pthread_cond_signal(&queue->cond_space) == 0);
+    expect(pthread_cond_signal(&queue->cond_space) == 0);
   }
 
-  CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+  expect(pthread_mutex_unlock(&queue->mutex) == 0);
 }
 
 // ─── Private Helper Implementations ──────────────────────────────────────────
@@ -445,9 +445,9 @@ static void task_worker(void* arg) {
   task_queue_t* queue = payload->queue;
   size_t exec_idx = payload->exec_idx;
 
-  CHECK(pthread_mutex_lock(&queue->mutex) == 0);
+  expect(pthread_mutex_lock(&queue->mutex) == 0);
   task_execution_t* exec = &queue->executions[exec_idx];
-  CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+  expect(pthread_mutex_unlock(&queue->mutex) == 0);
 
   while (true) {
     // 1. Build the task context (Arena is guaranteed to be empty/reset)
@@ -467,7 +467,7 @@ static void task_worker(void* arg) {
     }
 
     // 3. Lock the mutex to commit the result and check for next streams
-    CHECK(pthread_mutex_lock(&queue->mutex) == 0);
+    expect(pthread_mutex_lock(&queue->mutex) == 0);
 
     // Update status based on task context feedback.
     // Cancellation takes precedence over failure.
@@ -490,9 +490,9 @@ static void task_worker(void* arg) {
             "(cap %zu). You must reap completions "
             "(task_queue_remove_completion) to free space.",
             queue->cap);
-        CHECK(false && "Proactor deadlock: sync task blocked on full CQ");
+        panic("Proactor deadlock: sync task blocked on full CQ");
       }
-      CHECK(pthread_cond_wait(&queue->cond_space, &queue->mutex) == 0);
+      expect(pthread_cond_wait(&queue->cond_space, &queue->mutex) == 0);
     }
 
     // Post the completion to the CQ (guaranteed to succeed since we blocked for
@@ -501,10 +501,10 @@ static void task_worker(void* arg) {
     // exec->arena
     bool posted = post_completion_locked(queue, exec->task, exec->user_data,
                                          exec->status, &exec->arena);
-    CHECK(posted);
+    expect(posted);
 
     // Wake up any threads blocked in task_queue_wait_completion
-    CHECK(pthread_cond_signal(&queue->cond_reap) == 0);
+    expect(pthread_cond_signal(&queue->cond_reap) == 0);
 
     task_stream_t stream = exec->stream;
     task_status_t final_status = exec->status;
@@ -595,7 +595,7 @@ static void task_worker(void* arg) {
       dispatch_pending_locked(queue);
 
       // Loop and execute immediately on the same thread!
-      CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+      expect(pthread_mutex_unlock(&queue->mutex) == 0);
       continue;
     }
 
@@ -604,7 +604,7 @@ static void task_worker(void* arg) {
     // waiting in the SQ/pending list!
     dispatch_pending_locked(queue);
 
-    CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+    expect(pthread_mutex_unlock(&queue->mutex) == 0);
     break;
   }
 }
@@ -750,13 +750,13 @@ static void dispatch_pending_locked(task_queue_t* queue) {
     queue->free_nodes = target_node;
 
     // Release lock BEFORE calling the external executor callback!
-    CHECK(pthread_mutex_unlock(&queue->mutex) == 0);
+    expect(pthread_mutex_unlock(&queue->mutex) == 0);
 
     // Dispatch execution using the abstract injected executor!
     queue->executor(task_worker, payload);
 
     // Re-acquire lock to continue the dispatch loop safely!
-    CHECK(pthread_mutex_lock(&queue->mutex) == 0);
+    expect(pthread_mutex_lock(&queue->mutex) == 0);
   }
 }
 

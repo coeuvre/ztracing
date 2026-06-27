@@ -13,7 +13,7 @@
 // Background worker thread function (conforms to task_t signature)
 void trace_search_task_run(task_context_t* ctx) {
   trace_search_task_t* task = (trace_search_task_t*)ctx->user_data;
-  CHECK(task != nullptr);
+  expect(task != nullptr);
 
   allocator_t* allocator = task->allocator;
   const trace_data_t* td = task->td;
@@ -104,8 +104,8 @@ void trace_search_task_run(task_context_t* ctx) {
 trace_search_task_t* trace_search_task_create(
     const char* query, const trace_data_t* td, bool include_threads,
     bool include_counters, task_submission_t* sub, allocator_t* allocator) {
-  CHECK(td != nullptr);
-  CHECK(sub != nullptr);
+  expect(td != nullptr);
+  expect(sub != nullptr);
 
   // Derive the allocator from the submission's arena
   allocator_t* sub_allocator = arena_get_allocator(sub->arena);
