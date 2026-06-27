@@ -154,11 +154,21 @@ cc_test(
 )
 
 cc_library(
+    name = "imgui_types",
+    hdrs = ["imgui_types.h"],
+    deps = [
+        "@imgui",
+    ],
+)
+
+cc_library(
     name = "imgui_c",
     srcs = ["imgui_c.cc"],
     hdrs = ["imgui_c.h"],
     deps = [
         "@imgui",
+        ":imgui_types",
+        ":colors",
     ],
 )
 
@@ -193,7 +203,7 @@ cc_library(
     hdrs = ["colors.h"],
     deps = [
         "@imgui",
-        ":imgui_c",
+        ":imgui_types",
     ],
 )
 

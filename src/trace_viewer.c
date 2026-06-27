@@ -353,12 +353,14 @@ static void trace_viewer_draw_event(trace_viewer_t* tv, trace_data_t* td,
       if (visible_x2 > visible_x1) {
         string_view_t name = trace_data_get_string(td, name_ref);
         if (name.len > 0) {
-          uint32_t text_col = theme->event_text;
-          if (is_focused) {
-            text_col = theme->event_text_focused;
-          } else if (is_selected) {
-            text_col = theme->event_text_selected;
-          }
+          // Calculate luminance of the event color to choose best text color
+          float r = (float)((col >> 0) & 0xFF) / 255.0f;
+          float g = (float)((col >> 8) & 0xFF) / 255.0f;
+          float b = (float)((col >> 16) & 0xFF) / 255.0f;
+          float lum = r * 0.299f + g * 0.587f + b * 0.114f;
+          
+          // Use dark gray for light backgrounds, white for dark backgrounds
+          uint32_t text_col = (lum > 0.5f) ? IG_COL32(32, 32, 32, 255) : IG_COL32(255, 255, 255, 255);
           float event_font_size = ig_get_font_size();
           float text_y = y1 + (lane_height - event_font_size) * 0.5f;
 
@@ -744,6 +746,9 @@ static void trace_viewer_draw_counter_track(
   double duration = viewport_end - viewport_start;
   if (duration <= 0) return;
 
+  ig_vec4_t vp_bg = ig_color_convert_u32_to_float4(theme->viewport_bg);
+  bool is_dark = (vp_bg.x * 0.299f + vp_bg.y * 0.587f + vp_bg.z * 0.114f) < 0.5f;
+
   double max_total = t->counter_max_total;
   if (max_total <= 0) max_total = 1.0;
 
@@ -802,9 +807,10 @@ static void trace_viewer_draw_counter_track(
     }
 
     if (hovered) {
+      uint32_t hover_col = is_dark ? IG_COL32(255, 255, 255, 30) : IG_COL32(0, 0, 0, 15);
       ig_draw_list_add_rect_filled(draw_list, (ig_vec2_t){rb->x1, pos.y},
                                    (ig_vec2_t){rb->x2, pos.y + height},
-                                   IG_COL32(255, 255, 255, 30));
+                                   hover_col);
     }
 
     if (rb->is_focused) {
@@ -2062,10 +2068,19 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
         if (best_track->type == TRACK_TYPE_THREAD) {
           uint32_t col = theme->event_palette[rb->palette_index];
           if (!rb->is_selected) {
+            ig_vec4_t vp_bg = ig_color_convert_u32_to_float4(theme->viewport_bg);
+            bool is_dark = (vp_bg.x * 0.299f + vp_bg.y * 0.587f + vp_bg.z * 0.114f) < 0.5f;
+
             ig_vec4_t col_v = ig_color_convert_u32_to_float4(col);
-            col_v.x = min(col_v.x + 0.15f, 1.0f);
-            col_v.y = min(col_v.y + 0.15f, 1.0f);
-            col_v.z = min(col_v.z + 0.15f, 1.0f);
+            if (is_dark) {
+              col_v.x = min(col_v.x + 0.15f, 1.0f);
+              col_v.y = min(col_v.y + 0.15f, 1.0f);
+              col_v.z = min(col_v.z + 0.15f, 1.0f);
+            } else {
+              col_v.x = max(col_v.x - 0.15f, 0.0f);
+              col_v.y = max(col_v.y - 0.15f, 0.0f);
+              col_v.z = max(col_v.z - 0.15f, 0.0f);
+            }
             col = ig_color_convert_float4_to_u32(col_v);
 
             trace_viewer_draw_event(tv, td, track_draw_list, rb->x1, rb->x2,
@@ -2456,8 +2471,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
       }
 
       if (!has_focus && !has_selection) {
-        ig_vec4_t gray = {0.5f, 0.5f, 0.5f, 1.0f};
-        ig_text_colored(gray, "Select an event to see details.");
+        ig_text_disabled("Select an event to see details.");
       }
     }
     ig_end();

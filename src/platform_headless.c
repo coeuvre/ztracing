@@ -30,3 +30,15 @@ bool platform_is_mac() { return false; }
 void platform_open_file_dialog() {
   // Headless stub: do nothing
 }
+
+void platform_set_setting(const char* key, const char* value) {
+  (void)key;
+  (void)value;
+}
+
+bool platform_get_setting(const char* key, char* out_val, int max_len) {
+  (void)key;
+  (void)out_val;
+  (void)max_len;
+  return false;
+}

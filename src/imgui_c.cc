@@ -1,4 +1,5 @@
 #include "src/imgui_c.h"
+#include "src/colors.h"
 
 #include <stdarg.h>
 
@@ -6,6 +7,8 @@
 
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"
+
+static const struct Theme* g_current_theme = nullptr;
 
 static_assert(IG_TABLE_FLAGS_NONE == ImGuiTableFlags_None,
               "ImGuiTableFlags mismatch");
@@ -389,10 +392,28 @@ int ig_list_clipper_get_display_end(const ig_list_clipper_t* clipper) {
 
 // Widgets
 bool ig_button(const char* label, ig_vec2_t size) {
-  return ImGui::Button(label, ImVec2(size.x, size.y));
+  bool push_color = (g_current_theme != nullptr);
+  if (push_color) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(g_current_theme->ui_button_fg));
+  }
+  bool result = ImGui::Button(label, ImVec2(size.x, size.y));
+  if (push_color) {
+    ImGui::PopStyleColor();
+  }
+  return result;
 }
 
-bool ig_small_button(const char* label) { return ImGui::SmallButton(label); }
+bool ig_small_button(const char* label) {
+  bool push_color = (g_current_theme != nullptr);
+  if (push_color) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(g_current_theme->ui_button_fg));
+  }
+  bool result = ImGui::SmallButton(label);
+  if (push_color) {
+    ImGui::PopStyleColor();
+  }
+  return result;
+}
 
 bool ig_invisible_button(const char* str_id, ig_vec2_t size) {
   return ImGui::InvisibleButton(str_id, ImVec2(size.x, size.y));
@@ -754,5 +775,114 @@ void ig_push_style_var_float(ig_style_var_t idx, float val) {
 void ig_style_colors_dark(void) { ImGui::StyleColorsDark(); }
 
 void ig_style_colors_light(void) { ImGui::StyleColorsLight(); }
+
+void ig_style_apply_theme(const struct Theme* theme) {
+  g_current_theme = theme;
+  ImGuiStyle& style = ImGui::GetStyle();
+  ImVec4* colors = style.Colors;
+
+  ImVec4 bg = ImGui::ColorConvertU32ToFloat4(theme->ui_bg);
+  float luminance = (bg.x * 0.299f + bg.y * 0.587f + bg.z * 0.114f);
+  ImVec4 fg = ImGui::ColorConvertU32ToFloat4(theme->ui_fg);
+  ImVec4 border = ImGui::ColorConvertU32ToFloat4(theme->ui_border);
+  ImVec4 input_bg = ImGui::ColorConvertU32ToFloat4(theme->ui_input_bg);
+  ImVec4 button_bg = ImGui::ColorConvertU32ToFloat4(theme->ui_button_bg);
+  ImVec4 button_hovered = ImGui::ColorConvertU32ToFloat4(theme->ui_button_hovered);
+  ImVec4 button_active = ImGui::ColorConvertU32ToFloat4(theme->ui_button_active);
+  ImVec4 selection_bg = ImGui::ColorConvertU32ToFloat4(theme->ui_selection_bg);
+  ImVec4 text_disabled = ImGui::ColorConvertU32ToFloat4(theme->ui_text_disabled);
+
+  colors[ImGuiCol_Text]                   = fg;
+  colors[ImGuiCol_TextDisabled]           = text_disabled;
+  colors[ImGuiCol_WindowBg]               = bg;
+  colors[ImGuiCol_ChildBg]                = ImGui::ColorConvertU32ToFloat4(theme->track_bg);
+  colors[ImGuiCol_PopupBg]                = bg;
+  colors[ImGuiCol_Border]                 = border;
+  colors[ImGuiCol_BorderShadow]           = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+  
+  colors[ImGuiCol_FrameBg]                = input_bg;
+  if (luminance < 0.5f) {
+    colors[ImGuiCol_FrameBgHovered]       = ImVec4(input_bg.x * 1.15f, input_bg.y * 1.15f, input_bg.z * 1.15f, input_bg.w);
+    colors[ImGuiCol_FrameBgActive]        = ImVec4(input_bg.x * 0.90f, input_bg.y * 0.90f, input_bg.z * 0.90f, input_bg.w);
+  } else {
+    colors[ImGuiCol_FrameBgHovered]       = ImVec4(input_bg.x * 0.92f, input_bg.y * 0.92f, input_bg.z * 0.92f, input_bg.w);
+    colors[ImGuiCol_FrameBgActive]        = ImVec4(input_bg.x * 0.85f, input_bg.y * 0.85f, input_bg.z * 0.85f, input_bg.w);
+  }
+  
+  colors[ImGuiCol_TitleBg]                = bg;
+  colors[ImGuiCol_TitleBgActive]          = bg;
+  colors[ImGuiCol_TitleBgCollapsed]       = bg;
+  
+  colors[ImGuiCol_MenuBarBg]              = bg;
+  
+  colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+  colors[ImGuiCol_ScrollbarGrab]          = ImGui::ColorConvertU32ToFloat4(theme->vertical_minimap_slider_bg);
+  colors[ImGuiCol_ScrollbarGrabHovered]   = ImGui::ColorConvertU32ToFloat4(theme->vertical_minimap_slider_bg_hovered);
+  colors[ImGuiCol_ScrollbarGrabActive]    = ImGui::ColorConvertU32ToFloat4(theme->vertical_minimap_slider_bg_active);
+  
+  colors[ImGuiCol_CheckMark]              = button_bg;
+  
+  colors[ImGuiCol_SliderGrab]             = button_bg;
+  colors[ImGuiCol_SliderGrabActive]       = button_active;
+  
+  colors[ImGuiCol_Button]                 = button_bg;
+  colors[ImGuiCol_ButtonHovered]          = button_hovered;
+  colors[ImGuiCol_ButtonActive]           = button_active;
+  
+  colors[ImGuiCol_Header]                 = selection_bg;
+  colors[ImGuiCol_HeaderHovered]          = ImGui::ColorConvertU32ToFloat4(theme->ui_header_hovered);
+  colors[ImGuiCol_HeaderActive]           = ImGui::ColorConvertU32ToFloat4(theme->ui_header_active);
+  
+  colors[ImGuiCol_Separator]              = border;
+  colors[ImGuiCol_SeparatorHovered]       = button_hovered;
+  colors[ImGuiCol_SeparatorActive]        = button_active;
+  
+  colors[ImGuiCol_ResizeGrip]             = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+  colors[ImGuiCol_ResizeGripHovered]      = button_hovered;
+  colors[ImGuiCol_ResizeGripActive]       = button_active;
+  
+  colors[ImGuiCol_Tab]                    = bg;
+  colors[ImGuiCol_TabHovered]             = button_hovered;
+  colors[ImGuiCol_TabActive]              = selection_bg;
+  colors[ImGuiCol_TabUnfocused]           = bg;
+  colors[ImGuiCol_TabUnfocusedActive]     = selection_bg;
+  
+  colors[ImGuiCol_PlotLines]              = button_bg;
+  colors[ImGuiCol_PlotLinesHovered]       = button_hovered;
+  colors[ImGuiCol_PlotHistogram]          = button_bg;
+  colors[ImGuiCol_PlotHistogramHovered]   = button_hovered;
+  
+  colors[ImGuiCol_TableHeaderBg]          = ImGui::ColorConvertU32ToFloat4(theme->track_header_bg);
+  colors[ImGuiCol_TableBorderStrong]      = border;
+  colors[ImGuiCol_TableBorderLight]       = border;
+  colors[ImGuiCol_TableRowBg]             = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+  
+  if (luminance < 0.5f) {
+    colors[ImGuiCol_TableRowBgAlt]        = ImVec4(1.0f, 1.0f, 1.0f, 0.03f);
+  } else {
+    colors[ImGuiCol_TableRowBgAlt]        = ImVec4(0.0f, 0.0f, 0.0f, 0.03f);
+  }
+  
+  colors[ImGuiCol_TextSelectedBg]         = selection_bg;
+  colors[ImGuiCol_DragDropTarget]         = button_bg;
+  colors[ImGuiCol_NavHighlight]           = ImGui::ColorConvertU32ToFloat4(theme->event_border_focused);
+  colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.0f, 1.0f, 1.0f, 0.70f);
+  colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
+  colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.20f, 0.20f, 0.20f, 0.35f);
+
+  style.WindowRounding = 4.0f;
+  style.ChildRounding = 4.0f;
+  style.FrameRounding = 3.0f;
+  style.PopupRounding = 4.0f;
+  style.ScrollbarRounding = 9.0f;
+  style.GrabRounding = 3.0f;
+  style.TabRounding = 4.0f;
+  
+  style.WindowBorderSize = 1.0f;
+  style.ChildBorderSize = 1.0f;
+  style.PopupBorderSize = 1.0f;
+  style.FrameBorderSize = 1.0f;
+  style.TabBorderSize = 0.0f;
+}
 
 }  // extern "C"

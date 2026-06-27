@@ -46,4 +46,20 @@ EM_JS(void, platform_open_file_dialog, (), {
   };
   input.click();
 })
+
+EM_JS(void, platform_set_setting, (const char* key, const char* value), {
+  var keyStr = UTF8ToString(key);
+  var valStr = UTF8ToString(value);
+  localStorage.setItem("ztracing_" + keyStr, valStr);
+})
+
+EM_JS(bool, platform_get_setting, (const char* key, char* out_val, int max_len), {
+  var keyStr = UTF8ToString(key);
+  var val = localStorage.getItem("ztracing_" + keyStr);
+  if (val === null) {
+    return false;
+  }
+  stringToUTF8(val, out_val, max_len);
+  return true;
+})
 /* clang-format on */

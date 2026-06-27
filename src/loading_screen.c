@@ -27,7 +27,7 @@ void loading_screen_draw(const char* filename, size_t event_count,
     ig_vec2_t file_size = ig_calc_text_size(filename);
     ig_set_cursor_screen_pos(
         (ig_vec2_t){center.x - file_size.x * 0.5f, center.y - 40.0f});
-    ig_text_colored((ig_vec4_t){0.7f, 0.7f, 0.7f, 1.0f}, "%s", filename);
+    ig_text_colored(ig_color_convert_u32_to_float4(theme->ruler_text), "%s", filename);
   }
 
   if (input_total_bytes > 0) {

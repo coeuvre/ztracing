@@ -33,3 +33,15 @@ bool platform_is_mac() {
 #endif
   return is_mac;
 }
+
+void platform_set_setting(const char* key, const char* value) {
+  (void)key;
+  (void)value;
+}
+
+bool platform_get_setting(const char* key, char* out_val, int max_len) {
+  (void)key;
+  (void)out_val;
+  (void)max_len;
+  return false;
+}

@@ -72,11 +72,7 @@ static void draw_selection_shortcuts(const theme_t* theme) {
 static void app_apply_theme(app_t* app, const theme_t* theme) {
   if (app->theme == theme) return;
   app->theme = theme;
-  if (theme == theme_get_dark()) {
-    ig_style_colors_dark();
-  } else {
-    ig_style_colors_light();
-  }
+  ig_style_apply_theme(theme);
 }
 
 void app_stop_jobs(app_t* app) {
@@ -110,6 +106,17 @@ void app_init(app_t* app, allocator_t* parent) {
   app->active_search_task = nullptr;
 
   trace_viewer_init(&app->trace_viewer);
+
+  // Load saved theme mode
+  char theme_str[16] = {0};
+  app->theme_mode = THEME_MODE_AUTO; // Default
+  if (platform_get_setting("theme_mode", theme_str, sizeof(theme_str))) {
+    if (strcmp(theme_str, "dark") == 0) {
+      app->theme_mode = THEME_MODE_DARK;
+    } else if (strcmp(theme_str, "light") == 0) {
+      app->theme_mode = THEME_MODE_LIGHT;
+    }
+  }
 }
 
 void app_deinit(app_t* app) {
@@ -294,16 +301,19 @@ void app_update(app_t* app) {
                          true)) {
           app->theme_mode = THEME_MODE_AUTO;
           app_on_theme_changed(app, platform_is_dark_mode());
+          platform_set_setting("theme_mode", "auto");
         }
         if (ig_menu_item("Dark", nullptr, app->theme_mode == THEME_MODE_DARK,
                          true)) {
           app->theme_mode = THEME_MODE_DARK;
           app_apply_theme(app, theme_get_dark());
+          platform_set_setting("theme_mode", "dark");
         }
         if (ig_menu_item("Light", nullptr, app->theme_mode == THEME_MODE_LIGHT,
                          true)) {
           app->theme_mode = THEME_MODE_LIGHT;
           app_apply_theme(app, theme_get_light());
+          platform_set_setting("theme_mode", "light");
         }
         ig_end_menu();
       }
@@ -479,6 +489,10 @@ void app_update(app_t* app) {
 void app_on_theme_changed(app_t* app, bool is_dark) {
   if (app->theme_mode == THEME_MODE_AUTO) {
     app_apply_theme(app, is_dark ? theme_get_dark() : theme_get_light());
+  } else if (app->theme_mode == THEME_MODE_DARK) {
+    app_apply_theme(app, theme_get_dark());
+  } else if (app->theme_mode == THEME_MODE_LIGHT) {
+    app_apply_theme(app, theme_get_light());
   }
 }
 

@@ -20,6 +20,10 @@ void platform_teardown_workers();
 void platform_open_file_dialog();
 bool platform_is_main_thread(void);
 
+// Settings persistence
+void platform_set_setting(const char* key, const char* value);
+bool platform_get_setting(const char* key, char* out_val, int max_len);
+
 #ifdef __cplusplus
 }
 #endif

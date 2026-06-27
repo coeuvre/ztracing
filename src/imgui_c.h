@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "src/imgui_types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -18,15 +20,6 @@ typedef struct ig_list_clipper ig_list_clipper_t;
 typedef struct ig_viewport ig_viewport_t;
 typedef struct ig_dock_node ig_dock_node_t;
 typedef struct ig_draw_data ig_draw_data_t;
-
-// Basic structures
-typedef struct ig_vec2 {
-  float x, y;
-} ig_vec2_t;
-
-typedef struct ig_vec4 {
-  float x, y, z, w;
-} ig_vec4_t;
 
 // Flags & Enums (exposing them as typedef int for version safety, initialized
 // in .cc)
@@ -232,6 +225,8 @@ void ig_pop_style_var(int count);
 
 void ig_style_colors_dark(void);
 void ig_style_colors_light(void);
+struct Theme;
+void ig_style_apply_theme(const struct Theme* theme);
 
 // Layout & Spacing
 void ig_same_line(float offset_from_start_x, float spacing);
@@ -362,10 +357,6 @@ void ig_text_wrapped(const char* fmt, ...)
 // Color helpers
 uint32_t ig_color_convert_float4_to_u32(ig_vec4_t in);
 ig_vec4_t ig_color_convert_u32_to_float4(uint32_t in);
-
-#define IG_COL32(R, G, B, A)                                              \
-  (((uint32_t)(A) << 24) | ((uint32_t)(B) << 16) | ((uint32_t)(G) << 8) | \
-   ((uint32_t)(R) << 0))
 
 #ifdef __cplusplus
 }
