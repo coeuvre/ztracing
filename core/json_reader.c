@@ -187,15 +187,87 @@ static bool json_reader_read_number(json_reader_t* r, json_token_t* out_token) {
     pos++;
   }
 
-  if (pos < len && is_digit(buf[pos])) {
+  if (pos >= len) {
+    return false;
+  }
+
+  // Integer part
+  if (buf[pos] == '0') {
+    pos++;
+  } else if (buf[pos] >= '1' && buf[pos] <= '9') {
+    pos++;
+    while (pos < len && is_digit(buf[pos])) {
+      pos++;
+    }
+  } else {
+    return false;
+  }
+
+  bool is_double = false;
+
+  // Fractional part
+  if (pos < len && buf[pos] == '.') {
+    pos++;
+    if (pos >= len || !is_digit(buf[pos])) {
+      return false;
+    }
+    is_double = true;
+    pos++;
+    while (pos < len && is_digit(buf[pos])) {
+      pos++;
+    }
+  }
+
+  // Exponent part
+  if (pos < len && (buf[pos] == 'e' || buf[pos] == 'E')) {
+    pos++;
+    is_double = true;
+    if (pos < len && (buf[pos] == '+' || buf[pos] == '-')) {
+      pos++;
+    }
+    if (pos >= len || !is_digit(buf[pos])) {
+      return false;
+    }
+    pos++;
+    while (pos < len && is_digit(buf[pos])) {
+      pos++;
+    }
+  }
+
+  // Parsed successfully! Let's fill out_token
+  size_t slice_len = pos - start;
+  out_token->val.str = string_view_from_parts(buf + start, slice_len);
+
+  if (is_double) {
+    double double_val;
+    if (slice_len < 63) {
+      char tmp[64];
+      memcpy(tmp, buf + start, slice_len);
+      tmp[slice_len] = '\0';
+      double_val = atof(tmp);
+    } else {
+      char* tmp = (char*)malloc(slice_len + 1);
+      if (tmp) {
+        memcpy(tmp, buf + start, slice_len);
+        tmp[slice_len] = '\0';
+        double_val = atof(tmp);
+        free(tmp);
+      } else {
+        double_val = 0.0;
+      }
+    }
+    out_token->val.f64 = double_val;
+    out_token->type = JSON_TOKEN_NUMBER_F64;
+  } else {
+    // Parse integer
     int64_t int_val = 0;
     bool overflowed = false;
-
-    // Scan integer part
-    while (pos < len && is_digit(buf[pos])) {
-      int digit = buf[pos] - '0';
-      // Highly optimized overflow check (predicts false with near-100%
-      // accuracy)
+    size_t scan_pos = start;
+    if (buf[scan_pos] == '-') {
+      scan_pos++;
+    }
+    while (scan_pos < pos) {
+      int digit = buf[scan_pos] - '0';
       if (int_val >= 92233720368547758LL) {
         if (int_val > (INT64_MAX - digit) / 10) {
           overflowed = true;
@@ -204,84 +276,19 @@ static bool json_reader_read_number(json_reader_t* r, json_token_t* out_token) {
       if (!overflowed) {
         int_val = int_val * 10 + digit;
       }
-      pos++;
+      scan_pos++;
     }
 
-    // Check if it is a double
-    if (pos < len && buf[pos] == '.') {
-      pos++;
-      double frac_val = 0.0;
-      double divisor = 1.0;
-      while (pos < len && is_digit(buf[pos])) {
-        frac_val = frac_val * 10.0 + (buf[pos] - '0');
-        divisor *= 10.0;
-        pos++;
-      }
-
-      double double_val = (double)int_val + (frac_val / divisor);
-
-      // Handle exponent part if present (rare fallback)
-      if (pos < len && (buf[pos] == 'e' || buf[pos] == 'E')) {
-        while (pos < len) {
-          char c = buf[pos];
-          if (is_digit(c) || c == '.' || c == 'e' || c == 'E' || c == '+' ||
-              c == '-') {
-            pos++;
-          } else {
-            break;
-          }
-        }
-        char tmp[64];
-        size_t slice_len = pos - start;
-        if (slice_len < 63) {
-          memcpy(tmp, buf + start, slice_len);
-          tmp[slice_len] = '\0';
-          out_token->val.f64 = atof(tmp);
-        } else {
-          out_token->val.f64 = 0.0;
-        }
-      } else {
-        out_token->val.f64 = neg ? -double_val : double_val;
-      }
-      out_token->val.str = string_view_from_parts(buf + start, pos - start);
-      out_token->type = JSON_TOKEN_NUMBER_F64;
-    } else if (pos < len && (buf[pos] == 'e' || buf[pos] == 'E')) {
-      // Exponent directly after integer part (e.g. 1e9)
-      while (pos < len) {
-        char c = buf[pos];
-        if (is_digit(c) || c == '.' || c == 'e' || c == 'E' || c == '+' ||
-            c == '-') {
-          pos++;
-        } else {
-          break;
-        }
-      }
-      char tmp[64];
-      size_t slice_len = pos - start;
-      if (slice_len < 63) {
-        memcpy(tmp, buf + start, slice_len);
-        tmp[slice_len] = '\0';
-        out_token->val.f64 = atof(tmp);
-      } else {
-        out_token->val.f64 = 0.0;
-      }
-      out_token->val.str = string_view_from_parts(buf + start, pos - start);
-      out_token->type = JSON_TOKEN_NUMBER_F64;
+    if (overflowed) {
+      out_token->val.i64 = neg ? INT64_MIN : INT64_MAX;
     } else {
-      // It's an integer!
-      if (overflowed) {
-        out_token->val.i64 = neg ? INT64_MIN : INT64_MAX;
-      } else {
-        out_token->val.i64 = neg ? -int_val : int_val;
-      }
-      out_token->val.str = string_view_from_parts(buf + start, pos - start);
-      out_token->type = JSON_TOKEN_NUMBER_I64;
+      out_token->val.i64 = neg ? -int_val : int_val;
     }
-
-    r->pos = pos;
-    return true;
+    out_token->type = JSON_TOKEN_NUMBER_I64;
   }
-  return false;
+
+  r->pos = pos;
+  return true;
 }
 
 // Checks if the buffer starting at the current position matches 'literal'.
