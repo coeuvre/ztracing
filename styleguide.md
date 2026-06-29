@@ -17,12 +17,12 @@ This document defines the coding standards, style guidelines, and mandates for t
     #define NUM_WORKERS 2
     ```
 *   **Warnings**: Strict warnings are enabled for all local code (`-Wall -Wextra -Werror` etc.).
-*   **Include Guards**: All internal headers must use include guards matching the pattern `ZTRACING_SRC_<FILE>_H_` (not `#pragma once`).
+*   **Include Guards**: All internal headers must use include guards matching the pattern `<FILE>_H` (not `#pragma once`).
     ```c
-    #ifndef ZTRACING_SRC_STRING_H_
-    #define ZTRACING_SRC_STRING_H_
+    #ifndef CORE_STRING_H
+    #define CORE_STRING_H
     // ...
-    #endif // ZTRACING_SRC_STRING_H_
+    #endif // CORE_STRING_H
     ```
 
 ---

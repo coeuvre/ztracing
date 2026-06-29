@@ -1,18 +1,24 @@
+# ztracing --help
 Usage: src/ztracing <subcommand> <trace_file> [options]
-
-Global Options:
-  --pretty                     Enable pretty-printed JSON output
 
 Subcommands:
   summary <trace_file>         Print high-level trace metadata (counts, duration).
-  tracks <trace_file>          List all organized tracks (names, events, depths).
+                               Options: [--list-tracks]
   inspect <trace_file>         Inspect detailed event parameters at a timestamp.
                                Options: --track <name> --ts <ts_us>
   query <trace_file>           Search and extract matching events.
                                Options: [--track <name>] [--match <substr>]
                                         [--t-start <us>] [--t-end <us>]
                                         [--max-depth <n>] [--limit <n>]
-  heatmap <trace_file>         Calculate the 2D Activity Heatmap Grid.
+  concurrency <trace_file>     Visualize system load and concurrency.
+                               Options: [--buckets <n>]
+  aggregate <trace_file>       Aggregate event durations and counts.
+                               Options: [--group-by name|category]
+                                        [--sort duration|count]
+                                        [--min-count <n>]
+  diff <trace_1> <trace_2>     Compare two traces side-by-side.
+                               Options: [--group-by name|category]
+                                        [--sort dur-delta|count-delta]
   histogram <trace_file>       Compute duration histogram buckets.
                                Options: [--track <name>] [--match <substr>]
                                         [--t-start <us>] [--t-end <us>]

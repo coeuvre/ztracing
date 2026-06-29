@@ -2,21 +2,12 @@
 
 ## Project Mandates
 
-- **Language**: C-style C++. Avoid complex C++ abstractions.
 - **Standards**: C23 for the production codebase and headless runner (compiled as pure C without C++ dependencies), C++20 for unit tests and browser platform integration.
-- **Style**: Google C++ Style (modified: snake_case for all functions, SCREAMING_CASE for constants).
-- **Include Guards**: Must follow the pattern `ZTRACING_SRC_<FILE>_H_`.
-- **Warnings**: Strict warnings are enabled for all local code (`-Wall -Wextra -Werror` etc.) via macros in `src/defs.bzl`. Includes `-Wno-missing-field-initializers` (GCC) and `-Wno-missing-designated-field-initializers` (Clang) to support the project's concise ZII style.
-- **ZII & Initialization**: 
-    - **Pattern**: Prefer Zero-Is-Initialization (ZII) via `{}` or designated initializers (C++20).
-    - **No `memset(0)`**: Never use `memset(ptr, 0, sizeof(T))` for struct initialization.
-    - **Designated Initializers**: Use the concise `.field = value` pattern for "ZII + setting" operations. Redundant `= 0` or `= nullptr` initializers are omitted. Fields MUST be listed in their exact declaration order to satisfy C++20 requirements.
-    - **Non-Aggregates**: For types with `std::atomic` or `std::thread` (non-aggregates), use placement new (`new (ptr) T()`) to ensure correct value-initialization.
+- **Style**: Check for styleguide.md.
 - **UI Framework**: Dear ImGui (v1.92.7-docking).
 - **Backend**: Custom WebGL 2.0 (Rendering) and Custom Emscripten HTML5 (Platform).
 - **Build System**: Bazel with Bzlmod.
 - **Target**: WASM/Browser via Emscripten.
-- **Includes**: All internal headers must be included using their full project path (e.g., `#include "src/app.h"`).
 
 ## Development Workflow
 
@@ -41,8 +32,8 @@
         - **Conditional Indentation**: Supports both compact (minified) and pretty-printed (formatted) JSON output via a compile/initialization-time `indent` configuration parameter, generating parent-aligned indents and spaced formatting with zero dynamic heap overhead.
         - **Active Depth Clamping**: Actively clamps structural depth at 32 levels to guarantee absolute memory safety (no buffer overflows or integer underflows) under malicious or extremely nested inputs.
         - **Explicit Output Naming**: Adheres to a strict API safety convention where all return-by-pointer/mutation parameters are explicitly prefixed with `out_` (e.g. `out_buf`, `out_val`, `out_token`) to clarify mutability bounds.
-- `src/array_list`: C-style `array_list_t` with explicit allocation, macro-based type safety, and ZII support via `{}`.
-- `src/hash_table`: C-style `hash_table_t` with open addressing and linear probing. 
+- `core/darray`: C-style `darray_t` with explicit allocation, macro-based type safety, and ZII support via `{}`.
+- `core/hash_table`: C-style `hash_table_t` with open addressing and linear probing.
     - **ZII Support**: Fully Zero-Is-Initialization compatible. Internal storage is lazily allocated upon the first `put` operation.
     - **Hash Caching**: Stores the precomputed hash in each entry to accelerate lookups by avoiding equality checks when hashes differ.
     - **Fast Resizing**: Uses cached hashes during table expansion to eliminate redundant recomputations.
@@ -329,3 +320,24 @@ To maintain a smooth 60 FPS even on systems without hardware acceleration (e.g.,
     - Release builds (`-c opt`): `LOG_LEVEL_INFO` (hides `LOG_DEBUG`).
     - Debug builds: `LOG_LEVEL_DEBUG` (shows all).
 - **Override**: Use `--copt="-DLOG_LEVEL=<LEVEL>"` (e.g., `--copt="-DLOG_LEVEL=LOG_LEVEL_WARN"`) to set the minimum log level at compile-time.
+
+## CLI Tool
+
+The project includes a high-performance native CLI tool (`ztracing`) for trace analysis.
+
+- **Output Formatting**:
+    - **Tables**: All subcommands output formatted text tables. Rendered using a custom `cli_table` utility.
+- **Table Utility (`cli_table`)**:
+    - Supports left/right alignment per column (numeric columns are right-aligned).
+    - Supports dynamic width calculation.
+    - Correctly handles UTF-8 visual alignment (e.g. for `█` and `░` blocks) by calculating visual width (code points) instead of byte length.
+    - Arena-backed: All table allocations are scoped to an internal arena (`cli_table_t`), simplifying the API, and are reclaimed at once in `cli_table_deinit`.
+    - Terminal Width Aware: Automatically detects terminal width (or respects the `COLUMNS` env var) and proportionally shrinks and truncates dynamic columns if they exceed the available width.
+- **Subcommands**:
+    - `summary <trace_file> [--list-tracks]`: Prints high-level metadata (Table).
+    - `inspect <trace_file> --track <name> --ts <ts_us>`: Details of a specific event, including parent/children hierarchy (Table).
+    - `concurrency <trace_file> [--buckets <n>]`: Computes active thread concurrency over `n` time buckets, showing a visual ASCII bar chart (Table).
+    - `aggregate <trace_file> [--group-by <name|category>] [--sort <duration|count>] [--min-count <n>]`: Groups events and shows total/average durations, skipping events with count < `min-count` (default is 2) with a footnote (Table).
+    - `diff <baseline_file> <target_file> [--group-by <name|category>] [--sort <dur-delta|count-delta>]`: Compares two traces side-by-side, aligning events by their string values (Table).
+    - `query <trace_file> [filters]`: Chronological search with filters (`--track`, `--match`, `--t-start`, `--t-end`, `--max-depth`, `--limit`) (Table).
+    - `histogram <trace_file> [filters]`: Computes duration distribution buckets with a visual ASCII distribution bar (Table).

@@ -1,0 +1,5 @@
+# ztracing aggregate aggregate_min_count.json --min-count 5
+Event Name                     | Total Duration (s) | Event Count | Average Duration (ms)
+-----------------------------------------------------------------------------------------
+
+* Skipped 2 events with count < 5.

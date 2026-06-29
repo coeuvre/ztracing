@@ -1,0 +1,6 @@
+# ztracing aggregate aggregate.json
+Event Name                     | Total Duration (s) | Event Count | Average Duration (ms)
+-----------------------------------------------------------------------------------------
+task_A                         |               0.00 |           2 |                  0.40
+
+* Skipped 1 single-instance events (count = 1).

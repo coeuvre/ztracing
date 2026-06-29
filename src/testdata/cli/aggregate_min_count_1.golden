@@ -1,0 +1,5 @@
+# ztracing aggregate aggregate_min_count.json --min-count 1
+Event Name                     | Total Duration (s) | Event Count | Average Duration (ms)
+-----------------------------------------------------------------------------------------
+task_B                         |               0.00 |           1 |                  1.00
+task_A                         |               0.00 |           2 |                  0.40

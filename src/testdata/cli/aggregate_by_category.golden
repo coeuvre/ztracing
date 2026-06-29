@@ -1,0 +1,6 @@
+# ztracing aggregate aggregate.json --group-by category
+Event Category                 | Total Duration (s) | Event Count | Average Duration (ms)
+-----------------------------------------------------------------------------------------
+cpu                            |               0.00 |           2 |                  0.40
+
+* Skipped 1 single-instance events (count = 1).

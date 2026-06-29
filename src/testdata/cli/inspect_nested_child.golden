@@ -1,17 +1,11 @@
-[
-  {
-    "name": "child_task_A",
-    "track": "",
-    "ts_us": 1100,
-    "dur_us": 300,
-    "self_time_us": 300,
-    "depth": 1,
-    "parent": {
-      "track": "",
-      "ts_us": 1000
-    },
-    "children": [
-
-    ]
-  }
-]
+# ztracing inspect inspect_nested.json --track "" --ts 1100
+Property             | Value                         
+-----------------------------------------------------
+Name                 | child_task_A                  
+Track                |                               
+Timestamp (us)       | 1100                          
+Duration (us)        | 300                           
+Self Time (us)       | 300                           
+Depth                | 1                             
+Parent Name          | parent_task                   
+Parent TS (us)       | 1000                          

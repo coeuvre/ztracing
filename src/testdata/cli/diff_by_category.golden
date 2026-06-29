@@ -1,0 +1,5 @@
+# ztracing diff diff_base.json diff_target.json --group-by category
+Event Category                 | Baseline Dur (s) | Target Dur (s) |  Delta Dur (s) | Delta Count
+-------------------------------------------------------------------------------------------------
+cpu                            |             0.00 |           0.00 |          +0.00 |          +1
+gpu                            |             0.00 |           0.00 |          -0.00 |          +0

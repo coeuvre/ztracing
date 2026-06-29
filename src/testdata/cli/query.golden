@@ -1,0 +1,5 @@
+# ztracing query query_standard.json
+Event Name                     | Track                |   Start Time (us) |   Duration (us) | Depth
+---------------------------------------------------------------------------------------------------
+task_A                         |                      |              1000 |             500 |     0
+task_B                         |                      |              2000 |            1000 |     0

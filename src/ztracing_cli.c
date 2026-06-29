@@ -7,7 +7,10 @@
 #include "core/json_writer.h"
 #include "core/darray.h"
 #include "src/trace_data.h"
-#include "src/trace_heatmap.h"
+#include "src/trace_concurrency.h"
+#include "src/trace_aggregate.h"
+#include "src/trace_diff.h"
+#include "src/cli_table.h"
 #include "src/trace_histogram.h"
 #include "src/trace_loader.h"
 #include "src/trace_viewer.h"
@@ -17,17 +20,12 @@
 static void print_usage(const char* prog_name) {
   fprintf(stderr, "Usage: %s <subcommand> <trace_file> [options]\n\n",
           prog_name);
-  fprintf(stderr, "Global Options:\n");
-  fprintf(
-      stderr,
-      "  --pretty                     Enable pretty-printed JSON output\n\n");
   fprintf(stderr, "Subcommands:\n");
   fprintf(stderr,
           "  summary <trace_file>         Print high-level trace metadata "
           "(counts, duration).\n");
   fprintf(stderr,
-          "  tracks <trace_file>          List all organized tracks (names, "
-          "events, depths).\n");
+          "                               Options: [--list-tracks]\n");
   fprintf(stderr,
           "  inspect <trace_file>         Inspect detailed event parameters "
           "at a timestamp.\n");
@@ -47,8 +45,23 @@ static void print_usage(const char* prog_name) {
           "                                        [--max-depth <n>] "
           "[--limit <n>]\n");
   fprintf(stderr,
-          "  heatmap <trace_file>         Calculate the 2D Activity Heatmap "
-          "Grid.\n");
+          "  concurrency <trace_file>     Visualize system load and concurrency.\n");
+  fprintf(stderr,
+          "                               Options: [--buckets <n>]\n");
+  fprintf(stderr,
+          "  aggregate <trace_file>       Aggregate event durations and counts.\n");
+  fprintf(stderr,
+          "                               Options: [--group-by name|category]\n");
+  fprintf(stderr,
+          "                                        [--sort duration|count]\n");
+  fprintf(stderr,
+          "                                        [--min-count <n>]\n");
+  fprintf(stderr,
+          "  diff <trace_1> <trace_2>     Compare two traces side-by-side.\n");
+  fprintf(stderr,
+          "                               Options: [--group-by name|category]\n");
+  fprintf(stderr,
+          "                                        [--sort dur-delta|count-delta]\n");
   fprintf(stderr,
           "  histogram <trace_file>       Compute duration histogram "
           "buckets.\n");
@@ -63,7 +76,8 @@ static void print_usage(const char* prog_name) {
 typedef struct cli_args {
   const char* subcommand;
   const char* trace_file;
-  bool pretty;
+  const char* trace_file_2;
+  bool list_tracks;
 
   // Histogram / Filtering options
   const char* track_filter;
@@ -72,10 +86,16 @@ typedef struct cli_args {
   int64_t t_end;
   int max_depth;
   int limit;
+  int concurrency_buckets;
+  int min_count;
+  string_view_t group_by;
+  string_view_t sort_by;
   bool has_t_start;
   bool has_t_end;
   bool has_max_depth;
   bool has_limit;
+  bool has_concurrency_buckets;
+  bool has_min_count;
 } cli_args_t;
 
 // Parses CLI arguments manually.
@@ -90,10 +110,8 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
   // Parse global flags or subcommand
   while (success && i < argc) {
     string_view_t arg = string_view_from_cstr(argv[i]);
-    if (string_view_eq(arg, SV("--pretty"))) {
-      out_args->pretty = true;
-    } else if (string_view_eq(arg, SV("-h")) ||
-               string_view_eq(arg, SV("--help"))) {
+    if (string_view_eq(arg, SV("-h")) ||
+        string_view_eq(arg, SV("--help"))) {
       success = false;
     } else if (arg.len > 0 && arg.ptr[0] == '-') {
       fprintf(stderr, "Error: Unknown global option '%s'\n", argv[i]);
@@ -127,12 +145,26 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
     }
   }
 
+  // If diff, we need a second trace file
+  if (success && out_args->subcommand && strcmp(out_args->subcommand, "diff") == 0) {
+    if (i < argc) {
+      string_view_t arg = string_view_from_cstr(argv[i]);
+      if (string_view_eq(arg, SV("-h")) || string_view_eq(arg, SV("--help"))) {
+        success = false;
+      } else {
+        out_args->trace_file_2 = argv[i];
+        i++;
+      }
+    } else {
+      fprintf(stderr, "Error: Missing second trace file argument for diff.\n");
+      success = false;
+    }
+  }
+
   // Parse remaining options
   while (success && i < argc) {
     string_view_t arg = string_view_from_cstr(argv[i]);
-    if (string_view_eq(arg, SV("--pretty"))) {
-      out_args->pretty = true;
-    } else if (string_view_eq(arg, SV("--ts"))) {
+    if (string_view_eq(arg, SV("--ts"))) {
       if (i + 1 < argc) {
         out_args->t_start = (int64_t)atoll(argv[i + 1]);
         out_args->has_t_start = true;
@@ -193,6 +225,42 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
         fprintf(stderr, "Error: Missing value for option '--limit'\n");
         success = false;
       }
+    } else if (string_view_eq(arg, SV("--list-tracks"))) {
+      out_args->list_tracks = true;
+    } else if (string_view_eq(arg, SV("--buckets"))) {
+      if (i + 1 < argc) {
+        out_args->concurrency_buckets = atoi(argv[i + 1]);
+        out_args->has_concurrency_buckets = true;
+        i++;
+      } else {
+        fprintf(stderr, "Error: Missing value for option '--buckets'\n");
+        success = false;
+      }
+    } else if (string_view_eq(arg, SV("--group-by"))) {
+      if (i + 1 < argc) {
+        out_args->group_by = string_view_from_cstr(argv[i + 1]);
+        i++;
+      } else {
+        fprintf(stderr, "Error: Missing value for option '--group-by'\n");
+        success = false;
+      }
+    } else if (string_view_eq(arg, SV("--sort"))) {
+      if (i + 1 < argc) {
+        out_args->sort_by = string_view_from_cstr(argv[i + 1]);
+        i++;
+      } else {
+        fprintf(stderr, "Error: Missing value for option '--sort'\n");
+        success = false;
+      }
+    } else if (string_view_eq(arg, SV("--min-count"))) {
+      if (i + 1 < argc) {
+        out_args->min_count = atoi(argv[i + 1]);
+        out_args->has_min_count = true;
+        i++;
+      } else {
+        fprintf(stderr, "Error: Missing value for option '--min-count'\n");
+        success = false;
+      }
     } else {
       fprintf(stderr, "Error: Unknown option '%s' for subcommand '%s'\n",
               argv[i], out_args->subcommand);
@@ -205,187 +273,283 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
 }
 
 // Handles the 'summary' subcommand.
-static int handle_summary(const trace_data_t* td, size_t track_count,
-                          int64_t min_ts, int64_t max_ts, bool pretty,
+static int handle_summary(const trace_data_t* td, const darray_track_t* tracks,
+                          int64_t min_ts, int64_t max_ts, bool list_tracks,
                           allocator_t* a) {
-  // Serialize summary
-  darray_uint8_t json_buf = {};
-  json_writer_t w;
-  json_writer_init(&w, pretty, &json_buf, a);
+  (void)a; // Unused now since cli_table uses its own arena
 
-  json_writer_begin_object(&w);
+  cli_table_t summary_table = {};
+  cli_table_init(&summary_table);
 
-  json_writer_name(&w, SV("event_count"));
-  json_writer_number_int(&w, (int64_t)td->events.len);
+  cli_table_add_column(&summary_table, SV("Metric"), CLI_ALIGN_LEFT, 25, true);
+  cli_table_add_column(&summary_table, SV("Value"), CLI_ALIGN_LEFT, 15, true);
 
-  json_writer_name(&w, SV("track_count"));
-  json_writer_number_int(&w, (int64_t)track_count);
+  cli_table_add_row(&summary_table);
+  cli_table_set_cell(&summary_table, 0, SV("Event Count"));
+  cli_table_set_cell_fmt(&summary_table, 1, "%zu", td->events.len);
 
-  json_writer_name(&w, SV("min_ts_us"));
-  json_writer_number_double(&w, (double)min_ts);
+  cli_table_add_row(&summary_table);
+  cli_table_set_cell(&summary_table, 0, SV("Track Count"));
+  cli_table_set_cell_fmt(&summary_table, 1, "%zu", tracks->len);
 
-  json_writer_name(&w, SV("max_ts_us"));
-  json_writer_number_double(&w, (double)max_ts);
+  cli_table_add_row(&summary_table);
+  cli_table_set_cell(&summary_table, 0, SV("Min Timestamp (us)"));
+  cli_table_set_cell_fmt(&summary_table, 1, "%ld", (long)min_ts);
 
-  json_writer_name(&w, SV("duration_ms"));
-  json_writer_number_double(&w, (double)(max_ts - min_ts) / 1000.0);
+  cli_table_add_row(&summary_table);
+  cli_table_set_cell(&summary_table, 0, SV("Max Timestamp (us)"));
+  cli_table_set_cell_fmt(&summary_table, 1, "%ld", (long)max_ts);
 
-  json_writer_end_object(&w);
+  cli_table_add_row(&summary_table);
+  cli_table_set_cell(&summary_table, 0, SV("Duration (ms)"));
+  cli_table_set_cell_fmt(&summary_table, 1, "%.3f", (double)(max_ts - min_ts) / 1000.0);
 
-  darray_push(&json_buf, (uint8_t)'\0', a);
+  cli_table_print(&summary_table);
+  cli_table_deinit(&summary_table);
 
-  // Output to stdout
-  printf("%s\n", (const char*)json_buf.ptr);
+  if (list_tracks) {
+    printf("\n");
+    cli_table_t tracks_table = {};
+    cli_table_init(&tracks_table);
 
-  // Clean up
-  darray_deinit(&json_buf, a);
+    cli_table_add_column(&tracks_table, SV("Index"), CLI_ALIGN_RIGHT, 5, true);
+    cli_table_add_column(&tracks_table, SV("Track Name"), CLI_ALIGN_LEFT, 20, true);
+    cli_table_add_column(&tracks_table, SV("Type"), CLI_ALIGN_LEFT, 10, true);
+    cli_table_add_column(&tracks_table, SV("PID"), CLI_ALIGN_RIGHT, 8, true);
+    cli_table_add_column(&tracks_table, SV("TID"), CLI_ALIGN_RIGHT, 8, true);
+    cli_table_add_column(&tracks_table, SV("Event Count"), CLI_ALIGN_RIGHT, 12, true);
+    cli_table_add_column(&tracks_table, SV("Max Depth"), CLI_ALIGN_RIGHT, 10, true);
 
-  return 0;
-}
-
-// Handles the 'tracks' subcommand.
-static int handle_tracks(const trace_data_t* td, const darray_track_t* tracks,
-                         bool pretty, allocator_t* a) {
-  // Serialize tracks
-  darray_uint8_t json_buf = {};
-  json_writer_t w;
-  json_writer_init(&w, pretty, &json_buf, a);
-
-  json_writer_begin_array(&w);
-
-  track_t* tracks_data = tracks->ptr;
-  for (size_t i = 0; i < tracks->len; i++) {
-    const track_t* t = &tracks_data[i];
-
-    json_writer_begin_object(&w);
-
-    json_writer_name(&w, SV("index"));
-    json_writer_number_int(&w, (int64_t)i);
-
-    json_writer_name(&w, SV("name"));
-    string_view_t track_name = trace_data_get_string(td, t->name_ref);
-    json_writer_string(&w, track_name);
-
-    json_writer_name(&w, SV("type"));
-    if (t->type == TRACK_TYPE_THREAD) {
-      json_writer_string(&w, SV("THREAD"));
-    } else {
-      json_writer_string(&w, SV("COUNTER"));
-    }
-
-    json_writer_name(&w, SV("pid"));
-    json_writer_number_int(&w, (int64_t)t->pid);
-
-    json_writer_name(&w, SV("tid"));
-    json_writer_number_int(&w, (int64_t)t->tid);
-
-    json_writer_name(&w, SV("event_count"));
-    json_writer_number_int(&w, (int64_t)t->event_indices.len);
-
-    json_writer_name(&w, SV("max_depth"));
-    json_writer_number_int(&w, (int64_t)t->max_depth);
-
-    json_writer_end_object(&w);
-  }
-
-  json_writer_end_array(&w);
-
-  darray_push(&json_buf, (uint8_t)'\0', a);
-
-  // Output to stdout
-  printf("%s\n", (const char*)json_buf.ptr);
-
-  // Clean up
-  darray_deinit(&json_buf, a);
-
-  return 0;
-}
-
-// Handles the 'heatmap' subcommand.
-static int handle_heatmap(const trace_data_t* td, const darray_track_t* tracks,
-                          int64_t min_ts, int64_t max_ts, bool pretty,
-                          allocator_t* a) {
-  // Preallocate the heatmap densities buffer (1 trace_heatmap_t per track)
-  darray_t(trace_heatmap_t) heatmap_list = {};
-  darray_resize(&heatmap_list, tracks->len, a);
-  trace_heatmap_t* densities = heatmap_list.ptr;
-
-  // Compute heatmap
-  trace_heatmap_compute(tracks, td, min_ts, max_ts, densities);
-
-  // Serialize to JSON
-  darray_uint8_t json_buf = {};
-  json_writer_t w;
-  json_writer_init(&w, pretty, &json_buf, a);
-
-  json_writer_begin_array(&w);
-
-  track_t* tracks_data = tracks->ptr;
-  for (size_t i = 0; i < tracks->len; i++) {
-    const track_t* t = &tracks_data[i];
-    const trace_heatmap_t* h = &densities[i];
-
-    // Check if this track has any active buckets
-    bool has_active = false;
-    for (int b = 0; b < TRACE_HEATMAP_BUCKET_COUNT; b++) {
-      if (h->event_indices[b] != (size_t)-1) {
-        has_active = true;
-        break;
-      }
-    }
-
-    // Only serialize the track if it has at least one active bucket
-    if (has_active) {
-      json_writer_begin_object(&w);
-
+    track_t* tracks_data = tracks->ptr;
+    for (size_t i = 0; i < tracks->len; i++) {
+      const track_t* t = &tracks_data[i];
       string_view_t track_name = trace_data_get_string(td, t->name_ref);
-      json_writer_name(&w, SV("track_name"));
-      json_writer_string(&w, track_name);
 
-      json_writer_name(&w, SV("track_index"));
-      json_writer_number_int(&w, (int64_t)i);
+      cli_table_add_row(&tracks_table);
+      cli_table_set_cell_fmt(&tracks_table, 0, "%zu", i);
+      cli_table_set_cell(&tracks_table, 1, track_name);
+      cli_table_set_cell(&tracks_table, 2, t->type == TRACK_TYPE_THREAD ? SV("THREAD") : SV("COUNTER"));
+      cli_table_set_cell_fmt(&tracks_table, 3, "%d", t->pid);
+      cli_table_set_cell_fmt(&tracks_table, 4, "%d", t->tid);
+      cli_table_set_cell_fmt(&tracks_table, 5, "%zu", t->event_indices.len);
+      cli_table_set_cell_fmt(&tracks_table, 6, "%d", t->max_depth);
+    }
 
-      json_writer_name(&w, SV("buckets"));
-      json_writer_begin_array(&w);
+    cli_table_print(&tracks_table);
+    cli_table_deinit(&tracks_table);
+  }
 
-      for (int b = 0; b < TRACE_HEATMAP_BUCKET_COUNT; b++) {
-        size_t event_idx = h->event_indices[b];
-        if (event_idx != (size_t)-1 && event_idx < td->events.len) {
-          const trace_event_persisted_t* e = &td->events.ptr[event_idx];
+  return 0;
+}
 
-          json_writer_begin_object(&w);
+// Handles the 'concurrency' subcommand.
+static int handle_concurrency(const trace_data_t* td, const darray_track_t* tracks,
+                              int64_t min_ts, int64_t max_ts, const cli_args_t* args,
+                              allocator_t* a) {
+  size_t buckets = args->has_concurrency_buckets ? (size_t)args->concurrency_buckets : 16;
 
-          json_writer_name(&w, SV("bucket"));
-          json_writer_number_int(&w, (int64_t)b);
+  darray_t(trace_concurrency_bucket_t) concurrency_buckets = {};
+  darray_resize(&concurrency_buckets, buckets, a);
+  trace_concurrency_bucket_t* buckets_ptr = concurrency_buckets.ptr;
 
-          json_writer_name(&w, SV("ts_us"));
-          json_writer_number_double(&w, (double)e->ts);
+  trace_concurrency_compute(tracks, td, min_ts, max_ts, (int)buckets, buckets_ptr, a);
 
-          json_writer_name(&w, SV("name"));
-          string_view_t event_name = trace_data_get_string(td, e->name_ref);
-          json_writer_string(&w, event_name);
+  // Calculate bucket_width for formatting
+  int bucket_width = 1;
+  size_t temp_buckets = buckets;
+  while (temp_buckets >= 10) {
+    bucket_width++;
+    temp_buckets /= 10;
+  }
 
-          json_writer_name(&w, SV("dur_us"));
-          json_writer_number_double(&w, (double)e->dur);
+  cli_table_t table = {};
+  cli_table_init(&table);
 
-          json_writer_end_object(&w);
-        }
-      }
+  cli_table_add_column(&table, SV("Bucket"), CLI_ALIGN_LEFT, 0, true);
+  cli_table_add_column(&table, SV("Time Range (s)"), CLI_ALIGN_LEFT, 0, true);
+  cli_table_add_column(&table, SV("Concurrency (Active Threads)"), CLI_ALIGN_LEFT, 0, true);
+  cli_table_add_column(&table, SV("Dominant Events"), CLI_ALIGN_LEFT, 0, true);
 
-      json_writer_end_array(&w);   // end buckets array
-      json_writer_end_object(&w);  // end track object
+  size_t thread_track_count = 0;
+  track_t* tracks_data = tracks->ptr;
+  for (size_t i = 0; i < tracks->len; i++) {
+    if (tracks_data[i].type == TRACK_TYPE_THREAD) {
+      thread_track_count++;
     }
   }
 
-  json_writer_end_array(&w);  // end top-level array
+  for (size_t b = 0; b < buckets; b++) {
+    const trace_concurrency_bucket_t* bucket = &buckets_ptr[b];
+    double start_s = (bucket->start_ts - (double)min_ts) / 1000000.0;
+    double end_s = (bucket->end_ts - (double)min_ts) / 1000000.0;
 
-  darray_push(&json_buf, (uint8_t)'\0', a);
-  printf("%s\n", (const char*)json_buf.ptr);
+    // Calculate percentage
+    double pct = 0.0;
+    if (thread_track_count > 0) {
+      pct = (bucket->average_concurrency / (double)thread_track_count) * 100.0;
+    }
 
-  // Clean up
-  darray_deinit(&json_buf, a);
-  darray_deinit(&heatmap_list, a);
+    // Build the visual bar (20 characters wide)
+    int active_chars = (int)((pct / 100.0) * 20.0);
+    if (active_chars < 0) active_chars = 0;
+    if (active_chars > 20) active_chars = 20;
 
+    cli_table_add_row(&table);
+
+    // Col 0: Bucket
+    cli_table_set_cell_fmt(&table, 0, "[%0*zu]", bucket_width, b);
+
+    // Col 1: Time Range
+    cli_table_set_cell_fmt(&table, 1, "%.1f - %.1f", start_s, end_s);
+
+    // Col 2: Concurrency Bar
+    string_t bar = {};
+    string_append(&bar, SV("["), a);
+    for (int i = 0; i < active_chars; i++) {
+      string_append(&bar, SV("█"), a);
+    }
+    for (int i = active_chars; i < 20; i++) {
+      string_append(&bar, SV("░"), a);
+    }
+    string_printf(&bar, a, "] %3.0f%%     ", pct);
+    cli_table_set_cell(&table, 2, string_get_view(&bar));
+    string_free(bar, a);
+
+    // Col 3: Dominant Events
+    string_t events_str = {};
+    for (size_t i = 0; i < bucket->dominant_events_count; i++) {
+      string_view_t name = trace_data_get_string(td, bucket->dominant_events[i]);
+      string_append(&events_str, name, a);
+      if (i < bucket->dominant_events_count - 1) {
+        string_append(&events_str, SV(", "), a);
+      }
+    }
+    cli_table_set_cell(&table, 3, string_get_view(&events_str));
+    string_free(events_str, a);
+  }
+
+  cli_table_print(&table);
+  cli_table_deinit(&table);
+
+  darray_deinit(&concurrency_buckets, a);
+  return 0;
+}
+
+// Handles the 'aggregate' subcommand.
+static int handle_aggregate(const trace_data_t* td, const cli_args_t* args,
+                            allocator_t* a) {
+  string_view_t group_by = string_view_is_empty(args->group_by) ? SV("name") : args->group_by;
+  string_view_t sort_by = string_view_is_empty(args->sort_by) ? SV("duration") : args->sort_by;
+
+  if (!string_view_eq(group_by, SV("name")) && !string_view_eq(group_by, SV("category"))) {
+    fprintf(stderr, "Error: Invalid value for --group-by: '%.*s'. Expected 'name' or 'category'.\n", (int)group_by.len, group_by.ptr);
+    return 1;
+  }
+  if (!string_view_eq(sort_by, SV("duration")) && !string_view_eq(sort_by, SV("count"))) {
+    fprintf(stderr, "Error: Invalid value for --sort: '%.*s'. Expected 'duration' or 'count'.\n", (int)sort_by.len, sort_by.ptr);
+    return 1;
+  }
+
+  darray_trace_aggregate_entry_t entries = {};
+  trace_aggregate_compute(td, group_by, sort_by, &entries, a);
+
+  cli_table_t table = {};
+  cli_table_init(&table);
+
+  bool by_cat = string_view_eq(group_by, SV("category"));
+  cli_table_add_column(&table, by_cat ? SV("Event Category") : SV("Event Name"), CLI_ALIGN_LEFT, 30, true);
+  cli_table_add_column(&table, SV("Total Duration (s)"), CLI_ALIGN_RIGHT, 18, true);
+  cli_table_add_column(&table, SV("Event Count"), CLI_ALIGN_RIGHT, 11, true);
+  cli_table_add_column(&table, SV("Average Duration (ms)"), CLI_ALIGN_RIGHT, 20, true);
+
+  int min_count = args->has_min_count ? args->min_count : 2;
+  size_t skipped_count = 0;
+  trace_aggregate_entry_t* entries_ptr = entries.ptr;
+  for (size_t i = 0; i < entries.len; i++) {
+    const trace_aggregate_entry_t* e = &entries_ptr[i];
+    if ((int)e->count < min_count) {
+      skipped_count++;
+      continue;
+    }
+    string_view_t key_name = trace_data_get_string(td, e->key_ref);
+    
+    double total_dur_s = e->total_duration / 1000000.0;
+    double avg_dur_ms = 0.0;
+    if (e->count > 0) {
+      avg_dur_ms = (e->total_duration / (double)e->count) / 1000.0;
+    }
+
+    cli_table_add_row(&table);
+    cli_table_set_cell(&table, 0, key_name);
+    cli_table_set_cell_fmt(&table, 1, "%.2f", total_dur_s);
+    cli_table_set_cell_fmt(&table, 2, "%zu", e->count);
+    cli_table_set_cell_fmt(&table, 3, "%.2f", avg_dur_ms);
+  }
+
+  cli_table_print(&table);
+  cli_table_deinit(&table);
+
+  if (skipped_count > 0) {
+    if (min_count == 2) {
+      printf("\n* Skipped %zu single-instance events (count = 1).\n", skipped_count);
+    } else {
+      printf("\n* Skipped %zu events with count < %d.\n", skipped_count, min_count);
+    }
+  }
+
+  darray_deinit(&entries, a);
+  return 0;
+}
+
+// Handles the 'diff' subcommand.
+static int handle_diff(const trace_data_t* td_baseline, const trace_data_t* td_target,
+                       const cli_args_t* args, allocator_t* a) {
+  string_view_t group_by = string_view_is_empty(args->group_by) ? SV("name") : args->group_by;
+  string_view_t sort_by = string_view_is_empty(args->sort_by) ? SV("dur-delta") : args->sort_by;
+
+  if (!string_view_eq(group_by, SV("name")) && !string_view_eq(group_by, SV("category"))) {
+    fprintf(stderr, "Error: Invalid value for --group-by: '%.*s'. Expected 'name' or 'category'.\n", (int)group_by.len, group_by.ptr);
+    return 1;
+  }
+  if (!string_view_eq(sort_by, SV("dur-delta")) && !string_view_eq(sort_by, SV("count-delta"))) {
+    fprintf(stderr, "Error: Invalid value for --sort: '%.*s'. Expected 'dur-delta' or 'count-delta'.\n", (int)sort_by.len, sort_by.ptr);
+    return 1;
+  }
+
+  darray_trace_diff_entry_t entries = {};
+  trace_diff_compute(td_baseline, td_target, group_by, sort_by, &entries, a);
+
+  cli_table_t table = {};
+  cli_table_init(&table);
+
+  bool by_cat = string_view_eq(group_by, SV("category"));
+  cli_table_add_column(&table, by_cat ? SV("Event Category") : SV("Event Name"), CLI_ALIGN_LEFT, 30, true);
+  cli_table_add_column(&table, SV("Baseline Dur (s)"), CLI_ALIGN_RIGHT, 16, true);
+  cli_table_add_column(&table, SV("Target Dur (s)"), CLI_ALIGN_RIGHT, 14, true);
+  cli_table_add_column(&table, SV("Delta Dur (s)"), CLI_ALIGN_RIGHT, 14, true);
+  cli_table_add_column(&table, SV("Delta Count"), CLI_ALIGN_RIGHT, 11, true);
+
+  trace_diff_entry_t* entries_ptr = entries.ptr;
+  for (size_t i = 0; i < entries.len; i++) {
+    const trace_diff_entry_t* e = &entries_ptr[i];
+    string_view_t key_name = e->key;
+
+    double base_dur_s = e->baseline_duration / 1000000.0;
+    double target_dur_s = e->target_duration / 1000000.0;
+    double delta_dur_s = e->delta_duration / 1000000.0;
+
+    cli_table_add_row(&table);
+    cli_table_set_cell(&table, 0, key_name);
+    cli_table_set_cell_fmt(&table, 1, "%.2f", base_dur_s);
+    cli_table_set_cell_fmt(&table, 2, "%.2f", target_dur_s);
+    cli_table_set_cell_fmt(&table, 3, "%+.2f", delta_dur_s);
+    cli_table_set_cell_fmt(&table, 4, "%+ld", (long)e->delta_count);
+  }
+
+  cli_table_print(&table);
+  cli_table_deinit(&table);
+
+  darray_deinit(&entries, a);
   return 0;
 }
 
@@ -456,70 +620,75 @@ static int handle_histogram(const trace_data_t* td, const darray_track_t* tracks
   trace_histogram_t h = {};
   trace_histogram_compute(&selected_indices, td, &h);
 
-  // Serialize to JSON
-  darray_uint8_t json_buf = {};
-  json_writer_t w;
-  json_writer_init(&w, args->pretty, &json_buf, a);
-
-  json_writer_begin_object(&w);
-
-  json_writer_name(&w, SV("scale"));
+  // Print summary
+  const char* scale_str = "linear";
   if (h.has_non_zero_durations && (h.num_buckets > 0)) {
     int64_t width_first = h.buckets[0].max_dur - h.buckets[0].min_dur;
     int64_t width_last = h.buckets[h.num_buckets - 1].max_dur -
                          h.buckets[h.num_buckets - 1].min_dur;
     if (width_last > width_first * 2) {
-      json_writer_string(&w, SV("logarithmic"));
-    } else {
-      json_writer_string(&w, SV("linear"));
+      scale_str = "logarithmic";
     }
-  } else {
-    json_writer_string(&w, SV("linear"));
+  }
+  printf("Scale: %s, Total Events: %zu\n\n", scale_str, selected_indices.len);
+
+  // Calculate bucket_width for formatting
+  int bucket_width = 1;
+  int temp_buckets = h.num_buckets;
+  while (temp_buckets >= 10) {
+    bucket_width++;
+    temp_buckets /= 10;
   }
 
-  json_writer_name(&w, SV("total_events"));
-  json_writer_number_int(&w, (int64_t)selected_indices.len);
+  cli_table_t table = {};
+  cli_table_init(&table);
 
-  json_writer_name(&w, SV("buckets"));
-  json_writer_begin_array(&w);
+  cli_table_add_column(&table, SV("Bucket"), CLI_ALIGN_LEFT, 0, true);
+  cli_table_add_column(&table, SV("Range (us)"), CLI_ALIGN_LEFT, 0, true);
+  cli_table_add_column(&table, SV("Count"), CLI_ALIGN_RIGHT, 0, true);
+  cli_table_add_column(&table, SV("Distribution"), CLI_ALIGN_LEFT, 0, true);
 
   for (int i = 0; i < h.num_buckets; i++) {
     const trace_histogram_bucket_t* b = &h.buckets[i];
 
-    json_writer_begin_object(&w);
+    double pct = 0.0;
+    if (selected_indices.len > 0) {
+      pct = ((double)b->count / (double)selected_indices.len) * 100.0;
+    }
 
-    json_writer_name(&w, SV("bucket_idx"));
-    json_writer_number_int(&w, (int64_t)i);
+    int active_chars = (int)((pct / 100.0) * 20.0);
+    if (active_chars < 0) active_chars = 0;
+    if (active_chars > 20) active_chars = 20;
 
-    json_writer_name(&w, SV("min_dur_us"));
-    json_writer_number_double(&w, (double)b->min_dur);
+    cli_table_add_row(&table);
+    cli_table_set_cell_fmt(&table, 0, "[%0*d]", bucket_width, i);
+    cli_table_set_cell_fmt(&table, 1, "%ld - %ld", (long)b->min_dur, (long)b->max_dur);
+    cli_table_set_cell_fmt(&table, 2, "%u", b->count);
 
-    json_writer_name(&w, SV("max_dur_us"));
-    json_writer_number_double(&w, (double)b->max_dur);
-
-    json_writer_name(&w, SV("count"));
-    json_writer_number_int(&w, (int64_t)b->count);
-
-    json_writer_end_object(&w);
+    string_t bar = {};
+    string_append(&bar, SV("["), a);
+    for (int j = 0; j < active_chars; j++) {
+      string_append(&bar, SV("█"), a);
+    }
+    for (int j = active_chars; j < 20; j++) {
+      string_append(&bar, SV("░"), a);
+    }
+    string_printf(&bar, a, "] %3.0f%%", pct);
+    cli_table_set_cell(&table, 3, string_get_view(&bar));
+    string_free(bar, a);
   }
 
-  json_writer_end_array(&w);   // end buckets array
-  json_writer_end_object(&w);  // end top-level object
+  cli_table_print(&table);
+  cli_table_deinit(&table);
 
-  // Null terminate and print
-  darray_push(&json_buf, (uint8_t)'\0', a);
-  printf("%s\n", (const char*)json_buf.ptr);
-
-  // Clean up
-  darray_deinit(&json_buf, a);
   darray_deinit(&selected_indices, a);
-
   return 0;
 }
 
 // Handles the 'inspect' subcommand.
 static int handle_inspect(const trace_data_t* td, const darray_track_t* tracks,
                           const cli_args_t* args, allocator_t* a) {
+  (void)a;
   if (!args->track_filter) {
     fprintf(stderr,
             "Error: Missing required option '--track <name>' for inspect "
@@ -554,13 +723,6 @@ static int handle_inspect(const trace_data_t* td, const darray_track_t* tracks,
     return 1;
   }
 
-  // Serialize to JSON array
-  darray_uint8_t json_buf = {};
-  json_writer_t w;
-  json_writer_init(&w, args->pretty, &json_buf, a);
-
-  json_writer_begin_array(&w);
-
   const size_t* event_indices = target_track->event_indices.ptr;
   const trace_event_persisted_t* events = td->events.ptr;
 
@@ -569,6 +731,7 @@ static int handle_inspect(const trace_data_t* td, const darray_track_t* tracks,
       event_indices, target_track->event_indices.len, events, target_ts);
 
   // Inspect all events starting at target_ts
+  bool first_event = true;
   for (size_t k = start_k; k < target_track->event_indices.len; k++) {
     size_t event_idx = event_indices[k];
     const trace_event_persisted_t* e = &events[event_idx];
@@ -576,30 +739,44 @@ static int handle_inspect(const trace_data_t* td, const darray_track_t* tracks,
       break;  // Since events are sorted by ts, we stop as soon as ts differs
     }
 
-    json_writer_begin_object(&w);
+    if (!first_event) {
+      printf("\n---\n\n");
+    }
+    first_event = false;
 
-    json_writer_name(&w, SV("name"));
-    json_writer_string(&w, trace_data_get_string(td, e->name_ref));
+    cli_table_t details_table = {};
+    cli_table_init(&details_table);
 
-    json_writer_name(&w, SV("track"));
-    json_writer_string(&w, target_track_name);
+    cli_table_add_column(&details_table, SV("Property"), CLI_ALIGN_LEFT, 20, true);
+    cli_table_add_column(&details_table, SV("Value"), CLI_ALIGN_LEFT, 30, true);
 
-    json_writer_name(&w, SV("ts_us"));
-    json_writer_number_double(&w, (double)e->ts);
+    cli_table_add_row(&details_table);
+    cli_table_set_cell(&details_table, 0, SV("Name"));
+    cli_table_set_cell(&details_table, 1, trace_data_get_string(td, e->name_ref));
 
-    json_writer_name(&w, SV("dur_us"));
-    json_writer_number_double(&w, (double)e->dur);
+    cli_table_add_row(&details_table);
+    cli_table_set_cell(&details_table, 0, SV("Track"));
+    cli_table_set_cell(&details_table, 1, target_track_name);
+
+    cli_table_add_row(&details_table);
+    cli_table_set_cell(&details_table, 0, SV("Timestamp (us)"));
+    cli_table_set_cell_fmt(&details_table, 1, "%ld", (long)e->ts);
+
+    cli_table_add_row(&details_table);
+    cli_table_set_cell(&details_table, 0, SV("Duration (us)"));
+    cli_table_set_cell_fmt(&details_table, 1, "%ld", (long)e->dur);
 
     if (target_track->type == TRACK_TYPE_THREAD) {
-      // Self Time & Depth
       const int64_t* self_durs = target_track->self_durs.ptr;
       const uint32_t* depths = target_track->depths.ptr;
 
-      json_writer_name(&w, SV("self_time_us"));
-      json_writer_number_double(&w, (double)self_durs[k]);
+      cli_table_add_row(&details_table);
+      cli_table_set_cell(&details_table, 0, SV("Self Time (us)"));
+      cli_table_set_cell_fmt(&details_table, 1, "%ld", (long)self_durs[k]);
 
-      json_writer_name(&w, SV("depth"));
-      json_writer_number_int(&w, (int64_t)depths[k]);
+      cli_table_add_row(&details_table);
+      cli_table_set_cell(&details_table, 0, SV("Depth"));
+      cli_table_set_cell_fmt(&details_table, 1, "%d", depths[k]);
 
       uint32_t depth_target = depths[k];
 
@@ -613,69 +790,88 @@ static int handle_inspect(const trace_data_t* td, const darray_track_t* tracks,
       }
 
       if (parent_event) {
-        json_writer_name(&w, SV("parent"));
-        json_writer_begin_object(&w);
-        json_writer_name(&w, SV("track"));
-        json_writer_string(&w, target_track_name);
-        json_writer_name(&w, SV("ts_us"));
-        json_writer_number_double(&w, (double)parent_event->ts);
-        json_writer_end_object(&w);
-      }
+        string_view_t parent_name = trace_data_get_string(td, parent_event->name_ref);
+        cli_table_add_row(&details_table);
+        cli_table_set_cell(&details_table, 0, SV("Parent Name"));
+        cli_table_set_cell(&details_table, 1, parent_name);
 
-      // 2. Find Children: subsequent events with depth == depth_target + 1,
-      // until depth <= depth_target
-      json_writer_name(&w, SV("children"));
-      json_writer_begin_array(&w);
-      for (size_t next = k + 1; next < target_track->event_indices.len;
-           next++) {
-        uint32_t next_depth = depths[next];
-        if (next_depth <= depth_target) {
-          break;  // Stop at sibling or parent close frame
-        }
-        if (next_depth == depth_target + 1) {
-          const trace_event_persisted_t* child_event =
-              &events[event_indices[next]];
-          json_writer_begin_object(&w);
-          json_writer_name(&w, SV("track"));
-          json_writer_string(&w, target_track_name);
-          json_writer_name(&w, SV("ts_us"));
-          json_writer_number_double(&w, (double)child_event->ts);
-          json_writer_end_object(&w);
-        }
+        cli_table_add_row(&details_table);
+        cli_table_set_cell(&details_table, 0, SV("Parent TS (us)"));
+        cli_table_set_cell_fmt(&details_table, 1, "%ld", (long)parent_event->ts);
       }
-      json_writer_end_array(&w);
     }
 
     // Custom Arguments
     if (e->args_count > 0) {
-      json_writer_name(&w, SV("args"));
-      json_writer_begin_object(&w);
       const trace_arg_persisted_t* args_ptr =
           (const trace_arg_persisted_t*)td->args.ptr + e->args_offset;
       for (uint32_t a_idx = 0; a_idx < e->args_count; a_idx++) {
         const trace_arg_persisted_t* arg = &args_ptr[a_idx];
         string_view_t key = trace_data_get_string(td, arg->key_ref);
-        json_writer_name(&w, key);
+        
+        cli_table_add_row(&details_table);
+        // Prefix argument keys to distinguish them
+        cli_table_set_cell_fmt(&details_table, 0, "Arg: %.*s", (int)key.len, key.ptr);
+        
         if (arg->val_ref != 0) {
           string_view_t val = trace_data_get_string(td, arg->val_ref);
-          json_writer_string(&w, val);
+          cli_table_set_cell(&details_table, 1, val);
         } else {
-          json_writer_number_double(&w, arg->val_double);
+          cli_table_set_cell_fmt(&details_table, 1, "%f", arg->val_double);
         }
       }
-      json_writer_end_object(&w);
     }
 
-    json_writer_end_object(&w);
+    cli_table_print(&details_table);
+    cli_table_deinit(&details_table);
+
+    // 2. Find and print Children
+    if (target_track->type == TRACK_TYPE_THREAD) {
+      const uint32_t* depths = target_track->depths.ptr;
+      uint32_t depth_target = depths[k];
+      
+      // Count children first
+      size_t child_count = 0;
+      for (size_t next = k + 1; next < target_track->event_indices.len; next++) {
+        uint32_t next_depth = depths[next];
+        if (next_depth <= depth_target) {
+          break;
+        }
+        if (next_depth == depth_target + 1) {
+          child_count++;
+        }
+      }
+
+      if (child_count > 0) {
+        printf("\nChildren:\n");
+        cli_table_t children_table = {};
+        cli_table_init(&children_table);
+
+        cli_table_add_column(&children_table, SV("Child Name"), CLI_ALIGN_LEFT, 20, true);
+        cli_table_add_column(&children_table, SV("Timestamp (us)"), CLI_ALIGN_RIGHT, 15, true);
+        cli_table_add_column(&children_table, SV("Duration (us)"), CLI_ALIGN_RIGHT, 15, true);
+
+        for (size_t next = k + 1; next < target_track->event_indices.len; next++) {
+          uint32_t next_depth = depths[next];
+          if (next_depth <= depth_target) {
+            break;
+          }
+          if (next_depth == depth_target + 1) {
+            const trace_event_persisted_t* child_event = &events[event_indices[next]];
+            string_view_t child_name = trace_data_get_string(td, child_event->name_ref);
+
+            cli_table_add_row(&children_table);
+            cli_table_set_cell(&children_table, 0, child_name);
+            cli_table_set_cell_fmt(&children_table, 1, "%ld", (long)child_event->ts);
+            cli_table_set_cell_fmt(&children_table, 2, "%ld", (long)child_event->dur);
+          }
+        }
+
+        cli_table_print(&children_table);
+        cli_table_deinit(&children_table);
+      }
+    }
   }
-
-  json_writer_end_array(&w);
-
-  darray_push(&json_buf, (uint8_t)'\0', a);
-  printf("%s\n", (const char*)json_buf.ptr);
-
-  // Clean up
-  darray_deinit(&json_buf, a);
 
   return 0;
 }
@@ -791,12 +987,14 @@ static int handle_query(const trace_data_t* td, const darray_track_t* tracks,
           compare_query_matches);
   }
 
-  // Serialize to JSON array with limit
-  darray_uint8_t json_buf = {};
-  json_writer_t w;
-  json_writer_init(&w, args->pretty, &json_buf, a);
+  cli_table_t table = {};
+  cli_table_init(&table);
 
-  json_writer_begin_array(&w);
+  cli_table_add_column(&table, SV("Event Name"), CLI_ALIGN_LEFT, 30, true);
+  cli_table_add_column(&table, SV("Track"), CLI_ALIGN_LEFT, 20, true);
+  cli_table_add_column(&table, SV("Start Time (us)"), CLI_ALIGN_RIGHT, 17, true);
+  cli_table_add_column(&table, SV("Duration (us)"), CLI_ALIGN_RIGHT, 15, true);
+  cli_table_add_column(&table, SV("Depth"), CLI_ALIGN_RIGHT, 5, true);
 
   size_t limit = args->has_limit ? (size_t)args->limit : matches.len;
   size_t print_count = (matches.len < limit) ? matches.len : limit;
@@ -806,34 +1004,17 @@ static int handle_query(const trace_data_t* td, const darray_track_t* tracks,
     const query_match_t* m = &matches_data[i];
     const trace_event_persisted_t* e = &events[m->event_idx];
 
-    json_writer_begin_object(&w);
-
-    json_writer_name(&w, SV("name"));
-    json_writer_string(&w, trace_data_get_string(td, e->name_ref));
-
-    json_writer_name(&w, SV("track"));
-    json_writer_string(&w, trace_data_get_string(td, m->track->name_ref));
-
-    json_writer_name(&w, SV("ts_us"));
-    json_writer_number_double(&w, (double)e->ts);
-
-    json_writer_name(&w, SV("dur_us"));
-    json_writer_number_double(&w, (double)e->dur);
-
-    json_writer_name(&w, SV("depth"));
-    json_writer_number_int(&w, (int64_t)m->depth);
-
-    json_writer_end_object(&w);
+    cli_table_add_row(&table);
+    cli_table_set_cell(&table, 0, trace_data_get_string(td, e->name_ref));
+    cli_table_set_cell(&table, 1, trace_data_get_string(td, m->track->name_ref));
+    cli_table_set_cell_fmt(&table, 2, "%ld", (long)e->ts);
+    cli_table_set_cell_fmt(&table, 3, "%ld", (long)e->dur);
+    cli_table_set_cell_fmt(&table, 4, "%d", m->depth);
   }
 
-  json_writer_end_array(&w);
+  cli_table_print(&table);
+  cli_table_deinit(&table);
 
-  // Null terminate and print
-  darray_push(&json_buf, (uint8_t)'\0', a);
-  printf("%s\n", (const char*)json_buf.ptr);
-
-  // Clean up
-  darray_deinit(&json_buf, a);
   darray_deinit(&matches, a);
 
   return 0;
@@ -858,11 +1039,31 @@ int main(int argc, char* argv[]) {
 
       if (string_view_eq(sub, SV("summary"))) {
         exit_code =
-            handle_summary(td, tracks.len, min_ts, max_ts, args.pretty, a);
-      } else if (string_view_eq(sub, SV("tracks"))) {
-        exit_code = handle_tracks(td, &tracks, args.pretty, a);
-      } else if (string_view_eq(sub, SV("heatmap"))) {
-        exit_code = handle_heatmap(td, &tracks, min_ts, max_ts, args.pretty, a);
+            handle_summary(td, &tracks, min_ts, max_ts, args.list_tracks, a);
+      } else if (string_view_eq(sub, SV("concurrency"))) {
+        exit_code = handle_concurrency(td, &tracks, min_ts, max_ts, &args, a);
+      } else if (string_view_eq(sub, SV("aggregate"))) {
+        exit_code = handle_aggregate(td, &args, a);
+      } else if (string_view_eq(sub, SV("diff"))) {
+        darray_track_t tracks_2 = {};
+        int64_t min_ts_2 = 0;
+        int64_t max_ts_2 = 0;
+        trace_data_t* td2 =
+            trace_loader_load_file(args.trace_file_2, a, nullptr, &tracks_2, &min_ts_2,
+                                   &max_ts_2, nullptr, nullptr);
+        if (td2) {
+          exit_code = handle_diff(td, td2, &args, a);
+          
+          // Clean up td2
+          track_t* tracks_data_2 = tracks_2.ptr;
+          for (size_t i = 0; i < tracks_2.len; i++) {
+            track_deinit(&tracks_data_2[i], a);
+          }
+          darray_deinit(&tracks_2, a);
+          trace_data_release(td2, a);
+        } else {
+          exit_code = 1;
+        }
       } else if (string_view_eq(sub, SV("histogram"))) {
         exit_code = handle_histogram(td, &tracks, &args, a);
       } else if (string_view_eq(sub, SV("inspect"))) {

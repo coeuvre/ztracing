@@ -441,6 +441,53 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "trace_concurrency",
+    srcs = ["trace_concurrency.c"],
+    hdrs = ["trace_concurrency.h"],
+    deps = [
+        "//core:darray",
+        "//core:hash_table",
+        ":trace_data",
+        ":track",
+    ],
+)
+
+cc_library(
+    name = "trace_aggregate",
+    srcs = ["trace_aggregate.c"],
+    hdrs = ["trace_aggregate.h"],
+    deps = [
+        "//core:darray",
+        "//core:hash_table",
+        ":trace_data",
+    ],
+)
+
+cc_library(
+    name = "trace_diff",
+    srcs = ["trace_diff.c"],
+    hdrs = ["trace_diff.h"],
+    deps = [
+        "//core:darray",
+        "//core:hash_table",
+        ":trace_data",
+        ":trace_aggregate",
+    ],
+)
+
+cc_library(
+    name = "cli_table",
+    srcs = ["cli_table.c"],
+    hdrs = ["cli_table.h"],
+    deps = [
+        "//core:darray",
+        "//core:string",
+        "//core:allocator",
+        "//core:arena",
+    ],
+)
+
 cc_binary(
     name = "ztracing",
     srcs = [
@@ -454,6 +501,10 @@ cc_binary(
         ":trace_loader",
         "//core:logging",
         ":platform",
+        ":trace_concurrency",
+        ":trace_aggregate",
+        ":trace_diff",
+        ":cli_table",
     ],
 )
 
@@ -501,6 +552,51 @@ cc_test(
     deps = [
         "@googletest//:gtest_main",
         "@zlib//:zlib",
+    ],
+)
+
+cc_test(
+    name = "cli_table_test",
+    srcs = ["cli_table_test.cc"],
+    deps = [
+        ":cli_table",
+        "//core:allocator",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "trace_concurrency_test",
+    srcs = ["trace_concurrency_test.cc"],
+    deps = [
+        ":trace_concurrency",
+        ":trace_data",
+        ":track",
+        "//core:allocator",
+        "//core:arena",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "trace_aggregate_test",
+    srcs = ["trace_aggregate_test.cc"],
+    deps = [
+        ":trace_aggregate",
+        ":trace_data",
+        "//core:allocator",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "trace_diff_test",
+    srcs = ["trace_diff_test.cc"],
+    deps = [
+        ":trace_diff",
+        ":trace_data",
+        "//core:allocator",
+        "@googletest//:gtest_main",
     ],
 )
 

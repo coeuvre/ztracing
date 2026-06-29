@@ -1,9 +1,4 @@
-[
-  {
-    "name": "parent_task",
-    "track": "main_thread",
-    "ts_us": 1000,
-    "dur_us": 1000,
-    "depth": 0
-  }
-]
+# ztracing query query_filtered.json --match task --max-depth 0
+Event Name                     | Track                |   Start Time (us) |   Duration (us) | Depth
+---------------------------------------------------------------------------------------------------
+parent_task                    | main_thread          |              1000 |            1000 |     0

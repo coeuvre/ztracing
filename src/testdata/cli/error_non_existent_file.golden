@@ -1,1 +1,2 @@
+# ztracing summary non_existent_file.json
 Error: Failed to open trace file 'non_existent_file.json'

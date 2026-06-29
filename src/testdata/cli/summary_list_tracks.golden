@@ -1,0 +1,12 @@
+# ztracing summary summary_list_tracks.json --list-tracks
+Metric                    | Value          
+-------------------------------------------
+Event Count               | 2              
+Track Count               | 1              
+Min Timestamp (us)        | 1000           
+Max Timestamp (us)        | 3000           
+Duration (ms)             | 2.000          
+
+Index | Track Name           | Type       |      PID |      TID |  Event Count |  Max Depth
+-------------------------------------------------------------------------------------------
+    0 |                      | THREAD     |        1 |        1 |            2 |          0

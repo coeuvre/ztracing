@@ -1,1 +1,25 @@
-{"scale":"linear","total_events":2,"buckets":[{"bucket_idx":0,"min_dur_us":300,"max_dur_us":684,"count":1},{"bucket_idx":1,"min_dur_us":685,"max_dur_us":1069,"count":0},{"bucket_idx":2,"min_dur_us":1070,"max_dur_us":1454,"count":0},{"bucket_idx":3,"min_dur_us":1455,"max_dur_us":1839,"count":0},{"bucket_idx":4,"min_dur_us":1840,"max_dur_us":2224,"count":0},{"bucket_idx":5,"min_dur_us":2225,"max_dur_us":2609,"count":0},{"bucket_idx":6,"min_dur_us":2610,"max_dur_us":2994,"count":0},{"bucket_idx":7,"min_dur_us":2995,"max_dur_us":3379,"count":0},{"bucket_idx":8,"min_dur_us":3380,"max_dur_us":3764,"count":0},{"bucket_idx":9,"min_dur_us":3765,"max_dur_us":4149,"count":0},{"bucket_idx":10,"min_dur_us":4150,"max_dur_us":4534,"count":0},{"bucket_idx":11,"min_dur_us":4535,"max_dur_us":4919,"count":0},{"bucket_idx":12,"min_dur_us":4920,"max_dur_us":5304,"count":0},{"bucket_idx":13,"min_dur_us":5305,"max_dur_us":5689,"count":0},{"bucket_idx":14,"min_dur_us":5690,"max_dur_us":6074,"count":0},{"bucket_idx":15,"min_dur_us":6075,"max_dur_us":6459,"count":0},{"bucket_idx":16,"min_dur_us":6460,"max_dur_us":6844,"count":0},{"bucket_idx":17,"min_dur_us":6845,"max_dur_us":7229,"count":0},{"bucket_idx":18,"min_dur_us":7230,"max_dur_us":7614,"count":0},{"bucket_idx":19,"min_dur_us":7615,"max_dur_us":8000,"count":1}]}
+# ztracing histogram histogram_filtered.json --t-start 1200 --t-end 2500
+Scale: linear, Total Events: 2
+
+Bucket | Range (us)  | Count | Distribution               
+----------------------------------------------------------
+[00]   | 300 - 684   |     1 | [██████████░░░░░░░░░░]  50%
+[01]   | 685 - 1069  |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[02]   | 1070 - 1454 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[03]   | 1455 - 1839 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[04]   | 1840 - 2224 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[05]   | 2225 - 2609 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[06]   | 2610 - 2994 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[07]   | 2995 - 3379 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[08]   | 3380 - 3764 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[09]   | 3765 - 4149 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[10]   | 4150 - 4534 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[11]   | 4535 - 4919 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[12]   | 4920 - 5304 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[13]   | 5305 - 5689 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[14]   | 5690 - 6074 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[15]   | 6075 - 6459 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[16]   | 6460 - 6844 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[17]   | 6845 - 7229 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[18]   | 7230 - 7614 |     0 | [░░░░░░░░░░░░░░░░░░░░]   0%
+[19]   | 7615 - 8000 |     1 | [██████████░░░░░░░░░░]  50%

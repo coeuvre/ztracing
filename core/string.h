@@ -227,6 +227,11 @@ void string_append_char(string_t* s, char c, allocator_t* a);
 
 // printf-style format/append. No fixed-size stack buffer is used internally.
 #if defined(__GNUC__) || defined(__clang__)
+__attribute__((format(printf, 3, 0)))
+#endif
+void string_vprintf(string_t* s, allocator_t* a, const char* fmt, va_list ap);
+
+#if defined(__GNUC__) || defined(__clang__)
 __attribute__((format(printf, 3, 4)))
 #endif
 void string_printf(string_t* s, allocator_t* a, const char* fmt, ...);

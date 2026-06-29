@@ -55,16 +55,13 @@ void string_append_char(string_t* s, char c, allocator_t* a) {
   s->ptr[s->len] = '\0';
 }
 
-void string_printf(string_t* s, allocator_t* a, const char* fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
+void string_vprintf(string_t* s, allocator_t* a, const char* fmt, va_list ap) {
   char stack[256];
-  va_list args2;
-  va_copy(args2, args);
-  int n = vsnprintf(stack, sizeof(stack), fmt, args2);
-  va_end(args2);
+  va_list ap_copy;
+  va_copy(ap_copy, ap);
+  int n = vsnprintf(stack, sizeof(stack), fmt, ap_copy);
+  va_end(ap_copy);
   if (n <= 0) {
-    va_end(args);
     return;
   }
   size_t needed = (size_t)n;
@@ -73,13 +70,18 @@ void string_printf(string_t* s, allocator_t* a, const char* fmt, ...) {
     memcpy(s->ptr + s->len, stack, needed);
     s->len += needed;
     s->ptr[s->len] = '\0';
-    va_end(args);
     return;
   }
   string_ensure(s, needed, a);
-  vsnprintf(s->ptr + s->len, needed + 1, fmt, args);
-  va_end(args);
+  vsnprintf(s->ptr + s->len, needed + 1, fmt, ap);
   s->len += needed;
+}
+
+void string_printf(string_t* s, allocator_t* a, const char* fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+  string_vprintf(s, a, fmt, args);
+  va_end(args);
 }
 
 string_t string_into_owned(string_t* s, allocator_t* a) {

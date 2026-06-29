@@ -133,7 +133,13 @@ class ztracing_cli_test : public ::testing::Test {
     std::string golden_content;
     if (golden_file.is_open()) {
       std::string line;
+      bool first_line = true;
       while (std::getline(golden_file, line)) {
+        if (first_line && !line.empty() && line[0] == '#') {
+          first_line = false;
+          continue;
+        }
+        first_line = false;
         golden_content += line + "\n";
       }
       golden_file.close();
@@ -147,9 +153,21 @@ class ztracing_cli_test : public ::testing::Test {
     }
 
     if (res.output != golden_content) {
+      // Sanitize args to remove absolute temp paths
+      std::string sanitized_args = args;
+      for (const auto& temp_path : temp_files_) {
+        size_t pos = sanitized_args.find(temp_path);
+        if (pos != std::string::npos) {
+          size_t last_slash = temp_path.find_last_of('/');
+          std::string filename = (last_slash == std::string::npos) ? temp_path : temp_path.substr(last_slash + 1);
+          sanitized_args.replace(pos, temp_path.length(), filename);
+        }
+      }
+
       // Save failed output for the developer to inspect/diff
       std::ofstream failed_file(failed_path);
       if (failed_file.is_open()) {
+        failed_file << "# ztracing " << sanitized_args << "\n";
         failed_file << res.output;
         failed_file.close();
       }
@@ -186,44 +204,18 @@ TEST_F(ztracing_cli_test, help_flag_matches_golden_help) {
   assert_golden_output("--help", "help.golden", 1);
 }
 
-// Verify the 'summary' subcommand output in default minified mode (raw
-// JSON).
-TEST_F(ztracing_cli_test, summary_minified_output_matches_golden) {
+// Verify the 'summary' subcommand output.
+TEST_F(ztracing_cli_test, summary_output_matches_golden) {
   std::string path =
       write_temp_trace("summary_standard.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("summary " + path, "summary_minified.golden", 0);
+  assert_golden_output("summary " + path, "summary.golden", 0);
 }
 
-// Verify the 'summary' subcommand output in pretty-printed mode (raw JSON).
-TEST_F(ztracing_cli_test, summary_pretty_output_matches_golden) {
-  std::string path =
-      write_temp_trace("summary_pretty.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("summary " + path + " --pretty", "summary_pretty.golden",
-                       0);
-}
-
-// Verify the 'summary' subcommand output with pretty flag placed globally
-// (raw JSON).
-TEST_F(ztracing_cli_test, pretty_flag_can_be_placed_globally) {
-  std::string path =
-      write_temp_trace("summary_global_pretty.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("--pretty summary " + path, "summary_pretty.golden", 0);
-}
-
-// Verify the 'summary' subcommand output in default minified mode (gzip
-// JSON).
-TEST_F(ztracing_cli_test, summary_minified_gzip_output_matches_golden) {
+// Verify the 'summary' subcommand output with gzip input.
+TEST_F(ztracing_cli_test, summary_gzip_output_matches_golden) {
   std::string path =
       write_temp_gzip_trace("summary_standard.json.gz", STANDARD_MOCK_TRACE);
-  assert_golden_output("summary " + path, "summary_minified.golden", 0);
-}
-
-// Verify the 'summary' subcommand output in pretty-printed mode (gzip JSON).
-TEST_F(ztracing_cli_test, summary_pretty_gzip_output_matches_golden) {
-  std::string path =
-      write_temp_gzip_trace("summary_pretty.json.gz", STANDARD_MOCK_TRACE);
-  assert_golden_output("summary " + path + " --pretty", "summary_pretty.golden",
-                       0);
+  assert_golden_output("summary " + path, "summary.golden", 0);
 }
 
 // Verify that running an unknown subcommand matches the golden error text.
@@ -264,49 +256,26 @@ TEST_F(ztracing_cli_test, corrupted_gzip_file_errors) {
             std::string::npos);
 }
 
-// Verify the 'tracks' subcommand output in default minified mode (raw JSON).
-TEST_F(ztracing_cli_test, tracks_minified_output_matches_golden) {
+// Verify the 'summary' subcommand output with --list-tracks.
+TEST_F(ztracing_cli_test, summary_list_tracks_output_matches_golden) {
   std::string path =
-      write_temp_trace("tracks_standard.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("tracks " + path, "tracks_minified.golden", 0);
+      write_temp_trace("summary_list_tracks.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("summary " + path + " --list-tracks",
+                       "summary_list_tracks.golden", 0);
 }
 
-// Verify the 'tracks' subcommand output in pretty-printed mode (raw JSON).
-TEST_F(ztracing_cli_test, tracks_pretty_output_matches_golden) {
+// Verify the 'concurrency' subcommand output.
+TEST_F(ztracing_cli_test, concurrency_output_matches_golden) {
   std::string path =
-      write_temp_trace("tracks_pretty.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("tracks " + path + " --pretty", "tracks_pretty.golden",
-                       0);
+      write_temp_trace("concurrency_standard.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("concurrency " + path, "concurrency.golden", 0);
 }
 
-// Verify the 'heatmap' subcommand output in default minified mode (raw JSON).
-TEST_F(ztracing_cli_test, heatmap_minified_output_matches_golden) {
-  std::string path =
-      write_temp_trace("heatmap_standard.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("heatmap " + path, "heatmap_minified.golden", 0);
-}
-
-// Verify the 'heatmap' subcommand output in pretty-printed mode (raw JSON).
-TEST_F(ztracing_cli_test, heatmap_pretty_output_matches_golden) {
-  std::string path =
-      write_temp_trace("heatmap_pretty.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("heatmap " + path + " --pretty", "heatmap_pretty.golden",
-                       0);
-}
-
-// Verify the 'histogram' subcommand output in default minified mode (raw JSON).
-TEST_F(ztracing_cli_test, histogram_minified_output_matches_golden) {
+// Verify the 'histogram' subcommand output.
+TEST_F(ztracing_cli_test, histogram_output_matches_golden) {
   std::string path =
       write_temp_trace("histogram_standard.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("histogram " + path, "histogram_minified.golden", 0);
-}
-
-// Verify the 'histogram' subcommand output in pretty-printed mode (raw JSON).
-TEST_F(ztracing_cli_test, histogram_pretty_output_matches_golden) {
-  std::string path =
-      write_temp_trace("histogram_pretty.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("histogram " + path + " --pretty",
-                       "histogram_pretty.golden", 0);
+  assert_golden_output("histogram " + path, "histogram.golden", 0);
 }
 
 // Verify the 'histogram' subcommand with advanced filtering options (raw JSON).
@@ -332,19 +301,11 @@ TEST_F(ztracing_cli_test, histogram_filtered_output_matches_golden) {
 }
 
 // Verify the 'inspect' subcommand output on a simple trace.
-TEST_F(ztracing_cli_test, inspect_minified_output_matches_golden) {
+TEST_F(ztracing_cli_test, inspect_output_matches_golden) {
   std::string path =
       write_temp_trace("inspect_standard.json", STANDARD_MOCK_TRACE);
   assert_golden_output("inspect " + path + " --track \"\" --ts 1000",
-                       "inspect_minified.golden", 0);
-}
-
-// Verify the 'inspect' subcommand output in pretty-printed mode.
-TEST_F(ztracing_cli_test, inspect_pretty_output_matches_golden) {
-  std::string path =
-      write_temp_trace("inspect_pretty.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("inspect " + path + " --track \"\" --ts 1000 --pretty",
-                       "inspect_pretty.golden", 0);
+                       "inspect.golden", 0);
 }
 
 // Verify the 'inspect' subcommand on nested events (parent, children, and
@@ -359,26 +320,19 @@ TEST_F(ztracing_cli_test, inspect_nested_hierarchy_matches_golden) {
 
   // 1. Inspect the parent (should list child_task_A and child_task_B, self_time
   // = 300)
-  assert_golden_output("inspect " + path + " --track \"\" --ts 1000 --pretty",
+  assert_golden_output("inspect " + path + " --track \"\" --ts 1000",
                        "inspect_nested_parent.golden", 0);
 
   // 2. Inspect the first child (should list parent_task as parent, children
   // empty, self_time = 300)
-  assert_golden_output("inspect " + path + " --track \"\" --ts 1100 --pretty",
+  assert_golden_output("inspect " + path + " --track \"\" --ts 1100",
                        "inspect_nested_child.golden", 0);
 }
 
-// Verify the 'query' subcommand output on a simple trace.
-TEST_F(ztracing_cli_test, query_minified_output_matches_golden) {
-  std::string path =
-      write_temp_trace("query_standard.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("query " + path, "query_minified.golden", 0);
-}
-
-// Verify the 'query' subcommand output in pretty-printed mode.
-TEST_F(ztracing_cli_test, query_pretty_output_matches_golden) {
-  std::string path = write_temp_trace("query_pretty.json", STANDARD_MOCK_TRACE);
-  assert_golden_output("query " + path + " --pretty", "query_pretty.golden", 0);
+// Verify the 'query' subcommand output.
+TEST_F(ztracing_cli_test, query_output_matches_golden) {
+  std::string path = write_temp_trace("query_standard.json", STANDARD_MOCK_TRACE);
+  assert_golden_output("query " + path, "query.golden", 0);
 }
 
 // Verify the 'query' subcommand with advanced filtering options.
@@ -397,17 +351,82 @@ TEST_F(ztracing_cli_test, query_filtered_output_matches_golden) {
 
   // 1. Substring match and max-depth filter: "task" at depth <= 0 -> should
   // only match parent_task!
-  assert_golden_output("query " + path + " --match task --max-depth 0 --pretty",
+  assert_golden_output("query " + path + " --match task --max-depth 0",
                        "query_match_depth.golden", 0);
 
   // 2. Time-window and limit filter: ts >= 1200, limit to 1 match -> should
   // only return network_request!
-  assert_golden_output("query " + path + " --t-start 1200 --limit 1 --pretty",
+  assert_golden_output("query " + path + " --t-start 1200 --limit 1",
                        "query_time_limit.golden", 0);
 
   // 3. Track filter: only scan the named "worker_thread"
-  assert_golden_output("query " + path + " --track \"worker_thread\" --pretty",
+  assert_golden_output("query " + path + " --track \"worker_thread\"",
                        "query_track_filter.golden", 0);
+}
+
+// Verify the 'aggregate' subcommand output.
+TEST_F(ztracing_cli_test, aggregate_output_matches_golden) {
+  std::string complex_trace = R"([
+    {"name": "task_A", "cat": "cpu", "ph": "X", "ts": 1000, "dur": 500, "pid": 1, "tid": 1},
+    {"name": "task_B", "cat": "gpu", "ph": "X", "ts": 1500, "dur": 1000, "pid": 1, "tid": 1},
+    {"name": "task_A", "cat": "cpu", "ph": "X", "ts": 2000, "dur": 300, "pid": 1, "tid": 1}
+  ])";
+  std::string path = write_temp_trace("aggregate.json", complex_trace);
+
+  // 1. Default (group by name, sort by duration descending)
+  assert_golden_output("aggregate " + path, "aggregate_default.golden", 0);
+
+  // 2. Group by category, sort by duration descending
+  assert_golden_output("aggregate " + path + " --group-by category",
+                       "aggregate_by_category.golden", 0);
+
+  // 3. Group by name, sort by count descending
+  assert_golden_output("aggregate " + path + " --sort count",
+                       "aggregate_sort_by_count.golden", 0);
+}
+
+// Verify the 'aggregate' subcommand with --min-count option.
+TEST_F(ztracing_cli_test, aggregate_min_count_matches_golden) {
+  std::string complex_trace = R"([
+    {"name": "task_A", "cat": "cpu", "ph": "X", "ts": 1000, "dur": 500, "pid": 1, "tid": 1},
+    {"name": "task_B", "cat": "gpu", "ph": "X", "ts": 1500, "dur": 1000, "pid": 1, "tid": 1},
+    {"name": "task_A", "cat": "cpu", "ph": "X", "ts": 2000, "dur": 300, "pid": 1, "tid": 1}
+  ])";
+  std::string path = write_temp_trace("aggregate_min_count.json", complex_trace);
+
+  // 1. Show all (min-count = 1) -> should show task_A and task_B, no footnote
+  assert_golden_output("aggregate " + path + " --min-count 1",
+                       "aggregate_min_count_1.golden", 0);
+
+  // 2. Filter out all (min-count = 5) -> should show empty table and footnote
+  assert_golden_output("aggregate " + path + " --min-count 5",
+                       "aggregate_min_count_5.golden", 0);
+}
+
+// Verify the 'diff' subcommand output.
+TEST_F(ztracing_cli_test, diff_output_matches_golden) {
+  std::string baseline_trace = R"([
+    {"name": "task_A", "cat": "cpu", "ph": "X", "ts": 1000, "dur": 500, "pid": 1, "tid": 1},
+    {"name": "task_B", "cat": "gpu", "ph": "X", "ts": 1500, "dur": 1000, "pid": 1, "tid": 1}
+  ])";
+  std::string target_trace = R"([
+    {"name": "task_A", "cat": "cpu", "ph": "X", "ts": 1000, "dur": 800, "pid": 1, "tid": 1},
+    {"name": "task_B", "cat": "gpu", "ph": "X", "ts": 1500, "dur": 900, "pid": 1, "tid": 1},
+    {"name": "task_C", "cat": "cpu", "ph": "X", "ts": 2500, "dur": 300, "pid": 1, "tid": 1}
+  ])";
+  std::string path_base = write_temp_trace("diff_base.json", baseline_trace);
+  std::string path_target = write_temp_trace("diff_target.json", target_trace);
+
+  // 1. Default (group by name, sort by dur-delta descending)
+  assert_golden_output("diff " + path_base + " " + path_target, "diff_default.golden", 0);
+
+  // 2. Group by category, sort by dur-delta descending
+  assert_golden_output("diff " + path_base + " " + path_target + " --group-by category",
+                       "diff_by_category.golden", 0);
+
+  // 3. Group by name, sort by count-delta descending
+  assert_golden_output("diff " + path_base + " " + path_target + " --sort count-delta",
+                       "diff_sort_by_count_delta.golden", 0);
 }
 
 }  // namespace

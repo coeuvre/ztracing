@@ -1,0 +1,6 @@
+# ztracing diff diff_base.json diff_target.json --sort count-delta
+Event Name                     | Baseline Dur (s) | Target Dur (s) |  Delta Dur (s) | Delta Count
+-------------------------------------------------------------------------------------------------
+task_C                         |             0.00 |           0.00 |          +0.00 |          +1
+task_A                         |             0.00 |           0.00 |          +0.00 |          +0
+task_B                         |             0.00 |           0.00 |          -0.00 |          +0

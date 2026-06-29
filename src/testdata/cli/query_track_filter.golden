@@ -1,9 +1,4 @@
-[
-  {
-    "name": "network_request",
-    "track": "worker_thread",
-    "ts_us": 1500,
-    "dur_us": 800,
-    "depth": 0
-  }
-]
+# ztracing query query_filtered.json --track "worker_thread"
+Event Name                     | Track                |   Start Time (us) |   Duration (us) | Depth
+---------------------------------------------------------------------------------------------------
+network_request                | worker_thread        |              1500 |             800 |     0

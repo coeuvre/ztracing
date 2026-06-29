@@ -1,5 +1,5 @@
-#ifndef ZTRACING_CORE_DARRAY_H_
-#define ZTRACING_CORE_DARRAY_H_
+#ifndef CORE_DARRAY_H
+#define CORE_DARRAY_H
 
 #include <assert.h>
 #include <stdbool.h>
@@ -66,14 +66,14 @@ size_t darray_grow_capacity_(size_t cap, size_t min_cap);
                  sizeof(*(da)->ptr), (allocator))
 
 // Pushes a single value to the end of the array.
-#define darray_push(da, val, allocator)                                     \
-  do {                                                                      \
-    if ((da)->len == (da)->cap) {                                           \
-      size_t _new_cap = darray_grow_capacity_((da)->cap, (da)->len + 1);    \
-      darray_reserve_((void**)&(da)->ptr, &(da)->cap, _new_cap,             \
-                      sizeof(*(da)->ptr), (allocator));                     \
-    }                                                                       \
-    (da)->ptr[(da)->len++] = (val);                                         \
+#define darray_push(da, val, allocator)                                  \
+  do {                                                                   \
+    if ((da)->len == (da)->cap) {                                        \
+      size_t _new_cap = darray_grow_capacity_((da)->cap, (da)->len + 1); \
+      darray_reserve_((void**)&(da)->ptr, &(da)->cap, _new_cap,          \
+                      sizeof(*(da)->ptr), (allocator));                  \
+    }                                                                    \
+    (da)->ptr[(da)->len++] = (val);                                      \
   } while (0)
 
 // Pops the last element from the array and returns a pointer to it.
@@ -133,4 +133,4 @@ size_t darray_grow_capacity_(size_t cap, size_t min_cap);
 }
 #endif
 
-#endif  // ZTRACING_CORE_DARRAY_H_
+#endif  // CORE_DARRAY_H
