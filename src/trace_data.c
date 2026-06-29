@@ -16,15 +16,15 @@ static uint32_t compute_hash(string_view_t s) {
   return hash;
 }
 
-static uint32_t hash_uint64(const void* key, void* ctx) {
+static uint32_t hash_uint64(const uint64_t* key, void* ctx) {
   (void)ctx;
-  uint64_t v = *(const uint64_t*)key;
+  uint64_t v = *key;
   return (uint32_t)(v ^ (v >> 32));
 }
 
-static bool eq_uint64(const void* a, const void* b, void* ctx) {
+static bool eq_uint64(const uint64_t* a, const uint64_t* b, void* ctx) {
   (void)ctx;
-  return *(const uint64_t*)a == *(const uint64_t*)b;
+  return *a == *b;
 }
 
 static void string_lookup_table_resize(string_lookup_table_t* lt,
@@ -104,7 +104,6 @@ void trace_data_compact(trace_data_t* td, allocator_t* a) {
   darray_compact(&td->events, a);
   darray_compact(&td->args, a);
 }
-
 
 string_ref_t trace_data_push_string(trace_data_t* td, string_view_t s,
                                     allocator_t* a) {
@@ -242,12 +241,8 @@ void trace_event_matcher_deinit(trace_event_matcher_t* matcher) {
   if (a == nullptr) return;
   if (matcher->active_b_events.entries != nullptr) {
     for (size_t i = 0; i < matcher->active_b_events.capacity; i++) {
-      void* entry = (char*)matcher->active_b_events.entries +
-                    i * matcher->active_b_events.entry_size;
-      if (*hash_table_entry_occupied(&matcher->active_b_events, entry)) {
-        thread_stack_t* stack = (thread_stack_t*)hash_table_entry_value(
-            &matcher->active_b_events, entry);
-        darray_deinit(&stack->stack, a);
+      if (matcher->active_b_events.entries[i].occupied) {
+        darray_deinit(&matcher->active_b_events.entries[i].value.stack, a);
       }
     }
     hash_table_deinit(&matcher->active_b_events, a);
@@ -351,8 +346,7 @@ static inline void trace_event_matcher_ensure_init(
   if (matcher->active_b_events.hash_fn == nullptr) {
     allocator_t* a =
         matcher->allocator != nullptr ? matcher->allocator : default_allocator;
-    matcher->active_b_events = hash_table_init(uint64_t, thread_stack_t,
-                                               hash_uint64, eq_uint64, nullptr);
+    hash_table_init(&matcher->active_b_events, hash_uint64, eq_uint64, nullptr);
     matcher->allocator = a;
   }
 }
@@ -399,13 +393,12 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
     trace_event_matcher_ensure_init(matcher, a);
 
     thread_stack_t* ts_stack_ptr =
-        (thread_stack_t*)hash_table_get(&matcher->active_b_events, &thread_id);
+        hash_table_get(&matcher->active_b_events, &thread_id);
     if (ts_stack_ptr == nullptr) {
       thread_stack_t ts_stack = {};
-      thread_stack_t* val_slot = (thread_stack_t*)hash_table_put(
-          &matcher->active_b_events, &thread_id, matcher->allocator);
-      *val_slot = ts_stack;
-      ts_stack_ptr = val_slot;
+      hash_table_put(&matcher->active_b_events, &thread_id, ts_stack,
+                     matcher->allocator);
+      ts_stack_ptr = hash_table_get(&matcher->active_b_events, &thread_id);
     }
     active_event_b_t active_ev = {new_idx};
     darray_push(&ts_stack_ptr->stack, active_ev, matcher->allocator);
@@ -416,7 +409,7 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
     trace_event_matcher_ensure_init(matcher, a);
 
     thread_stack_t* ts_stack_ptr =
-        (thread_stack_t*)hash_table_get(&matcher->active_b_events, &thread_id);
+        hash_table_get(&matcher->active_b_events, &thread_id);
     if (ts_stack_ptr != nullptr && ts_stack_ptr->stack.len > 0) {
       active_event_b_t active_ev = *darray_pop(&ts_stack_ptr->stack);
 

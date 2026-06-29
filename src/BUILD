@@ -201,7 +201,7 @@ cc_library(
         "//core:darray",
         "//core:assert",
         ":colors",
-        ":hash_table",
+        "//core:hash_table",
         "//core:string",
         ":trace_parser",
     ],
@@ -216,22 +216,6 @@ cc_test(
     ],
 )
 
-cc_library(
-    name = "hash_table",
-    hdrs = ["hash_table.h"],
-    deps = ["//core:allocator"],
-)
-
-cc_test(
-    name = "hash_table_test",
-    srcs = ["hash_table_test.cc"],
-    deps = [
-        ":hash_table",
-        "@googletest//:gtest_main",
-    ],
-)
-
-
 
 cc_library(
     name = "track",
@@ -242,7 +226,7 @@ cc_library(
         "//core:arena",
         "//core:darray",
         ":colors",
-        ":hash_table",
+        "//core:hash_table",
         ":trace_data",
     ],
 )

@@ -166,3 +166,25 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "hash_table",
+    srcs = ["hash_table.c"],
+    hdrs = ["hash_table.h"],
+    deps = [
+        ":allocator",
+        ":assert",
+        ":logging",
+    ],
+)
+
+cc_test(
+    name = "hash_table_test",
+    srcs = ["hash_table_test.cc"],
+    deps = [
+        ":hash_table",
+        ":allocator",
+        "@googletest//:gtest_main",
+    ],
+)
+

@@ -5,8 +5,8 @@
 
 #include "core/allocator.h"
 #include "core/darray.h"
+#include "core/hash_table.h"
 #include "core/string.h"
-#include "src/hash_table.h"
 #include "src/trace_parser.h"
 
 #ifdef __cplusplus
@@ -111,8 +111,10 @@ typedef struct thread_stack {
   darray_t(active_event_b_t) stack;
 } thread_stack_t;
 
+typedef hash_table_t(uint64_t, thread_stack_t) active_b_events_map_t;
+
 typedef struct trace_event_matcher {
-  hash_table_t active_b_events;
+  active_b_events_map_t active_b_events;
   allocator_t* allocator;
 } trace_event_matcher_t;
 

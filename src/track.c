@@ -4,9 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "core/arena.h"
-#include "src/colors.h"
-#include "src/hash_table.h"
+#include "core/hash_table.h"
 
 typedef struct stack_event {
   int64_t end;
@@ -195,8 +193,7 @@ static int track_sort_key_compare(const void* a, const void* b) {
   return result;
 }
 
-static uint32_t track_key_hash(const void* key, void* ctx) {
-  const track_key_t* k = (const track_key_t*)key;
+static uint32_t track_key_hash(const track_key_t* k, void* ctx) {
   uint32_t h = (uint32_t)k->pid;
   (void)ctx;
   h ^= (uint32_t)k->tid + 0x9e3779b9 + (h << 6) + (h >> 2);
@@ -205,9 +202,8 @@ static uint32_t track_key_hash(const void* key, void* ctx) {
   return h;
 }
 
-static bool track_key_eq(const void* a, const void* b, void* ctx) {
-  const track_key_t* ka = (const track_key_t*)a;
-  const track_key_t* kb = (const track_key_t*)b;
+static bool track_key_eq(const track_key_t* ka, const track_key_t* kb,
+                         void* ctx) {
   (void)ctx;
   return ka->pid == kb->pid && ka->tid == kb->tid &&
          ka->name_ref == kb->name_ref && ka->id_ref == kb->id_ref;
@@ -414,8 +410,9 @@ void track_organize(const trace_data_t* td, darray_track_t* out_tracks,
     int64_t max_ts = 0;
     bool first_event = true;
 
-    hash_table_t track_map = hash_table_init(
-        track_key_t, size_t, track_key_hash, track_key_eq, nullptr);
+    typedef hash_table_t(track_key_t, size_t) track_map_t;
+    track_map_t track_map = {};
+    hash_table_init(&track_map, track_key_hash, track_key_eq, nullptr);
 
     track_key_t last_key = {-1, -1, 0, 0};
     size_t last_track_idx = (size_t)-1;
@@ -457,7 +454,7 @@ void track_organize(const trace_data_t* td, darray_track_t* out_tracks,
           key.name_ref == last_key.name_ref && key.id_ref == last_key.id_ref) {
         track_idx = last_track_idx;
       } else {
-        size_t* track_idx_ptr = (size_t*)hash_table_get(&track_map, &key);
+        size_t* track_idx_ptr = hash_table_get(&track_map, &key);
         if (track_idx_ptr == nullptr) {
           track_t t = {
               .type = is_counter ? TRACK_TYPE_COUNTER : TRACK_TYPE_THREAD,
@@ -468,8 +465,7 @@ void track_organize(const trace_data_t* td, darray_track_t* out_tracks,
           };
           darray_push(out_tracks, t, output_allocator);
           track_idx = out_tracks->len - 1;
-          *(size_t*)hash_table_put(&track_map, &key, scratch_allocator) =
-              track_idx;
+          hash_table_put(&track_map, &key, track_idx, scratch_allocator);
           darray_push(&event_counts, (size_t)0, scratch_allocator);
         } else {
           track_idx = *track_idx_ptr;
@@ -675,5 +671,6 @@ void track_organize(const trace_data_t* td, darray_track_t* out_tracks,
     darray_compact(out_tracks, output_allocator);
 
     darray_deinit(&event_counts, scratch_allocator);
+    hash_table_deinit(&track_map, scratch_allocator);
   }
 }
