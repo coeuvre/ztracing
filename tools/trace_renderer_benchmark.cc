@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
   fclose(f);
 
   // Organize Tracks
-  array_list_t tracks = {};
+  darray_track_t tracks = {};
   int64_t min_ts, max_ts;
   arena_t* scratch_arena = arena_create_with_allocator(a);
   track_organize(td, &tracks, &min_ts, &max_ts, a,
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
   size_t best_track_start = 0;
   size_t max_viewport_events = 0;
 
-  track_t* track_array = (track_t*)tracks.ptr;
+  track_t* track_array = tracks.ptr;
 
   if (tracks.len >= VIEWPORT_TRACKS) {
     for (size_t i = 0; i <= tracks.len - VIEWPORT_TRACKS; i++) {
@@ -120,8 +120,8 @@ int main(int argc, char** argv) {
 
   // We will pre-allocate temporary lists for each track to avoid allocation
   // overhead in the benchmark loop
-  std::vector<array_list_t> thread_blocks(actual_viewport_tracks);
-  std::vector<array_list_t> counter_blocks(actual_viewport_tracks);
+  std::vector<darray_track_render_block_t> thread_blocks(actual_viewport_tracks);
+  std::vector<darray_counter_render_block_t> counter_blocks(actual_viewport_tracks);
 
   // Benchmark Full-Viewport Rendering (Fully Zoomed Out)
   auto start = std::chrono::high_resolution_clock::now();
@@ -141,8 +141,8 @@ int main(int argc, char** argv) {
     }
 
     for (size_t j = 0; j < actual_viewport_tracks; j++) {
-      array_list_clear(&thread_blocks[j]);
-      array_list_clear(&counter_blocks[j]);
+      darray_clear(&thread_blocks[j]);
+      darray_clear(&counter_blocks[j]);
     }
   }
 
@@ -157,14 +157,14 @@ int main(int argc, char** argv) {
 
   // Deinit
   for (size_t j = 0; j < actual_viewport_tracks; j++) {
-    array_list_deinit(&thread_blocks[j], a);
-    array_list_deinit(&counter_blocks[j], a);
+    darray_deinit(&thread_blocks[j], a);
+    darray_deinit(&counter_blocks[j], a);
   }
   track_renderer_state_deinit(&state, a);
   for (size_t i = 0; i < tracks.len; i++) {
     track_deinit(&track_array[i], a);
   }
-  array_list_deinit(&tracks, a);
+  darray_deinit(&tracks, a);
   trace_event_matcher_deinit(&matcher);
   trace_data_release(td, a);
   return 0;

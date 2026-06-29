@@ -4,13 +4,12 @@
 
 // Computes the dominant depth-0 event index for each track across 16 horizontal
 // time slices.
-void trace_heatmap_compute(const array_list_t* tracks, const trace_data_t* td,
+void trace_heatmap_compute(const darray_track_t* tracks, const trace_data_t* td,
                            int64_t min_ts, int64_t max_ts,
                            trace_heatmap_t* out_heatmaps) {
   if (tracks && td && out_heatmaps && tracks->len > 0) {
-    const track_t* tracks_ptr = (const track_t*)tracks->ptr;
-    const trace_event_persisted_t* events =
-        (const trace_event_persisted_t*)td->events.ptr;
+    const track_t* tracks_ptr = tracks->ptr;
+    const trace_event_persisted_t* events = td->events.ptr;
 
     // Initialize all buckets of all heatmaps to (size_t)-1 (idle) to prevent
     // out-of-bounds access on zero duration or empty traces.
@@ -37,8 +36,8 @@ void trace_heatmap_compute(const array_list_t* tracks, const trace_data_t* td,
         }
 
         if (t->event_indices.len > 0) {
-          const size_t* t_event_indices = (const size_t*)t->event_indices.ptr;
-          const int* t_depths = (const int*)t->depths.ptr;
+          const size_t* t_event_indices = t->event_indices.ptr;
+          const uint32_t* t_depths = t->depths.ptr;
 
           // Identify dominant event index in each bucket
           for (size_t k = 0; k < t->event_indices.len; k++) {

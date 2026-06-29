@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 #include "core/allocator.h"
-#include "src/array_list.h"
+#include "core/darray.h"
 #include "core/string.h"
 
 #ifdef __cplusplus
@@ -54,8 +54,8 @@ typedef enum trace_parser_state {
 } trace_parser_state_t;
 
 typedef struct trace_parser {
-  array_list_t buffer;
-  array_list_t args_buffer;
+  darray_uint8_t buffer;
+  darray_t(trace_arg_t) args_buffer;
   trace_parser_state_t state;
   size_t pos;
   bool is_eof;

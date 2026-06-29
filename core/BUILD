@@ -58,6 +58,26 @@ cc_library(
 )
 
 cc_library(
+    name = "darray",
+    srcs = ["darray.c"],
+    hdrs = ["darray.h"],
+    deps = [
+        ":allocator",
+    ],
+)
+
+cc_test(
+    name = "darray_test",
+    srcs = ["darray_test.cc"],
+    deps = [
+        ":darray",
+        ":allocator",
+        ":arena",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "task",
     srcs = ["task.c"],
     hdrs = ["task.h"],
@@ -124,7 +144,7 @@ cc_library(
     hdrs = ["json_writer.h"],
     deps = [
         ":allocator",
-        "//src:array_list",
+        ":darray",
         ":string",
     ],
 )

@@ -46,11 +46,6 @@ cc_library(
     hdrs = ["format.h"],
 )
 
-cc_library(
-    name = "array_list",
-    hdrs = ["array_list.h"],
-    deps = ["//core:allocator"],
-)
 
 cc_library(
     name = "trace_load_task",
@@ -59,7 +54,7 @@ cc_library(
     deps = [
         "//core:allocator",
         "//core:arena",
-        ":array_list",
+        "//core:darray",
         "//core:assert",
         ":colors",
         ":platform",
@@ -76,7 +71,7 @@ cc_library(
     hdrs = ["trace_search_task.h"],
     deps = [
         "//core:allocator",
-        ":array_list",
+        "//core:darray",
         "//core:assert",
         "//core:task",
         ":trace_data",
@@ -90,16 +85,6 @@ cc_test(
     srcs = ["format_test.cc"],
     deps = [
         ":format",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "array_list_test",
-    srcs = ["array_list_test.cc"],
-    deps = [
-        ":array_list",
-        "//core:counting_allocator",
         "@googletest//:gtest_main",
     ],
 )
@@ -137,7 +122,7 @@ cc_library(
     hdrs = ["trace_parser.h"],
     deps = [
         "//core:allocator",
-        ":array_list",
+        "//core:darray",
         "//core:string",
         "//core:json_reader",
     ],
@@ -191,7 +176,7 @@ cc_library(
     hdrs = ["imgui_impl_webgl.h"],
     deps = [
         "//core:allocator",
-        ":array_list",
+        "//core:darray",
         "//core:logging",
         "@imgui",
     ],
@@ -213,7 +198,7 @@ cc_library(
     hdrs = ["trace_data.h"],
     deps = [
         "//core:allocator",
-        ":array_list",
+        "//core:darray",
         "//core:assert",
         ":colors",
         ":hash_table",
@@ -255,7 +240,7 @@ cc_library(
     deps = [
         "//core:allocator",
         "//core:arena",
-        ":array_list",
+        "//core:darray",
         ":colors",
         ":hash_table",
         ":trace_data",
@@ -267,7 +252,7 @@ cc_library(
     srcs = ["track_renderer.c"],
     hdrs = ["track_renderer.h"],
     deps = [
-        ":array_list",
+        "//core:darray",
         ":track",
         ":trace_data",
     ],
@@ -297,7 +282,7 @@ cc_library(
     hdrs = ["trace_viewer.h"],
     deps = [
         "//core:allocator",
-        ":array_list",
+        "//core:darray",
         ":colors",
         ":format",
         ":imgui_c",
@@ -349,7 +334,7 @@ cc_library(
     deps = [
         "//core:allocator",
         "//core:counting_allocator",
-        ":array_list",
+        "//core:darray",
         ":colors",
         ":format",
         ":imgui_c",
@@ -396,6 +381,7 @@ cc_binary(
     deps = [
         ":app",
         "//core:assert",
+        "//core:darray",
         ":imgui_c",
         ":imgui_impl_wasm",
         ":imgui_impl_webgl",
@@ -416,7 +402,7 @@ cc_library(
     srcs = ["trace_heatmap.c"],
     hdrs = ["trace_heatmap.h"],
     deps = [
-        ":array_list",
+        "//core:darray",
         ":trace_data",
         ":track",
     ],
@@ -439,7 +425,7 @@ cc_library(
     srcs = ["trace_histogram.c"],
     hdrs = ["trace_histogram.h"],
     deps = [
-        ":array_list",
+        "//core:darray",
         ":trace_data",
     ],
 )
@@ -461,6 +447,7 @@ cc_library(
     hdrs = ["trace_loader.h"],
     deps = [
         "//core:allocator",
+        "//core:darray",
         ":platform",
         "//core:task",
         ":trace_data",
@@ -477,6 +464,7 @@ cc_binary(
     ],
     deps = [
         ":app",
+        "//core:darray",
         "//core:json_writer",
         ":track",
         ":trace_loader",
@@ -495,6 +483,7 @@ cc_library(
     ],
     deps = [
         ":app",
+        "//core:darray",
         ":headless_gl",
         ":imgui_c",
         ":imgui_impl_webgl",

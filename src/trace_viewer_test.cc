@@ -88,15 +88,15 @@ TEST_F(TraceViewerTest, HitTestingThreadEvent) {
   e.dur = 100000;
   e.name_ref = 0;
   e.ph_ref = 0;  // thread event
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
+  darray_push(&td->events, e, allocator);
 
   // Add a track
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 1000000;
@@ -120,7 +120,7 @@ TEST_F(TraceViewerTest, HitTestingThreadEvent) {
 
   trace_viewer_step(&tv, td, &input, allocator);
 
-  hover_match_t* hover_matches = (hover_match_t*)tv.hover_matches.ptr;
+  hover_match_t* hover_matches = tv.hover_matches.ptr;
   (void)hover_matches;
   ASSERT_EQ(tv.hover_matches.len, 1u);
   EXPECT_EQ(hover_matches[0].track_idx, 0u);
@@ -135,15 +135,15 @@ TEST_F(TraceViewerTest, ClickToFocusAndCenter) {
     e.dur = 1000;
     e.tid = i;
     size_t event_idx = td->events.len;
-    *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
+    darray_push(&td->events, e, allocator);
 
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
     t.tid = i;
-    *array_list_push(&t.event_indices, size_t, allocator) = event_idx;
+    darray_push(&t.event_indices, event_idx, allocator);
     track_update_max_dur(&t, td, allocator);
     track_calculate_depths(&t, td, allocator);
-    *array_list_push(&tv.tracks, track_t, allocator) = t;
+    darray_push(&tv.tracks, t, allocator);
   }
 
   tv.viewport.min_ts = 0;
@@ -192,14 +192,14 @@ TEST_F(TraceViewerTest, SelectionOnClick) {
   trace_event_persisted_t e = {};
   e.ts = 500000;
   e.dur = 100000;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
+  darray_push(&td->events, e, allocator);
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 1000000;
@@ -345,14 +345,14 @@ TEST_F(TraceViewerTest, TimelineSnapping) {
   trace_event_persisted_t e = {};
   e.ts = 102;
   e.dur = 10;  // Ensure it's not a zero-width event
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
+  darray_push(&td->events, e, allocator);
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   trace_viewer_input_t input = {};
   input.canvas_x = 0.0f;
@@ -398,9 +398,8 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
   tv.selection_start_time = 400.0;
   tv.selection_end_time = 600.0;
   tv.last_inner_width = 1000.0f;
-  *array_list_push(&tv.selected_event_indices, int64_t, allocator) =
-      (int64_t)123;
-  int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
+  darray_push(&tv.selected_event_indices, (int64_t)123, allocator);
+  int64_t* selected_event_indices = tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   std::sort(selected_event_indices,
             selected_event_indices + tv.selected_event_indices.len);
@@ -409,14 +408,14 @@ TEST_F(TraceViewerTest, InteractionOutsideSelectionIgnored) {
   trace_event_persisted_t e = {};
   e.ts = 100;
   e.dur = 50;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
+  darray_push(&td->events, e, allocator);
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -449,9 +448,8 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
   tv.selection_start_time = 400.0;
   tv.selection_end_time = 600.0;
   tv.last_inner_width = 1000.0f;
-  *array_list_push(&tv.selected_event_indices, int64_t, allocator) =
-      (int64_t)123;
-  int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
+  darray_push(&tv.selected_event_indices, (int64_t)123, allocator);
+  int64_t* selected_event_indices = tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   std::sort(selected_event_indices,
             selected_event_indices + tv.selected_event_indices.len);
@@ -460,29 +458,28 @@ TEST_F(TraceViewerTest, CounterInteractionOutsideSelectionIgnored) {
   trace_arg_persisted_t arg = {};
   arg.key_ref = 1;
   arg.val_double = 1.0;
-  *array_list_push(&td->args, trace_arg_persisted_t, allocator) = arg;
+  darray_push(&td->args, arg, allocator);
 
   trace_event_persisted_t e1 = {};
   e1.ts = 100;
   e1.args_offset = 0;
   e1.args_count = 1;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
+  darray_push(&td->events, e1, allocator);
 
   trace_event_persisted_t e2 = {};
   e2.ts = 200;
   e2.args_offset = 0;
   e2.args_count = 1;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e2;
+  darray_push(&td->events, e2, allocator);
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
-  *array_list_push(&t.counter_series, string_ref_t, allocator) =
-      (string_ref_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
+  darray_push(&t.counter_series, (string_ref_t)1, allocator);
   t.counter_max_total = 1.0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -521,8 +518,7 @@ TEST_F(TraceViewerTest, TimelineClickOutsideToClearTracks) {
   tv.last_tracks_y = 0.0f;
 
   // Add a dummy box selection
-  *array_list_push(&tv.selected_event_indices, int64_t, allocator) =
-      (int64_t)123;
+  darray_push(&tv.selected_event_indices, (int64_t)123, allocator);
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -596,29 +592,28 @@ TEST_F(TraceViewerTest, CounterInteractionInsideSelectionWorks) {
   trace_arg_persisted_t arg = {};
   arg.key_ref = 1;
   arg.val_double = 1.0;
-  *array_list_push(&td->args, trace_arg_persisted_t, allocator) = arg;
+  darray_push(&td->args, arg, allocator);
 
   trace_event_persisted_t e1 = {};
   e1.ts = 150;
   e1.args_offset = 0;
   e1.args_count = 1;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
+  darray_push(&td->events, e1, allocator);
 
   trace_event_persisted_t e2 = {};
   e2.ts = 300;
   e2.args_offset = 0;
   e2.args_count = 1;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e2;
+  darray_push(&td->events, e2, allocator);
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
-  *array_list_push(&t.counter_series, string_ref_t, allocator) =
-      (string_ref_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
+  darray_push(&t.counter_series, (string_ref_t)1, allocator);
   t.counter_max_total = 1.0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -649,14 +644,14 @@ TEST_F(TraceViewerTest, SnappingOnlyInVisibleTracks) {
   trace_event_persisted_t e = {};
   e.ts = 102;
   e.dur = 10;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
+  darray_push(&td->events, e, allocator);
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   trace_viewer_input_t input = {};
   input.canvas_x = 0.0f;
@@ -702,14 +697,14 @@ TEST_F(TraceViewerTest, SnappingDisabledWhenNotDragging) {
   trace_event_persisted_t e = {};
   e.ts = 102;
   e.dur = 10;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
+  darray_push(&td->events, e, allocator);
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   trace_viewer_input_t input = {};
   input.canvas_x = 0;
@@ -850,13 +845,13 @@ TEST_F(TraceViewerTest, TimelineSnappedBoundaryDragTracks) {
   trace_event_persisted_t e = {};
   e.ts = 50;
   e.dur = 10;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
+  darray_push(&td->events, e, allocator);
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -909,38 +904,38 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
     trace_event_persisted_t e2 = {};
     e2.ts = 200;
     e2.dur = 50;
-    *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
-    *array_list_push(&td->events, trace_event_persisted_t, allocator) = e2;
+    darray_push(&td->events, e1, allocator);
+    darray_push(&td->events, e2, allocator);
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
-    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+    darray_push(&t.event_indices, (size_t)0, allocator);
+    darray_push(&t.event_indices, (size_t)1, allocator);
     uint32_t* depths = (uint32_t*)t.depths.ptr;
     (void)depths;
-    array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
+    darray_resize(&t.depths, 2, allocator);
     depths = (uint32_t*)t.depths.ptr;
     depths[0] = 0;
     depths[1] = 0;
     track_update_max_dur(&t, td, allocator);
-    *array_list_push(&tv.tracks, track_t, allocator) = t;
+    darray_push(&tv.tracks, t, allocator);
   }
   // track_t 2: Thread with 1 event in depth 1
   {
     trace_event_persisted_t e3 = {};
     e3.ts = 150;
     e3.dur = 100;
-    *array_list_push(&td->events, trace_event_persisted_t, allocator) = e3;
+    darray_push(&td->events, e3, allocator);
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
-    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)2;
+    darray_push(&t.event_indices, (size_t)2, allocator);
     uint32_t* depths = (uint32_t*)t.depths.ptr;
     (void)depths;
-    array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
+    darray_resize(&t.depths, 1, allocator);
     depths = (uint32_t*)t.depths.ptr;
     depths[0] = 1;
     track_update_max_dur(&t, td, allocator);
     t.max_depth = 1;
-    *array_list_push(&tv.tracks, track_t, allocator) = t;
+    darray_push(&tv.tracks, t, allocator);
   }
 
   tv.viewport.min_ts = 0;
@@ -995,7 +990,7 @@ TEST_F(TraceViewerTest, BoxSelectEvents) {
 
   trace_viewer_step(&tv, td, &input, allocator);
   EXPECT_EQ(tv.selection_drag_mode, INTERACTION_DRAG_MODE_NONE);
-  int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
+  int64_t* selected_event_indices = tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   EXPECT_EQ(tv.selected_event_indices.len, 2u);
   EXPECT_EQ(selected_event_indices[0], 0);  // e1
@@ -1007,17 +1002,17 @@ TEST_F(TraceViewerTest, BoxSelectLongEvent) {
   trace_event_persisted_t e = {};
   e.ts = 0;
   e.dur = 1000;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
+  darray_push(&td->events, e, allocator);
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
   uint32_t* depths = (uint32_t*)t.depths.ptr;
   (void)depths;
-  array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
+  darray_resize(&t.depths, 1, allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   tv.viewport.min_ts = 0;
   tv.viewport.max_ts = 1000;
@@ -1050,7 +1045,7 @@ TEST_F(TraceViewerTest, BoxSelectLongEvent) {
   input.mouse_y = 55.0f;
 
   trace_viewer_step(&tv, td, &input, allocator);
-  int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
+  int64_t* selected_event_indices = tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   EXPECT_EQ(tv.selected_event_indices.len, 1u);
   EXPECT_EQ(selected_event_indices[0], 0);
@@ -1061,22 +1056,21 @@ TEST_F(TraceViewerTest, BoxSelectCounterHeaderIgnored) {
   trace_arg_persisted_t arg = {};
   arg.key_ref = 1;
   arg.val_double = 1.0;
-  *array_list_push(&td->args, trace_arg_persisted_t, allocator) = arg;
+  darray_push(&td->args, arg, allocator);
 
   trace_event_persisted_t e1 = {};
   e1.ts = 100;
   e1.args_offset = 0;
   e1.args_count = 1;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
+  darray_push(&td->events, e1, allocator);
 
   track_t t = {};
   t.type = TRACK_TYPE_COUNTER;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.counter_series, string_ref_t, allocator) =
-      (string_ref_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.counter_series, (string_ref_t)1, allocator);
   t.counter_max_total = 1.0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   tv.viewport.min_ts = 0;
   tv.viewport.max_ts = 1000;
@@ -1132,7 +1126,7 @@ TEST_F(TraceViewerTest, BoxSelectCounterHeaderIgnored) {
   input.mouse_y = 55.0f;
   trace_viewer_step(&tv, td, &input, allocator);
 
-  int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
+  int64_t* selected_event_indices = tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   EXPECT_EQ(tv.selected_event_indices.len, 1u);
   EXPECT_EQ(selected_event_indices[0], 0);
@@ -1148,13 +1142,13 @@ TEST_F(TraceViewerTest, TrackHeaderNameFormatting) {
   t1.type = TRACK_TYPE_THREAD;
   t1.name_ref = name_ref;
   t1.tid = 123;
-  *array_list_push(&tv.tracks, track_t, allocator) = t1;
+  darray_push(&tv.tracks, t1, allocator);
 
   // 2. Thread without name (fallback to TID)
   track_t t2 = {};
   t2.type = TRACK_TYPE_THREAD;
   t2.tid = 456;
-  *array_list_push(&tv.tracks, track_t, allocator) = t2;
+  darray_push(&tv.tracks, t2, allocator);
 
   // 3. Counter with name and ID
   string_ref_t c_name_ref =
@@ -1165,7 +1159,7 @@ TEST_F(TraceViewerTest, TrackHeaderNameFormatting) {
   t3.type = TRACK_TYPE_COUNTER;
   t3.name_ref = c_name_ref;
   t3.id_ref = c_id_ref;
-  *array_list_push(&tv.tracks, track_t, allocator) = t3;
+  darray_push(&tv.tracks, t3, allocator);
 
   trace_viewer_input_t input = {};
   input.canvas_width = 1000.0f;
@@ -1192,7 +1186,7 @@ TEST_F(TraceViewerTest, TrackLayoutAndCulling) {
     track_t t = {};
     t.type = TRACK_TYPE_THREAD;
     t.max_depth = 0;
-    *array_list_push(&tv.tracks, track_t, allocator) = t;
+    darray_push(&tv.tracks, t, allocator);
   }
 
   trace_viewer_input_t input = {};
@@ -1272,7 +1266,7 @@ TEST_F(TraceViewerTest, RulerTickGeneration) {
 
   // 1000 pixels, 1000us. Interval should be around 100us or 200us.
   // calculate_tick_interval(1000, 1000, 100) -> 100.0
-  ruler_tick_t* ruler_ticks = (ruler_tick_t*)tv.ruler_ticks.ptr;
+  ruler_tick_t* ruler_ticks = tv.ruler_ticks.ptr;
   (void)ruler_ticks;
   EXPECT_GT(tv.ruler_ticks.len, 5u);
 
@@ -1292,10 +1286,10 @@ TEST_F(TraceViewerTest, DoubleClickToZoomEdgeStability) {
   trace_data_add_event(td, allocator, theme, &ev);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   tv.viewport.min_ts = 0;
   tv.viewport.max_ts = 100000;
@@ -1362,10 +1356,10 @@ TEST_F(TraceViewerTest, DoubleClickToZoomSameFrameRelease) {
   trace_data_add_event(td, allocator, theme, &ev);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 10000;
@@ -1419,11 +1413,11 @@ TEST_F(TraceViewerTest, DoubleClickEventOutsideCurrentSelection) {
   trace_data_add_event(td, allocator, theme, &ev2);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
   track_update_max_dur(&t, td, allocator);
   track_calculate_depths(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 10000;
@@ -1471,21 +1465,21 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   trace_event_persisted_t e2 = {};
   e2.ts = 500;
   e2.dur = 50;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e2;
+  darray_push(&td->events, e1, allocator);
+  darray_push(&td->events, e2, allocator);
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
   uint32_t* depths = (uint32_t*)t.depths.ptr;
   (void)depths;
-  array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
+  darray_resize(&t.depths, 2, allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   depths[1] = 0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 1000;
@@ -1517,7 +1511,7 @@ TEST_F(TraceViewerTest, FocusAndSelectionCoexistence) {
   input.drag_delta_x = 40.0f;  // Simulate drag
   trace_viewer_step(&tv, td, &input, allocator);
 
-  int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
+  int64_t* selected_event_indices = tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   EXPECT_EQ(tv.selected_event_indices.len, 1u);
   EXPECT_EQ(selected_event_indices[0], 0);
@@ -1564,18 +1558,18 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
   trace_event_persisted_t e1 = {};
   e1.ts = 100;
   e1.dur = 50;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
+  darray_push(&td->events, e1, allocator);
 
   track_t t = {};
   t.type = TRACK_TYPE_THREAD;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
   uint32_t* depths = (uint32_t*)t.depths.ptr;
   (void)depths;
-  array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
+  darray_resize(&t.depths, 1, allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 1000;
@@ -1590,7 +1584,7 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
   tv.selection_end_time = 600.0;
 
   // 2. Add an event to box selection manually
-  *array_list_push(&tv.selected_event_indices, int64_t, allocator) = (int64_t)0;
+  darray_push(&tv.selected_event_indices, (int64_t)0, allocator);
 
   // 3. Click empty space inside timeline selection [500]
   trace_viewer_input_t input = {};
@@ -1612,10 +1606,10 @@ TEST_F(TraceViewerTest, ClearBoxSelectionInsideTimelineSelection) {
 TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
   // Add a counter event (dur=0) at ts=5000
   trace_event_persisted_t e = {.ts = 5000, .dur = 0, .pid = 1, .tid = 1};
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e;
+  darray_push(&td->events, e, allocator);
   track_t t = {.type = TRACK_TYPE_COUNTER, .pid = 1, .tid = -1};
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&tv.tracks, t, allocator);
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 10000;  // Zoom level: 10000 duration
@@ -1650,20 +1644,20 @@ TEST_F(TraceViewerTest, FocusZeroDurationEvent) {
 TEST_F(TraceViewerTest, AsyncHistogramIntegrationForBoxSelect) {
   trace_event_persisted_t e1 = {.ts = 100, .dur = 50, .pid = 1, .tid = 1};
   trace_event_persisted_t e2 = {.ts = 200, .dur = 50, .pid = 1, .tid = 1};
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e1;
-  *array_list_push(&td->events, trace_event_persisted_t, allocator) = e2;
+  darray_push(&td->events, e1, allocator);
+  darray_push(&td->events, e2, allocator);
 
   track_t t = {.type = TRACK_TYPE_THREAD, .pid = 1, .tid = 1};
-  *array_list_push(&t.event_indices, size_t, allocator) = 0ul;
-  *array_list_push(&t.event_indices, size_t, allocator) = 1ul;
+  darray_push(&t.event_indices, 0ul, allocator);
+  darray_push(&t.event_indices, 1ul, allocator);
   uint32_t* depths = (uint32_t*)t.depths.ptr;
   (void)depths;
-  array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
+  darray_resize(&t.depths, 2, allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   depths[1] = 0;
   track_update_max_dur(&t, td, allocator);
-  *array_list_push(&tv.tracks, track_t, allocator) = t;
+  darray_push(&tv.tracks, t, allocator);
 
   tv.viewport.start_time = 0;
   tv.viewport.end_time = 1000;
@@ -1695,7 +1689,7 @@ TEST_F(TraceViewerTest, AsyncHistogramIntegrationForBoxSelect) {
   input.mouse_y = 70.0f;
   trace_viewer_step(&tv, td, &input, allocator);
 
-  int64_t* selected_event_indices = (int64_t*)tv.selected_event_indices.ptr;
+  int64_t* selected_event_indices = tv.selected_event_indices.ptr;
   (void)selected_event_indices;
   EXPECT_GT(tv.selected_event_indices.len, 0u);
   EXPECT_EQ(tv.selected_event_indices.len, 2u);
@@ -1714,7 +1708,7 @@ TEST_F(TraceViewerTest, VerticalMinimapLayoutAndDragScroll) {
     t.tid = i;
     t.max_depth = 0;  // (max_depth + 2) * lane_height = (0 + 2) * 20 = 40px
                       // height per track
-    *array_list_push(&tv.tracks, track_t, allocator) = t;
+    darray_push(&tv.tracks, t, allocator);
   }
 
   tv.viewport.min_ts = 0;
@@ -1813,7 +1807,7 @@ TEST_F(TraceViewerTest, VerticalMinimapScrollingLayoutAndDragScroll) {
     t.type = TRACK_TYPE_THREAD;
     t.tid = i;
     t.max_depth = 0;  // 40px height per track
-    *array_list_push(&tv.tracks, track_t, allocator) = t;
+    darray_push(&tv.tracks, t, allocator);
   }
 
   tv.viewport.min_ts = 0;
@@ -1902,7 +1896,7 @@ TEST_F(TraceViewerTest, VerticalMinimapSliderFixedSizeAndBoundaryAlignment) {
     t.type = TRACK_TYPE_THREAD;
     t.tid = i;
     t.max_depth = 0;  // 40px height per track
-    *array_list_push(&tv.tracks, track_t, allocator) = t;
+    darray_push(&tv.tracks, t, allocator);
   }
 
   tv.viewport.min_ts = 0;
@@ -1998,7 +1992,7 @@ TEST_F(TraceViewerTest, VerticalMinimapClickInsideVsOutside) {
     t.type = TRACK_TYPE_THREAD;
     t.tid = i;
     t.max_depth = 0;  // 40px height per track
-    *array_list_push(&tv.tracks, track_t, allocator) = t;
+    darray_push(&tv.tracks, t, allocator);
   }
 
   tv.viewport.min_ts = 0;

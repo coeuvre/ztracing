@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include "core/allocator.h"
-#include "src/array_list.h"
+#include "core/darray.h"
 #include "core/string.h"
 
 // 2. JSON WRITER (Formatter) Implementation
@@ -38,14 +38,15 @@ static size_t json_escaped_len(string_view_t s) {
   return len;
 }
 
-static void json_writer_write_escaped(array_list_t* out_buf, string_view_t s,
+static void json_writer_write_escaped(darray_uint8_t* out_buf, string_view_t s,
                                       allocator_t* a) {
   size_t escaped_len = json_escaped_len(s);
   if (escaped_len == s.len) {
-    char* dest = array_list_append(out_buf, s.len, char, a);
-    memcpy(dest, s.ptr, s.len);
+    darray_push_n(out_buf, s.ptr, s.len, a);
   } else {
-    char* dest = array_list_append(out_buf, escaped_len, char, a);
+    size_t old_len = out_buf->len;
+    darray_resize(out_buf, old_len + escaped_len, a);
+    uint8_t* dest = out_buf->ptr + old_len;
     size_t pos = 0;
     for (size_t i = 0; i < s.len; i++) {
       char c = s.ptr[i];
@@ -85,10 +86,10 @@ static void json_writer_write_escaped(array_list_t* out_buf, string_view_t s,
             dest[pos++] = '0';
             dest[pos++] = '0';
             const char hex[] = "0123456789abcdef";
-            dest[pos++] = hex[((unsigned char)c >> 4) & 0xf];
-            dest[pos++] = hex[(unsigned char)c & 0xf];
+            dest[pos++] = (uint8_t)hex[((unsigned char)c >> 4) & 0xf];
+            dest[pos++] = (uint8_t)hex[(unsigned char)c & 0xf];
           } else {
-            dest[pos++] = c;
+            dest[pos++] = (uint8_t)c;
           }
           break;
       }
@@ -97,16 +98,15 @@ static void json_writer_write_escaped(array_list_t* out_buf, string_view_t s,
 }
 
 static void json_writer_append_char(json_writer_t* w, char c) {
-  *array_list_push(w->buf, char, w->allocator) = c;
+  darray_push(w->buf, (uint8_t)c, w->allocator);
 }
 
 static void json_writer_append_str(json_writer_t* w, const char* str) {
   size_t len = strlen(str);
-  char* dest = array_list_append(w->buf, len, char, w->allocator);
-  memcpy(dest, str, len);
+  darray_push_n(w->buf, str, len, w->allocator);
 }
 
-void json_writer_init(json_writer_t* w, bool indent, array_list_t* out_buf,
+void json_writer_init(json_writer_t* w, bool indent, darray_uint8_t* out_buf,
                       allocator_t* a) {
   w->buf = out_buf;
   w->allocator = a;
@@ -114,9 +114,7 @@ void json_writer_init(json_writer_t* w, bool indent, array_list_t* out_buf,
   w->first_item[0] = true;
   w->after_key = false;
   w->indent = indent;
-  array_list_clear(out_buf);
-  // Ensure buf has char type
-  array_list_ensure_elem_size(out_buf, sizeof(char));
+  darray_clear(out_buf);
 }
 
 static void json_writer_indent(json_writer_t* w) {
@@ -238,8 +236,7 @@ void json_writer_number_double(json_writer_t* w, double val) {
   char tmp[64];
   int len = snprintf(tmp, sizeof(tmp), "%.6g", val);
   if (len > 0) {
-    char* dest = array_list_append(w->buf, (size_t)len, char, w->allocator);
-    memcpy(dest, tmp, (size_t)len);
+    darray_push_n(w->buf, tmp, (size_t)len, w->allocator);
   }
 }
 
@@ -248,8 +245,7 @@ void json_writer_number_int(json_writer_t* w, int64_t val) {
   char tmp[32];
   int len = snprintf(tmp, sizeof(tmp), "%" PRId64, val);
   if (len > 0) {
-    char* dest = array_list_append(w->buf, (size_t)len, char, w->allocator);
-    memcpy(dest, tmp, (size_t)len);
+    darray_push_n(w->buf, tmp, (size_t)len, w->allocator);
   }
 }
 

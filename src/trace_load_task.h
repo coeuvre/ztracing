@@ -7,7 +7,7 @@
 
 #include "core/allocator.h"
 #include "core/task.h"
-#include "src/trace_data.h"
+#include "src/track.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,7 +38,7 @@ typedef struct {
   // --- Final Results (written by EOF worker, adopted by UI thread on CQE reap)
   // ---
   trace_data_t* completed_td;
-  array_list_t completed_tracks;
+  darray_track_t completed_tracks;
   int64_t completed_min_ts;
   int64_t completed_max_ts;
 

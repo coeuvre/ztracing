@@ -5,7 +5,7 @@
 
 #include "core/allocator.h"
 #include "core/json_writer.h"
-#include "src/array_list.h"
+#include "core/darray.h"
 #include "src/trace_data.h"
 #include "src/trace_heatmap.h"
 #include "src/trace_histogram.h"
@@ -209,7 +209,7 @@ static int handle_summary(const trace_data_t* td, size_t track_count,
                           int64_t min_ts, int64_t max_ts, bool pretty,
                           allocator_t* a) {
   // Serialize summary
-  array_list_t json_buf = {};
+  darray_uint8_t json_buf = {};
   json_writer_t w;
   json_writer_init(&w, pretty, &json_buf, a);
 
@@ -232,29 +232,28 @@ static int handle_summary(const trace_data_t* td, size_t track_count,
 
   json_writer_end_object(&w);
 
-  // Null terminate the JSON string buffer
-  *array_list_push(&json_buf, char, a) = '\0';
+  darray_push(&json_buf, (uint8_t)'\0', a);
 
   // Output to stdout
   printf("%s\n", (const char*)json_buf.ptr);
 
   // Clean up
-  array_list_deinit(&json_buf, a);
+  darray_deinit(&json_buf, a);
 
   return 0;
 }
 
 // Handles the 'tracks' subcommand.
-static int handle_tracks(const trace_data_t* td, const array_list_t* tracks,
+static int handle_tracks(const trace_data_t* td, const darray_track_t* tracks,
                          bool pretty, allocator_t* a) {
   // Serialize tracks
-  array_list_t json_buf = {};
+  darray_uint8_t json_buf = {};
   json_writer_t w;
   json_writer_init(&w, pretty, &json_buf, a);
 
   json_writer_begin_array(&w);
 
-  track_t* tracks_data = (track_t*)tracks->ptr;
+  track_t* tracks_data = tracks->ptr;
   for (size_t i = 0; i < tracks->len; i++) {
     const track_t* t = &tracks_data[i];
 
@@ -291,38 +290,37 @@ static int handle_tracks(const trace_data_t* td, const array_list_t* tracks,
 
   json_writer_end_array(&w);
 
-  // Null terminate the JSON string buffer
-  *array_list_push(&json_buf, char, a) = '\0';
+  darray_push(&json_buf, (uint8_t)'\0', a);
 
   // Output to stdout
   printf("%s\n", (const char*)json_buf.ptr);
 
   // Clean up
-  array_list_deinit(&json_buf, a);
+  darray_deinit(&json_buf, a);
 
   return 0;
 }
 
 // Handles the 'heatmap' subcommand.
-static int handle_heatmap(const trace_data_t* td, const array_list_t* tracks,
+static int handle_heatmap(const trace_data_t* td, const darray_track_t* tracks,
                           int64_t min_ts, int64_t max_ts, bool pretty,
                           allocator_t* a) {
   // Preallocate the heatmap densities buffer (1 trace_heatmap_t per track)
-  array_list_t heatmap_list = {};
-  array_list_resize(&heatmap_list, tracks->len, sizeof(trace_heatmap_t), a);
-  trace_heatmap_t* densities = (trace_heatmap_t*)heatmap_list.ptr;
+  darray_t(trace_heatmap_t) heatmap_list = {};
+  darray_resize(&heatmap_list, tracks->len, a);
+  trace_heatmap_t* densities = heatmap_list.ptr;
 
   // Compute heatmap
   trace_heatmap_compute(tracks, td, min_ts, max_ts, densities);
 
   // Serialize to JSON
-  array_list_t json_buf = {};
+  darray_uint8_t json_buf = {};
   json_writer_t w;
   json_writer_init(&w, pretty, &json_buf, a);
 
   json_writer_begin_array(&w);
 
-  track_t* tracks_data = (track_t*)tracks->ptr;
+  track_t* tracks_data = tracks->ptr;
   for (size_t i = 0; i < tracks->len; i++) {
     const track_t* t = &tracks_data[i];
     const trace_heatmap_t* h = &densities[i];
@@ -353,8 +351,7 @@ static int handle_heatmap(const trace_data_t* td, const array_list_t* tracks,
       for (int b = 0; b < TRACE_HEATMAP_BUCKET_COUNT; b++) {
         size_t event_idx = h->event_indices[b];
         if (event_idx != (size_t)-1 && event_idx < td->events.len) {
-          const trace_event_persisted_t* e =
-              &((const trace_event_persisted_t*)td->events.ptr)[event_idx];
+          const trace_event_persisted_t* e = &td->events.ptr[event_idx];
 
           json_writer_begin_object(&w);
 
@@ -382,35 +379,33 @@ static int handle_heatmap(const trace_data_t* td, const array_list_t* tracks,
 
   json_writer_end_array(&w);  // end top-level array
 
-  // Null terminate and print
-  *array_list_push(&json_buf, char, a) = '\0';
+  darray_push(&json_buf, (uint8_t)'\0', a);
   printf("%s\n", (const char*)json_buf.ptr);
 
   // Clean up
-  array_list_deinit(&json_buf, a);
-  array_list_deinit(&heatmap_list, a);
+  darray_deinit(&json_buf, a);
+  darray_deinit(&heatmap_list, a);
 
   return 0;
 }
 
 // Handles the 'histogram' subcommand.
-static int handle_histogram(const trace_data_t* td, const array_list_t* tracks,
+static int handle_histogram(const trace_data_t* td, const darray_track_t* tracks,
                             const cli_args_t* args, allocator_t* a) {
   // Gather all event indices matching the filters
-  array_list_t selected_indices = {};
-  const trace_event_persisted_t* events =
-      (const trace_event_persisted_t*)td->events.ptr;
+  darray_int64_t selected_indices = {};
+  const trace_event_persisted_t* events = td->events.ptr;
 
   bool has_track_filter = (args->track_filter != nullptr);
 
   if (has_track_filter) {
     string_view_t target_track = string_view_from_cstr(args->track_filter);
-    track_t* tracks_data = (track_t*)tracks->ptr;
+    track_t* tracks_data = tracks->ptr;
     for (size_t i = 0; i < tracks->len; i++) {
       const track_t* t = &tracks_data[i];
       string_view_t track_name = trace_data_get_string(td, t->name_ref);
       if (string_view_eq(track_name, target_track)) {
-        const size_t* idx_ptr = (const size_t*)t->event_indices.ptr;
+        const size_t* idx_ptr = t->event_indices.ptr;
         for (size_t k = 0; k < t->event_indices.len; k++) {
           size_t event_idx = idx_ptr[k];
           if (event_idx < td->events.len) {
@@ -430,8 +425,7 @@ static int handle_histogram(const trace_data_t* td, const array_list_t* tracks,
             if (args->has_t_start && e->ts < args->t_start) continue;
             if (args->has_t_end && e->ts > args->t_end) continue;
 
-            *array_list_push(&selected_indices, int64_t, a) =
-                (int64_t)event_idx;
+            darray_push(&selected_indices, (int64_t)event_idx, a);
           }
         }
       }
@@ -454,7 +448,7 @@ static int handle_histogram(const trace_data_t* td, const array_list_t* tracks,
       if (args->has_t_start && e->ts < args->t_start) continue;
       if (args->has_t_end && e->ts > args->t_end) continue;
 
-      *array_list_push(&selected_indices, int64_t, a) = (int64_t)i;
+      darray_push(&selected_indices, (int64_t)i, a);
     }
   }
 
@@ -463,7 +457,7 @@ static int handle_histogram(const trace_data_t* td, const array_list_t* tracks,
   trace_histogram_compute(&selected_indices, td, &h);
 
   // Serialize to JSON
-  array_list_t json_buf = {};
+  darray_uint8_t json_buf = {};
   json_writer_t w;
   json_writer_init(&w, args->pretty, &json_buf, a);
 
@@ -513,18 +507,18 @@ static int handle_histogram(const trace_data_t* td, const array_list_t* tracks,
   json_writer_end_object(&w);  // end top-level object
 
   // Null terminate and print
-  *array_list_push(&json_buf, char, a) = '\0';
+  darray_push(&json_buf, (uint8_t)'\0', a);
   printf("%s\n", (const char*)json_buf.ptr);
 
   // Clean up
-  array_list_deinit(&json_buf, a);
-  array_list_deinit(&selected_indices, a);
+  darray_deinit(&json_buf, a);
+  darray_deinit(&selected_indices, a);
 
   return 0;
 }
 
 // Handles the 'inspect' subcommand.
-static int handle_inspect(const trace_data_t* td, const array_list_t* tracks,
+static int handle_inspect(const trace_data_t* td, const darray_track_t* tracks,
                           const cli_args_t* args, allocator_t* a) {
   if (!args->track_filter) {
     fprintf(stderr,
@@ -544,7 +538,7 @@ static int handle_inspect(const trace_data_t* td, const array_list_t* tracks,
   // Find the target track
   const track_t* target_track = nullptr;
   string_view_t target_track_name = string_view_from_cstr(args->track_filter);
-  track_t* tracks_data = (track_t*)tracks->ptr;
+  track_t* tracks_data = tracks->ptr;
 
   for (size_t i = 0; i < tracks->len; i++) {
     string_view_t track_name =
@@ -561,15 +555,14 @@ static int handle_inspect(const trace_data_t* td, const array_list_t* tracks,
   }
 
   // Serialize to JSON array
-  array_list_t json_buf = {};
+  darray_uint8_t json_buf = {};
   json_writer_t w;
   json_writer_init(&w, args->pretty, &json_buf, a);
 
   json_writer_begin_array(&w);
 
-  const size_t* event_indices = (const size_t*)target_track->event_indices.ptr;
-  const trace_event_persisted_t* events =
-      (const trace_event_persisted_t*)td->events.ptr;
+  const size_t* event_indices = target_track->event_indices.ptr;
+  const trace_event_persisted_t* events = td->events.ptr;
 
   // Use binary search to find the first event with ts >= target_ts
   size_t start_k = trace_data_events_lower_bound(
@@ -599,8 +592,8 @@ static int handle_inspect(const trace_data_t* td, const array_list_t* tracks,
 
     if (target_track->type == TRACK_TYPE_THREAD) {
       // Self Time & Depth
-      const int64_t* self_durs = (const int64_t*)target_track->self_durs.ptr;
-      const int* depths = (const int*)target_track->depths.ptr;
+      const int64_t* self_durs = target_track->self_durs.ptr;
+      const uint32_t* depths = target_track->depths.ptr;
 
       json_writer_name(&w, SV("self_time_us"));
       json_writer_number_double(&w, (double)self_durs[k]);
@@ -608,12 +601,12 @@ static int handle_inspect(const trace_data_t* td, const array_list_t* tracks,
       json_writer_name(&w, SV("depth"));
       json_writer_number_int(&w, (int64_t)depths[k]);
 
-      int depth_target = depths[k];
+      uint32_t depth_target = depths[k];
 
       // 1. Find Parent: nearest preceding event with depth == depth_target - 1
       const trace_event_persisted_t* parent_event = nullptr;
       for (int prev = (int)k - 1; prev >= 0; prev--) {
-        if (depths[prev] == depth_target - 1) {
+        if (depth_target > 0 && depths[prev] == depth_target - 1) {
           parent_event = &events[event_indices[prev]];
           break;
         }
@@ -635,7 +628,7 @@ static int handle_inspect(const trace_data_t* td, const array_list_t* tracks,
       json_writer_begin_array(&w);
       for (size_t next = k + 1; next < target_track->event_indices.len;
            next++) {
-        int next_depth = depths[next];
+        uint32_t next_depth = depths[next];
         if (next_depth <= depth_target) {
           break;  // Stop at sibling or parent close frame
         }
@@ -678,12 +671,11 @@ static int handle_inspect(const trace_data_t* td, const array_list_t* tracks,
 
   json_writer_end_array(&w);
 
-  // Null terminate and print
-  *array_list_push(&json_buf, char, a) = '\0';
+  darray_push(&json_buf, (uint8_t)'\0', a);
   printf("%s\n", (const char*)json_buf.ptr);
 
   // Clean up
-  array_list_deinit(&json_buf, a);
+  darray_deinit(&json_buf, a);
 
   return 0;
 }
@@ -704,9 +696,9 @@ static int compare_query_matches(const void* a_ptr, const void* b_ptr) {
 }
 
 // Handles the 'query' subcommand.
-static int handle_query(const trace_data_t* td, const array_list_t* tracks,
+static int handle_query(const trace_data_t* td, const darray_track_t* tracks,
                         const cli_args_t* args, allocator_t* a) {
-  track_t* tracks_data = (track_t*)tracks->ptr;
+  track_t* tracks_data = tracks->ptr;
 
   // Find the target track if filtering by track
   const track_t* track_filter = nullptr;
@@ -727,10 +719,9 @@ static int handle_query(const trace_data_t* td, const array_list_t* tracks,
   }
 
   // Collect matches
-  array_list_t matches = {};
+  darray_t(query_match_t) matches = {};
 
-  const trace_event_persisted_t* events =
-      (const trace_event_persisted_t*)td->events.ptr;
+  const trace_event_persisted_t* events = td->events.ptr;
 
   // Loop over tracks (either the filtered one, or all of them)
   size_t start_track = 0;
@@ -747,8 +738,8 @@ static int handle_query(const trace_data_t* td, const array_list_t* tracks,
 
   for (size_t t_idx = start_track; t_idx < end_track; t_idx++) {
     const track_t* t = &tracks_data[t_idx];
-    const size_t* event_indices = (const size_t*)t->event_indices.ptr;
-    const int* depths = (const int*)t->depths.ptr;
+    const size_t* event_indices = t->event_indices.ptr;
+    const uint32_t* depths = t->depths.ptr;
 
     for (size_t k = 0; k < t->event_indices.len; k++) {
       size_t event_idx = event_indices[k];
@@ -777,18 +768,20 @@ static int handle_query(const trace_data_t* td, const array_list_t* tracks,
 
       // 3. Max depth check
       if (args->has_max_depth) {
-        int depth = (t->type == TRACK_TYPE_THREAD) ? depths[k] : 0;
+        int depth = (t->type == TRACK_TYPE_THREAD) ? (int)depths[k] : 0;
         if (depth > args->max_depth) {
           continue;
         }
       }
 
       // We have a match!
-      query_match_t* m = array_list_push(&matches, query_match_t, a);
-      m->event_idx = event_idx;
-      m->track = t;
-      m->depth = (t->type == TRACK_TYPE_THREAD) ? depths[k] : 0;
-      m->ts = e->ts;
+      query_match_t m_val = {
+          .event_idx = event_idx,
+          .track = t,
+          .depth = (t->type == TRACK_TYPE_THREAD) ? (int)depths[k] : 0,
+          .ts = e->ts,
+      };
+      darray_push(&matches, m_val, a);
     }
   }
 
@@ -799,7 +792,7 @@ static int handle_query(const trace_data_t* td, const array_list_t* tracks,
   }
 
   // Serialize to JSON array with limit
-  array_list_t json_buf = {};
+  darray_uint8_t json_buf = {};
   json_writer_t w;
   json_writer_init(&w, args->pretty, &json_buf, a);
 
@@ -836,12 +829,12 @@ static int handle_query(const trace_data_t* td, const array_list_t* tracks,
   json_writer_end_array(&w);
 
   // Null terminate and print
-  *array_list_push(&json_buf, char, a) = '\0';
+  darray_push(&json_buf, (uint8_t)'\0', a);
   printf("%s\n", (const char*)json_buf.ptr);
 
   // Clean up
-  array_list_deinit(&json_buf, a);
-  array_list_deinit(&matches, a);
+  darray_deinit(&json_buf, a);
+  darray_deinit(&matches, a);
 
   return 0;
 }
@@ -853,7 +846,7 @@ int main(int argc, char* argv[]) {
 
   if (parse_arguments(argc, argv, &args)) {
     allocator_t* a = c_allocator();
-    array_list_t tracks = {};
+    darray_track_t tracks = {};
     int64_t min_ts = 0;
     int64_t max_ts = 0;
     trace_data_t* td =
@@ -883,11 +876,11 @@ int main(int argc, char* argv[]) {
       }
 
       // Clean up pre-organized tracks
-      track_t* tracks_data = (track_t*)tracks.ptr;
+      track_t* tracks_data = tracks.ptr;
       for (size_t i = 0; i < tracks.len; i++) {
         track_deinit(&tracks_data[i], a);
       }
-      array_list_deinit(&tracks, a);
+      darray_deinit(&tracks, a);
       trace_data_release(td, a);
     } else {
       exit_code = 1;

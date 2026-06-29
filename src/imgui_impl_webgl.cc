@@ -7,7 +7,7 @@
 
 #include "core/allocator.h"
 #include "core/logging.h"
-#include "src/array_list.h"
+#include "core/darray.h"
 #include "third_party/imgui/imgui.h"
 
 struct BackendData {
@@ -18,8 +18,8 @@ struct BackendData {
   GLuint font_texture;
   GLint attrib_location_pos, attrib_location_uv, attrib_location_color;
   GLint attrib_location_proj_mtx;
-  array_list_t vtx_staging;
-  array_list_t idx_staging;
+  darray_t(ImDrawVert) vtx_staging;
+  darray_t(ImDrawIdx) idx_staging;
 };
 
 static BackendData* get_backend_data() {
@@ -100,10 +100,8 @@ void imgui_impl_webgl_render_draw_data(struct ig_draw_data* draw_data_opaque) {
     total_idx_count += (size_t)cmd_list->IdxBuffer.Size;
   }
 
-  array_list_resize(&bd->vtx_staging, total_vtx_count, sizeof(ImDrawVert),
-                    allocator);
-  array_list_resize(&bd->idx_staging, total_idx_count, sizeof(ImDrawIdx),
-                    allocator);
+  darray_resize(&bd->vtx_staging, total_vtx_count, allocator);
+  darray_resize(&bd->idx_staging, total_idx_count, allocator);
 
   // 2. Concatenate data
   size_t vtx_dst_offset = 0;
@@ -113,9 +111,9 @@ void imgui_impl_webgl_render_draw_data(struct ig_draw_data* draw_data_opaque) {
     size_t vtx_count = (size_t)cmd_list->VtxBuffer.Size;
     size_t idx_count = (size_t)cmd_list->IdxBuffer.Size;
 
-    memcpy((ImDrawVert*)bd->vtx_staging.ptr + vtx_dst_offset,
+    memcpy(bd->vtx_staging.ptr + vtx_dst_offset,
            cmd_list->VtxBuffer.Data, vtx_count * sizeof(ImDrawVert));
-    memcpy((ImDrawIdx*)bd->idx_staging.ptr + idx_dst_offset,
+    memcpy(bd->idx_staging.ptr + idx_dst_offset,
            cmd_list->IdxBuffer.Data, idx_count * sizeof(ImDrawIdx));
 
     vtx_dst_offset += vtx_count;
@@ -295,8 +293,8 @@ void imgui_impl_webgl_shutdown() {
   glDeleteProgram(bd->shader_program);
   imgui_impl_webgl_destroy_fonts_texture();
   allocator_t* allocator = bd->allocator;
-  array_list_deinit(&bd->vtx_staging, allocator);
-  array_list_deinit(&bd->idx_staging, allocator);
+  darray_deinit(&bd->vtx_staging, allocator);
+  darray_deinit(&bd->idx_staging, allocator);
   allocator_free(allocator, bd, sizeof(BackendData));
   ImGui::GetIO().BackendRendererUserData = nullptr;
 }

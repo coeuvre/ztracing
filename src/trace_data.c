@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "core/assert.h"
+#include "core/darray.h"
 #include "src/colors.h"
 
 static uint32_t compute_hash(string_view_t s) {
@@ -62,14 +63,14 @@ static void string_lookup_table_resize(string_lookup_table_t* lt,
 }
 
 static void trace_data_deinit(trace_data_t* td, allocator_t* a) {
-  array_list_deinit(&td->string_buffer, a);
-  array_list_deinit(&td->string_table, a);
+  darray_deinit(&td->string_buffer, a);
+  darray_deinit(&td->string_table, a);
   if (td->string_lookup.entries != nullptr) {
     allocator_free(a, td->string_lookup.entries,
                    td->string_lookup.capacity * sizeof(string_lookup_entry_t));
   }
-  array_list_deinit(&td->events, a);
-  array_list_deinit(&td->args, a);
+  darray_deinit(&td->events, a);
+  darray_deinit(&td->args, a);
   *td = (trace_data_t){};
 }
 
@@ -96,6 +97,15 @@ void trace_data_release(trace_data_t* td, allocator_t* a) {
   }
 }
 
+void trace_data_compact(trace_data_t* td, allocator_t* a) {
+  if (td == nullptr) return;
+  darray_compact(&td->string_buffer, a);
+  darray_compact(&td->string_table, a);
+  darray_compact(&td->events, a);
+  darray_compact(&td->args, a);
+}
+
+
 string_ref_t trace_data_push_string(trace_data_t* td, string_view_t s,
                                     allocator_t* a) {
   string_ref_t result = 0;
@@ -111,7 +121,7 @@ string_ref_t trace_data_push_string(trace_data_t* td, string_view_t s,
   uint32_t h = compute_hash(s);
 
   size_t idx = h & lt->capacity_mask;
-  const string_entry_t* st_table = (const string_entry_t*)td->string_table.ptr;
+  const string_entry_t* st_table = td->string_table.ptr;
   const char* st_buffer = (const char*)td->string_buffer.ptr;
 
   while (lt->entries[idx].index != 0) {
@@ -131,14 +141,10 @@ string_ref_t trace_data_push_string(trace_data_t* td, string_view_t s,
       .hash = h,
   };
 
-  array_list_ensure(&td->string_buffer, s.len, char, a);
-  memcpy((char*)td->string_buffer.ptr + td->string_buffer.len, s.ptr, s.len);
-  td->string_buffer.len += s.len;
+  darray_push_n(&td->string_buffer, s.ptr, s.len, a);
+  darray_push(&td->string_buffer, '\0', a);
 
-  char null_terminator = '\0';
-  *array_list_push(&td->string_buffer, char, a) = null_terminator;
-
-  *array_list_push(&td->string_table, string_entry_t, a) = entry;
+  darray_push(&td->string_table, entry, a);
   uint32_t new_index = (uint32_t)td->string_table.len;
 
   lt->entries[idx].index = new_index;
@@ -222,7 +228,7 @@ static uint8_t compute_event_palette_index(const trace_data_t* td,
   if (!resolved && name_ref > 0) {
     uint32_t hash = 0;
     if (name_ref <= td->string_table.len) {
-      const string_entry_t* table = (const string_entry_t*)td->string_table.ptr;
+      const string_entry_t* table = td->string_table.ptr;
       hash = table[name_ref - 1].hash;
     }
     index = (uint8_t)(hash % 8);
@@ -241,7 +247,7 @@ void trace_event_matcher_deinit(trace_event_matcher_t* matcher) {
       if (*hash_table_entry_occupied(&matcher->active_b_events, entry)) {
         thread_stack_t* stack = (thread_stack_t*)hash_table_entry_value(
             &matcher->active_b_events, entry);
-        array_list_deinit(&stack->stack, a);
+        darray_deinit(&stack->stack, a);
       }
     }
     hash_table_deinit(&matcher->active_b_events, a);
@@ -280,7 +286,7 @@ static void trace_data_merge_args(trace_data_t* td,
     }
     memset(is_new, 0, e_ev->args_count * sizeof(bool));
 
-    trace_arg_persisted_t* td_args = (trace_arg_persisted_t*)td->args.ptr;
+    trace_arg_persisted_t* td_args = td->args.ptr;
 
     // 2. Perform fast O(1) integer comparisons in the search loop!
     for (size_t i = 0; i < e_ev->args_count; i++) {
@@ -307,15 +313,11 @@ static void trace_data_merge_args(trace_data_t* td,
       uint32_t new_offset = (uint32_t)td->args.len;
       uint32_t new_count = old_count + (uint32_t)new_args_count;
 
-      array_list_ensure(&td->args, new_count, trace_arg_persisted_t, a);
+      darray_reserve(&td->args, td->args.len + new_count, a);
 
-      td_args = (trace_arg_persisted_t*)td->args.ptr;
-
-      memcpy((trace_arg_persisted_t*)td->args.ptr + new_offset,
-             td_args + old_offset, old_count * sizeof(trace_arg_persisted_t));
+      memcpy(td->args.ptr + new_offset, td->args.ptr + old_offset,
+             old_count * sizeof(trace_arg_persisted_t));
       td->args.len += old_count;
-
-      td_args = (trace_arg_persisted_t*)td->args.ptr;
 
       // 3. Insert new arguments using the pre-resolved references!
       for (size_t i = 0; i < e_ev->args_count; i++) {
@@ -325,7 +327,7 @@ static void trace_data_merge_args(trace_data_t* td,
               .val_ref = e_val_refs[i],
               .val_double = e_ev->args[i].val_double,
           };
-          *array_list_push(&td->args, trace_arg_persisted_t, a) = arg;
+          darray_push(&td->args, arg, a);
         }
       }
 
@@ -386,11 +388,11 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
           td, event->args[i].key, &td->last_arg_key_refs[cache_idx], a);
       arg.val_ref = trace_data_push_string(td, event->args[i].val, a);
       arg.val_double = event->args[i].val_double;
-      *array_list_push(&td->args, trace_arg_persisted_t, a) = arg;
+      darray_push(&td->args, arg, a);
     }
 
     size_t new_idx = td->events.len;
-    *array_list_push(&td->events, trace_event_persisted_t, a) = p;
+    darray_push(&td->events, p, a);
 
     uint64_t thread_id =
         ((uint64_t)(uint32_t)event->pid << 32) | (uint32_t)event->tid;
@@ -406,8 +408,7 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
       ts_stack_ptr = val_slot;
     }
     active_event_b_t active_ev = {new_idx};
-    *array_list_push(&ts_stack_ptr->stack, active_event_b_t,
-                     matcher->allocator) = active_ev;
+    darray_push(&ts_stack_ptr->stack, active_ev, matcher->allocator);
 
   } else if (is_end) {
     uint64_t thread_id =
@@ -417,12 +418,9 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
     thread_stack_t* ts_stack_ptr =
         (thread_stack_t*)hash_table_get(&matcher->active_b_events, &thread_id);
     if (ts_stack_ptr != nullptr && ts_stack_ptr->stack.len > 0) {
-      active_event_b_t* stack = (active_event_b_t*)ts_stack_ptr->stack.ptr;
-      active_event_b_t active_ev = stack[ts_stack_ptr->stack.len - 1];
-      ts_stack_ptr->stack.len--;
+      active_event_b_t active_ev = *darray_pop(&ts_stack_ptr->stack);
 
-      trace_event_persisted_t* events =
-          (trace_event_persisted_t*)td->events.ptr;
+      trace_event_persisted_t* events = td->events.ptr;
       trace_event_persisted_t* b_ev = &events[active_ev.event_idx];
       b_ev->dur = event->ts - b_ev->ts;
       if (b_ev->dur < 0) {
@@ -456,9 +454,9 @@ void trace_data_add_event(trace_data_t* td, const trace_event_t* event,
           td, event->args[i].key, &td->last_arg_key_refs[cache_idx], a);
       arg.val_ref = trace_data_push_string(td, event->args[i].val, a);
       arg.val_double = event->args[i].val_double;
-      *array_list_push(&td->args, trace_arg_persisted_t, a) = arg;
+      darray_push(&td->args, arg, a);
     }
 
-    *array_list_push(&td->events, trace_event_persisted_t, a) = p;
+    darray_push(&td->events, p, a);
   }
 }

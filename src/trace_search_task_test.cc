@@ -74,7 +74,7 @@ TEST(trace_search_task_test, e2e_search_task) {
 
     // Verify search results inside the task context
     EXPECT_EQ(task->results.len, 1u);
-    EXPECT_EQ(((int64_t*)task->results.ptr)[0], 0);  // Event index 0
+    EXPECT_EQ(task->results.ptr[0], 0);  // Event index 0
 
     EXPECT_NE(task->histogram, nullptr);
     EXPECT_EQ(task->histogram->total_count, 1u);

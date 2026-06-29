@@ -130,7 +130,7 @@ void app_deinit(app_t* app) {
 
   // Deallocate structures
   trace_data_release(app->trace_data, allocator);
-  array_list_deinit(&app->loading.filename, allocator);
+  darray_deinit(&app->loading.filename, allocator);
   trace_viewer_deinit(&app->trace_viewer, allocator);
 }
 
@@ -224,7 +224,7 @@ void app_poll_completions(app_t* app) {
                                             allocator);
           // Clear results in task context so trace_search_task_destroy doesn't
           // free them
-          task->results = (array_list_t){};
+          task->results = (darray_int64_t){};
         }
         app->active_search_task = nullptr;
         app->trace_viewer.search.is_searching = false;
@@ -523,12 +523,11 @@ void app_begin_session(app_t* app, int session_id, const char* filename,
   app->loading.request_update = false;
 
   // Cache the trace filename
-  array_list_clear(&app->loading.filename);
+  darray_clear(&app->loading.filename);
   if (filename) {
     size_t len = strlen(filename) + 1;
-    char* dest = (char*)array_list_append_(&app->loading.filename, len,
-                                           sizeof(char), allocator);
-    memcpy(dest, filename, len);
+    darray_resize(&app->loading.filename, len, allocator);
+    memcpy(app->loading.filename.ptr, filename, len);
   }
 
   // Reset the loading task: since the old task (if active) was aborted

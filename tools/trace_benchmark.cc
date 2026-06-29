@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
   // 1. Benchmark Ingestion (Read + Decompress + Parse + Add + Background
   // Organize)
   size_t decompressed_size = 0;
-  array_list_t tracks = {};
+  darray_track_t tracks = {};
   int64_t min_ts = 0;
   int64_t max_ts = 0;
   double background_ingest_ms = 0.0;
@@ -112,11 +112,11 @@ int main(int argc, char** argv) {
   printf("----------------------------------------\n");
 
   // Deinit
-  track_t* track_array = (track_t*)tracks.ptr;
+  track_t* track_array = tracks.ptr;
   for (size_t i = 0; i < tracks.len; i++) {
     track_deinit(&track_array[i], a);
   }
-  array_list_deinit(&tracks, a);
+  darray_deinit(&tracks, a);
   trace_data_release(td, a);
 
   return 0;

@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "src/array_list.h"
+#include "core/darray.h"
 #include "src/trace_data.h"
 
 #define TRACE_HISTOGRAM_MAX_BINS 32
@@ -31,10 +31,10 @@ extern "C" {
 // of event indices.
 //
 // Arguments:
-// - results: The array_list_t of int64_t event indices.
+// - results: The darray_int64_t of int64_t event indices.
 // - td: The trace_data_t storage.
 // - out_histogram: The trace_histogram_t output to populate.
-void trace_histogram_compute(const array_list_t* results,
+void trace_histogram_compute(const darray_int64_t* results,
                              const trace_data_t* td,
                              trace_histogram_t* out_histogram);
 

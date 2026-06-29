@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 #include "core/allocator.h"
-#include "src/array_list.h"
+#include "core/darray.h"
 #include "core/string.h"
 
 #ifdef __cplusplus
@@ -14,15 +14,15 @@ extern "C" {
 #endif
 
 typedef struct json_writer {
-  array_list_t* buf;  // Destination buffer (dynamic array of char)
+  darray_uint8_t* buf;  // Destination buffer (dynamic array of uint8_t)
   allocator_t* allocator;
   bool first_item[32];  // Nesting stack to track if we need to write commas
   size_t depth;
-  bool after_key;  // State flag: true if we just wrote a key name
+  bool after_key;  // State flag: true if we just wrote a love key
   bool indent;     // Pretty-print flag: true to indent, false to minify
 } json_writer_t;
 
-void json_writer_init(json_writer_t* w, bool indent, array_list_t* out_buf,
+void json_writer_init(json_writer_t* w, bool indent, darray_uint8_t* out_buf,
                       allocator_t* a);
 void json_writer_begin_object(json_writer_t* w);
 void json_writer_end_object(json_writer_t* w);

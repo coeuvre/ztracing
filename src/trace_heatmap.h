@@ -4,8 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "src/array_list.h"
+#include "core/darray.h"
 #include "src/trace_data.h"
+#include "src/track.h"
 
 #define TRACE_HEATMAP_BUCKET_COUNT 16
 
@@ -27,13 +28,13 @@ extern "C" {
 // `tracks->len`.
 //
 // Arguments:
-// - tracks: The array_list_t of organized track_t structures.
+// - tracks: The darray_track_t of organized track_t structures.
 // - td: The trace_data_t storage containing the persisted events.
 // - min_ts: The start timestamp of the trace viewport.
 // - max_ts: The end timestamp of the trace viewport.
 // - out_heatmaps: Output array of trace_heatmap_t structures (must be of size
 // tracks->len).
-void trace_heatmap_compute(const array_list_t* tracks, const trace_data_t* td,
+void trace_heatmap_compute(const darray_track_t* tracks, const trace_data_t* td,
                            int64_t min_ts, int64_t max_ts,
                            trace_heatmap_t* out_heatmaps);
 

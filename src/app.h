@@ -8,7 +8,7 @@
 #include "core/allocator.h"
 #include "core/counting_allocator.h"
 #include "core/task.h"
-#include "src/array_list.h"
+#include "core/darray.h"
 #include "src/colors.h"
 #include "src/trace_data.h"
 #include "src/trace_viewer.h"
@@ -38,7 +38,7 @@ typedef struct trace_loading_state {
   bool active;               // True if an active loading session is running
   int session_id;            // Current active session ID
   task_stream_t stream_id;   // Scheduler stream ID of the active session
-  array_list_t filename;     // Name of the trace file being loaded
+  darray_uint8_t filename;   // Name of the trace file being loaded
   bool request_update;       // Set to true when new frames should be drawn
 } trace_loading_state_t;
 

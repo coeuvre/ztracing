@@ -235,6 +235,12 @@ static inline void allocator_free(allocator_t* a, void* ptr, size_t size) {
                             sizeof(type) * (size_t)(old_count),             \
                             sizeof(type) * (size_t)(new_count)))
 
+#define allocator_realloc_array_uninitialized(allocator, type, ptr, old_count, \
+                                              new_count)                       \
+  ((type*)allocator_realloc_uninitialized((allocator), (ptr),                  \
+                                          sizeof(type) * (size_t)(old_count),  \
+                                          sizeof(type) * (size_t)(new_count)))
+
 #define allocator_free_array(allocator, ptr, type, count) \
   allocator_free((allocator), (ptr), sizeof(type) * (size_t)(count))
 

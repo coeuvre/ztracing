@@ -6,6 +6,7 @@
 
 #include "core/counting_allocator.h"
 #include "core/logging.h"
+#include "core/darray.h"
 #include "src/app.h"
 #include "src/headless_gl.h"
 #include "src/imgui_c.h"
@@ -15,7 +16,7 @@
 
 static app_t* g_app = nullptr;
 static headless_gl_context_t g_gl_ctx = {};
-static array_list_t g_font_data = {};
+static darray_uint8_t g_font_data = {};
 
 static void* imgui_alloc(size_t sz, void* user_data) {
   allocator_t* a = (allocator_t*)user_data;
@@ -100,7 +101,7 @@ void ztracing_deinit(void) {
   allocator_t* app_allocator =
       counting_allocator_get_allocator(&g_app->counting_allocator);
   if (g_font_data.ptr) {
-    array_list_deinit(&g_font_data, app_allocator);
+    darray_deinit(&g_font_data, app_allocator);
   }
 
   app_deinit(g_app);
@@ -121,13 +122,12 @@ void ztracing_start(void) {
 void ztracing_set_font_data(unsigned char* font_data, int font_size) {
   assert(g_app != nullptr);
 
-  array_list_clear(&g_font_data);
+  darray_clear(&g_font_data);
   allocator_t* allocator =
       counting_allocator_get_allocator(&g_app->counting_allocator);
   size_t len = (size_t)font_size;
-  unsigned char* dest = (unsigned char*)array_list_append_(
-      &g_font_data, len, sizeof(unsigned char), allocator);
-  memcpy(dest, font_data, len);
+  darray_resize(&g_font_data, len, allocator);
+  memcpy(g_font_data.ptr, font_data, len);
 
   float dpi_scale = 1.0f;
   ig_set_font_data(g_font_data.ptr, (int)g_font_data.len, dpi_scale);

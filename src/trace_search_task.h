@@ -6,7 +6,7 @@
 
 #include "core/allocator.h"
 #include "core/task.h"
-#include "src/array_list.h"
+#include "core/darray.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,7 +26,7 @@ struct trace_search_task {
   allocator_t* allocator;
 
   // --- Outputs (written by worker on success, read by UI thread) ---
-  array_list_t results;
+  darray_int64_t results;
   trace_histogram_t* histogram;
 };
 

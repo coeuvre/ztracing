@@ -4,6 +4,7 @@
 
 #include "core/allocator.h"
 #include "core/counting_allocator.h"
+#include "core/darray.h"
 #include "src/trace_data.h"
 
 class trace_histogram_test : public ::testing::Test {
@@ -32,25 +33,25 @@ TEST_F(trace_histogram_test, compute_histogram) {
   trace_event_persisted_t e0 = {};
   e0.ts = 100;
   e0.dur = 0;
-  *array_list_push(&td_->events, trace_event_persisted_t, allocator_) = e0;
+  darray_push(&td_->events, e0, allocator_);
 
   // Small-duration events
   trace_event_persisted_t e1 = {};
   e1.ts = 150;
   e1.dur = 50;
-  *array_list_push(&td_->events, trace_event_persisted_t, allocator_) = e1;
+  darray_push(&td_->events, e1, allocator_);
 
   // Large-duration events
   trace_event_persisted_t e2 = {};
   e2.ts = 200;
   e2.dur = 5000;
-  *array_list_push(&td_->events, trace_event_persisted_t, allocator_) = e2;
+  darray_push(&td_->events, e2, allocator_);
 
   // Setup input index list
-  array_list_t selected_indices = {};
-  *array_list_push(&selected_indices, int64_t, allocator_) = (int64_t)0;
-  *array_list_push(&selected_indices, int64_t, allocator_) = (int64_t)1;
-  *array_list_push(&selected_indices, int64_t, allocator_) = (int64_t)2;
+  darray_int64_t selected_indices = {};
+  darray_push(&selected_indices, (int64_t)0, allocator_);
+  darray_push(&selected_indices, (int64_t)1, allocator_);
+  darray_push(&selected_indices, (int64_t)2, allocator_);
 
   trace_histogram_t h = {};
   trace_histogram_compute(&selected_indices, td_, &h);
@@ -63,11 +64,11 @@ TEST_F(trace_histogram_test, compute_histogram) {
   EXPECT_EQ(h.buckets[0].max_dur, 0);
   EXPECT_EQ(h.buckets[0].count, 1u);
 
-  array_list_deinit(&selected_indices, allocator_);
+  darray_deinit(&selected_indices, allocator_);
 }
 
 TEST_F(trace_histogram_test, compute_histogram_empty_results) {
-  array_list_t empty_results = {};
+  darray_int64_t empty_results = {};
   trace_histogram_t h = {};
   trace_histogram_compute(&empty_results, td_, &h);
 
@@ -81,14 +82,14 @@ TEST_F(trace_histogram_test, compute_histogram_linear_vs_logarithmic) {
   trace_event_persisted_t e1 = {.ts = 100, .dur = 10};
   trace_event_persisted_t e2 = {.ts = 200, .dur = 100};
   trace_event_persisted_t e3 = {.ts = 300, .dur = 200};
-  *array_list_push(&td_->events, trace_event_persisted_t, allocator_) = e1;
-  *array_list_push(&td_->events, trace_event_persisted_t, allocator_) = e2;
-  *array_list_push(&td_->events, trace_event_persisted_t, allocator_) = e3;
+  darray_push(&td_->events, e1, allocator_);
+  darray_push(&td_->events, e2, allocator_);
+  darray_push(&td_->events, e3, allocator_);
 
-  array_list_t linear_results = {};
-  *array_list_push(&linear_results, int64_t, allocator_) = 0;
-  *array_list_push(&linear_results, int64_t, allocator_) = 1;
-  *array_list_push(&linear_results, int64_t, allocator_) = 2;
+  darray_int64_t linear_results = {};
+  darray_push(&linear_results, 0, allocator_);
+  darray_push(&linear_results, 1, allocator_);
+  darray_push(&linear_results, 2, allocator_);
 
   trace_histogram_t h_linear = {};
   trace_histogram_compute(&linear_results, td_, &h_linear);
@@ -103,14 +104,14 @@ TEST_F(trace_histogram_test, compute_histogram_linear_vs_logarithmic) {
   trace_event_persisted_t e4 = {.ts = 400, .dur = 2};
   trace_event_persisted_t e5 = {.ts = 500, .dur = 1000};
   trace_event_persisted_t e6 = {.ts = 600, .dur = 100000};
-  *array_list_push(&td_->events, trace_event_persisted_t, allocator_) = e4;
-  *array_list_push(&td_->events, trace_event_persisted_t, allocator_) = e5;
-  *array_list_push(&td_->events, trace_event_persisted_t, allocator_) = e6;
+  darray_push(&td_->events, e4, allocator_);
+  darray_push(&td_->events, e5, allocator_);
+  darray_push(&td_->events, e6, allocator_);
 
-  array_list_t log_results = {};
-  *array_list_push(&log_results, int64_t, allocator_) = 3;
-  *array_list_push(&log_results, int64_t, allocator_) = 4;
-  *array_list_push(&log_results, int64_t, allocator_) = 5;
+  darray_int64_t log_results = {};
+  darray_push(&log_results, 3, allocator_);
+  darray_push(&log_results, 4, allocator_);
+  darray_push(&log_results, 5, allocator_);
 
   trace_histogram_t h_log = {};
   trace_histogram_compute(&log_results, td_, &h_log);
@@ -123,20 +124,20 @@ TEST_F(trace_histogram_test, compute_histogram_linear_vs_logarithmic) {
   EXPECT_GT(log_width_last,
             log_width_first * 100);  // Massive width difference!
 
-  array_list_deinit(&linear_results, allocator_);
-  array_list_deinit(&log_results, allocator_);
+  darray_deinit(&linear_results, allocator_);
+  darray_deinit(&log_results, allocator_);
 }
 
 TEST_F(trace_histogram_test, compute_histogram_narrow_range_bin_clamping) {
   // Narrow range: min_dur = 10, max_dur = 13 (range = 3)
   trace_event_persisted_t e1 = {.ts = 100, .dur = 10};
   trace_event_persisted_t e2 = {.ts = 200, .dur = 13};
-  *array_list_push(&td_->events, trace_event_persisted_t, allocator_) = e1;
-  *array_list_push(&td_->events, trace_event_persisted_t, allocator_) = e2;
+  darray_push(&td_->events, e1, allocator_);
+  darray_push(&td_->events, e2, allocator_);
 
-  array_list_t results = {};
-  *array_list_push(&results, int64_t, allocator_) = 0;
-  *array_list_push(&results, int64_t, allocator_) = 1;
+  darray_int64_t results = {};
+  darray_push(&results, 0, allocator_);
+  darray_push(&results, 1, allocator_);
 
   trace_histogram_t h = {};
   trace_histogram_compute(&results, td_, &h);
@@ -146,13 +147,13 @@ TEST_F(trace_histogram_test, compute_histogram_narrow_range_bin_clamping) {
   EXPECT_EQ(h.buckets[0].min_dur, 10);
   EXPECT_EQ(h.buckets[3].max_dur, 13);
 
-  array_list_deinit(&results, allocator_);
+  darray_deinit(&results, allocator_);
 }
 
 TEST_F(trace_histogram_test, compute_histogram_invalid_index_ignored) {
   // Push an invalid index (99999)
-  array_list_t results = {};
-  *array_list_push(&results, int64_t, allocator_) = 99999;
+  darray_int64_t results = {};
+  darray_push(&results, 99999, allocator_);
 
   trace_histogram_t h = {};
   // Should exit cleanly without crashing
@@ -163,5 +164,5 @@ TEST_F(trace_histogram_test, compute_histogram_invalid_index_ignored) {
             1u);  // Total count is recorded from results list length
   EXPECT_FALSE(h.has_non_zero_durations);
 
-  array_list_deinit(&results, allocator_);
+  darray_deinit(&results, allocator_);
 }

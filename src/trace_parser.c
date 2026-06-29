@@ -6,12 +6,12 @@
 
 #include "core/allocator.h"
 #include "core/json_reader.h"
-#include "src/array_list.h"
+#include "core/darray.h"
 #include "core/string.h"
 
 void trace_parser_deinit(trace_parser_t* p, allocator_t* a) {
-  array_list_deinit(&p->buffer, a);
-  array_list_deinit(&p->args_buffer, a);
+  darray_deinit(&p->buffer, a);
+  darray_deinit(&p->args_buffer, a);
 }
 
 size_t trace_parser_feed(trace_parser_t* p, const char* buf, size_t len,
@@ -19,7 +19,7 @@ size_t trace_parser_feed(trace_parser_t* p, const char* buf, size_t len,
   size_t discarded = 0;
   if (p->pos > 0 && p->pos > p->buffer.len / 2) {
     if (p->pos < p->buffer.len) {
-      memmove(p->buffer.ptr, (char*)p->buffer.ptr + p->pos,
+      memmove(p->buffer.ptr, p->buffer.ptr + p->pos,
               p->buffer.len - p->pos);
     }
     discarded = p->pos;
@@ -28,8 +28,8 @@ size_t trace_parser_feed(trace_parser_t* p, const char* buf, size_t len,
   }
 
   size_t old_len = p->buffer.len;
-  array_list_resize(&p->buffer, old_len + len, sizeof(char), a);
-  memcpy((char*)p->buffer.ptr + old_len, buf, len);
+  darray_resize(&p->buffer, old_len + len, a);
+  memcpy(p->buffer.ptr + old_len, buf, len);
 
   p->is_eof = is_eof;
   return discarded;
@@ -45,7 +45,7 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t* a,
                         trace_event_t* event) {
   bool success = false;
   *event = (trace_event_t){};
-  array_list_clear(&p->args_buffer);
+  darray_clear(&p->args_buffer);
   bool ok = true;
   json_token_t tok;
 
@@ -213,7 +213,7 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t* a,
           break;
         }
 
-        *array_list_push(&p->args_buffer, trace_arg_t, a) = arg;
+        darray_push(&p->args_buffer, arg, a);
 
         json_reader_next(r, &tok);
         if (tok.type == JSON_TOKEN_COMMA) {
@@ -263,7 +263,7 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t* a,
   }
 
   if (success) {
-    event->args = (trace_arg_t*)p->args_buffer.ptr;
+    event->args = p->args_buffer.ptr;
     event->args_count = p->args_buffer.len;
   }
   return success;
@@ -272,7 +272,7 @@ static bool parse_event(json_reader_t* r, trace_parser_t* p, allocator_t* a,
 bool trace_parser_next(trace_parser_t* p, trace_event_t* event,
                        allocator_t* a) {
   bool found = false;
-  json_reader_t r = {p->buffer.ptr, p->buffer.len, p->pos};
+  json_reader_t r = {(const char*)p->buffer.ptr, p->buffer.len, p->pos};
   bool loop = !json_reader_done(&r);
   json_token_t tok;
 

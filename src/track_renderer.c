@@ -3,8 +3,9 @@
 #include <math.h>
 #include <string.h>
 
-void track_flush_bucket_depth(array_list_t* out_blocks, double viewport_start,
-                              double inv_duration, float tracks_canvas_pos_x,
+void track_flush_bucket_depth(darray_track_render_block_t* out_blocks,
+                              double viewport_start, double inv_duration,
+                              float tracks_canvas_pos_x,
                               double current_bucket_ts, double next_bucket_ts,
                               uint32_t depth, thread_bucket_state_t* s,
                               const trace_data_t* trace_data, allocator_t* a) {
@@ -30,7 +31,7 @@ void track_flush_bucket_depth(array_list_t* out_blocks, double viewport_start,
       .is_focused = false,
       .event_idx = s->rep_event_idx,
   };
-  *array_list_push(out_blocks, track_render_block_t, a) = rb;
+  darray_push(out_blocks, rb, a);
   s->count = 0;
   s->max_dur = -1;
   s->rep_event_idx = (size_t)-1;
@@ -38,13 +39,12 @@ void track_flush_bucket_depth(array_list_t* out_blocks, double viewport_start,
 
 void track_renderer_update_selection_bitset(
     track_renderer_state_t* state, const trace_data_t* trace_data,
-    const array_list_t* selected_event_indices, allocator_t* a) {
-  array_list_resize(&state->selected_events_bitset, trace_data->events.len,
-                    sizeof(uint8_t), a);
+    const darray_int64_t* selected_event_indices, allocator_t* a) {
+  darray_resize(&state->selected_events_bitset, trace_data->events.len, a);
   if (state->selected_events_bitset.len > 0) {
     memset(state->selected_events_bitset.ptr, 0,
            state->selected_events_bitset.len * sizeof(uint8_t));
-    const int64_t* sel_indices = (const int64_t*)selected_event_indices->ptr;
+    const int64_t* sel_indices = selected_event_indices->ptr;
     uint8_t* bitset = (uint8_t*)state->selected_events_bitset.ptr;
     for (size_t i = 0; i < selected_event_indices->len; i++) {
       size_t idx = (size_t)sel_indices[i];
@@ -55,14 +55,12 @@ void track_renderer_update_selection_bitset(
   }
 }
 
-void track_compute_render_blocks(const track_t* track,
-                                 const trace_data_t* trace_data,
-                                 double viewport_start, double viewport_end,
-                                 float inner_width, float tracks_canvas_pos_x,
-                                 int64_t focused_event_idx,
-                                 track_renderer_state_t* state,
-                                 array_list_t* out_blocks, allocator_t* a) {
-  array_list_clear(out_blocks);
+void track_compute_render_blocks(
+    const track_t* track, const trace_data_t* trace_data, double viewport_start,
+    double viewport_end, float inner_width, float tracks_canvas_pos_x,
+    int64_t focused_event_idx, track_renderer_state_t* state,
+    darray_track_render_block_t* out_blocks, allocator_t* a) {
+  darray_clear(out_blocks);
   if (track->event_indices.len > 0) {
     double duration = viewport_end - viewport_start;
     if (duration > 0) {
@@ -74,19 +72,18 @@ void track_compute_render_blocks(const track_t* track,
       double current_bucket_ts =
           floor(viewport_start / bucket_dur) * bucket_dur;
 
-      array_list_resize(&state->thread_depth_blocked_until,
-                        track->max_depth + 1, sizeof(int64_t), a);
-      int64_t* blocked_until = (int64_t*)state->thread_depth_blocked_until.ptr;
+      darray_resize(&state->thread_depth_blocked_until, track->max_depth + 1,
+                    a);
+      int64_t* blocked_until = state->thread_depth_blocked_until.ptr;
       for (size_t d = 0; d < state->thread_depth_blocked_until.len; d++) {
         blocked_until[d] = -1;
       }
 
-      const trace_event_persisted_t* events =
-          (const trace_event_persisted_t*)trace_data->events.ptr;
-      const size_t* event_indices = (const size_t*)track->event_indices.ptr;
-      const int64_t* block_max_durs = (const int64_t*)track->block_max_durs.ptr;
-      const uint32_t* depths = (const uint32_t*)track->depths.ptr;
-      const uint8_t* bitset = (const uint8_t*)state->selected_events_bitset.ptr;
+      const trace_event_persisted_t* events = trace_data->events.ptr;
+      const size_t* event_indices = track->event_indices.ptr;
+      const int64_t* block_max_durs = track->block_max_durs.ptr;
+      const uint32_t* depths = track->depths.ptr;
+      const uint8_t* bitset = state->selected_events_bitset.ptr;
 
       // Pass 1: Handle spanning events
       size_t num_blocks = track->block_max_durs.len;
@@ -140,7 +137,7 @@ void track_compute_render_blocks(const track_t* track,
                 .is_focused = is_focused,
                 .event_idx = event_idx,
             };
-            *array_list_push(out_blocks, track_render_block_t, a) = rb;
+            darray_push(out_blocks, rb, a);
             if (e->ts + e->dur > blocked_until[depth]) {
               blocked_until[depth] = e->ts + e->dur;
             }
@@ -153,10 +150,8 @@ void track_compute_render_blocks(const track_t* track,
           trace_data_events_lower_bound(event_indices, track->event_indices.len,
                                         events, (int64_t)current_bucket_ts);
 
-      array_list_resize(&state->thread_bucket_states, track->max_depth + 1,
-                        sizeof(thread_bucket_state_t), a);
-      thread_bucket_state_t* bucket_states =
-          (thread_bucket_state_t*)state->thread_bucket_states.ptr;
+      darray_resize(&state->thread_bucket_states, track->max_depth + 1, a);
+      thread_bucket_state_t* bucket_states = state->thread_bucket_states.ptr;
       for (size_t d = 0; d < state->thread_bucket_states.len; d++) {
         bucket_states[d].count = 0;
         bucket_states[d].max_dur = -1;
@@ -164,8 +159,8 @@ void track_compute_render_blocks(const track_t* track,
         bucket_states[d].blocked = false;
       }
 
-      blocked_until = (int64_t*)state->thread_depth_blocked_until.ptr;
-      bitset = (const uint8_t*)state->selected_events_bitset.ptr;
+      blocked_until = state->thread_depth_blocked_until.ptr;
+      bitset = state->selected_events_bitset.ptr;
 
       while (current_bucket_ts < viewport_end) {
         double next_bucket_ts = current_bucket_ts + bucket_dur;
@@ -212,7 +207,7 @@ void track_compute_render_blocks(const track_t* track,
                 .is_focused = is_focused,
                 .event_idx = event_idx,
             };
-            *array_list_push(out_blocks, track_render_block_t, a) = rb;
+            darray_push(out_blocks, rb, a);
             bucket_states[depth].blocked = true;
             if (e->ts + e->dur > blocked_until[depth]) {
               blocked_until[depth] = e->ts + e->dur;
@@ -240,8 +235,7 @@ void track_compute_render_blocks(const track_t* track,
       }
 
       // Post-processing: merge consecutive blocks
-      track_render_block_t* out_blocks_data =
-          (track_render_block_t*)out_blocks->ptr;
+      track_render_block_t* out_blocks_data = out_blocks->ptr;
       if (out_blocks->len > 1) {
         size_t write_idx = 0;
         for (size_t read_idx = 1; read_idx < out_blocks->len; read_idx++) {
@@ -269,15 +263,13 @@ void track_compute_counter_render_blocks(
     const track_t* track, const trace_data_t* trace_data, double viewport_start,
     double viewport_end, float width, float tracks_canvas_pos_x,
     int64_t focused_event_idx, track_renderer_state_t* state,
-    array_list_t* out_blocks, allocator_t* a) {
-  array_list_clear(out_blocks);
-  array_list_clear(&state->counter_peaks);
+    darray_counter_render_block_t* out_blocks, allocator_t* a) {
+  darray_clear(out_blocks);
+  darray_clear(&state->counter_peaks);
   if (track->event_indices.len > 0) {
-    const trace_event_persisted_t* events =
-        (const trace_event_persisted_t*)trace_data->events.ptr;
-    const size_t* event_indices = (const size_t*)track->event_indices.ptr;
-    const string_ref_t* counter_series =
-        (const string_ref_t*)track->counter_series.ptr;
+    const trace_event_persisted_t* events = trace_data->events.ptr;
+    const size_t* event_indices = track->event_indices.ptr;
+    const string_ref_t* counter_series = track->counter_series.ptr;
 
     int64_t track_first_ts = events[event_indices[0]].ts;
     int64_t track_last_ts =
@@ -304,9 +296,9 @@ void track_compute_counter_render_blocks(
         }
 
         // Find the initial state
-        array_list_resize(&state->counter_current_values,
-                          track->counter_series.len, sizeof(double), a);
-        double* current_values = (double*)state->counter_current_values.ptr;
+        darray_resize(&state->counter_current_values, track->counter_series.len,
+                      a);
+        double* current_values = state->counter_current_values.ptr;
         for (size_t i = 0; i < state->counter_current_values.len; i++) {
           current_values[i] = 0.0;
         }
@@ -335,16 +327,14 @@ void track_compute_counter_render_blocks(
         size_t it_idx = it_start_idx;
         size_t search_end_idx = track->event_indices.len;
 
-        array_list_resize(&state->counter_bucket_max_values,
-                          track->counter_series.len, sizeof(double), a);
-        array_list_resize(&state->counter_series_updated,
-                          track->counter_series.len, sizeof(uint8_t), a);
+        darray_resize(&state->counter_bucket_max_values,
+                      track->counter_series.len, a);
+        darray_resize(&state->counter_series_updated, track->counter_series.len,
+                      a);
 
-        double* bucket_max_values =
-            (double*)state->counter_bucket_max_values.ptr;
-        uint8_t* series_updated = (uint8_t*)state->counter_series_updated.ptr;
-        const uint8_t* bitset =
-            (const uint8_t*)state->selected_events_bitset.ptr;
+        double* bucket_max_values = state->counter_bucket_max_values.ptr;
+        uint8_t* series_updated = state->counter_series_updated.ptr;
+        const uint8_t* bitset = state->selected_events_bitset.ptr;
 
         while (current_bucket_ts < viewport_end) {
           double next_bucket_ts = current_bucket_ts + bucket_dur;
@@ -419,8 +409,7 @@ void track_compute_counter_render_blocks(
 
           if (x2 > x1) {
             bool can_merge = false;
-            counter_render_block_t* out_blocks_data =
-                (counter_render_block_t*)out_blocks->ptr;
+            counter_render_block_t* out_blocks_data = out_blocks->ptr;
             if (out_blocks->len > 0) {
               const counter_render_block_t* last_rb =
                   &out_blocks_data[out_blocks->len - 1];
@@ -430,7 +419,7 @@ void track_compute_counter_render_blocks(
                 can_merge = true;
                 size_t series_count = track->counter_series.len;
                 size_t last_peaks_offset = (out_blocks->len - 1) * series_count;
-                double* peaks = (double*)state->counter_peaks.ptr;
+                double* peaks = state->counter_peaks.ptr;
                 for (size_t i = 0; i < series_count; i++) {
                   if (peaks[last_peaks_offset + i] != bucket_max_values[i]) {
                     can_merge = false;
@@ -458,11 +447,10 @@ void track_compute_counter_render_blocks(
                   rb.event_idx = event_indices[0];
                 }
               }
-              *array_list_push(out_blocks, counter_render_block_t, a) = rb;
+              darray_push(out_blocks, rb, a);
               for (size_t i = 0; i < state->counter_bucket_max_values.len;
                    i++) {
-                *array_list_push(&state->counter_peaks, double, a) =
-                    bucket_max_values[i];
+                darray_push(&state->counter_peaks, bucket_max_values[i], a);
               }
             }
           }

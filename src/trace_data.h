@@ -4,9 +4,9 @@
 #include <stdint.h>
 
 #include "core/allocator.h"
-#include "src/array_list.h"
-#include "src/hash_table.h"
+#include "core/darray.h"
 #include "core/string.h"
+#include "src/hash_table.h"
 #include "src/trace_parser.h"
 
 #ifdef __cplusplus
@@ -78,11 +78,11 @@ typedef struct string_lookup_table {
 } string_lookup_table_t;
 
 typedef struct trace_data {
-  array_list_t string_buffer;  // Element type: char
-  array_list_t string_table;   // Element type: string_entry_t
+  darray_uint8_t string_buffer;
+  darray_t(string_entry_t) string_table;
   string_lookup_table_t string_lookup;
-  array_list_t events;  // Element type: trace_event_persisted_t
-  array_list_t args;    // Element type: trace_arg_persisted_t
+  darray_t(trace_event_persisted_t) events;
+  darray_t(trace_arg_persisted_t) args;
 
   string_ref_t last_cat_ref;
   string_ref_t last_ph_ref;
@@ -101,13 +101,14 @@ typedef struct trace_data {
 trace_data_t* trace_data_create(allocator_t* a);
 void trace_data_retain(trace_data_t* td);
 void trace_data_release(trace_data_t* td, allocator_t* a);
+void trace_data_compact(trace_data_t* td, allocator_t* a);
 
 typedef struct active_event_b {
   size_t event_idx;
 } active_event_b_t;
 
 typedef struct thread_stack {
-  array_list_t stack;  // Element type: active_event_b_t
+  darray_t(active_event_b_t) stack;
 } thread_stack_t;
 
 typedef struct trace_event_matcher {
@@ -130,7 +131,7 @@ static inline string_view_t trace_data_get_string(const trace_data_t* td,
                                                   string_ref_t ref) {
   string_view_t result = {};
   if (ref > 0 && ref <= td->string_table.len) {
-    const string_entry_t* table = (const string_entry_t*)td->string_table.ptr;
+    const string_entry_t* table = td->string_table.ptr;
     const string_entry_t* e = &table[ref - 1];
     result = string_view_from_parts(
         (const char*)td->string_buffer.ptr + e->offset, e->len);

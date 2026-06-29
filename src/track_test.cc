@@ -37,8 +37,8 @@ TEST(track_test, sort_events) {
   trace_data_add_event(td, a, theme_get_dark(), &ev2);
 
   track_t t = {};
-  *array_list_push((array_list_t*)&t.event_indices, size_t, a) = (size_t)0;
-  *array_list_push((array_list_t*)&t.event_indices, size_t, a) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, a);
+  darray_push(&t.event_indices, (size_t)1, a);
 
   track_sort_events(&t, td, a);
 
@@ -63,8 +63,8 @@ TEST(track_test, update_max_dur) {
   trace_data_add_event(td, a, theme_get_dark(), &ev2);
 
   track_t t = {};
-  *array_list_push((array_list_t*)&t.event_indices, size_t, a) = (size_t)0;
-  *array_list_push((array_list_t*)&t.event_indices, size_t, a) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, a);
+  darray_push(&t.event_indices, (size_t)1, a);
 
   track_update_max_dur(&t, td, a);
 
@@ -104,7 +104,7 @@ TEST(track_test, find_visible_start_index) {
 
   track_t t = {};
   for (size_t i = 0; i < 4; i++) {
-    *array_list_push((array_list_t*)&t.event_indices, size_t, a) = i;
+    darray_push(&t.event_indices, i, a);
   }
 
   track_sort_events(&t, td, a);
@@ -168,16 +168,16 @@ TEST(track_test, calculate_depths) {
 
   track_t t = {};
   for (size_t i = 0; i < 5; i++) {
-    *array_list_push((array_list_t*)&t.event_indices, size_t, a) = i;
+    darray_push(&t.event_indices, i, a);
   }
 
   // We need to re-add them in a non-sorted order to test sorting too.
-  array_list_clear((array_list_t*)&t.event_indices);
-  *array_list_push((array_list_t*)&t.event_indices, size_t, a) = (size_t)4;
-  *array_list_push((array_list_t*)&t.event_indices, size_t, a) = (size_t)2;
-  *array_list_push((array_list_t*)&t.event_indices, size_t, a) = (size_t)0;
-  *array_list_push((array_list_t*)&t.event_indices, size_t, a) = (size_t)3;
-  *array_list_push((array_list_t*)&t.event_indices, size_t, a) = (size_t)1;
+  darray_clear(&t.event_indices);
+  darray_push(&t.event_indices, (size_t)4, a);
+  darray_push(&t.event_indices, (size_t)2, a);
+  darray_push(&t.event_indices, (size_t)0, a);
+  darray_push(&t.event_indices, (size_t)3, a);
+  darray_push(&t.event_indices, (size_t)1, a);
 
   track_sort_events(&t, td, a);
   track_calculate_depths(&t, td, a);
@@ -235,7 +235,7 @@ TEST(track_test, calculate_depths_siblings) {
 
   track_t t = {};
   for (size_t i = 0; i < 3; i++) {
-    *array_list_push((array_list_t*)&t.event_indices, size_t, a) = i;
+    darray_push(&t.event_indices, i, a);
   }
 
   track_sort_events(&t, td, a);
@@ -272,7 +272,7 @@ TEST(track_test, calculate_depths_duplicates) {
 
   track_t t = {};
   for (size_t i = 0; i < 2; i++) {
-    *array_list_push((array_list_t*)&t.event_indices, size_t, a) = i;
+    darray_push(&t.event_indices, i, a);
   }
 
   track_sort_events(&t, td, a);
@@ -316,7 +316,7 @@ TEST(track_test, calculate_depths_non_strict) {
 
   track_t t = {};
   for (size_t i = 0; i < 3; i++) {
-    *array_list_push((array_list_t*)&t.event_indices, size_t, a) = i;
+    darray_push(&t.event_indices, i, a);
   }
 
   track_sort_events(&t, td, a);
@@ -342,7 +342,7 @@ TEST(track_test, organize_tracks_empty) {
   allocator_t* a = c_allocator();
   trace_data_t* td = trace_data_create(a);
 
-  array_list_t tracks = {};
+  darray_track_t tracks = {};
   int64_t min_ts = -1, max_ts = -1;
   track_organize(td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
 
@@ -351,7 +351,7 @@ TEST(track_test, organize_tracks_empty) {
   EXPECT_EQ(min_ts, -1);
   EXPECT_EQ(max_ts, -1);
 
-  array_list_deinit(&tracks, a);
+  darray_deinit(&tracks, a);
   trace_data_release(td, a);
 }
 
@@ -391,7 +391,7 @@ TEST(track_test, organize_tracks_sorting) {
   add_sort_idx(10, 1, -5);  // Should be first
   add_sort_idx(1, 2, 5);    // Should be last
 
-  array_list_t tracks = {};
+  darray_track_t tracks = {};
   int64_t min_ts, max_ts;
   track_organize(td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
 
@@ -419,7 +419,7 @@ TEST(track_test, organize_tracks_sorting) {
   for (size_t i = 0; i < tracks.len; i++) {
     track_deinit(&((track_t*)tracks.ptr)[i], a);
   }
-  array_list_deinit(&tracks, a);
+  darray_deinit(&tracks, a);
   trace_data_release(td, a);
 }
 
@@ -437,7 +437,7 @@ TEST(track_test, organize_tracks_metadata_only) {
   m.args_count = 1;
   trace_data_add_event(td, a, theme_get_dark(), &m);
 
-  array_list_t tracks = {};
+  darray_track_t tracks = {};
   int64_t min_ts = -1, max_ts = -1;
   track_organize(td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
 
@@ -451,7 +451,7 @@ TEST(track_test, organize_tracks_metadata_only) {
   EXPECT_EQ(max_ts, 0);
 
   track_deinit(&((track_t*)tracks.ptr)[0], a);
-  array_list_deinit(&tracks, a);
+  darray_deinit(&tracks, a);
   trace_data_release(td, a);
 }
 
@@ -488,7 +488,7 @@ TEST(track_test, organize_tracks_mixed_order) {
   e2.dur = 50;
   trace_data_add_event(td, a, theme_get_dark(), &e2);
 
-  array_list_t tracks = {};
+  darray_track_t tracks = {};
   int64_t min_ts, max_ts;
   track_organize(td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
 
@@ -516,7 +516,7 @@ TEST(track_test, organize_tracks_mixed_order) {
   for (size_t i = 0; i < tracks.len; i++) {
     track_deinit(&((track_t*)tracks.ptr)[i], a);
   }
-  array_list_deinit(&tracks, a);
+  darray_deinit(&tracks, a);
   trace_data_release(td, a);
 }
 
@@ -553,7 +553,7 @@ TEST(track_test, organize_tracks_counters) {
   c2.ts = 200;
   trace_data_add_event(td, a, theme_get_dark(), &c2);
 
-  array_list_t tracks = {};
+  darray_track_t tracks = {};
   int64_t min_ts, max_ts;
   track_organize(td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
 
@@ -590,7 +590,7 @@ TEST(track_test, organize_tracks_counters) {
   for (size_t i = 0; i < tracks.len; i++) {
     track_deinit(&((track_t*)tracks.ptr)[i], a);
   }
-  array_list_deinit(&tracks, a);
+  darray_deinit(&tracks, a);
   trace_data_release(td, a);
 }
 
@@ -623,7 +623,7 @@ TEST(track_test, organize_tracks_counters_sorting) {
   trace_data_add_event(td, a, theme_get_dark(), &c3);
   trace_data_add_event(td, a, theme_get_dark(), &c4);
 
-  array_list_t tracks = {};
+  darray_track_t tracks = {};
   int64_t min_ts, max_ts;
   track_organize(td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
 
@@ -650,7 +650,7 @@ TEST(track_test, organize_tracks_counters_sorting) {
   for (size_t i = 0; i < tracks.len; i++) {
     track_deinit(&((track_t*)tracks.ptr)[i], a);
   }
-  array_list_deinit(&tracks, a);
+  darray_deinit(&tracks, a);
   trace_data_release(td, a);
 }
 
@@ -677,7 +677,7 @@ TEST(track_test, organize_tracks_counters_sorting_ignore_case) {
   trace_data_add_event(td, a, theme_get_dark(), &c2);
   trace_data_add_event(td, a, theme_get_dark(), &c3);
 
-  array_list_t tracks = {};
+  darray_track_t tracks = {};
   int64_t min_ts, max_ts;
   track_organize(td, theme_get_dark(), &tracks, &min_ts, &max_ts, a);
 
@@ -696,6 +696,6 @@ TEST(track_test, organize_tracks_counters_sorting_ignore_case) {
   for (size_t i = 0; i < tracks.len; i++) {
     track_deinit(&((track_t*)tracks.ptr)[i], a);
   }
-  array_list_deinit(&tracks, a);
+  darray_deinit(&tracks, a);
   trace_data_release(td, a);
 }

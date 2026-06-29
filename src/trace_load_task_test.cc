@@ -58,17 +58,17 @@ TEST(trace_load_task_test, success_path_reaps_correctly) {
 
     // Adopt results
     trace_data_t* td = payload->completed_td;
-    array_list_t tracks = payload->completed_tracks;
+    darray_track_t tracks = payload->completed_tracks;
     EXPECT_NE(td, nullptr);
     EXPECT_GT(tracks.len, 0u);
 
     // Clean up results (loop and deinit each track!)
     for (size_t i = 0; i < tracks.len; ++i) {
-      track_t* track = array_list_get(&tracks, track_t, i);
+      track_t* track = &tracks.ptr[i];
       track_deinit(track, a);
     }
     trace_data_release(td, a);
-    array_list_deinit(&tracks, a);
+    darray_deinit(&tracks, a);
 
     // Note: payload->data and payload itself are allocated from the task-local
     // arena and will be automatically reclaimed when

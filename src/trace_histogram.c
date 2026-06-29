@@ -5,7 +5,7 @@
 
 // Computes the linear or logarithmic duration distribution histogram for a set
 // of event indices.
-void trace_histogram_compute(const array_list_t* results,
+void trace_histogram_compute(const darray_int64_t* results,
                              const trace_data_t* td,
                              trace_histogram_t* out_histogram) {
   if (results && td && out_histogram) {
@@ -14,9 +14,8 @@ void trace_histogram_compute(const array_list_t* results,
     out_histogram->total_count = (uint32_t)results->len;
     out_histogram->has_non_zero_durations = false;
 
-    const int64_t* results_ptr = (const int64_t*)results->ptr;
-    const trace_event_persisted_t* events_ptr =
-        (const trace_event_persisted_t*)td->events.ptr;
+    const int64_t* results_ptr = results->ptr;
+    const trace_event_persisted_t* events_ptr = td->events.ptr;
 
     if (results->len > 0) {
       int64_t min_dur = -1;

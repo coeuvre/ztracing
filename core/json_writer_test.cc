@@ -5,12 +5,12 @@
 #include <string_view>
 
 #include "core/allocator.h"
-#include "src/array_list.h"
+#include "core/darray.h"
 #include "core/string.h"
 
 TEST(json_writer_test, basic) {
   allocator_t* a = c_allocator();
-  array_list_t buf = {};
+  darray_uint8_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
 
@@ -27,12 +27,12 @@ TEST(json_writer_test, basic) {
   std::string_view res(reinterpret_cast<const char*>(buf.ptr), buf.len);
   EXPECT_EQ(res, "{\"a\":1,\"b\":true,\"c\":\"hello\"}");
 
-  array_list_deinit(&buf, a);
+  darray_deinit(&buf, a);
 }
 
 TEST(json_writer_test, escaping) {
   allocator_t* a = c_allocator();
-  array_list_t buf = {};
+  darray_uint8_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
 
@@ -45,12 +45,12 @@ TEST(json_writer_test, escaping) {
   std::string_view res(reinterpret_cast<const char*>(buf.ptr), buf.len);
   EXPECT_EQ(res, "{\"text\":\"line1\\nline2\\ttab\\\"quote\"}");
 
-  array_list_deinit(&buf, a);
+  darray_deinit(&buf, a);
 }
 
 TEST(json_writer_test, nested) {
   allocator_t* a = c_allocator();
-  array_list_t buf = {};
+  darray_uint8_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
 
@@ -70,12 +70,12 @@ TEST(json_writer_test, nested) {
   std::string_view res(reinterpret_cast<const char*>(buf.ptr), buf.len);
   EXPECT_EQ(res, "{\"array\":[1,{\"nested\":true},null]}");
 
-  array_list_deinit(&buf, a);
+  darray_deinit(&buf, a);
 }
 
 TEST(json_writer_test, escaping_edge_cases) {
   allocator_t* a = c_allocator();
-  array_list_t buf = {};
+  darray_uint8_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
 
@@ -90,12 +90,12 @@ TEST(json_writer_test, escaping_edge_cases) {
   EXPECT_EQ(res,
             "[\"back\\bform\\ffeed\\rslash\\\\\\\\control\\u0001\\u001f\"]");
 
-  array_list_deinit(&buf, a);
+  darray_deinit(&buf, a);
 }
 
 TEST(json_writer_test, double_and_bool) {
   allocator_t* a = c_allocator();
-  array_list_t buf = {};
+  darray_uint8_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
 
@@ -108,12 +108,12 @@ TEST(json_writer_test, double_and_bool) {
   std::string_view res(reinterpret_cast<const char*>(buf.ptr), buf.len);
   EXPECT_EQ(res, "[3.14159,-0.000123,false]");
 
-  array_list_deinit(&buf, a);
+  darray_deinit(&buf, a);
 }
 
 TEST(json_writer_test, depth_clamping) {
   allocator_t* a = c_allocator();
-  array_list_t buf = {};
+  darray_uint8_t buf = {};
   json_writer_t w;
   json_writer_init(&w, false, &buf, a);
 
@@ -140,12 +140,12 @@ TEST(json_writer_test, depth_clamping) {
 
   EXPECT_EQ(res, expected);
 
-  array_list_deinit(&buf, a);
+  darray_deinit(&buf, a);
 }
 
 TEST(json_writer_test, indentation) {
   allocator_t* a = c_allocator();
-  array_list_t buf = {};
+  darray_uint8_t buf = {};
   json_writer_t w;
   json_writer_init(&w, true, &buf, a);
 
@@ -178,5 +178,5 @@ TEST(json_writer_test, indentation) {
       "}";
   EXPECT_EQ(res, expected);
 
-  array_list_deinit(&buf, a);
+  darray_deinit(&buf, a);
 }

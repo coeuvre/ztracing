@@ -21,7 +21,7 @@ static const size_t OUT_BUF_SIZE =
 // Decrements active reference counts, frees payload data, and adopts the
 // completed trace data (and optionally organized tracks/stats) on EOF.
 static bool reap_completion_sync(task_queue_t* queue, trace_data_t** out_td,
-                                 array_list_t* out_tracks, int64_t* out_min_ts,
+                                 darray_track_t* out_tracks, int64_t* out_min_ts,
                                  int64_t* out_max_ts,
                                  double* out_ingest_duration_ms,
                                  double* out_organize_duration_ms,
@@ -56,15 +56,15 @@ static bool reap_completion_sync(task_queue_t* queue, trace_data_t** out_td,
         if (out_max_ts) *out_max_ts = payload->completed_max_ts;
         // Clear payload array list to transfer ownership and prevent
         // deinitialization below
-        payload->completed_tracks = (array_list_t){};
+        payload->completed_tracks = (darray_track_t){};
       }
 
       // Deinitialize organized tracks if they weren't adopted (fallback path)
-      track_t* tracks_data = (track_t*)payload->completed_tracks.ptr;
+      track_t* tracks_data = payload->completed_tracks.ptr;
       for (size_t i = 0; i < payload->completed_tracks.len; i++) {
         track_deinit(&tracks_data[i], a);
       }
-      array_list_deinit(&payload->completed_tracks, a);
+      darray_deinit(&payload->completed_tracks, a);
     }
   }
 
@@ -83,7 +83,7 @@ static bool reap_completion_sync(task_queue_t* queue, trace_data_t** out_td,
 // SESE.
 trace_data_t* trace_loader_load_file(const char* filename, allocator_t* a,
                                      size_t* out_decompressed_size,
-                                     array_list_t* out_tracks,
+                                     darray_track_t* out_tracks,
                                      int64_t* out_min_ts, int64_t* out_max_ts,
                                      double* out_ingest_duration_ms,
                                      double* out_organize_duration_ms) {

@@ -214,13 +214,22 @@ static bool track_key_eq(const void* a, const void* b, void* ctx) {
 }
 
 void track_deinit(track_t* t, allocator_t* a) {
-  array_list_deinit(&t->event_indices, a);
-  array_list_deinit(&t->depths, a);
-  array_list_deinit(&t->self_durs, a);
-  array_list_deinit(&t->counter_series, a);
-  array_list_deinit(&t->counter_palette_indices, a);
-  array_list_deinit(&t->block_max_durs, a);
+  darray_deinit(&t->event_indices, a);
+  darray_deinit(&t->depths, a);
+  darray_deinit(&t->self_durs, a);
+  darray_deinit(&t->counter_series, a);
+  darray_deinit(&t->counter_palette_indices, a);
+  darray_deinit(&t->block_max_durs, a);
   *t = (track_t){};
+}
+
+void track_compact(track_t* t, allocator_t* a) {
+  darray_compact(&t->event_indices, a);
+  darray_compact(&t->depths, a);
+  darray_compact(&t->self_durs, a);
+  darray_compact(&t->counter_series, a);
+  darray_compact(&t->counter_palette_indices, a);
+  darray_compact(&t->block_max_durs, a);
 }
 
 void track_sort_events(track_t* t, const trace_data_t* td, allocator_t* a) {
@@ -234,9 +243,8 @@ void track_sort_events(track_t* t, const trace_data_t* td, allocator_t* a) {
           a, t->event_indices.len * sizeof(sort_key_t));
     }
 
-    const size_t* event_indices = (const size_t*)t->event_indices.ptr;
-    const trace_event_persisted_t* events =
-        (const trace_event_persisted_t*)td->events.ptr;
+    const size_t* event_indices = t->event_indices.ptr;
+    const trace_event_persisted_t* events = td->events.ptr;
 
     for (size_t i = 0; i < t->event_indices.len; i++) {
       size_t idx = event_indices[i];
@@ -247,7 +255,7 @@ void track_sort_events(track_t* t, const trace_data_t* td, allocator_t* a) {
 
     qsort(keys, t->event_indices.len, sizeof(sort_key_t), sort_key_compare);
 
-    size_t* mutable_event_indices = (size_t*)t->event_indices.ptr;
+    size_t* mutable_event_indices = t->event_indices.ptr;
     for (size_t i = 0; i < t->event_indices.len; i++) {
       mutable_event_indices[i] = keys[i].idx;
     }
@@ -262,12 +270,11 @@ void track_update_max_dur(track_t* t, const trace_data_t* td, allocator_t* a) {
   int64_t max_dur = 0;
   size_t num_blocks =
       (t->event_indices.len + TRACK_BLOCK_SIZE - 1) / TRACK_BLOCK_SIZE;
-  array_list_resize(&t->block_max_durs, num_blocks, sizeof(int64_t), a);
+  darray_resize(&t->block_max_durs, num_blocks, a);
 
-  const size_t* event_indices = (const size_t*)t->event_indices.ptr;
-  const trace_event_persisted_t* events =
-      (const trace_event_persisted_t*)td->events.ptr;
-  int64_t* block_max_durs = (int64_t*)t->block_max_durs.ptr;
+  const size_t* event_indices = t->event_indices.ptr;
+  const trace_event_persisted_t* events = td->events.ptr;
+  int64_t* block_max_durs = t->block_max_durs.ptr;
 
   for (size_t b = 0; b < num_blocks; b++) {
     int64_t block_max_dur = 0;
@@ -293,16 +300,15 @@ void track_update_max_dur(track_t* t, const trace_data_t* td, allocator_t* a) {
 
 void track_calculate_depths(track_t* t, const trace_data_t* td,
                             allocator_t* a) {
-  array_list_resize(&t->depths, t->event_indices.len, sizeof(uint32_t), a);
-  array_list_resize(&t->self_durs, t->event_indices.len, sizeof(int64_t), a);
+  darray_resize(&t->depths, t->event_indices.len, a);
+  darray_resize(&t->self_durs, t->event_indices.len, a);
   t->max_depth = 0;
 
-  array_list_t stack = {};
-  const size_t* event_indices = (const size_t*)t->event_indices.ptr;
-  const trace_event_persisted_t* events =
-      (const trace_event_persisted_t*)td->events.ptr;
-  uint32_t* depths = (uint32_t*)t->depths.ptr;
-  int64_t* self_durs = (int64_t*)t->self_durs.ptr;
+  darray_t(stack_event_t) stack = {};
+  const size_t* event_indices = t->event_indices.ptr;
+  const trace_event_persisted_t* events = td->events.ptr;
+  uint32_t* depths = t->depths.ptr;
+  int64_t* self_durs = t->self_durs.ptr;
 
   for (size_t i = 0; i < t->event_indices.len; i++) {
     size_t event_idx = event_indices[i];
@@ -312,21 +318,19 @@ void track_calculate_depths(track_t* t, const trace_data_t* td,
     self_durs[i] = e->dur;
 
     // Pop events that have finished.
-    const stack_event_t* stack_elements = (const stack_event_t*)stack.ptr;
-    while (stack.len > 0 && stack_elements[stack.len - 1].end <= e->ts) {
-      stack.len--;
+    while (stack.len > 0 && stack.ptr[stack.len - 1].end <= e->ts) {
+      darray_pop(&stack);
     }
 
     // Find the deepest parent that strictly contains this event.
     uint32_t depth = 0;
-    stack_elements = (const stack_event_t*)stack.ptr;
     for (size_t j = stack.len; j > 0; j--) {
-      if (stack_elements[j - 1].end >= end_ts) {
-        depth = stack_elements[j - 1].depth + 1;
+      if (stack.ptr[j - 1].end >= end_ts) {
+        depth = stack.ptr[j - 1].depth + 1;
 
         // j - 1 is the direct parent! Subtract our duration from its
         // self-duration.
-        size_t parent_track_idx = stack_elements[j - 1].track_event_idx;
+        size_t parent_track_idx = stack.ptr[j - 1].track_event_idx;
         self_durs[parent_track_idx] -= e->dur;
 
         break;
@@ -343,10 +347,10 @@ void track_calculate_depths(track_t* t, const trace_data_t* td,
         .depth = depth,
         .track_event_idx = i,
     };
-    *array_list_push(&stack, stack_event_t, a) = se;
+    darray_push(&stack, se, a);
   }
 
-  array_list_deinit(&stack, a);
+  darray_deinit(&stack, a);
 }
 
 size_t track_find_visible_start_index(const track_t* t, const trace_data_t* td,
@@ -355,10 +359,9 @@ size_t track_find_visible_start_index(const track_t* t, const trace_data_t* td,
   if (t->event_indices.len > 0) {
     size_t num_blocks = t->block_max_durs.len;
     size_t first_block = 0;
-    const size_t* event_indices = (const size_t*)t->event_indices.ptr;
-    const trace_event_persisted_t* events =
-        (const trace_event_persisted_t*)td->events.ptr;
-    const int64_t* block_max_durs = (const int64_t*)t->block_max_durs.ptr;
+    const size_t* event_indices = t->event_indices.ptr;
+    const trace_event_persisted_t* events = td->events.ptr;
+    const int64_t* block_max_durs = t->block_max_durs.ptr;
 
     for (size_t b = 0; b < num_blocks; b++) {
       size_t start_idx = b * TRACK_BLOCK_SIZE;
@@ -397,19 +400,14 @@ size_t track_find_visible_start_index(const track_t* t, const trace_data_t* td,
   return result;
 }
 
-// TODO: Remove track_update_colors after the migration is done. We might just
-// store the color_index instead of the real color, allowing theme colors to be
-// resolved dynamically at draw time.
-
-void track_organize(const trace_data_t* td, array_list_t* out_tracks,
+void track_organize(const trace_data_t* td, darray_track_t* out_tracks,
                     int64_t* out_min_ts, int64_t* out_max_ts,
                     allocator_t* output_allocator,
                     allocator_t* scratch_allocator) {
-  track_t* out_tracks_data = (track_t*)out_tracks->ptr;
   for (size_t i = 0; i < out_tracks->len; i++) {
-    track_deinit(&out_tracks_data[i], output_allocator);
+    track_deinit(&out_tracks->ptr[i], output_allocator);
   }
-  array_list_clear(out_tracks);
+  darray_clear(out_tracks);
 
   if (td->events.len > 0) {
     int64_t min_ts = 0;
@@ -422,13 +420,12 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
     track_key_t last_key = {-1, -1, 0, 0};
     size_t last_track_idx = (size_t)-1;
 
-    const trace_event_persisted_t* events =
-        (const trace_event_persisted_t*)td->events.ptr;
+    const trace_event_persisted_t* events = td->events.ptr;
 
     string_ref_t ph_c_ref = trace_data_find_string_ref_const(td, SV("C"));
     string_ref_t ph_m_ref = trace_data_find_string_ref_const(td, SV("M"));
 
-    array_list_t event_counts = {};
+    darray_t(size_t) event_counts = {};
 
     // Allocate temporary array to store resolved track index for each event
     uint32_t* event_track_indices = (uint32_t*)allocator_alloc(
@@ -469,11 +466,11 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
               .name_ref = is_counter ? e->name_ref : 0,
               .id_ref = is_counter ? e->id_ref : 0,
           };
-          *array_list_push(out_tracks, track_t, output_allocator) = t;
+          darray_push(out_tracks, t, output_allocator);
           track_idx = out_tracks->len - 1;
           *(size_t*)hash_table_put(&track_map, &key, scratch_allocator) =
               track_idx;
-          *array_list_push(&event_counts, size_t, scratch_allocator) = 0;
+          darray_push(&event_counts, (size_t)0, scratch_allocator);
         } else {
           track_idx = *track_idx_ptr;
         }
@@ -481,15 +478,13 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
         last_track_idx = track_idx;
       }
 
-      track_t* tracks_data = (track_t*)out_tracks->ptr;
-      track_t* t = &tracks_data[track_idx];
+      track_t* t = &out_tracks->ptr[track_idx];
 
       // Check for metadata events
       if (is_metadata) {
         string_view_t name_str = trace_data_get_string(td, e->name_ref);
         if (string_view_eq(name_str, SV("thread_name"))) {
-          const trace_arg_persisted_t* args =
-              (const trace_arg_persisted_t*)td->args.ptr;
+          const trace_arg_persisted_t* args = td->args.ptr;
           for (size_t k = 0; k < e->args_count; k++) {
             const trace_arg_persisted_t* arg = &args[e->args_offset + k];
             string_view_t key_str = trace_data_get_string(td, arg->key_ref);
@@ -499,8 +494,7 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
             }
           }
         } else if (string_view_eq(name_str, SV("thread_sort_index"))) {
-          const trace_arg_persisted_t* args =
-              (const trace_arg_persisted_t*)td->args.ptr;
+          const trace_arg_persisted_t* args = td->args.ptr;
           for (size_t k = 0; k < e->args_count; k++) {
             const trace_arg_persisted_t* arg = &args[e->args_offset + k];
             string_view_t key_str = trace_data_get_string(td, arg->key_ref);
@@ -513,8 +507,7 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
         }
       } else {
         event_track_indices[i] = (uint32_t)track_idx;
-        size_t* counts_data = (size_t*)event_counts.ptr;
-        counts_data[track_idx]++;
+        event_counts.ptr[track_idx]++;
 
         if (first_event) {
           min_ts = e->ts;
@@ -532,26 +525,23 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
     }
 
     // Pre-allocate event_indices for all tracks
-    size_t* counts_data = (size_t*)event_counts.ptr;
-    track_t* tracks_data = (track_t*)out_tracks->ptr;
     for (size_t i = 0; i < out_tracks->len; i++) {
-      array_list_reserve(&tracks_data[i].event_indices, counts_data[i],
-                         sizeof(size_t), output_allocator);
+      darray_reserve(&out_tracks->ptr[i].event_indices, event_counts.ptr[i],
+                     output_allocator);
     }
 
     // Pass 2: Grouping (Zero reallocations, zero lookups, zero cache checks!)
     for (size_t i = 0; i < td->events.len; i++) {
       uint32_t track_idx = event_track_indices[i];
       if (track_idx != (uint32_t)-1) {
-        track_t* t = &tracks_data[track_idx];
-        *array_list_push(&t->event_indices, size_t, output_allocator) = i;
+        darray_push(&out_tracks->ptr[track_idx].event_indices, i,
+                    output_allocator);
       }
     }
 
     // Sort events, calculate depths
-    tracks_data = (track_t*)out_tracks->ptr;
     for (size_t i = 0; i < out_tracks->len; i++) {
-      track_t* t = &tracks_data[i];
+      track_t* t = &out_tracks->ptr[i];
       track_sort_events(t, td, output_allocator);
       track_update_max_dur(t, td, output_allocator);
       if (t->type == TRACK_TYPE_THREAD) {
@@ -559,25 +549,16 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
       } else {
         // Counter tracks don't have nested depths.
         t->max_depth = 0;
-        array_list_resize(&t->depths, t->event_indices.len, sizeof(uint32_t),
-                          output_allocator);
-        uint32_t* depths = (uint32_t*)t->depths.ptr;
-        for (size_t k = 0; k < t->depths.len; k++) {
-          depths[k] = 0;
-        }
+        darray_resize(&t->depths, t->event_indices.len, output_allocator);
+        memset(t->depths.ptr, 0, t->depths.len * sizeof(uint32_t));
 
-        array_list_resize(&t->self_durs, t->event_indices.len, sizeof(int64_t),
-                          output_allocator);
-        int64_t* self_durs = (int64_t*)t->self_durs.ptr;
-        for (size_t k = 0; k < t->self_durs.len; k++) {
-          self_durs[k] = 0;
-        }
+        darray_resize(&t->self_durs, t->event_indices.len, output_allocator);
+        memset(t->self_durs.ptr, 0, t->self_durs.len * sizeof(int64_t));
 
         // Discover unique series (argument keys) and calculate max total
         t->counter_max_total = 0.0;
-        const size_t* event_indices = (const size_t*)t->event_indices.ptr;
-        const trace_arg_persisted_t* args =
-            (const trace_arg_persisted_t*)td->args.ptr;
+        const size_t* event_indices = t->event_indices.ptr;
+        const trace_arg_persisted_t* args = td->args.ptr;
         for (size_t idx_k = 0; idx_k < t->event_indices.len; idx_k++) {
           size_t idx = event_indices[idx_k];
           const trace_event_persisted_t* e = &events[idx];
@@ -586,17 +567,14 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
             const trace_arg_persisted_t* arg = &args[e->args_offset + k];
             string_ref_t key_ref = arg->key_ref;
             bool found = false;
-            const string_ref_t* counter_series_data =
-                (const string_ref_t*)t->counter_series.ptr;
             for (size_t s_idx = 0; s_idx < t->counter_series.len; s_idx++) {
-              if (counter_series_data[s_idx] == key_ref) {
+              if (t->counter_series.ptr[s_idx] == key_ref) {
                 found = true;
                 break;
               }
             }
             if (!found) {
-              *array_list_push(&t->counter_series, string_ref_t,
-                               output_allocator) = key_ref;
+              darray_push(&t->counter_series, key_ref, output_allocator);
             }
             event_total += arg->val_double;
           }
@@ -616,21 +594,17 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
               t->counter_series.len * sizeof(counter_sort_key_t));
         }
 
-        const string_ref_t* counter_series_data =
-            (const string_ref_t*)t->counter_series.ptr;
         for (size_t s_idx = 0; s_idx < t->counter_series.len; s_idx++) {
-          counter_keys[s_idx].ref = counter_series_data[s_idx];
+          counter_keys[s_idx].ref = t->counter_series.ptr[s_idx];
           counter_keys[s_idx].str =
-              trace_data_get_string(td, counter_series_data[s_idx]);
+              trace_data_get_string(td, t->counter_series.ptr[s_idx]);
         }
 
         qsort(counter_keys, t->counter_series.len, sizeof(counter_sort_key_t),
               counter_sort_key_compare);
 
-        string_ref_t* mutable_counter_series =
-            (string_ref_t*)t->counter_series.ptr;
         for (size_t s_idx = 0; s_idx < t->counter_series.len; s_idx++) {
-          mutable_counter_series[s_idx] = counter_keys[s_idx].ref;
+          t->counter_series.ptr[s_idx] = counter_keys[s_idx].ref;
         }
 
         if (t->counter_series.len > 32) {
@@ -639,21 +613,18 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
         }
 
         // Cache palette indices
-        array_list_resize(&t->counter_palette_indices, t->counter_series.len,
-                          sizeof(uint8_t), output_allocator);
+        darray_resize(&t->counter_palette_indices, t->counter_series.len,
+                      output_allocator);
 
-        string_ref_t* counter_series = (string_ref_t*)t->counter_series.ptr;
-        uint8_t* counter_palette_indices =
-            (uint8_t*)t->counter_palette_indices.ptr;
         for (size_t s_idx = 0; s_idx < t->counter_series.len; s_idx++) {
           string_view_t key_str =
-              trace_data_get_string(td, counter_series[s_idx]);
+              trace_data_get_string(td, t->counter_series.ptr[s_idx]);
           uint32_t hash = 2166136261u;
           for (size_t char_idx = 0; char_idx < key_str.len; ++char_idx) {
             hash ^= (uint8_t)key_str.ptr[char_idx];
             hash *= 16777619u;
           }
-          counter_palette_indices[s_idx] = (uint8_t)(hash % 8);
+          t->counter_palette_indices.ptr[s_idx] = (uint8_t)(hash % 8);
         }
       }
     }
@@ -668,12 +639,11 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
           scratch_allocator, out_tracks->len * sizeof(track_sort_key_t));
     }
 
-    tracks_data = (track_t*)out_tracks->ptr;
     for (size_t i = 0; i < out_tracks->len; i++) {
-      keys[i].track = &tracks_data[i];
-      if (tracks_data[i].type == TRACK_TYPE_COUNTER) {
-        keys[i].name = trace_data_get_string(td, tracks_data[i].name_ref);
-        keys[i].id = trace_data_get_string(td, tracks_data[i].id_ref);
+      keys[i].track = &out_tracks->ptr[i];
+      if (out_tracks->ptr[i].type == TRACK_TYPE_COUNTER) {
+        keys[i].name = trace_data_get_string(td, out_tracks->ptr[i].name_ref);
+        keys[i].id = trace_data_get_string(td, out_tracks->ptr[i].id_ref);
       } else {
         keys[i].name = (string_view_t){};
         keys[i].id = (string_view_t){};
@@ -698,5 +668,12 @@ void track_organize(const trace_data_t* td, array_list_t* out_tracks,
     memcpy(out_tracks->ptr, sorted_tracks, out_tracks->len * sizeof(track_t));
     *out_min_ts = min_ts;
     *out_max_ts = max_ts;
+
+    for (size_t i = 0; i < out_tracks->len; i++) {
+      track_compact(&out_tracks->ptr[i], output_allocator);
+    }
+    darray_compact(out_tracks, output_allocator);
+
+    darray_deinit(&event_counts, scratch_allocator);
   }
 }

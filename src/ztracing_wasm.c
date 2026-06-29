@@ -8,6 +8,7 @@
 #include "core/assert.h"
 #include "core/counting_allocator.h"
 #include "core/logging.h"
+#include "core/darray.h"
 #include "src/app.h"
 #include "src/imgui_c.h"
 #include "src/imgui_impl_wasm.h"
@@ -15,9 +16,9 @@
 #include "src/platform.h"
 #include "src/ztracing.h"
 
-static array_list_t g_canvas_selector;
+static darray_uint8_t g_canvas_selector;
 static app_t* g_app = nullptr;
-static array_list_t g_font_data;
+static darray_uint8_t g_font_data;
 
 static void* imgui_alloc(size_t sz, void* user_data) {
   allocator_t* a = (allocator_t*)user_data;
@@ -89,11 +90,10 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
                          IG_CONFIG_FLAGS_DOCKING_ENABLE);
 
   allocator_t* allocator = imgui_allocator;
-  array_list_clear(&g_canvas_selector);
+  darray_clear(&g_canvas_selector);
   size_t len = strlen(canvas_selector) + 1;
-  char* dest = (char*)array_list_append_(&g_canvas_selector, len, sizeof(char),
-                                         allocator);
-  memcpy(dest, canvas_selector, len);
+  darray_resize(&g_canvas_selector, len, allocator);
+  memcpy(g_canvas_selector.ptr, canvas_selector, len);
 
   EmscriptenWebGLContextAttributes attrs;
   emscripten_webgl_init_context_attributes(&attrs);
@@ -132,13 +132,12 @@ EMSCRIPTEN_KEEPALIVE void ztracing_start() {
 
 EMSCRIPTEN_KEEPALIVE void ztracing_set_font_data(unsigned char* font_data,
                                                  int font_size) {
-  array_list_clear(&g_font_data);
+  darray_clear(&g_font_data);
   allocator_t* allocator =
       counting_allocator_get_allocator(&g_app->counting_allocator);
   size_t len = (size_t)font_size;
-  unsigned char* dest = (unsigned char*)array_list_append_(
-      &g_font_data, len, sizeof(unsigned char), allocator);
-  memcpy(dest, font_data, len);
+  darray_resize(&g_font_data, len, allocator);
+  memcpy(g_font_data.ptr, font_data, len);
 
   float dpi_scale = imgui_impl_wasm_get_dpi_scale();
   ig_set_font_data(g_font_data.ptr, (int)g_font_data.len, dpi_scale);

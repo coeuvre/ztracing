@@ -4,7 +4,7 @@
 #include <pthread.h>
 
 #include "core/allocator.h"
-#include "src/array_list.h"
+#include "core/darray.h"
 #include "src/colors.h"
 #include "src/imgui_c.h"
 #include "src/trace_data.h"
@@ -132,8 +132,8 @@ typedef struct vertical_minimap_layout vertical_minimap_layout_t;
 struct vertical_minimap_state {
   bool is_dragging;
   float drag_offset_y;
-  array_list_t track_has_selected;
-  array_list_t track_heatmap_densities;
+  darray_bool_t track_has_selected;
+  darray_t(trace_heatmap_t) track_heatmap_densities;
   vertical_minimap_layout_t layout;
 };
 typedef struct vertical_minimap_state vertical_minimap_state_t;
@@ -165,19 +165,19 @@ struct trace_viewer {
   float snap_y1;
   float snap_y2;
 
-  array_list_t tracks;
-  array_list_t track_infos;
-  array_list_t ruler_ticks;
+  darray_track_t tracks;
+  darray_t(track_view_info_t) track_infos;
+  darray_t(ruler_tick_t) ruler_ticks;
   selection_overlay_layout_t selection_layout;
   float total_tracks_height;
 
   track_renderer_state_t track_renderer_state;
-  array_list_t render_blocks;
-  array_list_t counter_render_blocks;
-  array_list_t hover_matches;
+  darray_track_render_block_t render_blocks;
+  darray_counter_render_block_t counter_render_blocks;
+  darray_t(hover_match_t) hover_matches;
   bool has_focused_event;
   size_t focused_event_idx;
-  array_list_t selected_event_indices;
+  darray_int64_t selected_event_indices;
   bool selected_events_dirty;
   bool has_target_focused_event;
   size_t target_focused_event_idx;
@@ -193,7 +193,7 @@ struct trace_viewer {
   float last_lane_height;
   double last_best_snap_ts;
 
-  array_list_t search_query;
+  darray_uint8_t search_query;
   bool focus_search_input;
   bool search_query_dirty;
   bool exclude_thread_events;
@@ -204,7 +204,7 @@ struct trace_viewer {
   bool has_selected_histogram_bucket;
   size_t selected_histogram_bucket;
   trace_histogram_t histogram;
-  array_list_t filtered_event_indices;
+  darray_int64_t filtered_event_indices;
   vertical_minimap_state_t vertical_minimap;
 };
 typedef struct trace_viewer trace_viewer_t;
@@ -227,7 +227,7 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
 
 void trace_viewer_adopt_search_results(trace_viewer_t* tv,
                                        const trace_data_t* td,
-                                       array_list_t results,
+                                       darray_int64_t results,
                                        trace_histogram_t* histogram,
                                        allocator_t* allocator);
 

@@ -25,8 +25,8 @@ class TrackRendererTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    array_list_deinit(&blocks_impl, allocator);
-    blocks = (track_render_block_t*)blocks_impl.ptr;
+    darray_deinit(&blocks_impl, allocator);
+    blocks = blocks_impl.ptr;
     (void)blocks;
     track_renderer_state_deinit(&state, allocator);
     trace_data_release(td, allocator);
@@ -35,7 +35,7 @@ class TrackRendererTest : public ::testing::Test {
   allocator_t* allocator;
   trace_data_t* td;
   track_renderer_state_t state;
-  array_list_t blocks_impl;
+  darray_track_render_block_t blocks_impl;
   track_render_block_t* blocks;
 };
 
@@ -66,22 +66,22 @@ TEST_F(TrackRendererTest, CoalesceSameColor) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
   trace_data_add_event(td, allocator, theme_get_dark(), &e3);
 
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)2;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
+  darray_push(&t.event_indices, (size_t)2, allocator);
 
-  array_list_resize(&t.depths, 3, sizeof(uint32_t), allocator);
+  darray_resize(&t.depths, 3, allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   depths[1] = 0;
   depths[2] = 0;
   t.max_depth = 0;
 
-  array_list_t selected = {};
+  darray_int64_t selected = {};
   (void)selected;
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   // Viewport: 0 to 10000us, 1000px. 1px = 10us. Bucket size = 3px = 30us.
@@ -121,9 +121,8 @@ TEST_F(TrackRendererTest, ThreadBucketingStability) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
   trace_data_add_event(td, allocator, theme_get_dark(), &e3);
 
-  for (size_t i = 0; i < 4; ++i)
-    *array_list_push(&t.event_indices, size_t, allocator) = i;
-  array_list_resize(&t.depths, 4, sizeof(uint32_t), allocator);
+  for (size_t i = 0; i < 4; ++i) darray_push(&t.event_indices, i, allocator);
+  darray_resize(&t.depths, 4, allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 4; ++i) depths[i] = 0;
   t.max_depth = 0;
@@ -133,11 +132,11 @@ TEST_F(TrackRendererTest, ThreadBucketingStability) {
   // Buckets: [0, 30), [30, 60), [60, 90), [90, 120)...
   // e0 (85) in [60, 90).
   // e1, e2, e3 (100, 105, 110) in [90, 120).
-  array_list_t selected = {};
+  darray_int64_t selected = {};
   (void)selected;
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   uint32_t count_90_120 = 0;
@@ -153,10 +152,10 @@ TEST_F(TrackRendererTest, ThreadBucketingStability) {
   // Before fix, e0 (85) would be included in [90, 120) because it was the first
   // bucket. After fix, e0 should be SKIPPED for [90, 120) because it starts
   // before 90.
-  array_list_clear(&blocks_impl);
+  darray_clear(&blocks_impl);
   track_compute_render_blocks(&t, td, 95, 10095, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   uint32_t count_90_120_panned = 0;
@@ -191,19 +190,19 @@ TEST_F(TrackRendererTest, CoalesceDifferentColors) {
   (((trace_event_persisted_t*)td->events.ptr)[0]).palette_index = 0;
   (((trace_event_persisted_t*)td->events.ptr)[1]).palette_index = 1;
 
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
-  array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
+  darray_resize(&t.depths, 2, allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   depths[1] = 0;
   t.max_depth = 0;
 
-  array_list_t selected = {};
+  darray_int64_t selected = {};
   (void)selected;
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   EXPECT_EQ(blocks_impl.len, 1u);
@@ -230,19 +229,19 @@ TEST_F(TrackRendererTest, MultipleBlocksCloseTogether) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
 
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
-  array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
+  darray_resize(&t.depths, 2, allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   depths[1] = 0;
   t.max_depth = 0;
 
-  array_list_t selected = {};
+  darray_int64_t selected = {};
   (void)selected;
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   EXPECT_EQ(blocks_impl.len, 1u);
@@ -290,18 +289,17 @@ TEST_F(TrackRendererTest, CullingAfterMergeFlush) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e4);
   trace_data_add_event(td, allocator, theme_get_dark(), &e5);
 
-  for (size_t i = 0; i < 5; i++)
-    *array_list_push(&t.event_indices, size_t, allocator) = i;
-  array_list_resize(&t.depths, 5, sizeof(uint32_t), allocator);
+  for (size_t i = 0; i < 5; i++) darray_push(&t.event_indices, i, allocator);
+  darray_resize(&t.depths, 5, allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 5; i++) depths[i] = 0;
   t.max_depth = 0;
 
-  array_list_t selected = {};
+  darray_int64_t selected = {};
   (void)selected;
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   EXPECT_EQ(blocks_impl.len, 2u);
@@ -330,26 +328,25 @@ TEST_F(TrackRendererTest, SelectedEventNeverSkipped) {
   (((trace_event_persisted_t*)td->events.ptr)[0]).palette_index = 0;
   (((trace_event_persisted_t*)td->events.ptr)[1]).palette_index = 0;
 
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
-  array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
+  darray_resize(&t.depths, 2, allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   depths[1] = 0;
   t.max_depth = 0;
 
-  array_list_t selected = {};
-  *array_list_push(&selected, int64_t, allocator) = (int64_t)1;
-  track_renderer_update_selection_bitset(
-      &state, td, (const array_list_t*)&selected, allocator);
+  darray_int64_t selected = {};
+  darray_push(&selected, (int64_t)1, allocator);
+  track_renderer_update_selection_bitset(&state, td, &selected, allocator);
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   EXPECT_EQ(blocks_impl.len, 2u);
   EXPECT_TRUE(blocks[1].is_selected);
-  array_list_deinit(&selected, allocator);
+  darray_deinit(&selected, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -373,19 +370,18 @@ TEST_F(TrackRendererTest, SameLaneOverlap) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
 
-  for (size_t i = 0; i < 2; i++)
-    *array_list_push(&t.event_indices, size_t, allocator) = i;
-  array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
+  for (size_t i = 0; i < 2; i++) darray_push(&t.event_indices, i, allocator);
+  darray_resize(&t.depths, 2, allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   depths[1] = 0;
   t.max_depth = 0;
 
-  array_list_t selected = {};
+  darray_int64_t selected = {};
   (void)selected;
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   EXPECT_EQ(blocks_impl.len, 2u);
@@ -421,24 +417,22 @@ TEST_F(TrackRendererTest, SelectedEventOverlap) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
   trace_data_add_event(td, allocator, theme_get_dark(), &e3);
 
-  for (size_t i = 0; i < 3; i++)
-    *array_list_push(&t.event_indices, size_t, allocator) = i;
-  array_list_resize(&t.depths, 3, sizeof(uint32_t), allocator);
+  for (size_t i = 0; i < 3; i++) darray_push(&t.event_indices, i, allocator);
+  darray_resize(&t.depths, 3, allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 3; i++) depths[i] = 0;
   t.max_depth = 0;
 
-  array_list_t selected = {};
-  *array_list_push(&selected, int64_t, allocator) = (int64_t)1;
-  track_renderer_update_selection_bitset(
-      &state, td, (const array_list_t*)&selected, allocator);
+  darray_int64_t selected = {};
+  darray_push(&selected, (int64_t)1, allocator);
+  track_renderer_update_selection_bitset(&state, td, &selected, allocator);
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   EXPECT_EQ(blocks_impl.len, 2u);
-  array_list_deinit(&selected, allocator);
+  darray_deinit(&selected, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -469,24 +463,22 @@ TEST_F(TrackRendererTest, SelectedEventNoOverlap) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
   trace_data_add_event(td, allocator, theme_get_dark(), &e3);
 
-  for (size_t i = 0; i < 3; i++)
-    *array_list_push(&t.event_indices, size_t, allocator) = i;
-  array_list_resize(&t.depths, 3, sizeof(uint32_t), allocator);
+  for (size_t i = 0; i < 3; i++) darray_push(&t.event_indices, i, allocator);
+  darray_resize(&t.depths, 3, allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 3; i++) depths[i] = 0;
   t.max_depth = 0;
 
-  array_list_t selected = {};
-  *array_list_push(&selected, int64_t, allocator) = (int64_t)1;
-  track_renderer_update_selection_bitset(
-      &state, td, (const array_list_t*)&selected, allocator);
+  darray_int64_t selected = {};
+  darray_push(&selected, (int64_t)1, allocator);
+  track_renderer_update_selection_bitset(&state, td, &selected, allocator);
   track_compute_render_blocks(&t, td, 0, 10000, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   EXPECT_EQ(blocks_impl.len, 3u);
-  array_list_deinit(&selected, allocator);
+  darray_deinit(&selected, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -504,16 +496,16 @@ TEST_F(TrackRendererTest, ExtremeZoomOut) {
     e.ts = (int64_t)i * 2;
     e.dur = 1;
     trace_data_add_event(td, allocator, theme_get_dark(), &e);
-    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)i;
+    darray_push(&t.event_indices, (size_t)i, allocator);
   }
-  array_list_resize(&t.depths, 1000, sizeof(uint32_t), allocator);
+  darray_resize(&t.depths, 1000, allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 1000; i++) depths[i] = 0;
   t.max_depth = 0;
 
   track_compute_render_blocks(&t, td, 0, 1000000, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   EXPECT_LT(blocks_impl.len, 100u);
@@ -544,15 +536,14 @@ TEST_F(TrackRendererTest, CounterBucketing) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e3);
   trace_data_add_event(td, allocator, theme_get_dark(), &e4);
 
-  for (size_t i = 0; i < 4; i++)
-    *array_list_push(&t.event_indices, size_t, allocator) = i;
+  for (size_t i = 0; i < 4; i++) darray_push(&t.event_indices, i, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   // Viewport: 0 to 1000, 1000px. 1us = 1px. Bucket=3px.
   track_compute_counter_render_blocks(&t, td, 0, 1000, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   // Should be few blocks due to merging and bucketing
@@ -561,7 +552,7 @@ TEST_F(TrackRendererTest, CounterBucketing) {
   // First block should NOT be a gap
   EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
 
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -577,14 +568,14 @@ TEST_F(TrackRendererTest, CounterFirstEventGap) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 0, 200, 1000.0f, 0.0f, -1, &state,
                                       &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   // Expect no blocks before 100, and no blocks after 150.
@@ -592,7 +583,7 @@ TEST_F(TrackRendererTest, CounterFirstEventGap) {
   EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
   EXPECT_NE(c_blocks[c_blocks_impl.len - 1].event_idx, (size_t)-1);
 
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -608,20 +599,20 @@ TEST_F(TrackRendererTest, CounterMidViewport) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 100, 200, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_GT(c_blocks_impl.len, 0u);
   EXPECT_EQ(c_blocks[0].event_idx, 0u);
   EXPECT_NE(c_blocks[c_blocks_impl.len - 1].event_idx, (size_t)-1);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -637,19 +628,19 @@ TEST_F(TrackRendererTest, CounterDrawTooFarLeft) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 50, 150, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_GT(c_blocks_impl.len, 0u);
   EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -665,20 +656,20 @@ TEST_F(TrackRendererTest, CounterCanvasOffset) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 0, 200, 1000.0f, 100.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_GT(c_blocks_impl.len, 0u);
   EXPECT_GE(c_blocks[0].x1, 100.0f);
   EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -690,17 +681,17 @@ TEST_F(TrackRendererTest, CounterBeforeFirstEvent) {
   e1.name = "c";
   e1.ts = 100;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 0, 50, 1000.0f, 0.0f, -1, &state,
                                       &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_EQ(c_blocks_impl.len, 0u);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -712,18 +703,18 @@ TEST_F(TrackRendererTest, CounterFirstEventAtStart) {
   e1.name = "c";
   e1.ts = 100;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 100, 200, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   // Still 0 because viewport_start (100) >= track_last_ts (100)
   ASSERT_EQ(c_blocks_impl.len, 0u);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -739,21 +730,21 @@ TEST_F(TrackRendererTest, CounterClampedGapBug) {
   e2.ts = 100;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 50, 150, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_GT(c_blocks_impl.len, 0u);
   EXPECT_EQ(c_blocks[0].event_idx, 0u);
   // Last block should be at 100 (track_last_ts)
   EXPECT_NE(c_blocks[c_blocks_impl.len - 1].event_idx, (size_t)-1);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -765,17 +756,17 @@ TEST_F(TrackRendererTest, CounterViewportFarLeft) {
   e1.name = "c";
   e1.ts = 100;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, -200, -100, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_EQ(c_blocks_impl.len, 0u);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -787,18 +778,18 @@ TEST_F(TrackRendererTest, CounterFirstEventJustBefore) {
   e1.name = "c";
   e1.ts = 90;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 100, 200, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   // 0 because viewport_start (100) >= track_last_ts (90)
   ASSERT_EQ(c_blocks_impl.len, 0u);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -814,21 +805,21 @@ TEST_F(TrackRendererTest, CounterSessionStartGap) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 0, 200, 1000.0f, 0.0f, -1, &state,
                                       &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_GT(c_blocks_impl.len, 0u);
   // First block should NOT be a gap anymore
   EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
   EXPECT_NE(c_blocks[c_blocks_impl.len - 1].event_idx, (size_t)-1);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -844,19 +835,19 @@ TEST_F(TrackRendererTest, CounterExactStart) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 100, 200, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_GT(c_blocks_impl.len, 0u);
   EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 TEST_F(TrackRendererTest, CounterViewportNegative) {
@@ -871,20 +862,20 @@ TEST_F(TrackRendererTest, CounterViewportNegative) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, -100, 200, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_GT(c_blocks_impl.len, 0u);
   EXPECT_NE(c_blocks[0].event_idx, (size_t)-1);
   EXPECT_NE(c_blocks[c_blocks_impl.len - 1].event_idx, (size_t)-1);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -900,20 +891,20 @@ TEST_F(TrackRendererTest, CounterPartialStart) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 100, 200, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_GT(c_blocks_impl.len, 0u);
   EXPECT_EQ(c_blocks[0].event_idx, 0u);
   EXPECT_NE(c_blocks[c_blocks_impl.len - 1].event_idx, (size_t)-1);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -925,17 +916,17 @@ TEST_F(TrackRendererTest, CounterViewportFarRight) {
   e1.name = "c";
   e1.ts = 100;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 200, 300, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_EQ(c_blocks_impl.len, 0u);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -951,20 +942,20 @@ TEST_F(TrackRendererTest, CounterLastEventAtEnd) {
   e2.ts = 200;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 0, 300, 3000.0f, 0.0f, -1, &state,
                                       &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_GT(c_blocks_impl.len, 0u);
   // Last block should NOT be a gap anymore
   EXPECT_NE(c_blocks[c_blocks_impl.len - 1].event_idx, (size_t)-1);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -990,19 +981,19 @@ TEST_F(TrackRendererTest, CounterPeakPreservation) {
 
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
-  *array_list_push(&t.counter_series, string_ref_t, allocator) =
-      trace_data_push_string(td, SV("a"), allocator);
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
+  darray_push(&t.counter_series, trace_data_push_string(td, SV("a"), allocator),
+              allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
 
   // Viewport: 0 to 100, 100px wide. 1us = 1px. Bucket = 3px = 3us.
   // E1 and E2 fall into same bucket [9, 12).
   track_compute_counter_render_blocks(&t, td, 0, 100, 100.0f, 0.0f, -1, &state,
                                       &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   bool found_bucket = false;
@@ -1016,7 +1007,7 @@ TEST_F(TrackRendererTest, CounterPeakPreservation) {
   }
   EXPECT_TRUE(found_bucket);
 
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -1036,12 +1027,12 @@ TEST_F(TrackRendererTest, CounterBucketingStability) {
   e2.ts = 20;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
 
-  array_list_t blocks_a_impl = {};
+  darray_counter_render_block_t blocks_a_impl = {};
   counter_render_block_t* blocks_a = nullptr;
-  array_list_t blocks_b_impl = {};
+  darray_counter_render_block_t blocks_b_impl = {};
   counter_render_block_t* blocks_b = nullptr;
 
   // Viewport A: 0 to 1000, 1000px wide. 1us = 1px. Bucket = 3px = 3us.
@@ -1052,7 +1043,7 @@ TEST_F(TrackRendererTest, CounterBucketingStability) {
   // Block 0: x1 = 10, x2 = 12.
   track_compute_counter_render_blocks(&t, td, 0, 1000, 1000.0f, 0.0f, -1,
                                       &state, &blocks_a_impl, allocator);
-  blocks_a = (counter_render_block_t*)blocks_a_impl.ptr;
+  blocks_a = blocks_a_impl.ptr;
   (void)blocks_a;
 
   // Viewport B: 1 to 1001, 1000px wide. Same scale.
@@ -1061,11 +1052,11 @@ TEST_F(TrackRendererTest, CounterBucketingStability) {
   // x1 = 10 - 1 = 9. x2 = 12 - 1 = 11.
   track_compute_counter_render_blocks(&t, td, 1, 1001, 1000.0f, 0.0f, -1,
                                       &state_b, &blocks_b_impl, allocator);
-  blocks_b = (counter_render_block_t*)blocks_b_impl.ptr;
+  blocks_b = blocks_b_impl.ptr;
   (void)blocks_b;
 
   // Find the block containing t=11 in both.
-  auto find_block_at = [](const array_list_t& b_impl,
+  auto find_block_at = [](const darray_counter_render_block_t& b_impl,
                           float x_offset) -> size_t {
     const counter_render_block_t* b = (const counter_render_block_t*)b_impl.ptr;
     for (size_t i = 0; i < b_impl.len; i++) {
@@ -1103,8 +1094,8 @@ TEST_F(TrackRendererTest, CounterBucketingStability) {
   }
   EXPECT_TRUE(found_stable_boundary);
 
-  array_list_deinit(&blocks_a_impl, allocator);
-  array_list_deinit(&blocks_b_impl, allocator);
+  darray_deinit(&blocks_a_impl, allocator);
+  darray_deinit(&blocks_b_impl, allocator);
   track_renderer_state_deinit(&state_b, allocator);
   track_deinit(&t, allocator);
 }
@@ -1117,18 +1108,18 @@ TEST_F(TrackRendererTest, CounterGapInitialState) {
   e1.name = "c";
   e1.ts = 50;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 75, 100, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   // 0 because viewport_start (75) >= track_last_ts (50)
   ASSERT_EQ(c_blocks_impl.len, 0u);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -1140,18 +1131,18 @@ TEST_F(TrackRendererTest, CounterStartIdxBug) {
   e1.name = "c";
   e1.ts = 50;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 0, 50, 1000.0f, 0.0f, -1, &state,
                                       &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   // 0 because viewport_end (50) <= track_first_ts (50)
   ASSERT_EQ(c_blocks_impl.len, 0u);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -1167,21 +1158,21 @@ TEST_F(TrackRendererTest, CounterMaxDurBug) {
   e2.ts = 150;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
   t.max_dur = 0;
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   track_compute_counter_render_blocks(&t, td, 100, 200, 1000.0f, 0.0f, -1,
                                       &state, &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_GT(c_blocks_impl.len, 0u);
   EXPECT_EQ(c_blocks[0].event_idx, 0u);
   EXPECT_NE(c_blocks[c_blocks_impl.len - 1].event_idx, (size_t)-1);
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -1208,12 +1199,12 @@ TEST_F(TrackRendererTest, CounterDropStubFix) {
 
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
-  *array_list_push(&t.counter_series, string_ref_t, allocator) =
-      trace_data_push_string(td, SV("a"), allocator);
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
+  darray_push(&t.counter_series, trace_data_push_string(td, SV("a"), allocator),
+              allocator);
 
-  array_list_t counter_blocks_impl = {};
+  darray_counter_render_block_t counter_blocks_impl = {};
   counter_render_block_t* counter_blocks = nullptr;
 
   // Viewport: 0 to 100, 100px wide. 1us = 1px. Bucket = 3px = 3us.
@@ -1223,7 +1214,7 @@ TEST_F(TrackRendererTest, CounterDropStubFix) {
   // B4: [9, 12) contains E2(10). Peak should be 10 (Fix stub!).
   track_compute_counter_render_blocks(&t, td, 0, 100, 100.0f, 0.0f, -1, &state,
                                       &counter_blocks_impl, allocator);
-  counter_blocks = (counter_render_block_t*)counter_blocks_impl.ptr;
+  counter_blocks = counter_blocks_impl.ptr;
   (void)counter_blocks;
 
   bool found_b4 = false;
@@ -1238,7 +1229,7 @@ TEST_F(TrackRendererTest, CounterDropStubFix) {
   }
   EXPECT_TRUE(found_b4);
 
-  array_list_deinit(&counter_blocks_impl, allocator);
+  darray_deinit(&counter_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }
 
@@ -1272,9 +1263,8 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityPanned) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
   trace_data_add_event(td, allocator, theme_get_dark(), &e3);
 
-  for (size_t i = 0; i < 4; ++i)
-    *array_list_push(&t.event_indices, size_t, allocator) = i;
-  array_list_resize(&t.depths, 4, sizeof(uint32_t), allocator);
+  for (size_t i = 0; i < 4; ++i) darray_push(&t.event_indices, i, allocator);
+  darray_resize(&t.depths, 4, allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 4; ++i) depths[i] = 0;
   t.max_depth = 0;
@@ -1288,7 +1278,7 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityPanned) {
   // e1, e2, e3 (100, 105, 110) in [90, 120).
   track_compute_render_blocks(&t, td, 0, 10000, width, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   uint32_t count_90_120_A = 0;
@@ -1301,10 +1291,10 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityPanned) {
   // Viewport B: starts at 95.
   // current_bucket_ts should align to ... 60, 90, 120 ...
   // Bucket [90, 120) should still only contain e1, e2, e3.
-  array_list_clear(&blocks_impl);
+  darray_clear(&blocks_impl);
   track_compute_render_blocks(&t, td, 95, 10095, width, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   uint32_t count_90_120_B = 0;
@@ -1330,8 +1320,8 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityThreshold) {
   e0.dur = 30;
   trace_data_add_event(td, allocator, theme_get_dark(), &e0);
 
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  array_list_resize(&t.depths, 1, sizeof(uint32_t), allocator);
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_resize(&t.depths, 1, allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   t.max_depth = 0;
@@ -1343,7 +1333,7 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityThreshold) {
   // It should be 'large'.
   track_compute_render_blocks(&t, td, 0, 10000, width, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
   ASSERT_EQ(blocks_impl.len, 1u);
   EXPECT_EQ(blocks[0].count, 1u);
@@ -1358,10 +1348,10 @@ TEST_F(TrackRendererTest, ThreadBucketingStabilityThreshold) {
   // Bucket for 100: [90, 120).
   // So x1 would jump from (100-0)*0.1 = 10.0 to (90-0)*0.1 = 9.0.
   // THAT is the dancing!
-  array_list_clear(&blocks_impl);
+  darray_clear(&blocks_impl);
   track_compute_render_blocks(&t, td, 0, 10000.0001, width, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   ASSERT_EQ(blocks_impl.len, 1u);
@@ -1396,10 +1386,10 @@ TEST_F(TrackRendererTest, ZoomedInSpanningEvent) {
   }
 
   for (size_t i = 0; i < 1000000; i++) {
-    *array_list_push(&t.event_indices, size_t, allocator) = i;
+    darray_push(&t.event_indices, i, allocator);
   }
 
-  array_list_resize(&t.depths, 1000000, sizeof(uint32_t), allocator);
+  darray_resize(&t.depths, 1000000, allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 1000000; i++) depths[i] = 0;
   t.max_depth = 0;
@@ -1416,7 +1406,7 @@ TEST_F(TrackRendererTest, ZoomedInSpanningEvent) {
   auto start_time = std::chrono::high_resolution_clock::now();
   track_compute_render_blocks(&t, td, viewport_start, viewport_end, width, 0.0f,
                               -1, &state, &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
   auto end_time = std::chrono::high_resolution_clock::now();
   auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1457,7 +1447,7 @@ TEST_F(TrackRendererTest, CorrectnessSpanningAndCoalesced) {
   e_spanning.ts = 0;
   e_spanning.dur = 2000;
   trace_data_add_event(td, allocator, theme_get_dark(), &e_spanning);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
+  darray_push(&t.event_indices, (size_t)0, allocator);
 
   for (int i = 1; i < 1024; i++) {
     trace_event_t e = {};
@@ -1465,7 +1455,7 @@ TEST_F(TrackRendererTest, CorrectnessSpanningAndCoalesced) {
     e.ts = 0;
     e.dur = 10;
     trace_data_add_event(td, allocator, theme_get_dark(), &e);
-    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)i;
+    darray_push(&t.event_indices, (size_t)i, allocator);
   }
 
   // Block 1:
@@ -1476,10 +1466,10 @@ TEST_F(TrackRendererTest, CorrectnessSpanningAndCoalesced) {
     e.ts = 1000 + i * 2;
     e.dur = 1;
     trace_data_add_event(td, allocator, theme_get_dark(), &e);
-    *array_list_push(&t.event_indices, size_t, allocator) = (size_t)(1024 + i);
+    darray_push(&t.event_indices, (size_t)(1024 + i), allocator);
   }
 
-  array_list_resize(&t.depths, 2048, sizeof(uint32_t), allocator);
+  darray_resize(&t.depths, 2048, allocator);
   depths = (uint32_t*)t.depths.ptr;
   for (size_t i = 0; i < 1024; i++) depths[i] = 0;     // Spanning is depth 0
   for (size_t i = 1024; i < 2048; i++) depths[i] = 1;  // Tiny vis are depth 1
@@ -1491,7 +1481,7 @@ TEST_F(TrackRendererTest, CorrectnessSpanningAndCoalesced) {
   // Width: 1000px. 1px = 1us. Bucket = 3us.
   track_compute_render_blocks(&t, td, 1000, 1100, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   // Should have:
@@ -1530,9 +1520,9 @@ TEST_F(TrackRendererTest, FocusedEventNeverSkipped) {
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
 
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
-  array_list_resize(&t.depths, 2, sizeof(uint32_t), allocator);
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
+  darray_resize(&t.depths, 2, allocator);
   depths = (uint32_t*)t.depths.ptr;
   depths[0] = 0;
   depths[1] = 0;
@@ -1545,16 +1535,16 @@ TEST_F(TrackRendererTest, FocusedEventNeverSkipped) {
   // 1. Without focus: they should be coalesced into 1 block
   track_compute_render_blocks(&t, td, 0, 1000, 1000.0f, 0.0f, -1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
   EXPECT_EQ(blocks_impl.len, 1u);
   EXPECT_EQ(blocks[0].count, 2u);
 
   // 2. With focus on e2 (index 1): they should NOT be coalesced
-  array_list_clear(&blocks_impl);
+  darray_clear(&blocks_impl);
   track_compute_render_blocks(&t, td, 0, 1000, 1000.0f, 0.0f, 1, &state,
                               &blocks_impl, allocator);
-  blocks = (track_render_block_t*)blocks_impl.ptr;
+  blocks = blocks_impl.ptr;
   (void)blocks;
 
   // Should have 2 blocks:
@@ -1591,17 +1581,17 @@ TEST_F(TrackRendererTest, CounterFocusedHighlight) {
   e2.args_count = 1;
   trace_data_add_event(td, allocator, theme_get_dark(), &e1);
   trace_data_add_event(td, allocator, theme_get_dark(), &e2);
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)0;
-  *array_list_push(&t.event_indices, size_t, allocator) = (size_t)1;
-  *array_list_push(&t.counter_series, string_ref_t, allocator) =
-      trace_data_push_string(td, SV("value"), allocator);
+  darray_push(&t.event_indices, (size_t)0, allocator);
+  darray_push(&t.event_indices, (size_t)1, allocator);
+  darray_push(&t.counter_series,
+              trace_data_push_string(td, SV("value"), allocator), allocator);
 
-  array_list_t c_blocks_impl = {};
+  darray_counter_render_block_t c_blocks_impl = {};
   counter_render_block_t* c_blocks = nullptr;
   // Focus on e1 (index 0)
   track_compute_counter_render_blocks(&t, td, 0, 200, 1000.0f, 0.0f, 0, &state,
                                       &c_blocks_impl, allocator);
-  c_blocks = (counter_render_block_t*)c_blocks_impl.ptr;
+  c_blocks = c_blocks_impl.ptr;
   (void)c_blocks;
 
   ASSERT_GT(c_blocks_impl.len, 0u);
@@ -1614,6 +1604,6 @@ TEST_F(TrackRendererTest, CounterFocusedHighlight) {
   }
   EXPECT_TRUE(found_focused);
 
-  array_list_deinit(&c_blocks_impl, allocator);
+  darray_deinit(&c_blocks_impl, allocator);
   track_deinit(&t, allocator);
 }

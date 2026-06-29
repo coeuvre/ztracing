@@ -72,9 +72,11 @@ void trace_load_task_run(task_context_t* ctx) {
 
   // 5. EOF completion handling
   if (payload->is_eof) {
+    trace_data_compact(task->td, task->allocator);
+
     double organize_start_time = platform_get_now();
 
-    array_list_t tracks = {};
+    darray_track_t tracks = {};
     int64_t min_ts = 0;
     int64_t max_ts = 0;
     // Run track organization pass

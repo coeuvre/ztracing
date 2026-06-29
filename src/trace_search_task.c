@@ -21,7 +21,7 @@ void trace_search_task_run(task_context_t* ctx) {
   LOG_DEBUG("trace_search_task_run background task started (query: '%s')",
             task->query ? task->query : "");
 
-  array_list_t results = {};  // ZII
+  darray_int64_t results = {};  // ZII
   bool aborted = false;
 
   if (task->query && task->query[0] != '\0') {
@@ -39,8 +39,7 @@ void trace_search_task_run(task_context_t* ctx) {
         }
       }
 
-      const trace_event_persisted_t* e =
-          array_list_get(&td->events, const trace_event_persisted_t, i);
+      const trace_event_persisted_t* e = &td->events.ptr[i];
       string_view_t ph = trace_data_get_string(td, e->ph_ref);
       bool is_counter = (ph.len == 1 && ph.ptr[0] == 'C');
       bool is_metadata = (ph.len == 1 && ph.ptr[0] == 'M');
@@ -74,14 +73,14 @@ void trace_search_task_run(task_context_t* ctx) {
       }
 
       if (match) {
-        *array_list_push(&results, int64_t, allocator) = (int64_t)i;
+        darray_push(&results, (int64_t)i, allocator);
       }
     }
   }
 
   if (aborted) {
     LOG_DEBUG("trace_search_task_run background task aborted");
-    array_list_deinit(&results, allocator);
+    darray_deinit(&results, allocator);
   } else {
     LOG_DEBUG(
         "trace_search_task_run background task completed, generating "
@@ -138,7 +137,7 @@ trace_search_task_t* trace_search_task_create(
 void trace_search_task_destroy(trace_search_task_t* task) {
   if (!task) return;
   allocator_t* a = task->allocator;
-  array_list_deinit(&task->results, a);
+  darray_deinit(&task->results, a);
   if (task->histogram) {
     allocator_free(a, task->histogram, sizeof(trace_histogram_t));
   }

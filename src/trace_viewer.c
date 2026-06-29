@@ -22,7 +22,7 @@ static void trace_viewer_draw_search_section(trace_viewer_t* tv,
                                              allocator_t* allocator);
 
 static void trace_viewer_sort_results(const trace_data_t* td,
-                                      array_list_t* results, int sort_column,
+                                      darray_int64_t* results, int sort_column,
                                       bool sort_ascending, bool sort_none,
                                       allocator_t* allocator);
 
@@ -165,22 +165,22 @@ const double TRACE_VIEWER_MIN_ZOOM_DURATION = 1000.0;  // 1ms = 1000us
 void trace_viewer_init(trace_viewer_t* tv) { *tv = (trace_viewer_t){}; }
 
 void trace_viewer_deinit(trace_viewer_t* tv, allocator_t* allocator) {
-  track_t* tracks = (track_t*)tv->tracks.ptr;
+  track_t* tracks = tv->tracks.ptr;
   for (size_t i = 0; i < tv->tracks.len; i++) {
     track_deinit(&tracks[i], allocator);
   }
-  array_list_deinit(&tv->tracks, allocator);
-  array_list_deinit(&tv->track_infos, allocator);
-  array_list_deinit(&tv->ruler_ticks, allocator);
+  darray_deinit(&tv->tracks, allocator);
+  darray_deinit(&tv->track_infos, allocator);
+  darray_deinit(&tv->ruler_ticks, allocator);
   track_renderer_state_deinit(&tv->track_renderer_state, allocator);
-  array_list_deinit(&tv->render_blocks, allocator);
-  array_list_deinit(&tv->counter_render_blocks, allocator);
-  array_list_deinit(&tv->hover_matches, allocator);
-  array_list_deinit(&tv->selected_event_indices, allocator);
-  array_list_deinit(&tv->filtered_event_indices, allocator);
-  array_list_deinit(&tv->vertical_minimap.track_has_selected, allocator);
-  array_list_deinit(&tv->vertical_minimap.track_heatmap_densities, allocator);
-  array_list_deinit(&tv->search_query, allocator);
+  darray_deinit(&tv->render_blocks, allocator);
+  darray_deinit(&tv->counter_render_blocks, allocator);
+  darray_deinit(&tv->hover_matches, allocator);
+  darray_deinit(&tv->selected_event_indices, allocator);
+  darray_deinit(&tv->filtered_event_indices, allocator);
+  darray_deinit(&tv->vertical_minimap.track_has_selected, allocator);
+  darray_deinit(&tv->vertical_minimap.track_heatmap_densities, allocator);
+  darray_deinit(&tv->search_query, allocator);
 }
 
 static void trace_viewer_draw_time_ruler(trace_viewer_t* tv,
@@ -196,7 +196,7 @@ static void trace_viewer_draw_time_ruler(trace_viewer_t* tv,
       (ig_vec2_t){canvas_x + canvas_width, pos.y + size.y - 1},
       theme->ruler_border, 1.0f);
 
-  const ruler_tick_t* ticks = (const ruler_tick_t*)tv->ruler_ticks.ptr;
+  const ruler_tick_t* ticks = tv->ruler_ticks.ptr;
   for (size_t i = 0; i < tv->ruler_ticks.len; i++) {
     const ruler_tick_t* tick = &ticks[i];
     ig_draw_list_add_line(
@@ -358,9 +358,10 @@ static void trace_viewer_draw_event(trace_viewer_t* tv, trace_data_t* td,
           float g = (float)((col >> 8) & 0xFF) / 255.0f;
           float b = (float)((col >> 16) & 0xFF) / 255.0f;
           float lum = r * 0.299f + g * 0.587f + b * 0.114f;
-          
+
           // Use dark gray for light backgrounds, white for dark backgrounds
-          uint32_t text_col = (lum > 0.5f) ? IG_COL32(32, 32, 32, 255) : IG_COL32(255, 255, 255, 255);
+          uint32_t text_col = (lum > 0.5f) ? IG_COL32(32, 32, 32, 255)
+                                           : IG_COL32(255, 255, 255, 255);
           float event_font_size = ig_get_font_size();
           float text_y = y1 + (lane_height - event_font_size) * 0.5f;
 
@@ -563,11 +564,9 @@ static void trace_viewer_draw_event_properties(
       if (single_series_redundant) {
         double val = 0.0;
         string_ref_t val_s_ref = 0;
-        string_ref_t target_key =
-            ((const string_ref_t*)t->counter_series.ptr)[0];
+        string_ref_t target_key = t->counter_series.ptr[0];
         for (uint32_t arg_k = 0; arg_k < e->args_count; arg_k++) {
-          const trace_arg_persisted_t* arg = array_list_get(
-              &td->args, const trace_arg_persisted_t, e->args_offset + arg_k);
+          const trace_arg_persisted_t* arg = &td->args.ptr[e->args_offset + arg_k];
           if (arg->key_ref == target_key) {
             val = arg->val_double;
             val_s_ref = arg->val_ref;
@@ -596,8 +595,7 @@ static void trace_viewer_draw_event_properties(
         double total = 0.0;
         bool has_total_series = false;
 
-        const string_ref_t* series_ptr =
-            (const string_ref_t*)t->counter_series.ptr;
+        const string_ref_t* series_ptr = t->counter_series.ptr;
         for (size_t s_i = 0; s_i < t->counter_series.len; s_i++) {
           size_t s_idx = t->counter_series.len - 1 - s_i;
           string_ref_t key_ref = series_ptr[s_idx];
@@ -611,8 +609,7 @@ static void trace_viewer_draw_event_properties(
           double val = 0.0;
           string_ref_t val_s_ref = 0;
           for (uint32_t arg_k = 0; arg_k < e->args_count; arg_k++) {
-            const trace_arg_persisted_t* arg = array_list_get(
-                &td->args, const trace_arg_persisted_t, e->args_offset + arg_k);
+            const trace_arg_persisted_t* arg = &td->args.ptr[e->args_offset + arg_k];
             if (arg->key_ref == key_ref) {
               val = arg->val_double;
               val_s_ref = arg->val_ref;
@@ -637,8 +634,7 @@ static void trace_viewer_draw_event_properties(
           trace_viewer_details_add_row(
               name_buf, (string_view_t){series_val_buf, strlen(series_val_buf)},
               nullptr, show_copy_buttons,
-              theme->event_palette[(
-                  (const uint8_t*)t->counter_palette_indices.ptr)[s_idx]],
+              theme->event_palette[t->counter_palette_indices.ptr[s_idx]],
               true, allocator);
 
           total += val;
@@ -653,14 +649,13 @@ static void trace_viewer_draw_event_properties(
         }
       }
 
-      skip_keys = (const string_ref_t*)t->counter_series.ptr;
+      skip_keys = t->counter_series.ptr;
       skip_count = t->counter_series.len;
     }
 
     // Event arguments
     for (uint32_t k = 0; k < e->args_count; k++) {
-      const trace_arg_persisted_t* arg = array_list_get(
-          &td->args, const trace_arg_persisted_t, e->args_offset + k);
+      const trace_arg_persisted_t* arg = &td->args.ptr[e->args_offset + k];
       bool skip = false;
       for (size_t i = 0; i < skip_count; i++) {
         if (arg->key_ref == skip_keys[i]) {
@@ -703,10 +698,8 @@ static void trace_viewer_draw_tooltip(trace_viewer_t* tv, trace_data_t* td,
                                       allocator_t* allocator) {
   const track_render_block_t* rb = &best_hm->rb;
   if (rb->count == 1) {
-    const track_t* t =
-        array_list_get(&tv->tracks, const track_t, best_hm->track_idx);
-    const trace_event_persisted_t* e = array_list_get(
-        &td->events, const trace_event_persisted_t, rb->event_idx);
+    const track_t* t = &tv->tracks.ptr[best_hm->track_idx];
+    const trace_event_persisted_t* e = &td->events.ptr[rb->event_idx];
 
     ig_push_style_var(IG_STYLE_VAR_WINDOW_PADDING, (ig_vec2_t){10.0f, 10.0f});
     ig_begin_tooltip();
@@ -747,14 +740,15 @@ static void trace_viewer_draw_counter_track(
   if (duration <= 0) return;
 
   ig_vec4_t vp_bg = ig_color_convert_u32_to_float4(theme->viewport_bg);
-  bool is_dark = (vp_bg.x * 0.299f + vp_bg.y * 0.587f + vp_bg.z * 0.114f) < 0.5f;
+  bool is_dark =
+      (vp_bg.x * 0.299f + vp_bg.y * 0.587f + vp_bg.z * 0.114f) < 0.5f;
 
   double max_total = t->counter_max_total;
   if (max_total <= 0) max_total = 1.0;
 
   track_renderer_state_t* state = &tv->track_renderer_state;
-  array_list_resize(&state->counter_current_values, t->counter_series.len,
-                    sizeof(double), allocator);
+  darray_resize(&state->counter_current_values, t->counter_series.len,
+                    allocator);
 
   track_compute_counter_render_blocks(t, td, viewport_start, viewport_end,
                                       width, pos.x, focused_event_idx, state,
@@ -764,11 +758,11 @@ static void trace_viewer_draw_counter_track(
 
   size_t n_blocks = tv->counter_render_blocks.len;
   size_t n_series = t->counter_series.len;
-  array_list_resize(&state->counter_visual_offsets, n_blocks * (n_series + 1),
-                    sizeof(float), allocator);
+  darray_resize(&state->counter_visual_offsets, n_blocks * (n_series + 1),
+                    allocator);
 
-  float* visual_offsets = (float*)state->counter_visual_offsets.ptr;
-  double* counter_peaks = (double*)state->counter_peaks.ptr;
+  float* visual_offsets = state->counter_visual_offsets.ptr;
+  double* counter_peaks = state->counter_peaks.ptr;
 
   float min_h = 1.0f;
   for (size_t i = 0; i < n_blocks; i++) {
@@ -807,7 +801,8 @@ static void trace_viewer_draw_counter_track(
     }
 
     if (hovered) {
-      uint32_t hover_col = is_dark ? IG_COL32(255, 255, 255, 30) : IG_COL32(0, 0, 0, 15);
+      uint32_t hover_col =
+          is_dark ? IG_COL32(255, 255, 255, 30) : IG_COL32(0, 0, 0, 15);
       ig_draw_list_add_rect_filled(draw_list, (ig_vec2_t){rb->x1, pos.y},
                                    (ig_vec2_t){rb->x2, pos.y + height},
                                    hover_col);
@@ -868,7 +863,7 @@ static void trace_viewer_box_select_update(trace_viewer_t* tv, trace_data_t* td,
   if (x1 > x2) swap(float, x1, x2);
   if (y1 > y2) swap(float, y1, y2);
 
-  array_list_clear(&tv->selected_event_indices);
+  darray_clear(&tv->selected_event_indices);
 
   double ts1 =
       trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
@@ -877,9 +872,8 @@ static void trace_viewer_box_select_update(trace_viewer_t* tv, trace_data_t* td,
       trace_viewer_px_to_ts(tv->viewport.start_time, tv->viewport.end_time,
                             tv->last_inner_width, tv->last_tracks_x, x2);
 
-  const track_t* tracks = (const track_t*)tv->tracks.ptr;
-  const track_view_info_t* track_infos =
-      (const track_view_info_t*)tv->track_infos.ptr;
+  const track_t* tracks = tv->tracks.ptr;
+  const track_view_info_t* track_infos = tv->track_infos.ptr;
 
   for (size_t i = 0; i < tv->tracks.len; i++) {
     const track_t* t = &tracks[i];
@@ -890,16 +884,15 @@ static void trace_viewer_box_select_update(trace_viewer_t* tv, trace_data_t* td,
     if (vi->y + vi->height < y1 || vi->y > y2) continue;
 
     if (t->type == TRACK_TYPE_THREAD) {
-      const size_t* event_indices_ptr = (const size_t*)t->event_indices.ptr;
+      const size_t* event_indices_ptr = t->event_indices.ptr;
       const size_t* it_start =
           event_indices_ptr +
           trace_data_events_lower_bound(
               event_indices_ptr, t->event_indices.len,
-              (const trace_event_persisted_t*)td->events.ptr,
+              td->events.ptr,
               (int64_t)ts1 - t->max_dur);
-      const uint32_t* depths_ptr = (const uint32_t*)t->depths.ptr;
-      const trace_event_persisted_t* events_ptr =
-          (const trace_event_persisted_t*)td->events.ptr;
+      const uint32_t* depths_ptr = t->depths.ptr;
+      const trace_event_persisted_t* events_ptr = td->events.ptr;
 
       for (const size_t* it = it_start;
            it < event_indices_ptr + t->event_indices.len; ++it) {
@@ -916,8 +909,7 @@ static void trace_viewer_box_select_update(trace_viewer_t* tv, trace_data_t* td,
 
         if (event_y2 < y1 || event_y1 > y2) continue;
 
-        *array_list_push(&tv->selected_event_indices, int64_t, allocator) =
-            (int64_t)*it;
+        darray_push(&tv->selected_event_indices, (int64_t)*it, allocator);
       }
     } else {
       // Counter track
@@ -925,20 +917,18 @@ static void trace_viewer_box_select_update(trace_viewer_t* tv, trace_data_t* td,
         float chart_y1 = vi->y + tv->last_lane_height;
         float chart_y2 = vi->y + vi->height;
         if (!(chart_y2 < y1 || chart_y1 > y2)) {
-          const size_t* event_indices_ptr = (const size_t*)t->event_indices.ptr;
+          const size_t* event_indices_ptr = t->event_indices.ptr;
           const size_t* it_start =
               event_indices_ptr +
               trace_data_events_lower_bound(
                   event_indices_ptr, t->event_indices.len,
-                  (const trace_event_persisted_t*)td->events.ptr, (int64_t)ts1);
-          const trace_event_persisted_t* events_ptr =
-              (const trace_event_persisted_t*)td->events.ptr;
+                  td->events.ptr, (int64_t)ts1);
+          const trace_event_persisted_t* events_ptr = td->events.ptr;
 
           for (const size_t* it = it_start;
                it < event_indices_ptr + t->event_indices.len; ++it) {
             if (events_ptr[*it].ts > (int64_t)ts2) break;
-            *array_list_push(&tv->selected_event_indices, int64_t, allocator) =
-                (int64_t)*it;
+            darray_push(&tv->selected_event_indices, (int64_t)*it, allocator);
           }
         }
       }
@@ -998,11 +988,11 @@ static void trace_viewer_zoom_to_event(trace_viewer_t* tv,
 
 void trace_viewer_adopt_search_results(trace_viewer_t* tv,
                                        const trace_data_t* td,
-                                       array_list_t results,
+                                       darray_int64_t results,
                                        trace_histogram_t* histogram,
                                        allocator_t* allocator) {
   // 1. Deinit and adopt results list
-  array_list_deinit(&tv->selected_event_indices, allocator);
+  darray_deinit(&tv->selected_event_indices, allocator);
   tv->selected_event_indices = results;
 
   // 2. Sort the adopted results synchronously according to current sort specs
@@ -1019,8 +1009,8 @@ void trace_viewer_adopt_search_results(trace_viewer_t* tv,
 }
 
 void trace_viewer_clear_search(trace_viewer_t* tv, allocator_t* allocator) {
-  array_list_deinit(&tv->selected_event_indices, allocator);
-  array_list_deinit(&tv->filtered_event_indices, allocator);
+  darray_deinit(&tv->selected_event_indices, allocator);
+  darray_deinit(&tv->filtered_event_indices, allocator);
   tv->histogram = (trace_histogram_t){};  // ZII
   tv->selected_events_dirty = true;
   tv->search_histogram_dirty = true;
@@ -1220,10 +1210,9 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
   }
 
   // 3. Track Layout and Pass 1: Culling, Naming, Snapping, Hit-testing
-  array_list_clear(&tv->hover_matches);
+  darray_clear(&tv->hover_matches);
 
-  array_list_resize(&tv->track_infos, tv->tracks.len, sizeof(track_view_info_t),
-                    allocator);
+  darray_resize(&tv->track_infos, tv->tracks.len, allocator);
   tv->total_tracks_height = 0.0f;
 
   float counter_track_height = 3.0f * input->lane_height;
@@ -1244,21 +1233,19 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
     track_renderer_update_selection_bitset(
         &tv->track_renderer_state, td, &tv->selected_event_indices, allocator);
 
-    array_list_resize(&tv->vertical_minimap.track_has_selected, tv->tracks.len,
-                      sizeof(bool), allocator);
-    bool* track_has_selected =
-        (bool*)tv->vertical_minimap.track_has_selected.ptr;
-    const track_t* tracks = (const track_t*)tv->tracks.ptr;
+    darray_resize(&tv->vertical_minimap.track_has_selected, tv->tracks.len,
+                      allocator);
+    bool* track_has_selected = tv->vertical_minimap.track_has_selected.ptr;
+    const track_t* tracks = tv->tracks.ptr;
 
     for (size_t i = 0; i < tv->tracks.len; i++) {
       const track_t* t = &tracks[i];
       bool has_sel = false;
-      const size_t* event_indices_ptr = (const size_t*)t->event_indices.ptr;
+      const size_t* event_indices_ptr = t->event_indices.ptr;
       for (size_t j = 0; j < t->event_indices.len; j++) {
         size_t event_idx = event_indices_ptr[j];
         if (event_idx < tv->track_renderer_state.selected_events_bitset.len &&
-            ((const uint8_t*)tv->track_renderer_state.selected_events_bitset
-                 .ptr)[event_idx] != 0) {
+            tv->track_renderer_state.selected_events_bitset.ptr[event_idx] != 0) {
           has_sel = true;
           break;
         }
@@ -1332,8 +1319,7 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
             tv->has_focused_event ? (int64_t)tv->focused_event_idx : -1,
             &tv->track_renderer_state, &tv->render_blocks, allocator);
 
-        const track_render_block_t* rblocks =
-            (const track_render_block_t*)tv->render_blocks.ptr;
+        const track_render_block_t* rblocks = tv->render_blocks.ptr;
         for (size_t k = 0; k < tv->render_blocks.len; k++) {
           const track_render_block_t* rb = &rblocks[k];
           float y1 = vi->y + (float)(rb->depth + 1) * input->lane_height;
@@ -1357,8 +1343,8 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
           if (track_list_hovered && input->mouse_y >= y1 &&
               input->mouse_y < y2 && input->mouse_x >= rb->x1 &&
               input->mouse_x < rb->x2) {
-            hover_match_t hm = {i, k, y1, y2, *rb};
-            *array_list_push(&tv->hover_matches, hover_match_t, allocator) = hm;
+            hover_match_t match = {i, k, y1, y2, *rb};
+            darray_push(&tv->hover_matches, match, allocator);
           }
         }
 
@@ -1375,20 +1361,18 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
 
         if (track_list_hovered && input->mouse_y >= track_content_y &&
             input->mouse_y < track_content_y + track_content_h) {
-          const counter_render_block_t* crblocks =
-              (const counter_render_block_t*)tv->counter_render_blocks.ptr;
+          const counter_render_block_t* crblocks = tv->counter_render_blocks.ptr;
           for (size_t k = 0; k < tv->counter_render_blocks.len; k++) {
             const counter_render_block_t* rb = &crblocks[k];
             if (input->mouse_x >= rb->x1 && input->mouse_x < rb->x2) {
-              hover_match_t hm = {i,
-                                  k,
-                                  track_content_y,
-                                  track_content_y + track_content_h,
-                                  {0}};
-              hm.rb.event_idx = rb->event_idx;
-              hm.rb.count = (rb->event_idx != (size_t)-1) ? 1 : 0;
-              *array_list_push(&tv->hover_matches, hover_match_t, allocator) =
-                  hm;
+              hover_match_t match = {i,
+                                     k,
+                                     track_content_y,
+                                     track_content_y + track_content_h,
+                                     {0}};
+              match.rb.event_idx = rb->event_idx;
+              match.rb.count = (rb->event_idx != (size_t)-1) ? 1 : 0;
+              darray_push(&tv->hover_matches, match, allocator);
               break;
             }
           }
@@ -1427,13 +1411,12 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
       (const hover_match_t*)tv->hover_matches.ptr;
   if (input->is_mouse_double_clicked) {
     if (tv->hover_matches.len > 0) {
-      const hover_match_t* hm = &hover_matches_ptr[tv->hover_matches.len - 1];
-      const track_t* t = &tracks[hm->track_idx];
-      if (t->type == TRACK_TYPE_THREAD && hm->rb.event_idx != (size_t)-1) {
-        const trace_event_persisted_t* events =
-            (const trace_event_persisted_t*)td->events.ptr;
-        const trace_event_persisted_t* e = &events[hm->rb.event_idx];
-        tv->focused_event_idx = hm->rb.event_idx;
+      const hover_match_t* match = &hover_matches_ptr[tv->hover_matches.len - 1];
+      const track_t* t = &tracks[match->track_idx];
+      if (t->type == TRACK_TYPE_THREAD && match->rb.event_idx != (size_t)-1) {
+        const trace_event_persisted_t* events = td->events.ptr;
+        const trace_event_persisted_t* e = &events[match->rb.event_idx];
+        tv->focused_event_idx = match->rb.event_idx;
         tv->has_focused_event = true;
         tv->show_details_panel = true;
         tv->ignore_next_release = true;
@@ -1442,9 +1425,9 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
     }
   } else if (!interaction_ignored && input->is_mouse_released && !was_drag) {
     if (tv->hover_matches.len > 0) {
-      const hover_match_t* hm = &hover_matches_ptr[tv->hover_matches.len - 1];
-      if (hm->rb.event_idx != (size_t)-1) {
-        tv->focused_event_idx = hm->rb.event_idx;
+      const hover_match_t* match = &hover_matches_ptr[tv->hover_matches.len - 1];
+      if (match->rb.event_idx != (size_t)-1) {
+        tv->focused_event_idx = match->rb.event_idx;
         tv->has_focused_event = true;
         tv->show_details_panel = true;
       }
@@ -1491,7 +1474,7 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
   }
 
   // Ruler Ticks
-  array_list_clear(&tv->ruler_ticks);
+  darray_clear(&tv->ruler_ticks);
   double tick_interval =
       calculate_tick_interval(current_duration, tracks_inner_width, 100.0);
   double display_start = tv->viewport.start_time - (double)tv->viewport.min_ts;
@@ -1510,7 +1493,7 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
     tick.x = x;
     tick.ts_rel = t_rel;
     format_duration(tick.label, sizeof(tick.label), t_rel, tick_interval);
-    *array_list_push(&tv->ruler_ticks, ruler_tick_t, allocator) = tick;
+    darray_push(&tv->ruler_ticks, tick, allocator);
   }
 
   tv->last_best_snap_ts = tv->snap_best_ts;
@@ -1518,15 +1501,13 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
   if (tv->search_histogram_dirty) {
     tv->search_histogram_dirty = false;
 
-    array_list_clear(&tv->filtered_event_indices);
-    const int64_t* selected_ptr =
-        (const int64_t*)tv->selected_event_indices.ptr;
+    darray_clear(&tv->filtered_event_indices);
+    const int64_t* selected_ptr = tv->selected_event_indices.ptr;
     if (!tv->has_selected_histogram_bucket) {
       for (size_t i = 0; i < tv->selected_event_indices.len; i++) {
         size_t idx = (size_t)selected_ptr[i];
         if (idx < td->events.len) {
-          *array_list_push(&tv->filtered_event_indices, int64_t, allocator) =
-              (int64_t)idx;
+          darray_push(&tv->filtered_event_indices, (int64_t)idx, allocator);
         }
       }
     } else if (tv->has_selected_histogram_bucket &&
@@ -1534,8 +1515,7 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
                    (size_t)tv->histogram.num_buckets) {
       const trace_histogram_bucket_t* b =
           &tv->histogram.buckets[tv->selected_histogram_bucket];
-      const trace_event_persisted_t* events =
-          (const trace_event_persisted_t*)td->events.ptr;
+      const trace_event_persisted_t* events = td->events.ptr;
       for (size_t i = 0; i < tv->selected_event_indices.len; i++) {
         size_t idx = (size_t)selected_ptr[i];
         if (idx >= td->events.len) continue;
@@ -1543,8 +1523,7 @@ void trace_viewer_step(trace_viewer_t* tv, trace_data_t* td,
         int64_t d = e->dur;
 
         if (d >= b->min_dur && d <= b->max_dur) {
-          *array_list_push(&tv->filtered_event_indices, int64_t, allocator) =
-              (int64_t)idx;
+          darray_push(&tv->filtered_event_indices, (int64_t)idx, allocator);
         }
       }
     }
@@ -2068,8 +2047,10 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
         if (best_track->type == TRACK_TYPE_THREAD) {
           uint32_t col = theme->event_palette[rb->palette_index];
           if (!rb->is_selected) {
-            ig_vec4_t vp_bg = ig_color_convert_u32_to_float4(theme->viewport_bg);
-            bool is_dark = (vp_bg.x * 0.299f + vp_bg.y * 0.587f + vp_bg.z * 0.114f) < 0.5f;
+            ig_vec4_t vp_bg =
+                ig_color_convert_u32_to_float4(theme->viewport_bg);
+            bool is_dark =
+                (vp_bg.x * 0.299f + vp_bg.y * 0.587f + vp_bg.z * 0.114f) < 0.5f;
 
             ig_vec4_t col_v = ig_color_convert_u32_to_float4(col);
             if (is_dark) {
@@ -2145,8 +2126,8 @@ void trace_viewer_draw(trace_viewer_t* tv, trace_data_t* td,
                          tv->selected_event_indices.len);
         ig_same_line(0.0f, -1.0f);
         if (ig_small_button("Clear")) {
-          array_list_deinit(&tv->selected_event_indices, allocator);
-          array_list_deinit(&tv->filtered_event_indices, allocator);
+          darray_deinit(&tv->selected_event_indices, allocator);
+          darray_deinit(&tv->filtered_event_indices, allocator);
           tv->has_selected_histogram_bucket = false;
           tv->search_histogram_dirty = true;
           tv->selected_events_dirty = true;
@@ -2497,11 +2478,11 @@ void trace_viewer_reset_view(trace_viewer_t* tv) {
 void trace_viewer_precompute_minimap_heatmap(trace_viewer_t* tv,
                                              const trace_data_t* td,
                                              allocator_t* a) {
-  array_list_resize(&tv->vertical_minimap.track_heatmap_densities,
-                    tv->tracks.len, sizeof(trace_heatmap_t), a);
+  darray_resize(&tv->vertical_minimap.track_heatmap_densities,
+                    tv->tracks.len, a);
   trace_heatmap_compute(
       &tv->tracks, td, tv->viewport.min_ts, tv->viewport.max_ts,
-      (trace_heatmap_t*)tv->vertical_minimap.track_heatmap_densities.ptr);
+      tv->vertical_minimap.track_heatmap_densities.ptr);
 }
 
 struct sort_key {
@@ -2553,7 +2534,7 @@ static int trace_viewer_sort_key_compare(const void* va, const void* vb) {
 }
 
 static void trace_viewer_sort_results(const trace_data_t* td,
-                                      array_list_t* results, int sort_column,
+                                      darray_int64_t* results, int sort_column,
                                       bool sort_ascending, bool sort_none,
                                       allocator_t* allocator) {
   if (results->len > 1) {
@@ -2569,12 +2550,11 @@ static void trace_viewer_sort_results(const trace_data_t* td,
             allocator, results->len * sizeof(sort_key_t));
       }
 
-      int64_t* results_ptr = (int64_t*)results->ptr;
+      int64_t* results_ptr = results->ptr;
 
       for (size_t i = 0; i < results->len; i++) {
         int64_t idx = results_ptr[i];
-        const trace_event_persisted_t* e = array_list_get(
-            &td->events, const trace_event_persisted_t, (size_t)idx);
+        const trace_event_persisted_t* e = &td->events.ptr[(size_t)idx];
 
         sort_key_t sk;
         sk.event_idx = idx;
@@ -2616,7 +2596,7 @@ static void trace_viewer_sort_results(const trace_data_t* td,
 }
 
 struct InputTextCallback_UserData {
-  array_list_t* al;
+  darray_uint8_t* al;
   allocator_t* allocator;
 };
 typedef struct InputTextCallback_UserData InputTextCallback_UserData;
@@ -2628,9 +2608,9 @@ static int trace_viewer_search_input_callback(
           data);
   if (ig_input_text_callback_data_get_event_flag(data) ==
       IG_INPUT_TEXT_FLAGS_CALLBACK_RESIZE) {
-    array_list_t* al = ud->al;
+    darray_uint8_t* al = ud->al;
     size_t buf_size = (size_t)ig_input_text_callback_data_get_buf_size(data);
-    array_list_reserve(al, buf_size, sizeof(char), ud->allocator);
+    darray_reserve(al, buf_size, ud->allocator);
     ig_input_text_callback_data_set_buf(data, (char*)al->ptr);
   }
   return 0;
@@ -2645,7 +2625,7 @@ static void trace_viewer_draw_search_section(trace_viewer_t* tv,
   }
 
   if (tv->search_query.cap == 0) {
-    array_list_reserve(&tv->search_query, 128, sizeof(char), allocator);
+    darray_reserve(&tv->search_query, 128, allocator);
     ((char*)tv->search_query.ptr)[0] = '\0';
     tv->search_query.len = 1;
   }
