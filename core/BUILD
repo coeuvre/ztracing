@@ -138,31 +138,11 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "json_writer",
-    srcs = ["json_writer.c"],
-    hdrs = ["json_writer.h"],
-    deps = [
-        ":allocator",
-        ":darray",
-        ":string",
-    ],
-)
-
 cc_test(
     name = "json_reader_test",
     srcs = ["json_reader_test.cc"],
     deps = [
         ":json_reader",
-        "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "json_writer_test",
-    srcs = ["json_writer_test.cc"],
-    deps = [
-        ":json_writer",
         "@googletest//:gtest_main",
     ],
 )

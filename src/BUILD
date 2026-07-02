@@ -496,7 +496,6 @@ cc_binary(
     deps = [
         ":app",
         "//core:darray",
-        "//core:json_writer",
         ":track",
         ":trace_loader",
         "//core:logging",

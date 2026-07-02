@@ -4,13 +4,12 @@
 #include <string.h>
 
 #include "core/allocator.h"
-#include "core/json_writer.h"
 #include "core/darray.h"
-#include "src/trace_data.h"
-#include "src/trace_concurrency.h"
-#include "src/trace_aggregate.h"
-#include "src/trace_diff.h"
 #include "src/cli_table.h"
+#include "src/trace_aggregate.h"
+#include "src/trace_concurrency.h"
+#include "src/trace_data.h"
+#include "src/trace_diff.h"
 #include "src/trace_histogram.h"
 #include "src/trace_loader.h"
 #include "src/trace_viewer.h"
@@ -24,8 +23,7 @@ static void print_usage(const char* prog_name) {
   fprintf(stderr,
           "  summary <trace_file>         Print high-level trace metadata "
           "(counts, duration).\n");
-  fprintf(stderr,
-          "                               Options: [--list-tracks]\n");
+  fprintf(stderr, "                               Options: [--list-tracks]\n");
   fprintf(stderr,
           "  inspect <trace_file>         Inspect detailed event parameters "
           "at a timestamp.\n");
@@ -45,23 +43,27 @@ static void print_usage(const char* prog_name) {
           "                                        [--max-depth <n>] "
           "[--limit <n>]\n");
   fprintf(stderr,
-          "  concurrency <trace_file>     Visualize system load and concurrency.\n");
-  fprintf(stderr,
-          "                               Options: [--buckets <n>]\n");
-  fprintf(stderr,
-          "  aggregate <trace_file>       Aggregate event durations and counts.\n");
-  fprintf(stderr,
-          "                               Options: [--group-by name|category]\n");
+          "  concurrency <trace_file>     Visualize system load and "
+          "concurrency.\n");
+  fprintf(stderr, "                               Options: [--buckets <n>]\n");
+  fprintf(
+      stderr,
+      "  aggregate <trace_file>       Aggregate event durations and counts.\n");
+  fprintf(
+      stderr,
+      "                               Options: [--group-by name|category]\n");
   fprintf(stderr,
           "                                        [--sort duration|count]\n");
   fprintf(stderr,
           "                                        [--min-count <n>]\n");
   fprintf(stderr,
           "  diff <trace_1> <trace_2>     Compare two traces side-by-side.\n");
+  fprintf(
+      stderr,
+      "                               Options: [--group-by name|category]\n");
   fprintf(stderr,
-          "                               Options: [--group-by name|category]\n");
-  fprintf(stderr,
-          "                                        [--sort dur-delta|count-delta]\n");
+          "                                        [--sort "
+          "dur-delta|count-delta]\n");
   fprintf(stderr,
           "  histogram <trace_file>       Compute duration histogram "
           "buckets.\n");
@@ -110,8 +112,7 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
   // Parse global flags or subcommand
   while (success && i < argc) {
     string_view_t arg = string_view_from_cstr(argv[i]);
-    if (string_view_eq(arg, SV("-h")) ||
-        string_view_eq(arg, SV("--help"))) {
+    if (string_view_eq(arg, SV("-h")) || string_view_eq(arg, SV("--help"))) {
       success = false;
     } else if (arg.len > 0 && arg.ptr[0] == '-') {
       fprintf(stderr, "Error: Unknown global option '%s'\n", argv[i]);
@@ -146,7 +147,8 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
   }
 
   // If diff, we need a second trace file
-  if (success && out_args->subcommand && strcmp(out_args->subcommand, "diff") == 0) {
+  if (success && out_args->subcommand &&
+      strcmp(out_args->subcommand, "diff") == 0) {
     if (i < argc) {
       string_view_t arg = string_view_from_cstr(argv[i]);
       if (string_view_eq(arg, SV("-h")) || string_view_eq(arg, SV("--help"))) {
@@ -276,7 +278,7 @@ static bool parse_arguments(int argc, char* argv[], cli_args_t* out_args) {
 static int handle_summary(const trace_data_t* td, const darray_track_t* tracks,
                           int64_t min_ts, int64_t max_ts, bool list_tracks,
                           allocator_t* a) {
-  (void)a; // Unused now since cli_table uses its own arena
+  (void)a;  // Unused now since cli_table uses its own arena
 
   cli_table_t summary_table = {};
   cli_table_init(&summary_table);
@@ -302,7 +304,8 @@ static int handle_summary(const trace_data_t* td, const darray_track_t* tracks,
 
   cli_table_add_row(&summary_table);
   cli_table_set_cell(&summary_table, 0, SV("Duration (ms)"));
-  cli_table_set_cell_fmt(&summary_table, 1, "%.3f", (double)(max_ts - min_ts) / 1000.0);
+  cli_table_set_cell_fmt(&summary_table, 1, "%.3f",
+                         (double)(max_ts - min_ts) / 1000.0);
 
   cli_table_print(&summary_table);
   cli_table_deinit(&summary_table);
@@ -313,12 +316,15 @@ static int handle_summary(const trace_data_t* td, const darray_track_t* tracks,
     cli_table_init(&tracks_table);
 
     cli_table_add_column(&tracks_table, SV("Index"), CLI_ALIGN_RIGHT, 5, true);
-    cli_table_add_column(&tracks_table, SV("Track Name"), CLI_ALIGN_LEFT, 20, true);
+    cli_table_add_column(&tracks_table, SV("Track Name"), CLI_ALIGN_LEFT, 20,
+                         true);
     cli_table_add_column(&tracks_table, SV("Type"), CLI_ALIGN_LEFT, 10, true);
     cli_table_add_column(&tracks_table, SV("PID"), CLI_ALIGN_RIGHT, 8, true);
     cli_table_add_column(&tracks_table, SV("TID"), CLI_ALIGN_RIGHT, 8, true);
-    cli_table_add_column(&tracks_table, SV("Event Count"), CLI_ALIGN_RIGHT, 12, true);
-    cli_table_add_column(&tracks_table, SV("Max Depth"), CLI_ALIGN_RIGHT, 10, true);
+    cli_table_add_column(&tracks_table, SV("Event Count"), CLI_ALIGN_RIGHT, 12,
+                         true);
+    cli_table_add_column(&tracks_table, SV("Max Depth"), CLI_ALIGN_RIGHT, 10,
+                         true);
 
     track_t* tracks_data = tracks->ptr;
     for (size_t i = 0; i < tracks->len; i++) {
@@ -328,7 +334,9 @@ static int handle_summary(const trace_data_t* td, const darray_track_t* tracks,
       cli_table_add_row(&tracks_table);
       cli_table_set_cell_fmt(&tracks_table, 0, "%zu", i);
       cli_table_set_cell(&tracks_table, 1, track_name);
-      cli_table_set_cell(&tracks_table, 2, t->type == TRACK_TYPE_THREAD ? SV("THREAD") : SV("COUNTER"));
+      cli_table_set_cell(
+          &tracks_table, 2,
+          t->type == TRACK_TYPE_THREAD ? SV("THREAD") : SV("COUNTER"));
       cli_table_set_cell_fmt(&tracks_table, 3, "%d", t->pid);
       cli_table_set_cell_fmt(&tracks_table, 4, "%d", t->tid);
       cli_table_set_cell_fmt(&tracks_table, 5, "%zu", t->event_indices.len);
@@ -343,16 +351,19 @@ static int handle_summary(const trace_data_t* td, const darray_track_t* tracks,
 }
 
 // Handles the 'concurrency' subcommand.
-static int handle_concurrency(const trace_data_t* td, const darray_track_t* tracks,
-                              int64_t min_ts, int64_t max_ts, const cli_args_t* args,
+static int handle_concurrency(const trace_data_t* td,
+                              const darray_track_t* tracks, int64_t min_ts,
+                              int64_t max_ts, const cli_args_t* args,
                               allocator_t* a) {
-  size_t buckets = args->has_concurrency_buckets ? (size_t)args->concurrency_buckets : 16;
+  size_t buckets =
+      args->has_concurrency_buckets ? (size_t)args->concurrency_buckets : 16;
 
   darray_t(trace_concurrency_bucket_t) concurrency_buckets = {};
   darray_resize(&concurrency_buckets, buckets, a);
   trace_concurrency_bucket_t* buckets_ptr = concurrency_buckets.ptr;
 
-  trace_concurrency_compute(tracks, td, min_ts, max_ts, (int)buckets, buckets_ptr, a);
+  trace_concurrency_compute(tracks, td, min_ts, max_ts, (int)buckets,
+                            buckets_ptr, a);
 
   // Calculate bucket_width for formatting
   int bucket_width = 1;
@@ -367,7 +378,8 @@ static int handle_concurrency(const trace_data_t* td, const darray_track_t* trac
 
   cli_table_add_column(&table, SV("Bucket"), CLI_ALIGN_LEFT, 0, true);
   cli_table_add_column(&table, SV("Time Range (s)"), CLI_ALIGN_LEFT, 0, true);
-  cli_table_add_column(&table, SV("Concurrency (Active Threads)"), CLI_ALIGN_LEFT, 0, true);
+  cli_table_add_column(&table, SV("Concurrency (Active Threads)"),
+                       CLI_ALIGN_LEFT, 0, true);
   cli_table_add_column(&table, SV("Dominant Events"), CLI_ALIGN_LEFT, 0, true);
 
   size_t thread_track_count = 0;
@@ -418,7 +430,8 @@ static int handle_concurrency(const trace_data_t* td, const darray_track_t* trac
     // Col 3: Dominant Events
     string_t events_str = {};
     for (size_t i = 0; i < bucket->dominant_events_count; i++) {
-      string_view_t name = trace_data_get_string(td, bucket->dominant_events[i]);
+      string_view_t name =
+          trace_data_get_string(td, bucket->dominant_events[i]);
       string_append(&events_str, name, a);
       if (i < bucket->dominant_events_count - 1) {
         string_append(&events_str, SV(", "), a);
@@ -438,15 +451,25 @@ static int handle_concurrency(const trace_data_t* td, const darray_track_t* trac
 // Handles the 'aggregate' subcommand.
 static int handle_aggregate(const trace_data_t* td, const cli_args_t* args,
                             allocator_t* a) {
-  string_view_t group_by = string_view_is_empty(args->group_by) ? SV("name") : args->group_by;
-  string_view_t sort_by = string_view_is_empty(args->sort_by) ? SV("duration") : args->sort_by;
+  string_view_t group_by =
+      string_view_is_empty(args->group_by) ? SV("name") : args->group_by;
+  string_view_t sort_by =
+      string_view_is_empty(args->sort_by) ? SV("duration") : args->sort_by;
 
-  if (!string_view_eq(group_by, SV("name")) && !string_view_eq(group_by, SV("category"))) {
-    fprintf(stderr, "Error: Invalid value for --group-by: '%.*s'. Expected 'name' or 'category'.\n", (int)group_by.len, group_by.ptr);
+  if (!string_view_eq(group_by, SV("name")) &&
+      !string_view_eq(group_by, SV("category"))) {
+    fprintf(stderr,
+            "Error: Invalid value for --group-by: '%.*s'. Expected 'name' or "
+            "'category'.\n",
+            (int)group_by.len, group_by.ptr);
     return 1;
   }
-  if (!string_view_eq(sort_by, SV("duration")) && !string_view_eq(sort_by, SV("count"))) {
-    fprintf(stderr, "Error: Invalid value for --sort: '%.*s'. Expected 'duration' or 'count'.\n", (int)sort_by.len, sort_by.ptr);
+  if (!string_view_eq(sort_by, SV("duration")) &&
+      !string_view_eq(sort_by, SV("count"))) {
+    fprintf(stderr,
+            "Error: Invalid value for --sort: '%.*s'. Expected 'duration' or "
+            "'count'.\n",
+            (int)sort_by.len, sort_by.ptr);
     return 1;
   }
 
@@ -457,10 +480,13 @@ static int handle_aggregate(const trace_data_t* td, const cli_args_t* args,
   cli_table_init(&table);
 
   bool by_cat = string_view_eq(group_by, SV("category"));
-  cli_table_add_column(&table, by_cat ? SV("Event Category") : SV("Event Name"), CLI_ALIGN_LEFT, 30, true);
-  cli_table_add_column(&table, SV("Total Duration (s)"), CLI_ALIGN_RIGHT, 18, true);
+  cli_table_add_column(&table, by_cat ? SV("Event Category") : SV("Event Name"),
+                       CLI_ALIGN_LEFT, 30, true);
+  cli_table_add_column(&table, SV("Total Duration (s)"), CLI_ALIGN_RIGHT, 18,
+                       true);
   cli_table_add_column(&table, SV("Event Count"), CLI_ALIGN_RIGHT, 11, true);
-  cli_table_add_column(&table, SV("Average Duration (ms)"), CLI_ALIGN_RIGHT, 20, true);
+  cli_table_add_column(&table, SV("Average Duration (ms)"), CLI_ALIGN_RIGHT, 20,
+                       true);
 
   int min_count = args->has_min_count ? args->min_count : 2;
   size_t skipped_count = 0;
@@ -472,7 +498,7 @@ static int handle_aggregate(const trace_data_t* td, const cli_args_t* args,
       continue;
     }
     string_view_t key_name = trace_data_get_string(td, e->key_ref);
-    
+
     double total_dur_s = e->total_duration / 1000000.0;
     double avg_dur_ms = 0.0;
     if (e->count > 0) {
@@ -491,9 +517,11 @@ static int handle_aggregate(const trace_data_t* td, const cli_args_t* args,
 
   if (skipped_count > 0) {
     if (min_count == 2) {
-      printf("\n* Skipped %zu single-instance events (count = 1).\n", skipped_count);
+      printf("\n* Skipped %zu single-instance events (count = 1).\n",
+             skipped_count);
     } else {
-      printf("\n* Skipped %zu events with count < %d.\n", skipped_count, min_count);
+      printf("\n* Skipped %zu events with count < %d.\n", skipped_count,
+             min_count);
     }
   }
 
@@ -502,17 +530,28 @@ static int handle_aggregate(const trace_data_t* td, const cli_args_t* args,
 }
 
 // Handles the 'diff' subcommand.
-static int handle_diff(const trace_data_t* td_baseline, const trace_data_t* td_target,
-                       const cli_args_t* args, allocator_t* a) {
-  string_view_t group_by = string_view_is_empty(args->group_by) ? SV("name") : args->group_by;
-  string_view_t sort_by = string_view_is_empty(args->sort_by) ? SV("dur-delta") : args->sort_by;
+static int handle_diff(const trace_data_t* td_baseline,
+                       const trace_data_t* td_target, const cli_args_t* args,
+                       allocator_t* a) {
+  string_view_t group_by =
+      string_view_is_empty(args->group_by) ? SV("name") : args->group_by;
+  string_view_t sort_by =
+      string_view_is_empty(args->sort_by) ? SV("dur-delta") : args->sort_by;
 
-  if (!string_view_eq(group_by, SV("name")) && !string_view_eq(group_by, SV("category"))) {
-    fprintf(stderr, "Error: Invalid value for --group-by: '%.*s'. Expected 'name' or 'category'.\n", (int)group_by.len, group_by.ptr);
+  if (!string_view_eq(group_by, SV("name")) &&
+      !string_view_eq(group_by, SV("category"))) {
+    fprintf(stderr,
+            "Error: Invalid value for --group-by: '%.*s'. Expected 'name' or "
+            "'category'.\n",
+            (int)group_by.len, group_by.ptr);
     return 1;
   }
-  if (!string_view_eq(sort_by, SV("dur-delta")) && !string_view_eq(sort_by, SV("count-delta"))) {
-    fprintf(stderr, "Error: Invalid value for --sort: '%.*s'. Expected 'dur-delta' or 'count-delta'.\n", (int)sort_by.len, sort_by.ptr);
+  if (!string_view_eq(sort_by, SV("dur-delta")) &&
+      !string_view_eq(sort_by, SV("count-delta"))) {
+    fprintf(stderr,
+            "Error: Invalid value for --sort: '%.*s'. Expected 'dur-delta' or "
+            "'count-delta'.\n",
+            (int)sort_by.len, sort_by.ptr);
     return 1;
   }
 
@@ -523,8 +562,10 @@ static int handle_diff(const trace_data_t* td_baseline, const trace_data_t* td_t
   cli_table_init(&table);
 
   bool by_cat = string_view_eq(group_by, SV("category"));
-  cli_table_add_column(&table, by_cat ? SV("Event Category") : SV("Event Name"), CLI_ALIGN_LEFT, 30, true);
-  cli_table_add_column(&table, SV("Baseline Dur (s)"), CLI_ALIGN_RIGHT, 16, true);
+  cli_table_add_column(&table, by_cat ? SV("Event Category") : SV("Event Name"),
+                       CLI_ALIGN_LEFT, 30, true);
+  cli_table_add_column(&table, SV("Baseline Dur (s)"), CLI_ALIGN_RIGHT, 16,
+                       true);
   cli_table_add_column(&table, SV("Target Dur (s)"), CLI_ALIGN_RIGHT, 14, true);
   cli_table_add_column(&table, SV("Delta Dur (s)"), CLI_ALIGN_RIGHT, 14, true);
   cli_table_add_column(&table, SV("Delta Count"), CLI_ALIGN_RIGHT, 11, true);
@@ -554,7 +595,8 @@ static int handle_diff(const trace_data_t* td_baseline, const trace_data_t* td_t
 }
 
 // Handles the 'histogram' subcommand.
-static int handle_histogram(const trace_data_t* td, const darray_track_t* tracks,
+static int handle_histogram(const trace_data_t* td,
+                            const darray_track_t* tracks,
                             const cli_args_t* args, allocator_t* a) {
   // Gather all event indices matching the filters
   darray_int64_t selected_indices = {};
@@ -662,7 +704,8 @@ static int handle_histogram(const trace_data_t* td, const darray_track_t* tracks
 
     cli_table_add_row(&table);
     cli_table_set_cell_fmt(&table, 0, "[%0*d]", bucket_width, i);
-    cli_table_set_cell_fmt(&table, 1, "%ld - %ld", (long)b->min_dur, (long)b->max_dur);
+    cli_table_set_cell_fmt(&table, 1, "%ld - %ld", (long)b->min_dur,
+                           (long)b->max_dur);
     cli_table_set_cell_fmt(&table, 2, "%u", b->count);
 
     string_t bar = {};
@@ -747,12 +790,14 @@ static int handle_inspect(const trace_data_t* td, const darray_track_t* tracks,
     cli_table_t details_table = {};
     cli_table_init(&details_table);
 
-    cli_table_add_column(&details_table, SV("Property"), CLI_ALIGN_LEFT, 20, true);
+    cli_table_add_column(&details_table, SV("Property"), CLI_ALIGN_LEFT, 20,
+                         true);
     cli_table_add_column(&details_table, SV("Value"), CLI_ALIGN_LEFT, 30, true);
 
     cli_table_add_row(&details_table);
     cli_table_set_cell(&details_table, 0, SV("Name"));
-    cli_table_set_cell(&details_table, 1, trace_data_get_string(td, e->name_ref));
+    cli_table_set_cell(&details_table, 1,
+                       trace_data_get_string(td, e->name_ref));
 
     cli_table_add_row(&details_table);
     cli_table_set_cell(&details_table, 0, SV("Track"));
@@ -790,14 +835,16 @@ static int handle_inspect(const trace_data_t* td, const darray_track_t* tracks,
       }
 
       if (parent_event) {
-        string_view_t parent_name = trace_data_get_string(td, parent_event->name_ref);
+        string_view_t parent_name =
+            trace_data_get_string(td, parent_event->name_ref);
         cli_table_add_row(&details_table);
         cli_table_set_cell(&details_table, 0, SV("Parent Name"));
         cli_table_set_cell(&details_table, 1, parent_name);
 
         cli_table_add_row(&details_table);
         cli_table_set_cell(&details_table, 0, SV("Parent TS (us)"));
-        cli_table_set_cell_fmt(&details_table, 1, "%ld", (long)parent_event->ts);
+        cli_table_set_cell_fmt(&details_table, 1, "%ld",
+                               (long)parent_event->ts);
       }
     }
 
@@ -808,11 +855,12 @@ static int handle_inspect(const trace_data_t* td, const darray_track_t* tracks,
       for (uint32_t a_idx = 0; a_idx < e->args_count; a_idx++) {
         const trace_arg_persisted_t* arg = &args_ptr[a_idx];
         string_view_t key = trace_data_get_string(td, arg->key_ref);
-        
+
         cli_table_add_row(&details_table);
         // Prefix argument keys to distinguish them
-        cli_table_set_cell_fmt(&details_table, 0, "Arg: %.*s", (int)key.len, key.ptr);
-        
+        cli_table_set_cell_fmt(&details_table, 0, "Arg: %.*s", (int)key.len,
+                               key.ptr);
+
         if (arg->val_ref != 0) {
           string_view_t val = trace_data_get_string(td, arg->val_ref);
           cli_table_set_cell(&details_table, 1, val);
@@ -829,10 +877,11 @@ static int handle_inspect(const trace_data_t* td, const darray_track_t* tracks,
     if (target_track->type == TRACK_TYPE_THREAD) {
       const uint32_t* depths = target_track->depths.ptr;
       uint32_t depth_target = depths[k];
-      
+
       // Count children first
       size_t child_count = 0;
-      for (size_t next = k + 1; next < target_track->event_indices.len; next++) {
+      for (size_t next = k + 1; next < target_track->event_indices.len;
+           next++) {
         uint32_t next_depth = depths[next];
         if (next_depth <= depth_target) {
           break;
@@ -847,23 +896,31 @@ static int handle_inspect(const trace_data_t* td, const darray_track_t* tracks,
         cli_table_t children_table = {};
         cli_table_init(&children_table);
 
-        cli_table_add_column(&children_table, SV("Child Name"), CLI_ALIGN_LEFT, 20, true);
-        cli_table_add_column(&children_table, SV("Timestamp (us)"), CLI_ALIGN_RIGHT, 15, true);
-        cli_table_add_column(&children_table, SV("Duration (us)"), CLI_ALIGN_RIGHT, 15, true);
+        cli_table_add_column(&children_table, SV("Child Name"), CLI_ALIGN_LEFT,
+                             20, true);
+        cli_table_add_column(&children_table, SV("Timestamp (us)"),
+                             CLI_ALIGN_RIGHT, 15, true);
+        cli_table_add_column(&children_table, SV("Duration (us)"),
+                             CLI_ALIGN_RIGHT, 15, true);
 
-        for (size_t next = k + 1; next < target_track->event_indices.len; next++) {
+        for (size_t next = k + 1; next < target_track->event_indices.len;
+             next++) {
           uint32_t next_depth = depths[next];
           if (next_depth <= depth_target) {
             break;
           }
           if (next_depth == depth_target + 1) {
-            const trace_event_persisted_t* child_event = &events[event_indices[next]];
-            string_view_t child_name = trace_data_get_string(td, child_event->name_ref);
+            const trace_event_persisted_t* child_event =
+                &events[event_indices[next]];
+            string_view_t child_name =
+                trace_data_get_string(td, child_event->name_ref);
 
             cli_table_add_row(&children_table);
             cli_table_set_cell(&children_table, 0, child_name);
-            cli_table_set_cell_fmt(&children_table, 1, "%ld", (long)child_event->ts);
-            cli_table_set_cell_fmt(&children_table, 2, "%ld", (long)child_event->dur);
+            cli_table_set_cell_fmt(&children_table, 1, "%ld",
+                                   (long)child_event->ts);
+            cli_table_set_cell_fmt(&children_table, 2, "%ld",
+                                   (long)child_event->dur);
           }
         }
 
@@ -992,7 +1049,8 @@ static int handle_query(const trace_data_t* td, const darray_track_t* tracks,
 
   cli_table_add_column(&table, SV("Event Name"), CLI_ALIGN_LEFT, 30, true);
   cli_table_add_column(&table, SV("Track"), CLI_ALIGN_LEFT, 20, true);
-  cli_table_add_column(&table, SV("Start Time (us)"), CLI_ALIGN_RIGHT, 17, true);
+  cli_table_add_column(&table, SV("Start Time (us)"), CLI_ALIGN_RIGHT, 17,
+                       true);
   cli_table_add_column(&table, SV("Duration (us)"), CLI_ALIGN_RIGHT, 15, true);
   cli_table_add_column(&table, SV("Depth"), CLI_ALIGN_RIGHT, 5, true);
 
@@ -1006,7 +1064,8 @@ static int handle_query(const trace_data_t* td, const darray_track_t* tracks,
 
     cli_table_add_row(&table);
     cli_table_set_cell(&table, 0, trace_data_get_string(td, e->name_ref));
-    cli_table_set_cell(&table, 1, trace_data_get_string(td, m->track->name_ref));
+    cli_table_set_cell(&table, 1,
+                       trace_data_get_string(td, m->track->name_ref));
     cli_table_set_cell_fmt(&table, 2, "%ld", (long)e->ts);
     cli_table_set_cell_fmt(&table, 3, "%ld", (long)e->dur);
     cli_table_set_cell_fmt(&table, 4, "%d", m->depth);
@@ -1049,11 +1108,11 @@ int main(int argc, char* argv[]) {
         int64_t min_ts_2 = 0;
         int64_t max_ts_2 = 0;
         trace_data_t* td2 =
-            trace_loader_load_file(args.trace_file_2, a, nullptr, &tracks_2, &min_ts_2,
-                                   &max_ts_2, nullptr, nullptr);
+            trace_loader_load_file(args.trace_file_2, a, nullptr, &tracks_2,
+                                   &min_ts_2, &max_ts_2, nullptr, nullptr);
         if (td2) {
           exit_code = handle_diff(td, td2, &args, a);
-          
+
           // Clean up td2
           track_t* tracks_data_2 = tracks_2.ptr;
           for (size_t i = 0; i < tracks_2.len; i++) {
