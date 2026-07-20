@@ -7,8 +7,8 @@
 
 #include "core/assert.h"
 #include "core/counting_allocator.h"
-#include "core/logging.h"
 #include "core/darray.h"
+#include "core/logging.h"
 #include "src/app.h"
 #include "src/imgui_c.h"
 #include "src/imgui_impl_wasm.h"
@@ -115,8 +115,13 @@ EMSCRIPTEN_KEEPALIVE int ztracing_init(const char* canvas_selector) {
   }
   emscripten_webgl_make_context_current(ctx);
 
-  imgui_impl_wasm_init((const char*)g_canvas_selector.ptr, allocator);
-  if (!imgui_impl_webgl_init(allocator)) {
+  if (!imgui_impl_webgl_init()) {
+    emscripten_webgl_destroy_context(ctx);
+    return 2;
+  }
+  if (!imgui_impl_wasm_init((const char*)g_canvas_selector.ptr)) {
+    imgui_impl_webgl_shutdown();
+    emscripten_webgl_destroy_context(ctx);
     return 2;
   }
 

@@ -1,0 +1,12 @@
+{
+  "name": "ztracing",
+  "private": true,
+  "devDependencies": {
+    "playwright": "1.61.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "playwright-core"
+    ]
+  }
+}

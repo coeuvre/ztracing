@@ -5,21 +5,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "core/allocator.h"
-#include "core/logging.h"
-#include "core/darray.h"
+#include <vector>
+
 #include "third_party/imgui/imgui.h"
 
 struct BackendData {
-  allocator_t* allocator;
   GLuint shader_program;
   GLuint vbo, ebo;
-  GLuint vao;
   GLuint font_texture;
   GLint attrib_location_pos, attrib_location_uv, attrib_location_color;
   GLint attrib_location_proj_mtx;
-  darray_t(ImDrawVert) vtx_staging;
-  darray_t(ImDrawIdx) idx_staging;
+  std::vector<ImDrawVert> vtx_staging;
+  std::vector<ImDrawIdx> idx_staging;
 };
 
 static BackendData* get_backend_data() {
@@ -89,8 +86,6 @@ void imgui_impl_webgl_render_draw_data(struct ig_draw_data* draw_data_opaque) {
   if (fb_width <= 0 || fb_height <= 0) return;
 
   BackendData* bd = get_backend_data();
-  allocator_t* allocator = bd->allocator;
-
   // 1. Calculate total counts and prepare staging buffers
   size_t total_vtx_count = 0;
   size_t total_idx_count = 0;
@@ -100,8 +95,8 @@ void imgui_impl_webgl_render_draw_data(struct ig_draw_data* draw_data_opaque) {
     total_idx_count += (size_t)cmd_list->IdxBuffer.Size;
   }
 
-  darray_resize(&bd->vtx_staging, total_vtx_count, allocator);
-  darray_resize(&bd->idx_staging, total_idx_count, allocator);
+  bd->vtx_staging.resize(total_vtx_count);
+  bd->idx_staging.resize(total_idx_count);
 
   // 2. Concatenate data
   size_t vtx_dst_offset = 0;
@@ -111,10 +106,10 @@ void imgui_impl_webgl_render_draw_data(struct ig_draw_data* draw_data_opaque) {
     size_t vtx_count = (size_t)cmd_list->VtxBuffer.Size;
     size_t idx_count = (size_t)cmd_list->IdxBuffer.Size;
 
-    memcpy(bd->vtx_staging.ptr + vtx_dst_offset,
-           cmd_list->VtxBuffer.Data, vtx_count * sizeof(ImDrawVert));
-    memcpy(bd->idx_staging.ptr + idx_dst_offset,
-           cmd_list->IdxBuffer.Data, idx_count * sizeof(ImDrawIdx));
+    memcpy(bd->vtx_staging.data() + vtx_dst_offset, cmd_list->VtxBuffer.Data,
+           vtx_count * sizeof(ImDrawVert));
+    memcpy(bd->idx_staging.data() + idx_dst_offset, cmd_list->IdxBuffer.Data,
+           idx_count * sizeof(ImDrawIdx));
 
     vtx_dst_offset += vtx_count;
     idx_dst_offset += idx_count;
@@ -124,12 +119,12 @@ void imgui_impl_webgl_render_draw_data(struct ig_draw_data* draw_data_opaque) {
   glBindBuffer(GL_ARRAY_BUFFER, bd->vbo);
   glBufferData(GL_ARRAY_BUFFER,
                (GLsizeiptr)(total_vtx_count * sizeof(ImDrawVert)),
-               bd->vtx_staging.ptr, GL_STREAM_DRAW);
+               bd->vtx_staging.data(), GL_STREAM_DRAW);
 
   glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bd->ebo);
   glBufferData(GL_ELEMENT_ARRAY_BUFFER,
                (GLsizeiptr)(total_idx_count * sizeof(ImDrawIdx)),
-               bd->idx_staging.ptr, GL_STREAM_DRAW);
+               bd->idx_staging.data(), GL_STREAM_DRAW);
 
   // 4. Setup state and render
   setup_render_state(draw_data, fb_width, fb_height);
@@ -167,14 +162,45 @@ void imgui_impl_webgl_render_draw_data(struct ig_draw_data* draw_data_opaque) {
   }
 }
 
-bool imgui_impl_webgl_init(allocator_t* allocator) {
+static int create_fonts_texture(BackendData* bd) {
   ImGuiIO& io = ImGui::GetIO();
-  BackendData* bd =
-      (BackendData*)allocator_alloc(allocator, sizeof(BackendData));
-  bd->allocator = allocator;
-  io.BackendRendererUserData = (void*)bd;
-  io.BackendRendererName = "imgui_impl_webgl";
-  io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+  unsigned char* pixels;
+  int width, height;
+  io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+
+  glGenTextures(1, &bd->font_texture);
+  if (bd->font_texture == 0) return 0;
+  glBindTexture(GL_TEXTURE_2D, bd->font_texture);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
+               GL_UNSIGNED_BYTE, pixels);
+  io.Fonts->SetTexID((ImTextureID)(intptr_t)bd->font_texture);
+  return 1;
+}
+
+static void destroy_fonts_texture(BackendData* bd) {
+  if (bd->font_texture == 0) return;
+  glDeleteTextures(1, &bd->font_texture);
+  if (ImGui::GetCurrentContext()) {
+    ImGui::GetIO().Fonts->SetTexID(0);
+  }
+  bd->font_texture = 0;
+}
+
+static void destroy_backend_data(BackendData* bd) {
+  if (!bd) return;
+  destroy_fonts_texture(bd);
+  if (bd->vbo != 0) glDeleteBuffers(1, &bd->vbo);
+  if (bd->ebo != 0) glDeleteBuffers(1, &bd->ebo);
+  if (bd->shader_program != 0) glDeleteProgram(bd->shader_program);
+  delete bd;
+}
+
+int imgui_impl_webgl_init() {
+  ImGuiIO& io = ImGui::GetIO();
+  if (io.BackendRendererUserData != nullptr) return 0;
+  BackendData* bd = new BackendData{};
 
   const GLchar* vertex_shader =
       "#version 300 es\n"
@@ -212,8 +238,10 @@ bool imgui_impl_webgl_init(allocator_t* allocator) {
   if (status == GL_FALSE) {
     char buffer[512];
     glGetShaderInfoLog(vert_handle, 512, nullptr, buffer);
-    LOG_ERROR("vertex shader compilation failed: %s", buffer);
-    return false;
+    fprintf(stderr, "vertex shader compilation failed: %s\n", buffer);
+    glDeleteShader(vert_handle);
+    destroy_backend_data(bd);
+    return 0;
   }
 
   GLuint frag_handle = glCreateShader(GL_FRAGMENT_SHADER);
@@ -223,8 +251,11 @@ bool imgui_impl_webgl_init(allocator_t* allocator) {
   if (status == GL_FALSE) {
     char buffer[512];
     glGetShaderInfoLog(frag_handle, 512, nullptr, buffer);
-    LOG_ERROR("fragment shader compilation failed: %s", buffer);
-    return false;
+    fprintf(stderr, "fragment shader compilation failed: %s\n", buffer);
+    glDeleteShader(frag_handle);
+    glDeleteShader(vert_handle);
+    destroy_backend_data(bd);
+    return 0;
   }
 
   bd->shader_program = glCreateProgram();
@@ -232,11 +263,14 @@ bool imgui_impl_webgl_init(allocator_t* allocator) {
   glAttachShader(bd->shader_program, frag_handle);
   glLinkProgram(bd->shader_program);
   glGetProgramiv(bd->shader_program, GL_LINK_STATUS, &status);
+  glDeleteShader(frag_handle);
+  glDeleteShader(vert_handle);
   if (status == GL_FALSE) {
     char buffer[512];
     glGetProgramInfoLog(bd->shader_program, 512, nullptr, buffer);
-    LOG_ERROR("shader program linking failed: %s", buffer);
-    return false;
+    fprintf(stderr, "shader program linking failed: %s\n", buffer);
+    destroy_backend_data(bd);
+    return 0;
   }
 
   bd->attrib_location_proj_mtx =
@@ -245,58 +279,47 @@ bool imgui_impl_webgl_init(allocator_t* allocator) {
   bd->attrib_location_uv = glGetAttribLocation(bd->shader_program, "UV");
   bd->attrib_location_color = glGetAttribLocation(bd->shader_program, "Color");
 
-  bd->vtx_staging = {};
-  bd->idx_staging = {};
-
   glGenBuffers(1, &bd->vbo);
   glGenBuffers(1, &bd->ebo);
+  if (bd->vbo == 0 || bd->ebo == 0) {
+    fprintf(stderr, "failed to create WebGL renderer buffers\n");
+    destroy_backend_data(bd);
+    return 0;
+  }
 
   glActiveTexture(GL_TEXTURE0);
 
-  if (!imgui_impl_webgl_create_fonts_texture()) return false;
+  if (!create_fonts_texture(bd)) {
+    destroy_backend_data(bd);
+    return 0;
+  }
 
-  return true;
+  io.BackendRendererUserData = (void*)bd;
+  io.BackendRendererName = "imgui_impl_webgl";
+  io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+  return 1;
 }
 
-bool imgui_impl_webgl_create_fonts_texture() {
-  ImGuiIO& io = ImGui::GetIO();
+int imgui_impl_webgl_create_fonts_texture() {
   BackendData* bd = get_backend_data();
-
-  unsigned char* pixels;
-  int width, height;
-  io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-
-  glGenTextures(1, &bd->font_texture);
-  glBindTexture(GL_TEXTURE_2D, bd->font_texture);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA,
-               GL_UNSIGNED_BYTE, pixels);
-  io.Fonts->SetTexID((ImTextureID)(intptr_t)bd->font_texture);
-
-  return true;
+  if (!bd) return 0;
+  return create_fonts_texture(bd);
 }
 
 void imgui_impl_webgl_destroy_fonts_texture() {
   BackendData* bd = get_backend_data();
-  if (bd->font_texture) {
-    glDeleteTextures(1, &bd->font_texture);
-    ImGui::GetIO().Fonts->SetTexID(0);
-    bd->font_texture = 0;
-  }
+  if (bd) destroy_fonts_texture(bd);
 }
 
 void imgui_impl_webgl_shutdown() {
+  if (!ImGui::GetCurrentContext()) return;
+  ImGuiIO& io = ImGui::GetIO();
   BackendData* bd = get_backend_data();
-  glDeleteBuffers(1, &bd->vbo);
-  glDeleteBuffers(1, &bd->ebo);
-  glDeleteProgram(bd->shader_program);
-  imgui_impl_webgl_destroy_fonts_texture();
-  allocator_t* allocator = bd->allocator;
-  darray_deinit(&bd->vtx_staging, allocator);
-  darray_deinit(&bd->idx_staging, allocator);
-  allocator_free(allocator, bd, sizeof(BackendData));
-  ImGui::GetIO().BackendRendererUserData = nullptr;
+  if (!bd) return;
+  destroy_backend_data(bd);
+  io.BackendRendererUserData = nullptr;
+  io.BackendRendererName = nullptr;
+  io.BackendFlags &= ~ImGuiBackendFlags_RendererHasVtxOffset;
 }
 
 void imgui_impl_webgl_new_frame() {}

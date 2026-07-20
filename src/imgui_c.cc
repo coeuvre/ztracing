@@ -1,5 +1,4 @@
 #include "src/imgui_c.h"
-#include "src/colors.h"
 
 #include <stdarg.h>
 
@@ -8,7 +7,36 @@
 #include "third_party/imgui/imgui.h"
 #include "third_party/imgui/imgui_internal.h"
 
-static const struct Theme* g_current_theme = nullptr;
+#ifdef __EMSCRIPTEN__
+// Rust 1.97 allocator ABI marker; rules_rust 0.71 predates the v2 symbol.
+extern "C" void rust_no_alloc_shim_v2() asm(
+    "_RNvCs9hJ03s5DiqP_7___rustc35___rust_no_alloc_shim_is_unstable_v2");
+extern "C" void rust_no_alloc_shim_v2() {}
+#endif
+
+static ImU32 g_ui_button_fg = IG_COL32(255, 255, 255, 255);
+
+static_assert(alignof(ig_vec2_t) == alignof(ImVec2),
+              "ig_vec2_t ABI alignment mismatch");
+static_assert(sizeof(ig_vec2_t) == sizeof(ImVec2),
+              "ig_vec2_t ABI size mismatch");
+static_assert(alignof(ig_vec4_t) == alignof(ImVec4),
+              "ig_vec4_t ABI alignment mismatch");
+static_assert(sizeof(ig_vec4_t) == sizeof(ImVec4),
+              "ig_vec4_t ABI size mismatch");
+
+static_assert(alignof(Theme) == 4, "Theme ABI alignment mismatch");
+static_assert(sizeof(Theme) == 204, "Theme ABI size mismatch");
+static_assert(offsetof(Theme, status_loading) == 76,
+              "Theme::status_loading ABI offset mismatch");
+static_assert(offsetof(Theme, search_histogram_bg) == 92,
+              "Theme::search_histogram_bg ABI offset mismatch");
+static_assert(offsetof(Theme, vertical_minimap_bg) == 108,
+              "Theme::vertical_minimap_bg ABI offset mismatch");
+static_assert(offsetof(Theme, ui_bg) == 124,
+              "Theme::ui_bg ABI offset mismatch");
+static_assert(offsetof(Theme, event_palette) == 172,
+              "Theme::event_palette ABI offset mismatch");
 
 static_assert(IG_TABLE_FLAGS_NONE == ImGuiTableFlags_None,
               "ImGuiTableFlags mismatch");
@@ -79,10 +107,23 @@ static_assert(IG_SORT_DIRECTION_NONE == ImGuiSortDirection_None,
               "ImGuiSortDirection mismatch");
 static_assert(IG_SORT_DIRECTION_ASCENDING == ImGuiSortDirection_Ascending,
               "ImGuiSortDirection mismatch");
+static_assert(IG_SORT_DIRECTION_DESCENDING == ImGuiSortDirection_Descending,
+              "ImGuiSortDirection mismatch");
 
 static_assert(IG_DRAW_LIST_FLAGS_ANTI_ALIASED_LINES ==
                   ImDrawListFlags_AntiAliasedLines,
               "ImDrawListFlags mismatch");
+
+static_assert(IG_MOD_NONE == ImGuiMod_None, "ImGuiMod mismatch");
+static_assert(IG_MOD_CTRL == ImGuiMod_Ctrl, "ImGuiMod mismatch");
+static_assert(IG_MOD_SHIFT == ImGuiMod_Shift, "ImGuiMod mismatch");
+static_assert(IG_MOD_ALT == ImGuiMod_Alt, "ImGuiMod mismatch");
+static_assert(IG_MOD_SUPER == ImGuiMod_Super, "ImGuiMod mismatch");
+
+static_assert(IG_HOVERED_FLAGS_NONE == ImGuiHoveredFlags_None,
+              "ImGuiHoveredFlags mismatch");
+static_assert(IG_HOVERED_FLAGS_CHILD_WINDOWS == ImGuiHoveredFlags_ChildWindows,
+              "ImGuiHoveredFlags mismatch");
 
 static_assert(IG_DOCK_NODE_FLAGS_NONE == ImGuiDockNodeFlags_None,
               "ImGuiDockNodeFlags mismatch");
@@ -112,10 +153,27 @@ static_assert(IG_CONFIG_FLAGS_NAV_ENABLE_KEYBOARD ==
 static_assert(IG_CONFIG_FLAGS_DOCKING_ENABLE == ImGuiConfigFlags_DockingEnable,
               "ImGuiConfigFlags mismatch");
 
+static_assert(IG_SELECTABLE_FLAGS_NONE == ImGuiSelectableFlags_None,
+              "ImGuiSelectableFlags mismatch");
+static_assert(IG_SELECTABLE_FLAGS_DONT_CLOSE_POPUPS ==
+                  ImGuiSelectableFlags_DontClosePopups,
+              "ImGuiSelectableFlags mismatch");
+static_assert(IG_SELECTABLE_FLAGS_SPAN_ALL_COLUMNS ==
+                  ImGuiSelectableFlags_SpanAllColumns,
+              "ImGuiSelectableFlags mismatch");
+static_assert(IG_SELECTABLE_FLAGS_ALLOW_DOUBLE_CLICKS ==
+                  ImGuiSelectableFlags_AllowDoubleClick,
+              "ImGuiSelectableFlags mismatch");
+static_assert(IG_SELECTABLE_FLAGS_DISABLED == ImGuiSelectableFlags_Disabled,
+              "ImGuiSelectableFlags mismatch");
+static_assert(IG_SELECTABLE_FLAGS_ALLOW_OVERLAP ==
+                  ImGuiSelectableFlags_AllowOverlap,
+              "ImGuiSelectableFlags mismatch");
+
 extern "C" {
 
 // Context, IO, Style & Fonts
-void ig_create_context(void) { ImGui::CreateContext(); }
+bool ig_create_context(void) { return ImGui::CreateContext() != nullptr; }
 
 void ig_destroy_context(void) { ImGui::DestroyContext(); }
 
@@ -132,6 +190,21 @@ void ig_set_allocator_functions(void* (*alloc_func)(size_t sz, void* user_data),
 }
 
 void ig_io_add_config_flags(int flags) { ImGui::GetIO().ConfigFlags |= flags; }
+void ig_io_add_mouse_pos_event(float x, float y) {
+  ImGui::GetIO().AddMousePosEvent(x, y);
+}
+void ig_io_add_mouse_button_event(int button, bool down) {
+  ImGui::GetIO().AddMouseButtonEvent(button, down);
+}
+void ig_io_add_mouse_wheel_event(float horizontal, float vertical) {
+  ImGui::GetIO().AddMouseWheelEvent(horizontal, vertical);
+}
+void ig_io_add_key_event(ig_key_t key, bool down) {
+  ImGui::GetIO().AddKeyEvent((ImGuiKey)key, down);
+}
+void ig_io_add_input_characters_utf8(const char* text) {
+  ImGui::GetIO().AddInputCharactersUTF8(text);
+}
 
 ig_vec2_t ig_get_io_display_size(void) {
   ImVec2 size = ImGui::GetIO().DisplaySize;
@@ -164,6 +237,9 @@ ig_draw_data_t* ig_get_draw_data(void) {
 
 ig_draw_list_t* ig_get_window_draw_list(void) {
   return reinterpret_cast<ig_draw_list_t*>(ImGui::GetWindowDrawList());
+}
+ig_draw_list_t* ig_get_foreground_draw_list(void) {
+  return reinterpret_cast<ig_draw_list_t*>(ImGui::GetForegroundDrawList());
 }
 
 ig_vec2_t ig_get_cursor_screen_pos(void) {
@@ -392,26 +468,18 @@ int ig_list_clipper_get_display_end(const ig_list_clipper_t* clipper) {
 
 // Widgets
 bool ig_button(const char* label, ig_vec2_t size) {
-  bool push_color = (g_current_theme != nullptr);
-  if (push_color) {
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(g_current_theme->ui_button_fg));
-  }
+  ImGui::PushStyleColor(ImGuiCol_Text,
+                        ImGui::ColorConvertU32ToFloat4(g_ui_button_fg));
   bool result = ImGui::Button(label, ImVec2(size.x, size.y));
-  if (push_color) {
-    ImGui::PopStyleColor();
-  }
+  ImGui::PopStyleColor();
   return result;
 }
 
 bool ig_small_button(const char* label) {
-  bool push_color = (g_current_theme != nullptr);
-  if (push_color) {
-    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(g_current_theme->ui_button_fg));
-  }
+  ImGui::PushStyleColor(ImGuiCol_Text,
+                        ImGui::ColorConvertU32ToFloat4(g_ui_button_fg));
   bool result = ImGui::SmallButton(label);
-  if (push_color) {
-    ImGui::PopStyleColor();
-  }
+  ImGui::PopStyleColor();
   return result;
 }
 
@@ -611,6 +679,11 @@ ig_vec2_t ig_calc_text_size(const char* text) {
   return {size.x, size.y};
 }
 
+ig_vec2_t ig_calc_text_size_range(const char* text, size_t text_len) {
+  ImVec2 size = ImGui::CalcTextSize(text, text + text_len);
+  return {size.x, size.y};
+}
+
 void ig_text(const char* fmt, ...) {
   va_list args;
   va_start(args, fmt);
@@ -641,6 +714,31 @@ void ig_text_wrapped(const char* fmt, ...) {
   va_start(args, fmt);
   ImGui::TextWrappedV(fmt, args);
   va_end(args);
+}
+
+void ig_text_unformatted_range(const char* text, size_t text_len) {
+  ImGui::TextUnformatted(text, text + text_len);
+}
+
+void ig_text_wrapped_range(const char* text, size_t text_len) {
+  ImGuiContext& context = *GImGui;
+  const bool push_wrap = context.CurrentWindow->DC.TextWrapPos < 0.0f;
+  if (push_wrap) ImGui::PushTextWrapPos(0.0f);
+  ImGui::TextUnformatted(text, text + text_len);
+  if (push_wrap) ImGui::PopTextWrapPos();
+}
+
+void ig_text_colored_range(ig_vec4_t col, const char* text, size_t text_len) {
+  ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(col.x, col.y, col.z, col.w));
+  ImGui::TextUnformatted(text, text + text_len);
+  ImGui::PopStyleColor();
+}
+
+void ig_text_disabled_range(const char* text, size_t text_len) {
+  ImGui::PushStyleColor(ImGuiCol_Text,
+                        ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+  ImGui::TextUnformatted(text, text + text_len);
+  ImGui::PopStyleColor();
 }
 
 // Color helpers
@@ -766,6 +864,10 @@ void ig_push_style_color(ig_col_t idx, ig_vec4_t col) {
   ImGui::PushStyleColor(idx, ImVec4(col.x, col.y, col.z, col.w));
 }
 
+void ig_push_style_color_u32(ig_col_t idx, uint32_t col) {
+  ImGui::PushStyleColor(idx, col);
+}
+
 void ig_pop_style_color(int count) { ImGui::PopStyleColor(count); }
 
 void ig_push_style_var_float(ig_style_var_t idx, float val) {
@@ -777,7 +879,7 @@ void ig_style_colors_dark(void) { ImGui::StyleColorsDark(); }
 void ig_style_colors_light(void) { ImGui::StyleColorsLight(); }
 
 void ig_style_apply_theme(const struct Theme* theme) {
-  g_current_theme = theme;
+  g_ui_button_fg = theme->ui_button_fg;
   ImGuiStyle& style = ImGui::GetStyle();
   ImVec4* colors = style.Colors;
 
@@ -787,88 +889,102 @@ void ig_style_apply_theme(const struct Theme* theme) {
   ImVec4 border = ImGui::ColorConvertU32ToFloat4(theme->ui_border);
   ImVec4 input_bg = ImGui::ColorConvertU32ToFloat4(theme->ui_input_bg);
   ImVec4 button_bg = ImGui::ColorConvertU32ToFloat4(theme->ui_button_bg);
-  ImVec4 button_hovered = ImGui::ColorConvertU32ToFloat4(theme->ui_button_hovered);
-  ImVec4 button_active = ImGui::ColorConvertU32ToFloat4(theme->ui_button_active);
+  ImVec4 button_hovered =
+      ImGui::ColorConvertU32ToFloat4(theme->ui_button_hovered);
+  ImVec4 button_active =
+      ImGui::ColorConvertU32ToFloat4(theme->ui_button_active);
   ImVec4 selection_bg = ImGui::ColorConvertU32ToFloat4(theme->ui_selection_bg);
-  ImVec4 text_disabled = ImGui::ColorConvertU32ToFloat4(theme->ui_text_disabled);
+  ImVec4 text_disabled =
+      ImGui::ColorConvertU32ToFloat4(theme->ui_text_disabled);
 
-  colors[ImGuiCol_Text]                   = fg;
-  colors[ImGuiCol_TextDisabled]           = text_disabled;
-  colors[ImGuiCol_WindowBg]               = bg;
-  colors[ImGuiCol_ChildBg]                = ImGui::ColorConvertU32ToFloat4(theme->track_bg);
-  colors[ImGuiCol_PopupBg]                = bg;
-  colors[ImGuiCol_Border]                 = border;
-  colors[ImGuiCol_BorderShadow]           = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-  
-  colors[ImGuiCol_FrameBg]                = input_bg;
+  colors[ImGuiCol_Text] = fg;
+  colors[ImGuiCol_TextDisabled] = text_disabled;
+  colors[ImGuiCol_WindowBg] = bg;
+  colors[ImGuiCol_ChildBg] = ImGui::ColorConvertU32ToFloat4(theme->track_bg);
+  colors[ImGuiCol_PopupBg] = bg;
+  colors[ImGuiCol_Border] = border;
+  colors[ImGuiCol_BorderShadow] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+
+  colors[ImGuiCol_FrameBg] = input_bg;
   if (luminance < 0.5f) {
-    colors[ImGuiCol_FrameBgHovered]       = ImVec4(input_bg.x * 1.15f, input_bg.y * 1.15f, input_bg.z * 1.15f, input_bg.w);
-    colors[ImGuiCol_FrameBgActive]        = ImVec4(input_bg.x * 0.90f, input_bg.y * 0.90f, input_bg.z * 0.90f, input_bg.w);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(
+        input_bg.x * 1.15f, input_bg.y * 1.15f, input_bg.z * 1.15f, input_bg.w);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(
+        input_bg.x * 0.90f, input_bg.y * 0.90f, input_bg.z * 0.90f, input_bg.w);
   } else {
-    colors[ImGuiCol_FrameBgHovered]       = ImVec4(input_bg.x * 0.92f, input_bg.y * 0.92f, input_bg.z * 0.92f, input_bg.w);
-    colors[ImGuiCol_FrameBgActive]        = ImVec4(input_bg.x * 0.85f, input_bg.y * 0.85f, input_bg.z * 0.85f, input_bg.w);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(
+        input_bg.x * 0.92f, input_bg.y * 0.92f, input_bg.z * 0.92f, input_bg.w);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(
+        input_bg.x * 0.85f, input_bg.y * 0.85f, input_bg.z * 0.85f, input_bg.w);
   }
-  
-  colors[ImGuiCol_TitleBg]                = bg;
-  colors[ImGuiCol_TitleBgActive]          = bg;
-  colors[ImGuiCol_TitleBgCollapsed]       = bg;
-  
-  colors[ImGuiCol_MenuBarBg]              = bg;
-  
-  colors[ImGuiCol_ScrollbarBg]            = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-  colors[ImGuiCol_ScrollbarGrab]          = ImGui::ColorConvertU32ToFloat4(theme->vertical_minimap_slider_bg);
-  colors[ImGuiCol_ScrollbarGrabHovered]   = ImGui::ColorConvertU32ToFloat4(theme->vertical_minimap_slider_bg_hovered);
-  colors[ImGuiCol_ScrollbarGrabActive]    = ImGui::ColorConvertU32ToFloat4(theme->vertical_minimap_slider_bg_active);
-  
-  colors[ImGuiCol_CheckMark]              = button_bg;
-  
-  colors[ImGuiCol_SliderGrab]             = button_bg;
-  colors[ImGuiCol_SliderGrabActive]       = button_active;
-  
-  colors[ImGuiCol_Button]                 = button_bg;
-  colors[ImGuiCol_ButtonHovered]          = button_hovered;
-  colors[ImGuiCol_ButtonActive]           = button_active;
-  
-  colors[ImGuiCol_Header]                 = selection_bg;
-  colors[ImGuiCol_HeaderHovered]          = ImGui::ColorConvertU32ToFloat4(theme->ui_header_hovered);
-  colors[ImGuiCol_HeaderActive]           = ImGui::ColorConvertU32ToFloat4(theme->ui_header_active);
-  
-  colors[ImGuiCol_Separator]              = border;
-  colors[ImGuiCol_SeparatorHovered]       = button_hovered;
-  colors[ImGuiCol_SeparatorActive]        = button_active;
-  
-  colors[ImGuiCol_ResizeGrip]             = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-  colors[ImGuiCol_ResizeGripHovered]      = button_hovered;
-  colors[ImGuiCol_ResizeGripActive]       = button_active;
-  
-  colors[ImGuiCol_Tab]                    = bg;
-  colors[ImGuiCol_TabHovered]             = button_hovered;
-  colors[ImGuiCol_TabActive]              = selection_bg;
-  colors[ImGuiCol_TabUnfocused]           = bg;
-  colors[ImGuiCol_TabUnfocusedActive]     = selection_bg;
-  
-  colors[ImGuiCol_PlotLines]              = button_bg;
-  colors[ImGuiCol_PlotLinesHovered]       = button_hovered;
-  colors[ImGuiCol_PlotHistogram]          = button_bg;
-  colors[ImGuiCol_PlotHistogramHovered]   = button_hovered;
-  
-  colors[ImGuiCol_TableHeaderBg]          = ImGui::ColorConvertU32ToFloat4(theme->track_header_bg);
-  colors[ImGuiCol_TableBorderStrong]      = border;
-  colors[ImGuiCol_TableBorderLight]       = border;
-  colors[ImGuiCol_TableRowBg]             = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-  
+
+  colors[ImGuiCol_TitleBg] = bg;
+  colors[ImGuiCol_TitleBgActive] = bg;
+  colors[ImGuiCol_TitleBgCollapsed] = bg;
+
+  colors[ImGuiCol_MenuBarBg] = bg;
+
+  colors[ImGuiCol_ScrollbarBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+  colors[ImGuiCol_ScrollbarGrab] =
+      ImGui::ColorConvertU32ToFloat4(theme->vertical_minimap_slider_bg);
+  colors[ImGuiCol_ScrollbarGrabHovered] =
+      ImGui::ColorConvertU32ToFloat4(theme->vertical_minimap_slider_bg_hovered);
+  colors[ImGuiCol_ScrollbarGrabActive] =
+      ImGui::ColorConvertU32ToFloat4(theme->vertical_minimap_slider_bg_active);
+
+  colors[ImGuiCol_CheckMark] = button_bg;
+
+  colors[ImGuiCol_SliderGrab] = button_bg;
+  colors[ImGuiCol_SliderGrabActive] = button_active;
+
+  colors[ImGuiCol_Button] = button_bg;
+  colors[ImGuiCol_ButtonHovered] = button_hovered;
+  colors[ImGuiCol_ButtonActive] = button_active;
+
+  colors[ImGuiCol_Header] = selection_bg;
+  colors[ImGuiCol_HeaderHovered] =
+      ImGui::ColorConvertU32ToFloat4(theme->ui_header_hovered);
+  colors[ImGuiCol_HeaderActive] =
+      ImGui::ColorConvertU32ToFloat4(theme->ui_header_active);
+
+  colors[ImGuiCol_Separator] = border;
+  colors[ImGuiCol_SeparatorHovered] = button_hovered;
+  colors[ImGuiCol_SeparatorActive] = button_active;
+
+  colors[ImGuiCol_ResizeGrip] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+  colors[ImGuiCol_ResizeGripHovered] = button_hovered;
+  colors[ImGuiCol_ResizeGripActive] = button_active;
+
+  colors[ImGuiCol_Tab] = bg;
+  colors[ImGuiCol_TabHovered] = button_hovered;
+  colors[ImGuiCol_TabActive] = selection_bg;
+  colors[ImGuiCol_TabUnfocused] = bg;
+  colors[ImGuiCol_TabUnfocusedActive] = selection_bg;
+
+  colors[ImGuiCol_PlotLines] = button_bg;
+  colors[ImGuiCol_PlotLinesHovered] = button_hovered;
+  colors[ImGuiCol_PlotHistogram] = button_bg;
+  colors[ImGuiCol_PlotHistogramHovered] = button_hovered;
+
+  colors[ImGuiCol_TableHeaderBg] =
+      ImGui::ColorConvertU32ToFloat4(theme->track_header_bg);
+  colors[ImGuiCol_TableBorderStrong] = border;
+  colors[ImGuiCol_TableBorderLight] = border;
+  colors[ImGuiCol_TableRowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+
   if (luminance < 0.5f) {
-    colors[ImGuiCol_TableRowBgAlt]        = ImVec4(1.0f, 1.0f, 1.0f, 0.03f);
+    colors[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.03f);
   } else {
-    colors[ImGuiCol_TableRowBgAlt]        = ImVec4(0.0f, 0.0f, 0.0f, 0.03f);
+    colors[ImGuiCol_TableRowBgAlt] = ImVec4(0.0f, 0.0f, 0.0f, 0.03f);
   }
-  
-  colors[ImGuiCol_TextSelectedBg]         = selection_bg;
-  colors[ImGuiCol_DragDropTarget]         = button_bg;
-  colors[ImGuiCol_NavHighlight]           = ImGui::ColorConvertU32ToFloat4(theme->event_border_focused);
-  colors[ImGuiCol_NavWindowingHighlight]  = ImVec4(1.0f, 1.0f, 1.0f, 0.70f);
-  colors[ImGuiCol_NavWindowingDimBg]      = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
-  colors[ImGuiCol_ModalWindowDimBg]       = ImVec4(0.20f, 0.20f, 0.20f, 0.35f);
+
+  colors[ImGuiCol_TextSelectedBg] = selection_bg;
+  colors[ImGuiCol_DragDropTarget] = button_bg;
+  colors[ImGuiCol_NavHighlight] =
+      ImGui::ColorConvertU32ToFloat4(theme->event_border_focused);
+  colors[ImGuiCol_NavWindowingHighlight] = ImVec4(1.0f, 1.0f, 1.0f, 0.70f);
+  colors[ImGuiCol_NavWindowingDimBg] = ImVec4(0.80f, 0.80f, 0.80f, 0.20f);
+  colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.20f, 0.20f, 0.20f, 0.35f);
 
   style.WindowRounding = 4.0f;
   style.ChildRounding = 4.0f;
@@ -877,7 +993,7 @@ void ig_style_apply_theme(const struct Theme* theme) {
   style.ScrollbarRounding = 9.0f;
   style.GrabRounding = 3.0f;
   style.TabRounding = 4.0f;
-  
+
   style.WindowBorderSize = 1.0f;
   style.ChildBorderSize = 1.0f;
   style.PopupBorderSize = 1.0f;

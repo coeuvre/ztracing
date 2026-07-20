@@ -5,8 +5,8 @@
 #include <string.h>
 
 #include "core/counting_allocator.h"
-#include "core/logging.h"
 #include "core/darray.h"
+#include "core/logging.h"
 #include "src/app.h"
 #include "src/headless_gl.h"
 #include "src/imgui_c.h"
@@ -59,7 +59,7 @@ int ztracing_init(const char* canvas_selector) {
   }
 
   // Initialize WebGL renderer natively
-  if (!imgui_impl_webgl_init(imgui_allocator)) {
+  if (!imgui_impl_webgl_init()) {
     LOG_ERROR("Failed to initialize imgui_impl_webgl");
     headless_gl_shutdown(&g_gl_ctx);
     return 2;

@@ -1,7 +1,182 @@
 load(":defs.bzl", "cc_binary", "cc_library", "cc_test")
+load("@aspect_rules_js//js:defs.bzl", "js_test")
 load("@emsdk//emscripten_toolchain:wasm_rules.bzl", "wasm_cc_binary")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "ztracing_lib",
+    srcs = glob(["**/*.rs"], exclude = ["**/*_test.rs"]),
+    crate_name = "ztracing",
+    crate_root = "lib.rs",
+    edition = "2024",
+    rustc_flags = select({
+        ":wasm_build": [
+            "-C", "panic=abort",
+            "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = ["//base:base"],
+    link_deps = [":imgui_c"] + select({
+        ":wasm_build": [],
+        "//conditions:default": ["@zlib//:zlib"],
+    }),
+)
+
+alias(
+    name = "ztracing_headless",
+    actual = ":ztracing_lib",
+    target_compatible_with = ["@@platforms//os:linux"],
+)
+
+cc_library(
+    name = "headless_system_libraries",
+    linkopts = ["-lEGL", "-lGLESv2"],
+    target_compatible_with = ["@@platforms//os:linux"],
+)
+
+rust_test(
+    name = "ztracing_test",
+    crate = ":ztracing_lib",
+    data = glob(["testdata/*.bmp"]),
+    link_deps = select({
+        "@@platforms//os:linux": [
+            ":headless_system_libraries",
+            ":imgui_impl_webgl",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+rust_test(
+    name = "headless_lifecycle_test",
+    srcs = ["headless_lifecycle_test.rs"],
+    crate_name = "headless_lifecycle_test",
+    crate_root = "headless_lifecycle_test.rs",
+    deps = [
+        "//base:base",
+        ":ztracing_lib",
+    ],
+    link_deps = [
+        ":headless_system_libraries",
+        ":imgui_impl_webgl",
+    ],
+    target_compatible_with = ["@@platforms//os:linux"],
+)
+
+js_test(
+    name = "ztracing_js_test",
+    entry_point = "ztracing_test.js",
+    data = [
+        "ztracing.js",
+        "ztracing_bridge.js",
+    ],
+)
+
+js_test(
+    name = "ztracing_e2e_test",
+    data = [
+        "//:node_modules/playwright",
+        "//:ztracing",
+    ],
+    entry_point = "ztracing_e2e_test.js",
+    timeout = "long",
+)
+
+rust_binary(
+    name = "ztracing",
+    srcs = ["cli.rs"],
+    crate_name = "ztracing_cli",
+    crate_root = "cli.rs",
+    edition = "2024",
+    deps = [
+        "//base:base",
+        ":ztracing_lib",
+    ],
+)
+
+rust_test(
+    name = "ztracing_cli_test",
+    srcs = ["cli.rs"],
+    crate_name = "ztracing_cli_test",
+    crate_root = "cli.rs",
+    data = [":ztracing"] + glob(["testdata/cli/*"]),
+    edition = "2024",
+    deps = [
+        "//base:base",
+        ":ztracing_lib",
+    ],
+    link_deps = ["@zlib//:zlib"],
+)
+
+rust_test(
+    name = "ffi_buffer_test",
+    srcs = ["ffi_buffer.rs"],
+    crate_name = "ffi_buffer_test",
+    crate_root = "ffi_buffer.rs",
+    edition = "2024",
+)
+
+cc_library(
+    name = "wasm_link_options",
+    additional_linker_inputs = [
+        "ztracing.js",
+        "ztracing_bridge.js",
+    ],
+    linkopts = [
+        "--js-library", "$(location ztracing_bridge.js)",
+        "--pre-js", "$(location ztracing.js)",
+        "-sUSE_WEBGL2=1",
+        "-sFULL_ES3=1",
+        "-sUSE_PTHREADS=1",
+        "-sPTHREAD_POOL_SIZE=2",
+        "-sPTHREAD_POOL_SIZE_STRICT=2",
+        "-fwasm-exceptions",
+        "-sALLOW_MEMORY_GROWTH=1",
+        "-sINITIAL_MEMORY=128MB",
+        "-sMAXIMUM_MEMORY=4GB",
+        "-sASSERTIONS=1",
+        "-sSTACK_OVERFLOW_CHECK=1",
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8','HEAPF32','UTF8ToString','wasmMemory']",
+        "-sEXPORTED_FUNCTIONS=['_ztracing_init','_ztracing_start','_ztracing_update','_ztracing_set_font_data','_ztracing_malloc','_ztracing_free','_ztracing_begin_session','_ztracing_set_error','_ztracing_handle_file_chunk','_ztracing_get_buffered_bytes','_ztracing_is_loading_active','_ztracing_on_theme_changed']",
+    ],
+    target_compatible_with = ["@@platforms//os:emscripten"],
+)
+
+rust_binary(
+    name = "ztracing_wasm_entrypoint",
+    srcs = [
+        "ffi_buffer.rs",
+        "ztracing_wasm.rs",
+    ],
+    crate_name = "ztracing_wasm",
+    crate_root = "ztracing_wasm.rs",
+    edition = "2024",
+    experimental_use_cc_common_link = 1,
+    rustc_flags = [
+        "-C", "panic=abort",
+        "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals",
+    ],
+    target_compatible_with = ["@@platforms//os:emscripten"],
+    deps = [
+        "//base:base",
+        ":ztracing_lib",
+    ],
+    link_deps = [
+        ":imgui_impl_wasm",
+        ":imgui_impl_webgl",
+        ":wasm_link_options",
+    ],
+    tags = ["wasm"],
+)
+
+alias(
+    name = "ztracing_wasm_cc",
+    actual = ":ztracing_wasm_entrypoint",
+    target_compatible_with = ["@@platforms//os:emscripten"],
+)
 
 config_setting(
     name = "wasm_build",
@@ -38,6 +213,10 @@ cc_library(
     deps = [
         "//core:logging",
     ],
+    target_compatible_with = ["@@platforms//os:linux"] + select({
+        ":headless_build": [],
+        "//conditions:default": ["@@platforms//:incompatible"],
+    }),
 )
 
 cc_library(
@@ -153,7 +332,6 @@ cc_library(
     deps = [
         "@imgui",
         ":imgui_types",
-        ":colors",
     ],
 )
 
@@ -162,24 +340,15 @@ cc_library(
     srcs = ["imgui_impl_wasm.cc"],
     hdrs = ["imgui_impl_wasm.h"],
     tags = ["wasm"],
-    deps = [
-        "//core:allocator",
-        "//core:logging",
-        ":platform",
-        "@imgui",
-    ],
+    target_compatible_with = ["@@platforms//os:emscripten"],
+    deps = ["@imgui"],
 )
 
 cc_library(
     name = "imgui_impl_webgl",
     srcs = ["imgui_impl_webgl.cc"],
     hdrs = ["imgui_impl_webgl.h"],
-    deps = [
-        "//core:allocator",
-        "//core:darray",
-        "//core:logging",
-        "@imgui",
-    ],
+    deps = ["@imgui"],
 )
 
 cc_library(
@@ -337,12 +506,13 @@ cc_library(
 )
 
 cc_binary(
-    name = "ztracing_wasm_cc",
+    name = "ztracing_wasm_legacy_cc",
     srcs = [
         "ztracing.h",
         "ztracing_wasm.c",
     ],
     tags = ["wasm"],
+    target_compatible_with = ["@@platforms//os:emscripten"],
     additional_linker_inputs = [
         "ztracing.js",
     ],
@@ -379,6 +549,7 @@ wasm_cc_binary(
     name = "ztracing_wasm",
     cc_target = ":ztracing_wasm_cc",
     tags = ["wasm"],
+    threads = "emscripten",
 )
 
 cc_library(
@@ -489,7 +660,7 @@ cc_library(
 )
 
 cc_binary(
-    name = "ztracing",
+    name = "ztracing_cc",
     srcs = [
         "ztracing_cli.c",
     ],
@@ -508,7 +679,7 @@ cc_binary(
 )
 
 cc_library(
-    name = "ztracing_headless",
+    name = "ztracing_headless_cc",
     srcs = [
         "ztracing_headless.c",
     ],
@@ -526,17 +697,27 @@ cc_library(
         "@imgui",
         "//core:counting_allocator",
     ],
+    tags = ["legacy"],
+    target_compatible_with = ["@@platforms//os:linux"] + select({
+        ":headless_build": [],
+        "//conditions:default": ["@@platforms//:incompatible"],
+    }),
 )
 
 cc_test(
-    name = "ztracing_test",
+    name = "ztracing_cc_test",
     srcs = ["ztracing_test.cc"],
     data = glob(["testdata/*.bmp"]),
     deps = [
-        ":ztracing_headless",
+        ":ztracing_headless_cc",
         "@googletest//:gtest_main",
         "@imgui",
     ],
+    tags = ["legacy"],
+    target_compatible_with = ["@@platforms//os:linux"] + select({
+        ":headless_build": [],
+        "//conditions:default": ["@@platforms//:incompatible"],
+    }),
 )
 
 exports_files([
@@ -545,7 +726,7 @@ exports_files([
 ])
 
 cc_test(
-    name = "ztracing_cli_test",
+    name = "ztracing_cli_cc_test",
     srcs = ["ztracing_cli_test.cc"],
     data = [":ztracing"] + glob(["testdata/cli/*"]),
     deps = [
@@ -598,4 +779,3 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
-

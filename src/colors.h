@@ -3,6 +3,8 @@
 
 #include "src/imgui_types.h"
 
+#ifndef ZTRACING_THEME_DEFINED
+#define ZTRACING_THEME_DEFINED
 struct Theme {
   // Main Viewport Backgrounds
   ImU32 viewport_bg;
@@ -69,6 +71,7 @@ struct Theme {
 };
 
 typedef struct Theme theme_t;
+#endif
 
 #ifdef __cplusplus
 extern "C" {

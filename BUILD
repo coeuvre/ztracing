@@ -1,5 +1,9 @@
 package(default_visibility = ["//visibility:public"])
 
+load("@npm//:defs.bzl", "npm_link_all_packages")
+
+npm_link_all_packages(name = "node_modules")
+
 # Bundle all artifacts into bazel-bin/ztracing/
 genrule(
     name = "ztracing",
@@ -23,9 +27,12 @@ genrule(
 
         # Copy artifacts from the wasm_cc_binary target
         for f in $(locations //src:ztracing_wasm); do
-            if [[ $$f == */ztracing_wasm_cc.js ]]; then
-                sed 's/ztracing_wasm_cc\\.wasm/ztracing.wasm/g' $$f > $(location ztracing/ztracing.js)
-            elif [[ $$f == */ztracing_wasm_cc.wasm ]] && [[ $$f != *.debug.wasm ]]; then
+            if [[ $$f == *.js ]]; then
+                sed \
+                    -e 's/ztracing_wasm_cc\\.wasm/ztracing.wasm/g' \
+                    -e 's/ztracing_wasm_entrypoint\\.wasm/ztracing.wasm/g' \
+                    $$f > $(location ztracing/ztracing.js)
+            elif [[ $$f == *.wasm ]] && [[ $$f != *.debug.wasm ]]; then
                 cp -f $$f $(location ztracing/ztracing.wasm)
             fi
         done

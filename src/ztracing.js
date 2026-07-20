@@ -1,82 +1,263 @@
 (function() {
 let currentSessionId = 0;
+let activeReader = null;
+let startPromise = null;
 const MAX_BUFFERED_BYTES = 32 * 1024 * 1024; // 32MB backpressure threshold
 
+function setUiError(sessionId, error) {
+  const message = error instanceof Error ? error.message : String(error);
+  Module.ccall(
+      'ztracing_set_error', null, ['number', 'string'],
+      [sessionId, message]);
+}
 
 function setWasmMemory(ptr, value) {
   const size = value.length;
   ptr = ptr >>> 0;
-  // Use wasmMemory.buffer directly as it's the source of truth.
-  // We create a fresh view to ensure we have the current length.
+  // Use wasmMemory.buffer directly as the source of truth. Memory growth can
+  // replace the previous buffer, so create a fresh view for every copy.
   const buffer = Module.wasmMemory ? Module.wasmMemory.buffer : Module.HEAPU8.buffer;
   const heap = new Uint8Array(buffer);
-
   if (ptr + size > heap.length) {
-    console.error(`ztracing: Memory growth sync issue. ptr=${ptr} size=${size} heap.length=${heap.length} buffer.byteLength=${buffer.byteLength}`);
-    // Fallback: try to refresh Module properties if they exist
-    if (typeof lib_updateGlobalBufferViews !== 'undefined') lib_updateGlobalBufferViews();
+    // Do not continue with a stale or invalid pointer: heap.set() would either
+    // throw less contextually or write to an unintended location.
+    throw new RangeError(
+        `WASM buffer is out of bounds: ptr=${ptr}, size=${size}, memory=${heap.length}`);
   }
-
   heap.set(value, ptr);
 }
 
+function allocateWasmBuffer(value) {
+  const size = value.length;
+  const ptr = Module._ztracing_malloc(size);
+  // A positive-size allocation must never be copied through address zero.
+  if (!ptr && size !== 0) {
+    throw new Error(`failed to allocate ${size} bytes in WASM memory`);
+  }
+  try {
+    setWasmMemory(ptr, value);
+    return ptr;
+  } catch (error) {
+    // Ownership has not crossed into Rust if the JavaScript copy failed.
+    Module._ztracing_free(ptr, size);
+    throw error;
+  }
+}
+
+function handlePaste(text) {
+  let ptr = 0;
+  let size = 0;
+  try {
+    const encoded = new TextEncoder().encode(text);
+    const terminated = new Uint8Array(encoded.length + 1);
+    terminated.set(encoded);
+    size = terminated.length;
+    ptr = allocateWasmBuffer(terminated);
+    Module._imgui_impl_wasm_set_clipboard_text_from_js(ptr);
+    Module._imgui_impl_wasm_trigger_paste_event();
+    return true;
+  } catch (error) {
+    setUiError(0, error);
+    return false;
+  } finally {
+    if (ptr) Module._ztracing_free(ptr, size);
+  }
+}
+
+function asUint8Array(chunk) {
+  if (chunk instanceof Uint8Array) return chunk;
+  if (chunk instanceof ArrayBuffer) return new Uint8Array(chunk);
+  if (ArrayBuffer.isView(chunk)) {
+    return new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  }
+  throw new TypeError('trace streams must produce ArrayBuffer or typed-array chunks');
+}
+
+function beginGzipSniff(stream) {
+  const sourceReader = stream.getReader();
+  const result = (async () => {
+    const leadingChunks = [];
+    const magic = [];
+    let sourceDone = false;
+
+    while (magic.length < 2) {
+      const {done, value} = await sourceReader.read();
+      if (done) {
+        sourceDone = true;
+        break;
+      }
+      const chunk = asUint8Array(value);
+      if (chunk.length === 0) continue;
+      leadingChunks.push(chunk);
+      for (let i = 0; i < chunk.length && magic.length < 2; ++i) {
+        magic.push(chunk[i]);
+      }
+    }
+
+    let leadingIndex = 0;
+    let released = false;
+    function releaseSource() {
+      if (!released) {
+        released = true;
+        sourceReader.releaseLock();
+      }
+    }
+
+    const replayedStream = new ReadableStream({
+      async pull(controller) {
+        if (leadingIndex < leadingChunks.length) {
+          controller.enqueue(leadingChunks[leadingIndex++]);
+          return;
+        }
+        if (sourceDone) {
+          controller.close();
+          releaseSource();
+          return;
+        }
+        try {
+          const {done, value} = await sourceReader.read();
+          if (done) {
+            sourceDone = true;
+            controller.close();
+            releaseSource();
+          } else {
+            controller.enqueue(asUint8Array(value));
+          }
+        } catch (error) {
+          releaseSource();
+          controller.error(error);
+        }
+      },
+      async cancel(reason) {
+        try {
+          await sourceReader.cancel(reason);
+        } finally {
+          releaseSource();
+        }
+      },
+    });
+    return {
+      isGzip: magic.length === 2 && magic[0] === 0x1f && magic[1] === 0x8b,
+      stream: replayedStream,
+    };
+  })();
+  return {reader: sourceReader, result};
+}
+
 function setFontData(buffer) {
+  let ptr = 0;
+  let size = 0;
   try {
     const fontData = new Uint8Array(buffer);
-    const size = fontData.length;
-    const ptr = Module._ztracing_malloc(size);
-    setWasmMemory(ptr, fontData);
+    size = fontData.length;
+    ptr = allocateWasmBuffer(fontData);
     Module.ccall(
         'ztracing_set_font_data', null, ['number', 'number'],
         [ptr, size]);
-    Module._ztracing_free(ptr, size);
   } catch (e) {
-    console.error('Font upload error:', e);
+    setUiError(0, e);
+  } finally {
+    if (ptr) Module._ztracing_free(ptr, size);
   }
 }
 
 async function loadFromStream(stream, name, sizeHint, contentType) {
   const sessionId = ++currentSessionId;
+  if (activeReader) {
+    const previousReader = activeReader;
+    activeReader = null;
+    try {
+      Promise.resolve(previousReader.cancel('session replaced')).catch(() => {});
+    } catch (_) {
+      // The previous stream may already have released its reader.
+    }
+  }
+
   let statusMsg = `loading: ${name}`;
   if (sizeHint) statusMsg += ` (${sizeHint} bytes)`;
-
-  const isGzip = contentType &&
-      (contentType === 'application/gzip' ||
-       contentType === 'application/x-gzip');
 
   console.log(`${statusMsg}, session: ${sessionId}`);
 
   let inputTotalBytes = sizeHint || 0;
-  Module.ccall(
-      'ztracing_begin_session', null, ['number', 'string', 'number'],
+  const accepted = Module.ccall(
+      'ztracing_begin_session', 'number', ['number', 'string', 'number'],
       [sessionId, name, inputTotalBytes]);
-
-  let inputProcessedBytes = 0;
-  const progressTracker = new TransformStream({
-    transform(chunk, controller) {
-      inputProcessedBytes += chunk.length;
-      controller.enqueue(chunk);
-    }
-  });
-
-  stream = stream.pipeThrough(progressTracker);
-
-  if (isGzip) {
-    if (typeof DecompressionStream !== 'undefined') {
-      stream = stream.pipeThrough(new DecompressionStream('gzip'));
-    } else {
-      console.warn(
-          'ztracing: DecompressionStream not supported in this browser, skipping decompression.');
-    }
+  if (!accepted) {
+    return;
   }
 
-  const reader = stream.getReader();
+  let inputProcessedBytes = 0;
+  let reader = null;
+  let sniff;
+  try {
+    const progressTracker = new TransformStream({
+      transform(chunk, controller) {
+        const bytes = asUint8Array(chunk);
+        inputProcessedBytes += bytes.length;
+        controller.enqueue(bytes);
+      }
+    });
+    stream = stream.pipeThrough(progressTracker);
+    sniff = beginGzipSniff(stream);
+  } catch (error) {
+    setUiError(sessionId, error);
+    return;
+  }
+  activeReader = sniff.reader;
+
+  let sniffed;
+  try {
+    sniffed = await sniff.result;
+  } catch (error) {
+    if (activeReader === sniff.reader) activeReader = null;
+    try {
+      await sniff.reader.cancel(error);
+    } catch (_) {
+      // The source stream may already be errored or cancelled.
+    }
+    sniff.reader.releaseLock();
+    if (sessionId === currentSessionId) {
+      setUiError(sessionId, error);
+      return;
+    }
+    return;
+  }
+  if (sessionId !== currentSessionId) {
+    await sniffed.stream.cancel('session replaced');
+    return;
+  }
+
+  stream = sniffed.stream;
+  const isGzip = sniffed.isGzip;
+  try {
+    if (isGzip) {
+      if (typeof DecompressionStream === 'undefined') {
+        throw new Error('this browser does not support gzip decompression');
+      }
+      stream = stream.pipeThrough(new DecompressionStream('gzip'));
+    }
+    reader = stream.getReader();
+  } catch (error) {
+    if (activeReader === sniff.reader) activeReader = null;
+    if (sessionId === currentSessionId) {
+      setUiError(sessionId, error);
+    }
+    try {
+      await stream.cancel(error);
+    } catch (_) {
+      // Stream setup can fail after the source has already errored.
+    }
+    return;
+  }
+
+  activeReader = reader;
 
   let lastYieldTime = performance.now();
   try {
     while (true) {
       if (sessionId !== currentSessionId) {
         console.log(`session ${sessionId} aborted`);
+        await reader.cancel('session replaced');
         break;
       }
 
@@ -84,16 +265,23 @@ async function loadFromStream(stream, name, sizeHint, contentType) {
       if (done) break;
 
       const size = value.length;
-      const ptr = Module._ztracing_malloc(size);
-      setWasmMemory(ptr, value);
-
-      const bufferedBytes = Module._ztracing_handle_file_chunk(
-          sessionId, ptr, size, inputProcessedBytes, false);
+      if (size === 0) continue;
+      let ptr = allocateWasmBuffer(value);
+      let bufferedBytes;
+      try {
+        bufferedBytes = Module._ztracing_handle_file_chunk(
+            sessionId, ptr, size, inputProcessedBytes, false);
+        ptr = 0;  // Rust took ownership.
+      } finally {
+        // Reclaim the buffer if the ownership-transferring call did not return.
+        if (ptr) Module._ztracing_free(ptr, size);
+      }
 
       // Apply backpressure if the queue exceeds 32MB
       if (bufferedBytes > MAX_BUFFERED_BYTES) {
         let currentBuffered = bufferedBytes;
-        while (currentBuffered > MAX_BUFFERED_BYTES) {
+        while (sessionId === currentSessionId &&
+               currentBuffered > MAX_BUFFERED_BYTES) {
           await new Promise(resolve => setTimeout(resolve, 10));
           currentBuffered = Module._ztracing_get_buffered_bytes();
         }
@@ -115,11 +303,37 @@ async function loadFromStream(stream, name, sizeHint, contentType) {
       Module._ztracing_handle_file_chunk(sessionId, 0, 0, inputProcessedBytes, true);
     }
   } catch (err) {
-    console.error(`error reading: ${err}`);
+    if (sessionId === currentSessionId) {
+      setUiError(sessionId, err);
+    } else {
+      return;
+    }
+    try {
+      await reader.cancel(err);
+    } catch (_) {
+      // The stream may already be errored or closed.
+    }
+    return;
+  } finally {
+    if (activeReader === reader) activeReader = null;
+    reader.releaseLock();
   }
 }
 
 Module['ztracing_load_from_stream'] = loadFromStream;
+Module['ztracing_handle_paste'] = handlePaste;
+
+// Tests opt in to these internal hooks before loading this pre-JS file. They
+// are absent from the production Module surface.
+if (Module['ztracing_test_hooks_enabled']) {
+  Module['ztracing_test_hooks'] = {
+    allocateWasmBuffer,
+    beginGzipSniff,
+    handlePaste,
+    loadFromStream,
+    setWasmMemory,
+  };
+}
 
 function setupDragDrop(canvasSelector) {
   const canvas = document.querySelector(canvasSelector);
@@ -141,18 +355,16 @@ function setupDragDrop(canvasSelector) {
   }, false);
 }
 
-/**
- * Starts the ztracing application.
- *
- * @param {Object} options - Configuration options.
- * @param {string} options.canvasSelector - CSS selector for the target canvas.
- * @param {Function} [options.getFont] - Async function returning an ArrayBuffer with font data.
- * @param {Function} [options.getTrace] - Async function returning a trace object (stream, name, size, contentType).
- * @param {Function} [options.onError] - Callback for handling initialization or loading errors.
- */
-Module['ztracing_start'] = async function(options) {
+async function startApplication(options) {
   const {canvasSelector, getFont, getTrace, onError} = options;
-  const result = Module.ccall('ztracing_init', 'number', ['string'], [canvasSelector]);
+  let result;
+  try {
+    result = Module.ccall(
+        'ztracing_init', 'number', ['string'], [canvasSelector]);
+  } catch (error) {
+    if (typeof onError === 'function') onError(-1, error.message);
+    return;
+  }
   if (result !== 0) {
     if (typeof onError === 'function') {
       let message = 'Unknown initialization error';
@@ -170,23 +382,22 @@ Module['ztracing_start'] = async function(options) {
   const fontPromise = typeof getFont === 'function' ? getFont() : Promise.resolve(null);
   
   (async () => {
+    if (typeof getTrace !== 'function') {
+      setupDragDrop(canvasSelector);
+      return;
+    }
+    let trace;
     try {
-      if (typeof getTrace === 'function') {
-        const trace = await getTrace();
-        if (trace) {
-          await loadFromStream(trace.stream, trace.name, trace.size, trace.contentType);
-        } else {
-          setupDragDrop(canvasSelector);
-        }
-      } else {
-        setupDragDrop(canvasSelector);
-      }
-    } catch (e) {
-      if (typeof onError === 'function') {
-        onError(0, e.message);
-      } else {
-        console.error('Trace loading error:', e);
-      }
+      trace = await getTrace();
+    } catch (error) {
+      setUiError(0, error);
+      return;
+    }
+    if (trace) {
+      await loadFromStream(
+          trace.stream, trace.name, trace.size, trace.contentType);
+    } else {
+      setupDragDrop(canvasSelector);
     }
   })();
 
@@ -197,7 +408,7 @@ Module['ztracing_start'] = async function(options) {
       setFontData(fontBuffer);
     }
   } catch (e) {
-    console.error('Font loading error:', e);
+    setUiError(0, e);
   }
 
   if (window.matchMedia) {
@@ -209,5 +420,22 @@ Module['ztracing_start'] = async function(options) {
 
   // 3. Enter main loop
   Module.ccall('ztracing_start', null, [], []);
-};
+}
+
+/**
+ * Starts the ztracing application.
+ *
+ * @param {Object} options - Configuration options.
+ * @param {string} options.canvasSelector - CSS selector for the target canvas.
+ * @param {Function} [options.getFont] - Async function returning an ArrayBuffer with font data.
+ * @param {Function} [options.getTrace] - Async function returning a trace object (stream, name, size, contentType).
+ * @param {Function} [options.onError] - Called only when the Rust UI cannot be
+ *     initialized. Once initialized, errors are rendered by the Rust UI so
+ *     users can dismiss them and continue using the application.
+ */
+Module['ztracing_start'] = function(options) {
+  if (!startPromise) startPromise = startApplication(options);
+  return startPromise;
+}
+
 })();

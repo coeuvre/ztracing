@@ -1,6 +1,10 @@
 #ifndef SRC_ZTRACING_H
 #define SRC_ZTRACING_H
 
+// Legacy C/C++ comparison ABI. The Rust production entrypoint does not consume
+// this header; keep it while the retained legacy implementation and tests
+// remain in the tree.
+
 #include <stddef.h>
 
 #ifdef __EMSCRIPTEN__

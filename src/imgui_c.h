@@ -21,6 +21,76 @@ typedef struct ig_viewport ig_viewport_t;
 typedef struct ig_dock_node ig_dock_node_t;
 typedef struct ig_draw_data ig_draw_data_t;
 
+#ifndef ZTRACING_THEME_DEFINED
+#define ZTRACING_THEME_DEFINED
+struct Theme {
+  // Main Viewport Backgrounds
+  ImU32 viewport_bg;
+  ImU32 track_bg;
+
+  // Time Ruler
+  ImU32 ruler_bg;
+  ImU32 ruler_border;
+  ImU32 ruler_tick;
+  ImU32 ruler_text;
+
+  // Events
+  ImU32 event_border;
+  ImU32 event_border_selected;
+  ImU32 event_border_focused;
+  ImU32 event_focused_bg;
+
+  // Tracks
+  ImU32 track_text;
+  ImU32 track_header_bg;
+  ImU32 track_separator;
+
+  // Timeline Selection
+  ImU32 timeline_selection_bg;
+  ImU32 timeline_selection_line;
+  ImU32 timeline_selection_text;
+  ImU32 timeline_selection_text_bg;
+
+  // Box Selection
+  ImU32 box_selection_bg;
+  ImU32 box_selection_border;
+
+  // Status
+  ig_vec4_t status_loading;
+
+  // Search Histogram
+  ImU32 search_histogram_bg;
+  ImU32 search_histogram_bar;
+  ImU32 search_histogram_bar_hovered;
+  ImU32 search_histogram_bar_selected;
+
+  // Vertical Minimap
+  ImU32 vertical_minimap_bg;
+  ImU32 vertical_minimap_slider_bg;
+  ImU32 vertical_minimap_slider_bg_hovered;
+  ImU32 vertical_minimap_slider_bg_active;
+
+  // UI Colors (mapped to ImGui)
+  ImU32 ui_bg;
+  ImU32 ui_fg;
+  ImU32 ui_border;
+  ImU32 ui_input_bg;
+  ImU32 ui_button_bg;
+  ImU32 ui_button_hovered;
+  ImU32 ui_button_active;
+  ImU32 ui_button_fg;
+  ImU32 ui_header_hovered;
+  ImU32 ui_header_active;
+  ImU32 ui_selection_bg;
+  ImU32 ui_text_disabled;
+
+  // Event Palette
+  uint32_t event_palette[8];
+};
+
+typedef struct Theme theme_t;
+#endif
+
 // Flags & Enums (exposing them as typedef int for version safety, initialized
 // in .cc)
 typedef int ig_window_flags_t;
@@ -74,6 +144,7 @@ constexpr ig_mouse_cursor_t IG_MOUSE_CURSOR_RESIZE_EW = 4;
 
 constexpr ig_sort_direction_t IG_SORT_DIRECTION_NONE = 0;
 constexpr ig_sort_direction_t IG_SORT_DIRECTION_ASCENDING = 1;
+constexpr ig_sort_direction_t IG_SORT_DIRECTION_DESCENDING = 2;
 
 constexpr ig_draw_list_flags_t IG_DRAW_LIST_FLAGS_ANTI_ALIASED_LINES = 1;
 
@@ -112,7 +183,7 @@ constexpr ig_config_flags_t IG_CONFIG_FLAGS_NAV_ENABLE_KEYBOARD = 1 << 0;
 constexpr ig_config_flags_t IG_CONFIG_FLAGS_DOCKING_ENABLE = 128;
 
 // Context, IO, Style & Fonts
-void ig_create_context(void);
+bool ig_create_context(void);
 void ig_destroy_context(void);
 void ig_io_set_display_size(ig_vec2_t size);
 void ig_io_set_delta_time(float dt);
@@ -120,6 +191,11 @@ void ig_set_allocator_functions(void* (*alloc_func)(size_t sz, void* user_data),
                                 void (*free_func)(void* ptr, void* user_data),
                                 void* user_data);
 void ig_io_add_config_flags(int flags);
+void ig_io_add_mouse_pos_event(float x, float y);
+void ig_io_add_mouse_button_event(int button, bool down);
+void ig_io_add_mouse_wheel_event(float horizontal, float vertical);
+void ig_io_add_key_event(ig_key_t key, bool down);
+void ig_io_add_input_characters_utf8(const char* text);
 ig_vec2_t ig_get_io_display_size(void);
 ig_vec2_t ig_get_io_display_framebuffer_scale(void);
 void ig_set_font_data(const void* font_data, int font_size, float dpi_scale);
@@ -128,6 +204,7 @@ void ig_render(void);
 ig_draw_data_t* ig_get_draw_data(void);
 
 ig_draw_list_t* ig_get_window_draw_list(void);
+ig_draw_list_t* ig_get_foreground_draw_list(void);
 ig_vec2_t ig_get_cursor_screen_pos(void);
 ig_vec2_t ig_get_content_region_avail(void);
 void ig_set_cursor_screen_pos(ig_vec2_t pos);
@@ -218,6 +295,7 @@ void ig_end_group(void);
 
 // Style push/pop
 void ig_push_style_color(ig_col_t idx, ig_vec4_t col);
+void ig_push_style_color_u32(ig_col_t idx, uint32_t col);
 void ig_pop_style_color(int count);
 void ig_push_style_var(ig_style_var_t idx, ig_vec2_t val);
 void ig_push_style_var_float(ig_style_var_t idx, float val);
@@ -345,6 +423,7 @@ void ig_draw_list_set_flags(ig_draw_list_t* draw_list,
 
 // Standard Text
 ig_vec2_t ig_calc_text_size(const char* text);
+ig_vec2_t ig_calc_text_size_range(const char* text, size_t text_len);
 void ig_text(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void ig_text_colored(ig_vec4_t col, const char* fmt, ...)
     __attribute__((format(printf, 2, 3)));
@@ -353,6 +432,10 @@ void ig_text_disabled(const char* fmt, ...)
 void ig_text_unformatted(const char* text, const char* text_end);
 void ig_text_wrapped(const char* fmt, ...)
     __attribute__((format(printf, 1, 2)));
+void ig_text_unformatted_range(const char* text, size_t text_len);
+void ig_text_wrapped_range(const char* text, size_t text_len);
+void ig_text_colored_range(ig_vec4_t col, const char* text, size_t text_len);
+void ig_text_disabled_range(const char* text, size_t text_len);
 
 // Color helpers
 uint32_t ig_color_convert_float4_to_u32(ig_vec4_t in);

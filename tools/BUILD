@@ -1,33 +1,45 @@
-load("//src:defs.bzl", "cc_binary")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
-cc_binary(
+rust_binary(
     name = "trace_benchmark",
-    srcs = ["trace_benchmark.cc"],
+    srcs = ["trace_benchmark.rs"],
+    crate_name = "trace_benchmark",
+    crate_root = "trace_benchmark.rs",
+    edition = "2024",
     deps = [
-        "//core:allocator",
-        "//core:counting_allocator",
-        "//src:trace_loader",
-        "//src:trace_data",
-        "//src:track",
-        "//src:colors",
+        "//base:base",
+        "//src:ztracing_lib",
     ],
 )
 
-
-
-cc_binary(
-    name = "trace_renderer_benchmark",
-    srcs = ["trace_renderer_benchmark.cc"],
+rust_test(
+    name = "trace_benchmark_test",
+    srcs = ["trace_benchmark.rs"],
+    crate_name = "trace_benchmark_test",
+    crate_root = "trace_benchmark.rs",
+    edition = "2024",
     deps = [
-        "//core:allocator",
-        "//core:counting_allocator",
-        "//src:trace_parser",
-        "//src:trace_data",
-        "//src:track",
-        "//src:colors",
-        "//src:track_renderer",
-        "//core:arena",
+        "//base:base",
+        "//src:ztracing_lib",
     ],
+)
+
+rust_binary(
+    name = "trace_renderer_benchmark",
+    srcs = ["trace_renderer_benchmark.rs"],
+    crate_name = "trace_renderer_benchmark",
+    crate_root = "trace_renderer_benchmark.rs",
+    edition = "2024",
+    deps = ["//src:ztracing_lib"],
+)
+
+rust_test(
+    name = "trace_renderer_benchmark_test",
+    srcs = ["trace_renderer_benchmark.rs"],
+    crate_name = "trace_renderer_benchmark_test",
+    crate_root = "trace_renderer_benchmark.rs",
+    edition = "2024",
+    deps = ["//src:ztracing_lib"],
 )

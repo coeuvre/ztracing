@@ -46,7 +46,7 @@
     - **ZII Support**: Fully ZII compatible via `{}`. Internal functors are lazily linked to the current instance address during the first string push to avoid dangling pointers during moves/copies.
     - **String Table**: Uses a de-duplicated String Table with global hashing to minimize memory usage for repetitive trace data (e.g., event names, categories).
     - **Hash Caching**: Each `StringEntry` stores a persistent hash, computed once during insertion. This makes subsequent lookups for the same string (which occur frequently during trace ingestion) extremely efficient.
-    - **StringRef**: Events and arguments store `StringRef` (indices) into the table rather than raw offsets, providing $O(1)$ access to both string data and length without `strlen` overhead.
+    - **StringId**: Events and arguments store `StringId` values (indices) into the table rather than raw offsets, providing $O(1)$ access to both string data and length without `strlen` overhead.
     - **Pre-parsed Numbers**: Numeric arguments are pre-parsed into `double` values during ingestion to eliminate conversion overhead during rendering.
     - **Begin/End Event Ingestion**: Matches Begin (`B`/`b`) and End (`E`/`e`) duration events on the fly during ingestion using a thread-stack based `TraceEventMatcher`. The matcher updates the matching `B` event's duration in-place, merges arguments (with `E` values taking precedence), and discards the `E` event, resulting in zero permanent memory overhead for end events.
 - `src/imgui_impl_webgl`: Handles WebGL 2.0 (GLES 3.0) rendering logic.

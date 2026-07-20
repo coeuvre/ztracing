@@ -1,26 +1,33 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-# Get the directory of this script
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 cd "$DIR"
 
-# Get changed files using jj diff git headers
-# This correctly captures modified, added, and renamed files by looking
-# at the destination paths (+++ b/ lines).
-files=$(jj diff --git | grep -E '^\+\+\+ ' | awk '{print $2}' | cut -c 3- | grep -E '\.(c|cc|cpp|h|hh|hpp)$' || true)
+mapfile -t changed_files < <(jj diff --name-only)
 
-if [ -z "$files" ]; then
-  echo "No changed C/C++ files to format."
-  exit 0
-fi
-
-echo "Formatting changed C/C++ files..."
-for file in $files; do
-  if [ -f "$file" ]; then
-    echo "  Formatting $file..."
-    clang-format -i "$file"
+rust_files=()
+cpp_files=()
+for file in "${changed_files[@]}"; do
+  # Deleted files are reported by jj but cannot be formatted.
+  if [ ! -f "$file" ]; then
+    continue
+  fi
+  if [[ "$file" == *.rs ]]; then
+    rust_files+=("$file")
+  elif [[ "$file" == *.c || "$file" == *.cc || "$file" == *.h ]]; then
+    cpp_files+=("$file")
   fi
 done
+
+if [ "${#rust_files[@]}" -gt 0 ]; then
+  echo "Formatting changed Rust files..."
+  rustfmt --edition 2024 "${rust_files[@]}"
+fi
+
+if [ "${#cpp_files[@]}" -gt 0 ]; then
+  echo "Formatting changed C++ files..."
+  clang-format -i "${cpp_files[@]}"
+fi
 
 echo "Done!"

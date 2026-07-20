@@ -5,11 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <cstdio>
 #include <string>
 
-#include "core/allocator.h"
-#include "core/logging.h"
-#include "src/platform.h"
 #include "third_party/imgui/imgui.h"
 
 // clang-format off
@@ -28,8 +26,13 @@ EM_JS(bool, js_is_software_renderer, (), {
 });
 // clang-format on
 
+// clang-format off
+EM_JS(bool, js_is_mac, (), {
+  return /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent || navigator.platform || "");
+});
+// clang-format on
+
 struct BackendData {
-  allocator_t* allocator;
   char* canvas_selector;
   double last_time;
   int frames_to_render;
@@ -50,17 +53,23 @@ EM_JS(void, js_set_cursor, (const char* selector, const char* cursor), {
 
 // clang-format off
 EM_JS(void, js_setup_paste_listener, (), {
-  window.addEventListener("paste", function(e) {
+  if (Module["ztracing_paste_listener"]) return;
+  Module["ztracing_paste_listener"] = function(e) {
     var text = e.clipboardData ? e.clipboardData.getData("text") : "";
-    if (text) {
-      var textBytes = lengthBytesUTF8(text) + 1;
-      var stream = _ztracing_malloc(textBytes);
-      stringToUTF8(text, stream, textBytes);
-      _imgui_impl_wasm_set_clipboard_text_from_js(stream);
-      _ztracing_free(stream, textBytes);
-      _imgui_impl_wasm_trigger_paste_event();
+    if (text && Module["ztracing_handle_paste"]) {
+      Module["ztracing_handle_paste"](text);
     }
-  });
+  };
+  window.addEventListener("paste", Module["ztracing_paste_listener"]);
+});
+// clang-format on
+
+// clang-format off
+EM_JS(void, js_remove_paste_listener, (), {
+  var listener = Module["ztracing_paste_listener"];
+  if (!listener) return;
+  window.removeEventListener("paste", listener);
+  delete Module["ztracing_paste_listener"];
 });
 // clang-format on
 
@@ -218,11 +227,11 @@ static void update_canvas_size(BackendData* bd) {
       bd->canvas_selector, (int)(width * dpi_scale), (int)(height * dpi_scale));
 }
 
-bool imgui_impl_wasm_need_update() {
+int imgui_impl_wasm_need_update() {
   if (BackendData* bd = get_backend_data()) {
-    return bd->frames_to_render > 0;
+    return bd->frames_to_render > 0 ? 1 : 0;
   }
-  return true;
+  return 1;
 }
 
 static EM_BOOL on_mouse_move(int event_type,
@@ -341,7 +350,7 @@ static bool is_browser_control_shortcut(
   }
 
   bool has_shortcut_modifier =
-      platform_is_mac() ? key_event->metaKey : key_event->ctrlKey;
+      js_is_mac() ? key_event->metaKey : key_event->ctrlKey;
 
   if (has_shortcut_modifier) {
     // Exclude standard browser shortcuts
@@ -505,14 +514,13 @@ static EM_BOOL on_resize(int event_type, const EmscriptenUiEvent* ui_event,
   return EM_TRUE;
 }
 
-bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t* allocator) {
+int imgui_impl_wasm_init(const char* canvas_selector) {
+  if (!canvas_selector) return 0;
   ImGuiIO& io = ImGui::GetIO();
+  if (io.BackendPlatformUserData != nullptr) return 0;
 
-  BackendData* bd =
-      (BackendData*)allocator_alloc(allocator, sizeof(BackendData));
-  bd->allocator = allocator;
-  bd->canvas_selector =
-      (char*)allocator_alloc(bd->allocator, strlen(canvas_selector) + 1);
+  BackendData* bd = new BackendData{};
+  bd->canvas_selector = new char[strlen(canvas_selector) + 1];
   strcpy(bd->canvas_selector, canvas_selector);
   bd->last_time = 0.0;
   bd->frames_to_render = 20;
@@ -520,7 +528,7 @@ bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t* allocator) {
   bd->last_cursor = ImGuiMouseCursor_COUNT;  // Force update
 
   if (bd->software_renderer) {
-    LOG_INFO("software renderer detected, disabling hidpi");
+    fprintf(stderr, "software renderer detected, disabling hidpi\n");
   }
 
   io.BackendPlatformUserData = (void*)bd;
@@ -546,7 +554,7 @@ bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t* allocator) {
   emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, (void*)bd,
                                  EM_FALSE, on_resize);
 
-  if (platform_is_mac()) {
+  if (js_is_mac()) {
     io.ConfigMacOSXBehaviors = true;
   }
 
@@ -557,16 +565,39 @@ bool imgui_impl_wasm_init(const char* canvas_selector, allocator_t* allocator) {
 
   js_setup_paste_listener();
 
-  return true;
+  return 1;
 }
 
 void imgui_impl_wasm_shutdown() {
+  if (!ImGui::GetCurrentContext()) return;
   BackendData* bd = get_backend_data();
-  allocator_t* allocator = bd->allocator;
-  allocator_free(allocator, bd->canvas_selector,
-                 strlen(bd->canvas_selector) + 1);
-  allocator_free(allocator, bd, sizeof(BackendData));
-  ImGui::GetIO().BackendPlatformUserData = nullptr;
+  if (!bd) return;
+  emscripten_set_mousemove_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+                                    EM_FALSE, nullptr);
+  emscripten_set_mousedown_callback(bd->canvas_selector, nullptr, EM_FALSE,
+                                    nullptr);
+  emscripten_set_mouseup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+                                  EM_FALSE, nullptr);
+  emscripten_set_wheel_callback(bd->canvas_selector, nullptr, EM_FALSE,
+                                nullptr);
+  emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+                                  EM_FALSE, nullptr);
+  emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+                                EM_FALSE, nullptr);
+  emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+                               EM_FALSE, nullptr);
+  emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+                                 EM_FALSE, nullptr);
+  js_remove_paste_listener();
+
+  ImGuiIO& io = ImGui::GetIO();
+  io.BackendPlatformUserData = nullptr;
+  io.BackendPlatformName = nullptr;
+  io.BackendFlags &= ~ImGuiBackendFlags_HasMouseCursors;
+  io.SetClipboardTextFn = nullptr;
+  io.GetClipboardTextFn = nullptr;
+  delete[] bd->canvas_selector;
+  delete bd;
 }
 
 void imgui_impl_wasm_new_frame() {
