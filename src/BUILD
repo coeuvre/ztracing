@@ -15,6 +15,8 @@ rust_library(
         ":wasm_build": [
             "-C", "panic=abort",
             "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals",
+            "-C", "debuginfo=2",
+            "-C", "symbol-mangling-version=v0",
         ],
         "//conditions:default": [],
     }),
@@ -128,6 +130,8 @@ cc_library(
     linkopts = [
         "--js-library", "$(location ztracing_bridge.js)",
         "--pre-js", "$(location ztracing.js)",
+        "--profiling",
+        "-g2",
         "-sUSE_WEBGL2=1",
         "-sFULL_ES3=1",
         "-sUSE_PTHREADS=1",
@@ -158,6 +162,8 @@ rust_binary(
     rustc_flags = [
         "-C", "panic=abort",
         "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals",
+        "-C", "debuginfo=2",
+        "-C", "symbol-mangling-version=v0",
     ],
     target_compatible_with = ["@@platforms//os:emscripten"],
     deps = [

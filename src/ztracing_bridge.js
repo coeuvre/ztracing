@@ -17,6 +17,29 @@ mergeInto(LibraryManager.library, {
   ztracing_platform_is_mac: function() {
     return /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent || navigator.platform || '') ? 1 : 0;
   },
+  ztracing_platform_is_software_renderer: function() {
+    try {
+      const gl = (typeof GL !== 'undefined' && GL.currentContext && GL.currentContext.GLctx)
+          ? GL.currentContext.GLctx
+          : null;
+      const targetGl = gl || (() => {
+        const canvas = document.querySelector('#canvas') || document.createElement('canvas');
+        return canvas.getContext('webgl2') || canvas.getContext('webgl');
+      })();
+      if (!targetGl) return 0;
+      const ext = targetGl.getExtension('WEBGL_debug_renderer_info');
+      const renderer = ext ? (targetGl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '') : '';
+      const vendor = ext ? (targetGl.getParameter(ext.UNMASKED_VENDOR_WEBGL) || '') : '';
+      const stdRenderer = targetGl.getParameter(targetGl.RENDERER) || '';
+      const combined = (renderer + ' ' + vendor + ' ' + stdRenderer);
+      return /software|swiftshader|llvmpipe|softpipe|swrast|warp|subzero/i.test(combined) ? 1 : 0;
+    } catch (e) {
+      return 0;
+    }
+  },
+  ztracing_platform_get_device_pixel_ratio: function() {
+    return window.devicePixelRatio || 1.0;
+  },
   ztracing_platform_set_setting: function(key, value) {
     localStorage.setItem(
         'ztracing_' + UTF8ToString(key), UTF8ToString(value));
@@ -44,16 +67,6 @@ mergeInto(LibraryManager.library, {
       }
     };
     input.click();
-  },
-  ztracing_create_webgl_context: function(selector) {
-    const canvas = document.querySelector(UTF8ToString(selector));
-    if (!canvas) return 0;
-    const context = GL.createContext(canvas, { majorVersion: 2, minorVersion: 0, alpha: false, antialias: false, premultipliedAlpha: false, depth: false, stencil: false, powerPreference: 'high-performance' });
-    if (!context) return 0;
-    GL.makeContextCurrent(context); return context;
-  },
-  ztracing_destroy_webgl_context: function(context) {
-    GL.deleteContext(context);
   },
   ztracing_start_animation_loop: function() {
     function frame() { Module._ztracing_update(); requestAnimationFrame(frame); }

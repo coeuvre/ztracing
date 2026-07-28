@@ -339,9 +339,15 @@ impl Viewer {
                 });
                 child_frame.set_cursor_position(crate::imgui::Vec2::default());
                 let list = child_frame.draw_list();
+                let scroll_y = child_frame.scroll_y();
+                let visible_min_y = tracks_position.y + scroll_y - 100.0;
+                let visible_max_y = tracks_position.y + scroll_y + available.y + 100.0;
                 for (index, track) in self.tracks.iter().enumerate() {
                     let info = &self.track_info[index];
                     if !info.visible {
+                        continue;
+                    }
+                    if info.y + info.height < visible_min_y || info.y > visible_max_y {
                         continue;
                     }
                     let top = crate::imgui::Vec2 {
@@ -1102,6 +1108,10 @@ impl Viewer {
 
     pub fn filtered_events(&self) -> &[i64] {
         &self.filtered_events
+    }
+
+    pub fn tracks(&self) -> &[Track] {
+        &self.tracks
     }
 
     pub fn histogram(&self) -> &Histogram {
@@ -1880,22 +1890,28 @@ impl Viewer {
                 origin_x + ((high - self.viewport.start) / duration) as f32 * width;
             self.selection_layout.duration_label = format::duration(high - low, high - low)
         }
-        self.ruler_ticks.clear();
         let interval = format::tick_interval(duration, width as f64, 100.0);
         let display_start = self.viewport.start - self.viewport.minimum as f64;
         let display_end = self.viewport.end - self.viewport.minimum as f64;
         let mut relative = (display_start / interval).ceil() * interval;
+        let mut tick_idx = 0;
         while relative <= display_end {
             let timestamp = relative + self.viewport.minimum as f64;
             let x = origin_x + ((timestamp - self.viewport.start) / duration) as f32 * width;
             if x >= origin_x && x <= origin_x + width {
-                self.ruler_ticks.push(RulerTick {
-                    x,
-                    label: format::duration(relative, interval),
-                })
+                if tick_idx < self.ruler_ticks.len() {
+                    self.ruler_ticks[tick_idx].x = x;
+                    format::duration_into(&mut self.ruler_ticks[tick_idx].label, relative, interval);
+                } else {
+                    let mut label = String::with_capacity(16);
+                    format::duration_into(&mut label, relative, interval);
+                    self.ruler_ticks.push(RulerTick { x, label });
+                }
+                tick_idx += 1;
             }
             relative += interval
         }
+        self.ruler_ticks.truncate(tick_idx);
         self.update_minimap(input);
     }
 }

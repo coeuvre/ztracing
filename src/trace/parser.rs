@@ -1,24 +1,26 @@
 use base::json::{Error as JsonError, Number, Reader, Token};
 
+/// Borrowed key-value argument of a parsed trace event.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct TraceArg {
-    pub key: Vec<u8>,
-    pub value: Vec<u8>,
+pub struct TraceArg<'a> {
+    pub key: &'a [u8],
+    pub value: &'a [u8],
     pub number: f64,
 }
 
+/// Borrowed Chrome Trace Format event emitted by `TraceParser::next_event`.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct TraceEvent {
-    pub name: Vec<u8>,
-    pub category: Vec<u8>,
-    pub phase: Vec<u8>,
-    pub color_name: Vec<u8>,
-    pub id: Vec<u8>,
+pub struct TraceEvent<'a> {
+    pub name: &'a [u8],
+    pub category: &'a [u8],
+    pub phase: &'a [u8],
+    pub color_name: &'a [u8],
+    pub id: &'a [u8],
     pub timestamp: i64,
     pub duration: i64,
     pub process_id: i32,
     pub thread_id: i32,
-    pub args: Vec<TraceArg>,
+    pub args: Vec<TraceArg<'a>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -31,6 +33,7 @@ enum State {
     Invalid,
 }
 
+/// Streaming parser for Chrome Trace Format (JSON array or root object containing `traceEvents`).
 #[derive(Default)]
 pub struct TraceParser {
     buffer: Vec<u8>,
@@ -41,13 +44,16 @@ pub struct TraceParser {
 }
 
 impl TraceParser {
+    /// Creates a new `TraceParser` instance.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Feeds raw input chunk bytes into the parser buffer.
+    /// Returns the number of discarded bytes shifted out of the internal buffer.
     pub fn feed(&mut self, bytes: &[u8], eof: bool) -> usize {
         let mut discarded = 0;
-        if self.position > 0 && self.position > self.buffer.len() / 2 {
+        if self.position > 128 * 1024 && self.position > self.buffer.len() * 3 / 4 {
             discarded = self.position;
             self.buffer.drain(..self.position);
             self.position = 0;
@@ -57,15 +63,18 @@ impl TraceParser {
         discarded
     }
 
+    /// Returns `true` if parsing completed successfully.
     pub fn is_complete(&self) -> bool {
         self.state == State::Complete
     }
 
+    /// Returns `true` if the parser encountered invalid JSON syntax.
     pub fn is_invalid(&self) -> bool {
         self.state == State::Invalid
     }
 
-    pub fn next_event(&mut self) -> Option<TraceEvent> {
+    /// Parses and returns the next trace event, or `None` if more bytes are needed or parsing is finished.
+    pub fn next_event(&mut self) -> Option<TraceEvent<'_>> {
         loop {
             let mut reader = Reader::new(&self.buffer, self.position, self.eof);
             let result = match self.state {
@@ -109,10 +118,10 @@ impl TraceParser {
         }
     }
 
-    fn find_trace_events(
+    fn find_trace_events<'a>(
         state: &mut State,
-        reader: &mut Reader<'_>,
-    ) -> Result<Option<TraceEvent>, JsonError> {
+        reader: &mut Reader<'a>,
+    ) -> Result<Option<TraceEvent<'a>>, JsonError> {
         match reader.next()? {
             Token::ObjectEnd => {
                 *state = State::Complete;
@@ -138,11 +147,11 @@ impl TraceParser {
         }
     }
 
-    fn read_array_event(
+    fn read_array_event<'a>(
         state: &mut State,
         root_is_array: bool,
-        reader: &mut Reader<'_>,
-    ) -> Result<Option<TraceEvent>, JsonError> {
+        reader: &mut Reader<'a>,
+    ) -> Result<Option<TraceEvent<'a>>, JsonError> {
         let checkpoint = reader.position();
         let mut token = reader.next()?;
         if token == Token::ArrayEnd {
@@ -188,73 +197,103 @@ fn number_i32(number: Number) -> i32 {
     number_i64(number).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
-fn parse_event(reader: &mut Reader<'_>) -> Result<TraceEvent, JsonError> {
+fn parse_event<'a>(reader: &mut Reader<'a>) -> Result<TraceEvent<'a>, JsonError> {
     let mut event = TraceEvent::default();
     loop {
-        let token = reader.next()?;
-        if token == Token::ObjectEnd {
-            return Ok(event);
-        }
-        let Token::String(key) = token else {
-            return Err(JsonError::Invalid);
+        let key = match reader.read_string() {
+            Ok(k) => k,
+            Err(JsonError::Invalid) => {
+                if reader.expect_comma_or_object_end()? {
+                    return Ok(event);
+                }
+                return Err(JsonError::Invalid);
+            }
+            Err(err) => return Err(err),
         };
-        if reader.next()? != Token::Colon {
-            return Err(JsonError::Invalid);
-        }
-        let value = reader.next()?;
-        match key {
-            b"name" => event.name = expect_string(value)?.to_vec(),
-            b"cat" => event.category = expect_string(value)?.to_vec(),
-            b"ph" => event.phase = expect_string(value)?.to_vec(),
-            b"cname" => event.color_name = expect_string(value)?.to_vec(),
-            b"ts" => event.timestamp = expect_number(value).map(number_i64)?,
-            b"dur" => event.duration = expect_number(value).map(number_i64)?,
-            b"pid" => event.process_id = expect_number(value).map(number_i32)?,
-            b"tid" => event.thread_id = expect_number(value).map(number_i32)?,
-            b"id" => {
-                event.id = match value {
-                    Token::String(value) => value.to_vec(),
-                    Token::Number { source, .. } => source.to_vec(),
-                    _ => return Err(JsonError::Invalid),
+        reader.expect_colon()?;
+        // Length-based key dispatch and direct typed value reading (e.g. read_number/read_string)
+        // bypass general Token enum allocations for known event attributes (ts, ph, cat, dur, pid, tid, name).
+        match key.len() {
+            2 => match key {
+                b"ts" => event.timestamp = number_i64(reader.read_number()?),
+                b"ph" => event.phase = reader.read_string()?,
+                b"id" => {
+                    let value = reader.next()?;
+                    event.id = match value {
+                        Token::String(value) => value,
+                        Token::Number { source, .. } => source,
+                        _ => return Err(JsonError::Invalid),
+                    };
                 }
-            }
-            b"args" => {
-                if value != Token::ObjectStart {
-                    return Err(JsonError::Invalid);
+                _ => {
+                    let value = reader.next()?;
+                    skip_value(reader, value)?;
                 }
-                event.args = parse_args(reader)?;
+            },
+            3 => match key {
+                b"cat" => event.category = reader.read_string()?,
+                b"dur" => event.duration = number_i64(reader.read_number()?),
+                b"pid" => event.process_id = number_i32(reader.read_number()?),
+                b"tid" => event.thread_id = number_i32(reader.read_number()?),
+                _ => {
+                    let value = reader.next()?;
+                    skip_value(reader, value)?;
+                }
+            },
+            4 => match key {
+                b"name" => event.name = reader.read_string()?,
+                b"args" => {
+                    let value = reader.next()?;
+                    if value != Token::ObjectStart {
+                        return Err(JsonError::Invalid);
+                    }
+                    event.args = parse_args(reader)?;
+                }
+                _ => {
+                    let value = reader.next()?;
+                    skip_value(reader, value)?;
+                }
+            },
+            5 => match key {
+                b"cname" => event.color_name = reader.read_string()?,
+                _ => {
+                    let value = reader.next()?;
+                    skip_value(reader, value)?;
+                }
+            },
+            _ => {
+                let value = reader.next()?;
+                skip_value(reader, value)?;
             }
-            _ => skip_value(reader, value)?,
         }
-        match reader.next()? {
-            Token::Comma => continue,
-            Token::ObjectEnd => return Ok(event),
-            _ => return Err(JsonError::Invalid),
+        if reader.expect_comma_or_object_end()? {
+            return Ok(event);
         }
     }
 }
 
-fn parse_args(reader: &mut Reader<'_>) -> Result<Vec<TraceArg>, JsonError> {
+fn parse_args<'a>(reader: &mut Reader<'a>) -> Result<Vec<TraceArg<'a>>, JsonError> {
     let mut args = Vec::new();
     loop {
-        let token = reader.next()?;
-        if token == Token::ObjectEnd {
-            return Ok(args);
-        }
-        let Token::String(key) = token else {
-            return Err(JsonError::Invalid);
+        let key = match reader.read_string() {
+            Ok(k) => k,
+            Err(JsonError::Invalid) => {
+                if reader.expect_comma_or_object_end()? {
+                    return Ok(args);
+                }
+                return Err(JsonError::Invalid);
+            }
+            Err(err) => return Err(err),
         };
-        if reader.next()? != Token::Colon {
-            return Err(JsonError::Invalid);
-        }
+        reader.expect_colon()?;
         let token_start = reader.position();
         let value = reader.next()?;
         let mut arg = TraceArg {
-            key: key.to_vec(),
+            key,
             ..TraceArg::default()
         };
         match value {
-            Token::String(value) => arg.value = value.to_vec(),
+            Token::String(value) => arg.value = value,
             Token::Number {
                 value: Number::Integer(number),
                 ..
@@ -263,37 +302,19 @@ fn parse_args(reader: &mut Reader<'_>) -> Result<Vec<TraceArg>, JsonError> {
                 value: Number::Float(number),
                 ..
             } => arg.number = number,
-            Token::True => arg.value = b"true".to_vec(),
-            Token::False => arg.value = b"false".to_vec(),
-            Token::Null => arg.value = b"null".to_vec(),
+            Token::True => arg.value = b"true",
+            Token::False => arg.value = b"false",
+            Token::Null => arg.value = b"null",
             Token::ObjectStart | Token::ArrayStart => {
                 skip_value(reader, value)?;
-                arg.value = reader.input()[token_start..reader.position()].to_vec();
+                arg.value = &reader.input()[token_start..reader.position()];
             }
             _ => return Err(JsonError::Invalid),
         }
         args.push(arg);
-        match reader.next()? {
-            Token::Comma => continue,
-            Token::ObjectEnd => return Ok(args),
-            _ => return Err(JsonError::Invalid),
+        if reader.expect_comma_or_object_end()? {
+            return Ok(args);
         }
-    }
-}
-
-fn expect_string(token: Token<'_>) -> Result<&[u8], JsonError> {
-    if let Token::String(value) = token {
-        Ok(value)
-    } else {
-        Err(JsonError::Invalid)
-    }
-}
-
-fn expect_number(token: Token<'_>) -> Result<Number, JsonError> {
-    if let Token::Number { value, .. } = token {
-        Ok(value)
-    } else {
-        Err(JsonError::Invalid)
     }
 }
 
@@ -328,11 +349,17 @@ fn skip_value(reader: &mut Reader<'_>, first: Token<'_>) -> Result<(), JsonError
 mod tests {
     use super::*;
 
-    fn parse_all(input: &[u8]) -> (Vec<TraceEvent>, TraceParser) {
+    use crate::trace::data::{EventMatcher, TraceData};
+
+    fn parse_all(input: &[u8]) -> (TraceData, TraceParser) {
         let mut parser = TraceParser::new();
         parser.feed(input, true);
-        let events = std::iter::from_fn(|| parser.next_event()).collect();
-        (events, parser)
+        let mut data = TraceData::new();
+        let mut matcher = EventMatcher::default();
+        while let Some(event) = parser.next_event() {
+            data.add_event(&event, &mut matcher);
+        }
+        (data, parser)
     }
 
     #[test]
@@ -341,12 +368,17 @@ mod tests {
         for split in 0..=input.len() {
             let mut parser = TraceParser::new();
             parser.feed(&input[..split], false);
-            let first = parser.next_event();
+            let first = parser
+                .next_event()
+                .map(|e| (e.name.to_vec(), e.timestamp, e.args[0].number));
             parser.feed(&input[split..], true);
-            let event = first.or_else(|| parser.next_event()).unwrap();
-            assert_eq!(event.name, b"A");
-            assert_eq!(event.timestamp, 1);
-            assert_eq!(event.args[0].number, 5.0);
+            let (name, ts, num) = first.unwrap_or_else(|| {
+                let e = parser.next_event().unwrap();
+                (e.name.to_vec(), e.timestamp, e.args[0].number)
+            });
+            assert_eq!(name, b"A");
+            assert_eq!(ts, 1);
+            assert_eq!(num, 5.0);
             assert!(parser.next_event().is_none());
             assert!(parser.is_complete());
         }
@@ -366,33 +398,34 @@ mod tests {
 
     #[test]
     fn parses_every_recognized_field_and_argument_kind() {
-        let (events, parser) = parse_all(
+        let (data, parser) = parse_all(
             br#"[{"name":"event","cat":"category","ph":"X","cname":"rail_response","id":"string-id","ts":-12.75,"dur":3.5e2,"pid":-7.9,"tid":8.9,"args":{"string":"value","integer":42,"float":1.25,"yes":true,"no":false,"nothing":null,"array":[1,{"x":2}],"object":{"nested":3}}},{"id":-1.5e2}]"#,
         );
         assert!(parser.is_complete());
         assert!(!parser.is_invalid());
-        assert_eq!(events.len(), 2);
-        let event = &events[0];
-        assert_eq!(event.name, b"event");
-        assert_eq!(event.category, b"category");
-        assert_eq!(event.phase, b"X");
-        assert_eq!(event.color_name, b"rail_response");
-        assert_eq!(event.id, b"string-id");
+        assert_eq!(data.events.len(), 2);
+        let event = &data.events[0];
+        assert_eq!(data.string(event.name), b"event");
+        assert_eq!(data.string(event.category), b"category");
+        assert_eq!(data.string(event.phase), b"X");
+        assert_eq!(data.string(event.color_name), b"rail_response");
+        assert_eq!(data.string(event.id), b"string-id");
         assert_eq!((event.timestamp, event.duration), (-12, 350));
         assert_eq!((event.process_id, event.thread_id), (-7, 8));
-        assert_eq!(event.args.len(), 8);
+        let args = data.event_args(event);
+        assert_eq!(args.len(), 8);
         assert_eq!(
-            (&event.args[0].key[..], &event.args[0].value[..]),
+            (data.string(args[0].key), data.string(args[0].value)),
             (b"string".as_slice(), b"value".as_slice())
         );
-        assert_eq!(event.args[1].number, 42.0);
-        assert_eq!(event.args[2].number, 1.25);
-        assert_eq!(event.args[3].value, b"true");
-        assert_eq!(event.args[4].value, b"false");
-        assert_eq!(event.args[5].value, b"null");
-        assert_eq!(event.args[6].value, br#"[1,{"x":2}]"#);
-        assert_eq!(event.args[7].value, br#"{"nested":3}"#);
-        assert_eq!(events[1].id, b"-1.5e2");
+        assert_eq!(args[1].number, 42.0);
+        assert_eq!(args[2].number, 1.25);
+        assert_eq!(data.string(args[3].value), b"true");
+        assert_eq!(data.string(args[4].value), b"false");
+        assert_eq!(data.string(args[5].value), b"null");
+        assert_eq!(data.string(args[6].value), br#"[1,{"x":2}]"#);
+        assert_eq!(data.string(args[7].value), br#"{"nested":3}"#);
+        assert_eq!(data.string(data.events[1].id), b"-1.5e2");
     }
 
     #[test]
@@ -410,8 +443,8 @@ mod tests {
             r#""args":[]"#,
         ] {
             let input = format!("[{{{field}}}]");
-            let (events, parser) = parse_all(input.as_bytes());
-            assert!(events.is_empty(), "accepted {input}");
+            let (data, parser) = parse_all(input.as_bytes());
+            assert!(data.events.is_empty(), "accepted {input}");
             assert!(parser.is_invalid(), "did not reject {input}");
         }
     }
@@ -420,40 +453,42 @@ mod tests {
     fn streams_a_complex_document_one_byte_at_a_time() {
         let input = br#"{"before":{"ignored":[1,2]},"traceEvents":[{"name":"escaped\\\"name","ph":"X","ts":-12.5e+2,"args":{"nested":[true,{"x":null}]}},{"name":"second","id":123}],"after":"ignored"}"#;
         let mut parser = TraceParser::new();
-        let mut events = Vec::new();
+        let mut data = TraceData::new();
+        let mut matcher = EventMatcher::default();
         for (index, byte) in input.iter().enumerate() {
             parser.feed(std::slice::from_ref(byte), index + 1 == input.len());
             while let Some(event) = parser.next_event() {
-                events.push(event);
+                data.add_event(&event, &mut matcher);
             }
         }
         assert!(parser.is_complete());
         assert!(!parser.is_invalid());
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].name, br#"escaped\\\"name"#);
-        assert_eq!(events[0].timestamp, -1250);
-        assert_eq!(events[0].args[0].value, br#"[true,{"x":null}]"#);
-        assert_eq!(events[1].name, b"second");
-        assert_eq!(events[1].id, b"123");
+        assert_eq!(data.events.len(), 2);
+        assert_eq!(data.string(data.events[0].name), br#"escaped\\\"name"#);
+        assert_eq!(data.events[0].timestamp, -1250);
+        let args0 = data.event_args(&data.events[0]);
+        assert_eq!(data.string(args0[0].value), br#"[true,{"x":null}]"#);
+        assert_eq!(data.string(data.events[1].name), b"second");
+        assert_eq!(data.string(data.events[1].id), b"123");
     }
 
     #[test]
     fn accepts_extractable_events_despite_malformed_separators_and_trailing_data() {
-        let (events, parser) =
+        let (data, parser) =
             parse_all(br#"[,{"name":"first"} {"name":"second","unknown":{"bad":x}}] trailing"#);
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].name, b"first");
-        assert_eq!(events[1].name, b"second");
+        assert_eq!(data.events.len(), 2);
+        assert_eq!(data.string(data.events[0].name), b"first");
+        assert_eq!(data.string(data.events[1].name), b"second");
         assert!(parser.is_complete());
     }
 
     #[test]
     fn accepts_wrapped_fields_before_and_after_trace_events() {
-        let (events, parser) = parse_all(
+        let (data, parser) = parse_all(
             br#"{"before":[{"deep":true}],"traceEvents":[{"name":"event"}],"after":{"value":1}}"#,
         );
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].name, b"event");
+        assert_eq!(data.events.len(), 1);
+        assert_eq!(data.string(data.events[0].name), b"event");
         assert!(parser.is_complete());
     }
 
@@ -469,19 +504,22 @@ mod tests {
         }
     }
 
-    fn parse(input: &[u8]) -> Vec<TraceEvent> {
-        let mut parser = TraceParser::new();
-        parser.feed(input, true);
-        std::iter::from_fn(|| parser.next_event()).collect()
+    fn parse(input: &[u8]) -> TraceData {
+        let (data, _) = parse_all(input);
+        data
     }
 
     #[test]
     fn basic_array() {
-        let events = parse(br#"[{"name":"foo","cat":"bar","ph":"B","ts":123,"pid":1,"tid":2}]"#);
-        assert_eq!(events.len(), 1);
-        let event = &events[0];
+        let data = parse(br#"[{"name":"foo","cat":"bar","ph":"B","ts":123,"pid":1,"tid":2}]"#);
+        assert_eq!(data.events.len(), 1);
+        let event = &data.events[0];
         assert_eq!(
-            (&event.name[..], &event.category[..], &event.phase[..]),
+            (
+                data.string(event.name),
+                data.string(event.category),
+                data.string(event.phase)
+            ),
             (b"foo".as_slice(), b"bar".as_slice(), b"B".as_slice())
         );
         assert_eq!(
@@ -492,9 +530,9 @@ mod tests {
 
     #[test]
     fn basic_object() {
-        let events = parse(br#"{"traceEvents":[{"name":"foo"}],"other":123}"#);
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].name, b"foo");
+        let data = parse(br#"{"traceEvents":[{"name":"foo"}],"other":123}"#);
+        assert_eq!(data.events.len(), 1);
+        assert_eq!(data.string(data.events[0].name), b"foo");
     }
 
     #[test]
@@ -520,43 +558,43 @@ mod tests {
 
     #[test]
     fn args() {
-        let events = parse(br#"[{"name":"a","args":{"url":"http://foo","id":123,"obj":{"x":1}}}]"#);
-        let args = &events[0].args;
+        let data = parse(br#"[{"name":"a","args":{"url":"http://foo","id":123,"obj":{"x":1}}}]"#);
+        let args = data.event_args(&data.events[0]);
         assert_eq!(args.len(), 3);
         assert_eq!(
-            (&args[0].key[..], &args[0].value[..]),
+            (data.string(args[0].key), data.string(args[0].value)),
             (b"url".as_slice(), b"http://foo".as_slice())
         );
         assert_eq!(
-            (&args[1].key[..], args[1].number),
+            (data.string(args[1].key), args[1].number),
             (b"id".as_slice(), 123.0)
         );
         assert_eq!(
-            (&args[2].key[..], &args[2].value[..]),
+            (data.string(args[2].key), data.string(args[2].value)),
             (b"obj".as_slice(), br#"{"x":1}"#.as_slice())
         );
     }
 
     #[test]
     fn empty() {
-        assert!(parse(b"[]").is_empty());
-        assert!(parse(br#"{"traceEvents":[]}"#).is_empty());
+        assert!(parse(b"[]").events.is_empty());
+        assert!(parse(br#"{"traceEvents":[]}"#).events.is_empty());
     }
 
     #[test]
     fn memory_leak() {
         for _ in 0..100 {
-            let events = parse(br#"[{"name":"foo","args":{"x":1}},{"name":"bar"}]"#);
-            assert_eq!(events.len(), 2);
+            let data = parse(br#"[{"name":"foo","args":{"x":1}},{"name":"bar"}]"#);
+            assert_eq!(data.events.len(), 2);
         }
     }
 
     #[test]
     fn float_numbers() {
-        let event = parse(
-            br#"[{"name":"foo","cat":"bar","ph":"B","ts":123.45,"dur":12.34,"pid":1.0,"tid":2.0}]"#,
-        )
-        .remove(0);
+        let data = parse(
+            br#"[{"name":"foo","cat":"bar","ph":"X","ts":123.45,"dur":12.34,"pid":1.0,"tid":2.0}]"#,
+        );
+        let event = &data.events[0];
         assert_eq!(
             (
                 event.timestamp,
@@ -570,7 +608,8 @@ mod tests {
 
     #[test]
     fn exponent_numbers() {
-        let event = parse(br#"[{"name":"foo","ts":1e2,"dur":1e1}]"#).remove(0);
+        let data = parse(br#"[{"name":"foo","ts":1e2,"dur":1e1}]"#);
+        let event = &data.events[0];
         assert_eq!((event.timestamp, event.duration), (100, 10));
     }
 
@@ -579,24 +618,24 @@ mod tests {
         let mut parser = TraceParser::new();
         parser.feed(br#"[{"name":"foo","unknown":{"a":x}}]"#, true);
         let event = parser.next_event();
-        assert_eq!(event.map(|event| event.name), Some(b"foo".to_vec()));
+        assert_eq!(event.map(|event| event.name), Some(b"foo".as_slice()));
         assert!(parser.next_event().is_none());
     }
 
     #[test]
     fn malformed_numbers() {
-        assert!(parse(br#"[{"name":"foo","ts":12+34}]"#).is_empty());
+        assert!(parse(br#"[{"name":"foo","ts":12+34}]"#).events.is_empty());
     }
 
     #[test]
     fn integer_overflow() {
-        let events = parse(br#"[{"name":"pos","ts":999999999999999999999999999999,"pid":99999999999},{"name":"neg","ts":-999999999999999999999999999999,"pid":-99999999999}]"#);
+        let data = parse(br#"[{"name":"pos","ts":999999999999999999999999999999,"pid":99999999999},{"name":"neg","ts":-999999999999999999999999999999,"pid":-99999999999}]"#);
         assert_eq!(
-            (events[0].timestamp, events[0].process_id),
+            (data.events[0].timestamp, data.events[0].process_id),
             (i64::MAX, i32::MAX)
         );
         assert_eq!(
-            (events[1].timestamp, events[1].process_id),
+            (data.events[1].timestamp, data.events[1].process_id),
             (i64::MIN, i32::MIN)
         );
     }

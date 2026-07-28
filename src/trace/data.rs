@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-
 use crate::string_interner::{StringId, StringInterner};
 
+/// Persisted argument representation stored in `TraceData`.
 #[derive(Clone, Debug, Default)]
 pub struct PersistedArg {
     pub key: StringId,
@@ -9,6 +8,7 @@ pub struct PersistedArg {
     pub number: f64,
 }
 
+/// Persisted event representation stored in `TraceData`.
 #[derive(Clone, Debug, Default)]
 pub struct PersistedEvent {
     pub name: StringId,
@@ -25,35 +25,193 @@ pub struct PersistedEvent {
     pub args_count: u32,
 }
 
+/// State matcher for pairing duration Begin (`B`/`b`) and End (`E`/`e`) trace events on-the-fly.
 #[derive(Default)]
 pub struct EventMatcher {
-    active_begin_events: HashMap<u64, Vec<usize>>,
+    // Optimization: Trace duration events usually stream consecutively per thread.
+    // An MRU stack vector (checking index 0 first) avoids SipHash HashMap overhead.
+    stacks: Vec<(u64, Vec<usize>)>,
 }
 
+impl EventMatcher {
+    #[inline]
+    pub(crate) fn push(&mut self, thread: u64, index: usize) {
+        if let Some((t, stack)) = self.stacks.first_mut() {
+            if *t == thread {
+                stack.push(index);
+                return;
+            }
+        }
+        if let Some(pos) = self.stacks.iter().position(|(t, _)| *t == thread) {
+            self.stacks[pos].1.push(index);
+            self.stacks.swap(0, pos);
+        } else {
+            self.stacks.push((thread, vec![index]));
+            let last = self.stacks.len() - 1;
+            self.stacks.swap(0, last);
+        }
+    }
+
+    #[inline]
+    pub(crate) fn pop(&mut self, thread: u64) -> Option<usize> {
+        if let Some((t, stack)) = self.stacks.first_mut() {
+            if *t == thread {
+                return stack.pop();
+            }
+        }
+        if let Some(pos) = self.stacks.iter().position(|(t, _)| *t == thread) {
+            let res = self.stacks[pos].1.pop();
+            self.stacks.swap(0, pos);
+            res
+        } else {
+            None
+        }
+    }
+}
+
+/// Persistent trace storage hosting interned strings, events, and arguments.
 #[derive(Default)]
 pub struct TraceData {
     strings: StringInterner,
     pub events: Vec<PersistedEvent>,
     pub args: Vec<PersistedArg>,
+    // Optimization: Dedicated 1-entry MRU caches for repetitive event attributes
+    // (categories, phases, IDs, argument keys/values) to bypass StringInterner hash table lookups.
+    last_name: (StringId, Vec<u8>),
+    last_cat: (StringId, Vec<u8>),
+    last_ph: (StringId, Vec<u8>),
+    last_cname: (StringId, Vec<u8>),
+    last_arg_keys: [(StringId, Vec<u8>); 4],
+    last_id: (StringId, Vec<u8>),
+    last_arg_vals: [(StringId, Vec<u8>); 4],
 }
 
 impl TraceData {
+    /// Creates a new empty `TraceData` store.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Interns a byte slice into the string pool and returns its `StringId`.
     pub fn intern(&mut self, value: &[u8]) -> StringId {
         self.strings.intern(value)
     }
 
+    fn intern_name(&mut self, value: &[u8]) -> StringId {
+        if value.is_empty() {
+            return StringId(0);
+        }
+        if self.last_name.0 != StringId(0) && self.last_name.1.as_slice() == value {
+            return self.last_name.0;
+        }
+        let id = self.strings.intern(value);
+        self.last_name.0 = id;
+        self.last_name.1.clear();
+        self.last_name.1.extend_from_slice(value);
+        id
+    }
+
+    fn intern_cat(&mut self, value: &[u8]) -> StringId {
+        if value.is_empty() {
+            return StringId(0);
+        }
+        if self.last_cat.0 != StringId(0) && self.last_cat.1.as_slice() == value {
+            return self.last_cat.0;
+        }
+        let id = self.strings.intern(value);
+        self.last_cat.0 = id;
+        self.last_cat.1.clear();
+        self.last_cat.1.extend_from_slice(value);
+        id
+    }
+
+    fn intern_ph(&mut self, value: &[u8]) -> StringId {
+        if value.is_empty() {
+            return StringId(0);
+        }
+        if self.last_ph.0 != StringId(0) && self.last_ph.1.as_slice() == value {
+            return self.last_ph.0;
+        }
+        let id = self.strings.intern(value);
+        self.last_ph.0 = id;
+        self.last_ph.1.clear();
+        self.last_ph.1.extend_from_slice(value);
+        id
+    }
+
+    fn intern_cname(&mut self, value: &[u8]) -> StringId {
+        if value.is_empty() {
+            return StringId(0);
+        }
+        if self.last_cname.0 != StringId(0) && self.last_cname.1.as_slice() == value {
+            return self.last_cname.0;
+        }
+        let id = self.strings.intern(value);
+        self.last_cname.0 = id;
+        self.last_cname.1.clear();
+        self.last_cname.1.extend_from_slice(value);
+        id
+    }
+
+    fn intern_id(&mut self, value: &[u8]) -> StringId {
+        if value.is_empty() {
+            return StringId(0);
+        }
+        if self.last_id.0 != StringId(0) && self.last_id.1.as_slice() == value {
+            return self.last_id.0;
+        }
+        let id = self.strings.intern(value);
+        self.last_id.0 = id;
+        self.last_id.1.clear();
+        self.last_id.1.extend_from_slice(value);
+        id
+    }
+
+    fn intern_arg_key(&mut self, value: &[u8], index: usize) -> StringId {
+        if value.is_empty() {
+            return StringId(0);
+        }
+        let cache_idx = if index < 4 { index } else { 3 };
+        if self.last_arg_keys[cache_idx].0 != StringId(0)
+            && self.last_arg_keys[cache_idx].1.as_slice() == value
+        {
+            return self.last_arg_keys[cache_idx].0;
+        }
+        let id = self.strings.intern(value);
+        self.last_arg_keys[cache_idx].0 = id;
+        self.last_arg_keys[cache_idx].1.clear();
+        self.last_arg_keys[cache_idx].1.extend_from_slice(value);
+        id
+    }
+
+    fn intern_arg_val(&mut self, value: &[u8], index: usize) -> StringId {
+        if value.is_empty() {
+            return StringId(0);
+        }
+        let cache_idx = if index < 4 { index } else { 3 };
+        if self.last_arg_vals[cache_idx].0 != StringId(0)
+            && self.last_arg_vals[cache_idx].1.as_slice() == value
+        {
+            return self.last_arg_vals[cache_idx].0;
+        }
+        let id = self.strings.intern(value);
+        self.last_arg_vals[cache_idx].0 = id;
+        self.last_arg_vals[cache_idx].1.clear();
+        self.last_arg_vals[cache_idx].1.extend_from_slice(value);
+        id
+    }
+
+    /// Finds an existing string in the pool without interning it, returning `StringId(0)` if missing.
     pub fn find(&self, value: &[u8]) -> StringId {
         self.strings.find(value)
     }
 
+    /// Resolves a `StringId` to its underlying byte slice.
     pub fn string(&self, reference: StringId) -> &[u8] {
         self.strings.get(reference)
     }
 
+    /// Resolves a `StringId` to a lossy UTF-8 string view.
     pub fn string_lossy(&self, reference: StringId) -> std::borrow::Cow<'_, str> {
         String::from_utf8_lossy(self.string(reference))
     }
@@ -62,22 +220,19 @@ impl TraceData {
         self.strings.hash(reference)
     }
 
+    /// Ingests a parsed trace event, pairing duration Begin/End events on-the-fly.
     pub fn add_event(
         &mut self,
-        event: &crate::trace::parser::TraceEvent,
+        event: &crate::trace::parser::TraceEvent<'_>,
         matcher: &mut EventMatcher,
     ) {
-        let phase = event.phase.as_slice();
-        let is_begin = matches!(phase, b"B" | b"b");
-        let is_end = matches!(phase, b"E" | b"e");
+        let phase_slice = event.phase;
+        let is_begin = matches!(phase_slice, b"B" | b"b");
+        let is_end = matches!(phase_slice, b"E" | b"e");
         let thread = (u64::from(event.process_id as u32) << 32) | u64::from(event.thread_id as u32);
 
         if is_end {
-            if let Some(index) = matcher
-                .active_begin_events
-                .get_mut(&thread)
-                .and_then(Vec::pop)
-            {
+            if let Some(index) = matcher.pop(thread) {
                 let duration = event
                     .timestamp
                     .saturating_sub(self.events[index].timestamp)
@@ -88,15 +243,15 @@ impl TraceData {
             return;
         }
 
-        let name = self.intern(&event.name);
-        let category = self.intern(&event.category);
-        let phase = self.intern(&event.phase);
-        let color_name = self.intern(&event.color_name);
-        let id = self.intern(&event.id);
+        let name = self.intern_name(event.name);
+        let category = self.intern_cat(event.category);
+        let phase = self.intern_ph(event.phase);
+        let color_name = self.intern_cname(event.color_name);
+        let id = self.intern_id(event.id);
         let args_offset = u32::try_from(self.args.len()).expect("too many trace arguments");
-        for arg in &event.args {
-            let key = self.intern(&arg.key);
-            let value = self.intern(&arg.value);
+        for (i, arg) in event.args.iter().enumerate() {
+            let key = self.intern_arg_key(arg.key, i);
+            let value = self.intern_arg_val(arg.value, i);
             self.args.push(PersistedArg {
                 key,
                 value,
@@ -122,24 +277,20 @@ impl TraceData {
         let index = self.events.len();
         self.events.push(persisted);
         if is_begin {
-            matcher
-                .active_begin_events
-                .entry(thread)
-                .or_default()
-                .push(index);
+            matcher.push(thread, index);
         }
     }
 
-    fn merge_args(&mut self, event_index: usize, incoming: &[crate::trace::parser::TraceArg]) {
+    fn merge_args(&mut self, event_index: usize, incoming: &[crate::trace::parser::TraceArg<'_>]) {
         if incoming.is_empty() {
             return;
         }
         let offset = self.events[event_index].args_offset as usize;
         let count = self.events[event_index].args_count as usize;
         let mut merged = self.args[offset..offset + count].to_vec();
-        for arg in incoming {
-            let key = self.intern(&arg.key);
-            let value = self.intern(&arg.value);
+        for (i, arg) in incoming.iter().enumerate() {
+            let key = self.intern_arg_key(arg.key, i);
+            let value = self.intern_arg_val(arg.value, i);
             if let Some(existing) = merged.iter_mut().find(|existing| existing.key == key) {
                 existing.value = value;
                 existing.number = arg.number;
@@ -194,17 +345,17 @@ mod tests {
     use super::{EventMatcher, TraceData};
     use crate::trace::parser::{TraceArg, TraceEvent};
 
-    fn event(
-        name: &[u8],
-        phase: &[u8],
+    fn event<'a>(
+        name: &'a [u8],
+        phase: &'a [u8],
         timestamp: i64,
         duration: i64,
         process_id: i32,
         thread_id: i32,
-    ) -> TraceEvent {
+    ) -> TraceEvent<'a> {
         TraceEvent {
-            name: name.to_vec(),
-            phase: phase.to_vec(),
+            name,
+            phase,
             timestamp,
             duration,
             process_id,
@@ -218,16 +369,16 @@ mod tests {
         let mut data = TraceData::new();
         let mut matcher = EventMatcher::default();
         let mut input = event(b"event1", b"X", 100, 50, 1, 2);
-        input.category = b"cat1".to_vec();
+        input.category = b"cat1";
         input.args = vec![
             TraceArg {
-                key: b"key1".to_vec(),
-                value: b"val1".to_vec(),
+                key: b"key1",
+                value: b"val1",
                 number: 0.0,
             },
             TraceArg {
-                key: b"key2".to_vec(),
-                value: b"val2".to_vec(),
+                key: b"key2",
+                value: b"val2",
                 number: 0.0,
             },
         ];
@@ -308,13 +459,13 @@ mod tests {
         let mut begin = event(b"ev", b"B", 100, 0, 1, 1);
         begin.args = vec![
             TraceArg {
-                key: b"arg1".to_vec(),
-                value: b"val1".to_vec(),
+                key: b"arg1",
+                value: b"val1",
                 number: 0.0,
             },
             TraceArg {
-                key: b"arg2".to_vec(),
-                value: vec![],
+                key: b"arg2",
+                value: b"",
                 number: 42.0,
             },
         ];
@@ -322,13 +473,13 @@ mod tests {
         let mut end = event(b"", b"E", 200, 0, 1, 1);
         end.args = vec![
             TraceArg {
-                key: b"arg2".to_vec(),
-                value: vec![],
+                key: b"arg2",
+                value: b"",
                 number: 99.0,
             },
             TraceArg {
-                key: b"arg3".to_vec(),
-                value: b"val3".to_vec(),
+                key: b"arg3",
+                value: b"val3",
                 number: 0.0,
             },
         ];
@@ -358,13 +509,13 @@ mod tests {
         let mut end = event(b"", b"E", 200, 0, 1, 1);
         end.args = vec![
             TraceArg {
-                key: b"duplicate".to_vec(),
-                value: b"first".to_vec(),
+                key: b"duplicate",
+                value: b"first",
                 number: 0.0,
             },
             TraceArg {
-                key: b"duplicate".to_vec(),
-                value: b"second".to_vec(),
+                key: b"duplicate",
+                value: b"second",
                 number: 0.0,
             },
         ];

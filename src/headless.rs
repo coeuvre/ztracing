@@ -32,12 +32,20 @@ impl HeadlessApp {
     pub fn set_font(&mut self, font: &[u8]) {
         self.runtime.set_font(font, 1.0);
     }
-    pub fn update(&mut self) {
+    pub fn update(&mut self) -> Option<(f64, f64)> {
         let width = self.gl.width() as f32;
         let height = self.gl.height() as f32;
         self.runtime.imgui.set_display_size(width, height);
         self.runtime.imgui.set_delta_time(1.0 / 60.0);
-        self.runtime.update(|_| true, || {});
+        self.runtime.update(|_| true, || {})
+    }
+    pub fn submit_frame(&mut self) {
+        unsafe {
+            unsafe extern "C" {
+                fn glFinish();
+            }
+            glFinish();
+        }
     }
     pub fn click(&mut self, x: f32, y: f32) {
         self.runtime.imgui.add_mouse_position(x, y);
@@ -45,7 +53,7 @@ impl HeadlessApp {
         self.runtime.imgui.add_mouse_button(0, true);
         self.update();
         self.runtime.imgui.add_mouse_button(0, false);
-        self.update()
+        self.update();
     }
     pub fn double_click(&mut self, x: f32, y: f32) {
         // Settle hover once, then two click pulses.
@@ -68,7 +76,7 @@ impl HeadlessApp {
         self.runtime.imgui.add_mouse_wheel(0.0, 0.0);
         self.update();
         self.runtime.imgui.add_key(MOD_CTRL, false);
-        self.update()
+        self.update();
     }
     pub fn drag(&mut self, start: (f32, f32), end: (f32, f32)) {
         self.runtime.imgui.add_mouse_position(start.0, start.1);
@@ -79,7 +87,7 @@ impl HeadlessApp {
         self.update();
         self.update();
         self.runtime.imgui.add_mouse_button(0, false);
-        self.update()
+        self.update();
     }
     pub fn key_shortcut(&mut self, key: i32, modifier: i32) {
         self.runtime.imgui.add_key(modifier, true);
@@ -108,7 +116,7 @@ impl HeadlessApp {
     }
     pub fn text_input(&mut self, text: &str) {
         self.runtime.imgui.add_text(text);
-        self.update()
+        self.update();
     }
     pub fn dimensions(&self) -> (usize, usize) {
         (self.gl.width() as usize, self.gl.height() as usize)

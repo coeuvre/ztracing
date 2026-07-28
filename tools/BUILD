@@ -32,7 +32,18 @@ rust_binary(
     crate_name = "trace_renderer_benchmark",
     crate_root = "trace_renderer_benchmark.rs",
     edition = "2024",
-    deps = ["//src:ztracing_lib"],
+    deps = [
+        "//base:base",
+        "//src:ztracing_lib",
+    ],
+    link_deps = select({
+        "@@platforms//os:linux": [
+            "//src:headless_system_libraries",
+            "//src:imgui_impl_webgl",
+        ],
+        "//conditions:default": [],
+    }),
+    target_compatible_with = ["@@platforms//os:linux"],
 )
 
 rust_test(
@@ -41,5 +52,16 @@ rust_test(
     crate_name = "trace_renderer_benchmark_test",
     crate_root = "trace_renderer_benchmark.rs",
     edition = "2024",
-    deps = ["//src:ztracing_lib"],
+    deps = [
+        "//base:base",
+        "//src:ztracing_lib",
+    ],
+    link_deps = select({
+        "@@platforms//os:linux": [
+            "//src:headless_system_libraries",
+            "//src:imgui_impl_webgl",
+        ],
+        "//conditions:default": [],
+    }),
+    target_compatible_with = ["@@platforms//os:linux"],
 )

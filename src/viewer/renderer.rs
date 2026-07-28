@@ -162,18 +162,69 @@ impl State {
         self.thread_bucket_representatives
             .resize(blocked_until.len(), ThreadBucketRepresentative::default());
         let representatives = &mut self.thread_bucket_representatives;
+        let has_selection = !selected.is_empty();
+        let min_dur_threshold_i64 = ((f64::from(MIN_EVENT_WIDTH) - 0.01) / scale) as i64;
+
+        let track_has_focused = focused.is_some_and(|idx| track.event_indices.contains(&idx));
+
+        let pyramid_level = if !track.pyramid_levels.is_empty() && !has_selection && !track_has_focused {
+            let mut chosen = None;
+            let max_allowed_event_px = f64::from(MIN_EVENT_WIDTH * 2.0);
+            for (level_idx, level) in track.pyramid_levels.iter().enumerate() {
+                if let Some(first_node) = level.first() {
+                    let avg_event_span = (first_node.max_timestamp - first_node.min_timestamp) as f64
+                        / (first_node.event_count as f64).max(1.0);
+                    let avg_event_px = avg_event_span * scale;
+                    if avg_event_px <= max_allowed_event_px {
+                        chosen = Some(level_idx);
+                    }
+                }
+            }
+            chosen
+        } else {
+            None
+        };
+
+        if let Some(level_idx) = pyramid_level {
+            let nodes = &track.pyramid_levels[level_idx];
+            let start_node = nodes
+                .partition_point(|node| (node.max_timestamp as f64) < viewport_start);
+            for node in &nodes[start_node..] {
+                if (node.min_timestamp as f64) >= viewport_end {
+                    break;
+                }
+                let dom_event = &data.events[node.dominant_event_index];
+                let x1 = (((node.min_timestamp as f64) - viewport_start) * scale as f64) as f32 + canvas_x;
+                let x2 = (((node.max_timestamp as f64) - viewport_start) * scale as f64) as f32 + canvas_x;
+                let is_focused = focused == Some(node.dominant_event_index);
+                output.push(RenderBlock {
+                    x1: x1.max(canvas_x),
+                    x2: x2.max(x1 + MIN_EVENT_WIDTH),
+                    palette_index: (data.string_hash(dom_event.name) % 8) as u8,
+                    name: dom_event.name,
+                    depth: 0,
+                    count: node.event_count,
+                    selected: false,
+                    focused: is_focused,
+                    event_index: node.dominant_event_index,
+                });
+            }
+            return output;
+        }
+
         while bucket_start < viewport_end {
             let bucket_end = bucket_start + bucket_duration;
+            let bucket_end_i64 = bucket_end as i64;
             representatives.fill(ThreadBucketRepresentative::default());
             while let Some(&index) = track.event_indices.get(position) {
                 let event = &data.events[index];
-                if event.timestamp as f64 >= bucket_end {
+                if event.timestamp >= bucket_end_i64 {
                     break;
                 }
                 let depth = track.depths[position] as usize;
-                let is_selected = selected.get(index).copied().unwrap_or(false);
+                let is_selected = has_selection && selected.get(index).copied().unwrap_or(false);
                 let is_focused = focused == Some(index);
-                let large = event.duration as f64 * scale >= f64::from(MIN_EVENT_WIDTH) - 0.01;
+                let large = event.duration >= min_dur_threshold_i64;
                 if is_selected || is_focused || large {
                     flush_representative(
                         output,
@@ -235,20 +286,26 @@ impl State {
         if output.len() > 1 {
             let mut write = 0;
             for read in 1..output.len() {
-                let block = output[read].clone();
-                let previous = &mut output[write];
-                if !previous.selected
-                    && !previous.focused
-                    && !block.selected
-                    && !block.focused
-                    && previous.depth == block.depth
-                    && previous.event_index == block.event_index
-                {
-                    previous.x2 = block.x2;
-                    previous.count += block.count;
+                let is_coalesced = {
+                    let previous = &output[write];
+                    let current = &output[read];
+                    !previous.selected
+                        && !previous.focused
+                        && !current.selected
+                        && !current.focused
+                        && previous.depth == current.depth
+                        && previous.event_index == current.event_index
+                };
+                if is_coalesced {
+                    let new_x2 = output[read].x2;
+                    let add_count = output[read].count;
+                    output[write].x2 = new_x2;
+                    output[write].count += add_count;
                 } else {
                     write += 1;
-                    output[write] = block;
+                    if write != read {
+                        output[write] = output[read].clone();
+                    }
                 }
             }
             output.truncate(write + 1);
@@ -1391,6 +1448,81 @@ mod tests {
                 state.counter_bucket_peaks.capacity(),
                 state.counter_updated.capacity(),
             )
+        );
+    }
+
+    #[test]
+    fn pyramid_lod_activation_test() {
+        let mut data = TraceData::new();
+        let events = (0..500)
+            .map(|i| add_event(&mut data, i * 20, 10, "foo", 0))
+            .collect::<Vec<_>>();
+        let mut track = Track {
+            kind: TrackType::Thread,
+            event_indices: events,
+            ..Default::default()
+        };
+        track.calculate_depths(&data);
+        track.build_pyramid(&data);
+
+        assert!(!track.pyramid_levels.is_empty(), "Pyramid levels must be pre-computed!");
+
+        let mut state = State::default();
+        
+        // 1. Fully Zoomed Out Viewport: Pyramid LOD Level 2 aggregates sub-pixel events
+        let blocks_out = state.thread_blocks(&track, &data, 0.0, 50000.0, 1000.0, 0.0, None);
+        assert!(!blocks_out.is_empty());
+        assert!(
+            blocks_out.iter().any(|b| b.count > 1),
+            "Pyramid LOD should aggregate sub-pixel events when zoomed out!"
+        );
+
+        // 2. Medium Zoom Viewport: Pyramid LOD Level 1 aggregates sub-pixel events
+        let blocks_med = state.thread_blocks(&track, &data, 0.0, 10000.0, 1000.0, 0.0, None);
+        assert!(!blocks_med.is_empty());
+        assert!(
+            blocks_med.iter().any(|b| b.count > 1),
+            "Pyramid LOD should aggregate sub-pixel events at medium zoom!"
+        );
+
+        // 3. Deep Zoomed In Viewport: Events are large (>3.0px), renders raw events without LOD
+        let blocks_in = state.thread_blocks(&track, &data, 2000.0, 2050.0, 1000.0, 0.0, None);
+        assert!(!blocks_in.is_empty());
+        assert!(
+            blocks_in.iter().all(|b| b.count == 1),
+            "Deep zoom-in should render raw individual events without LOD aggregation!"
+        );
+    }
+
+    #[test]
+    fn production_focused_event_edge_case_test() {
+        let mut data = TraceData::new();
+        let events = (0..500)
+            .map(|i| add_event(&mut data, i * 20, 10, "foo", 0))
+            .collect::<Vec<_>>();
+        let first_event = events[0];
+        let mut track = Track {
+            kind: TrackType::Thread,
+            event_indices: events,
+            ..Default::default()
+        };
+        track.calculate_depths(&data);
+        track.build_pyramid(&data);
+
+        let mut state = State::default();
+
+        // 1. Focus event on another track: Pyramid LOD remains ACTIVE for this track!
+        let blocks_other_focus = state.thread_blocks(&track, &data, 0.0, 50000.0, 1000.0, 0.0, Some(999999));
+        assert!(
+            blocks_other_focus.iter().any(|b| b.count > 1),
+            "Pyramid LOD MUST remain active on un-focused tracks!"
+        );
+
+        // 2. Focus event on THIS track: Renders focused block distinctly!
+        let blocks_self_focus = state.thread_blocks(&track, &data, 0.0, 50000.0, 1000.0, 0.0, Some(first_event));
+        assert!(
+            blocks_self_focus.iter().any(|b| b.focused && b.event_index == first_event),
+            "Track with focused event MUST highlight the focused event!"
         );
     }
 }

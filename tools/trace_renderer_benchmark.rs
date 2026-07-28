@@ -1,22 +1,23 @@
+use base::allocation::CountingAllocator;
+use std::ffi::{CString, c_char, c_int, c_void};
 use std::fmt::Write as _;
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::Path;
 use std::process::ExitCode;
 use std::time::Instant;
-use ztracing::trace::{TraceData, Track, TrackType, loader::load_file};
-use ztracing::viewer::TrackRenderer;
+use ztracing::headless::HeadlessApp;
+
+#[global_allocator]
+static ALLOCATOR: CountingAllocator = CountingAllocator;
 
 const ITERATIONS: usize = 100;
-const VIEWPORT_TRACKS: usize = 25;
-const VIEWPORT_WIDTH: f32 = 1000.0;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct Viewport {
-    start: usize,
-    count: usize,
-    events: usize,
-    threads: usize,
-    counters: usize,
+#[link(name = "z")]
+unsafe extern "C" {
+    fn gzopen(path: *const c_char, mode: *const c_char) -> *mut c_void;
+    fn gzread(file: *mut c_void, buffer: *mut c_void, length: u32) -> c_int;
+    fn gzclose(file: *mut c_void) -> c_int;
 }
 
 fn main() -> ExitCode {
@@ -38,246 +39,157 @@ fn main() -> ExitCode {
     }
 }
 
-fn benchmark(path: &Path) -> Result<String, String> {
-    let size = fs::metadata(path)
-        .map(|metadata| metadata.len())
+fn read_file_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    let mut file = File::open(path)
         .map_err(|_| format!("error: could not open file {}", path.display()))?;
-    let trace = load_file(path)
-        .map_err(|_| format!("error: failed to load trace file {}", path.display()))?;
-    let viewport = select_viewport(&trace.tracks).ok_or_else(|| {
-        format!(
-            "error: trace file {} has no renderable tracks",
-            path.display()
-        )
-    })?;
-    let selected = &trace.tracks[viewport.start..viewport.start + viewport.count];
-    let mut renderer = TrackRenderer::default();
-    let milliseconds = measure_frames(ITERATIONS, || {
-        render_frame(
-            &mut renderer,
-            selected,
-            &trace.data,
-            trace.minimum_timestamp as f64,
-            trace.maximum_timestamp as f64,
-        )
-    });
+    let mut magic = [0_u8; 2];
+    let is_gzip = if file.read_exact(&mut magic).is_ok() {
+        magic == [0x1f, 0x8b]
+    } else {
+        false
+    };
+
+    if is_gzip {
+        let path_c = CString::new(path.as_os_str().as_encoded_bytes())
+            .map_err(|_| "error: trace path contains NUL byte".to_owned())?;
+        let mode = c"rb";
+        let gz_file = unsafe { gzopen(path_c.as_ptr(), mode.as_ptr()) };
+        if gz_file.is_null() {
+            return Err("error: failed to initialize gzip decompression".to_owned());
+        }
+        let mut bytes = Vec::new();
+        let mut buffer = vec![0_u8; 1024 * 1024];
+        loop {
+            let read = unsafe { gzread(gz_file, buffer.as_mut_ptr().cast(), buffer.len() as u32) };
+            if read <= 0 {
+                break;
+            }
+            bytes.extend_from_slice(&buffer[..read as usize]);
+        }
+        unsafe { gzclose(gz_file) };
+        Ok(bytes)
+    } else {
+        let mut file = File::open(path)
+            .map_err(|_| format!("error: could not open file {}", path.display()))?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .map_err(|_| format!("error: failed to read file {}", path.display()))?;
+        Ok(bytes)
+    }
+}
+
+fn benchmark(path: &Path) -> Result<String, String> {
+    let metadata = fs::metadata(path)
+        .map_err(|_| format!("error: could not open file {}", path.display()))?;
+    let bytes = read_file_bytes(path)?;
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("trace.json");
+
+    let mut headless = HeadlessApp::create(1920, 1080)
+        .map_err(|e| format!("error: failed to create headless app: {e}"))?;
+
+    // Load trace into production App state via session API
+    headless
+        .runtime
+        .app
+        .begin_session(1, filename, bytes.len());
+    headless
+        .runtime
+        .app
+        .handle_file_chunk(1, bytes.clone(), bytes.len(), true);
+
+    let started_load = Instant::now();
+    while headless.runtime.app.loading.active {
+        headless.update();
+        if started_load.elapsed().as_secs() > 60 {
+            return Err("error: timeout loading trace into headless app".to_owned());
+        }
+    }
+
+    // Warm up 3 full production UI frames
+    headless.update();
+    headless.update();
+    headless.update();
+
+    let event_count = headless
+        .runtime
+        .app
+        .trace_data
+        .as_ref()
+        .map_or(0, |td| td.events.len());
+    let track_count = headless.runtime.app.viewer.tracks().len();
+
+    // Measure full production UI frame updates (CPU renderer vs GPU software rasterizer)
+    let mut total_cpu_ms = 0.0_f64;
+    let mut total_gpu_ms = 0.0_f64;
+    for _ in 0..ITERATIONS {
+        if let Some((cpu, gpu)) = headless.update() {
+            let gpu_submit_start = Instant::now();
+            headless.submit_frame();
+            let gpu_submit_ms = gpu_submit_start.elapsed().as_secs_f64() * 1000.0;
+            total_cpu_ms += cpu;
+            total_gpu_ms += gpu + gpu_submit_ms;
+        }
+    }
+    let total_ms = total_cpu_ms + total_gpu_ms;
+    let avg_cpu_ms = total_cpu_ms / ITERATIONS as f64;
+    let avg_gpu_ms = total_gpu_ms / ITERATIONS as f64;
+    let avg_total_ms = total_ms / ITERATIONS as f64;
+    let cpu_fps = 1000.0 / avg_cpu_ms;
+    let total_fps = 1000.0 / avg_total_ms;
 
     let mut report = String::new();
     writeln!(report, "----------------------------------------").unwrap();
-    writeln!(report, "TRACE RENDERER BENCHMARK (VERTICAL VIEWPORT SCAN)").unwrap();
+    writeln!(report, "HEADLESS PRODUCTION RENDERER BENCHMARK").unwrap();
     writeln!(report, "----------------------------------------").unwrap();
     writeln!(
         report,
-        "File Size:             {:.2} MB",
-        size as f64 / (1024.0 * 1024.0)
+        "File Size:             {:.2} MB (Disk), {:.2} MB (Decompressed)",
+        metadata.len() as f64 / (1024.0 * 1024.0),
+        bytes.len() as f64 / (1024.0 * 1024.0)
     )
     .unwrap();
-    writeln!(report, "Total Tracks:          {}", trace.tracks.len()).unwrap();
-    writeln!(report, "Viewport Size:         {} tracks", viewport.count).unwrap();
-    writeln!(report, "  Thread Tracks:       {}", viewport.threads).unwrap();
-    writeln!(report, "  Counter Tracks:      {}", viewport.counters).unwrap();
-    writeln!(report, "  Total Viewport Events: {}", viewport.events).unwrap();
-    writeln!(
-        report,
-        "  Hottest Track Block: index {} to {}",
-        viewport.start,
-        viewport.start + viewport.count - 1
-    )
-    .unwrap();
+    writeln!(report, "Canvas Resolution:     1920 x 1080 (1080p)").unwrap();
+    writeln!(report, "Total Events:          {event_count}").unwrap();
+    writeln!(report, "Total Tracks:          {track_count}").unwrap();
     writeln!(report, "----------------------------------------").unwrap();
-    writeln!(report, "Full Viewport Render (Fully Zoomed Out):").unwrap();
-    writeln!(report, "  Total Time:          {milliseconds:.3} ms").unwrap();
+    writeln!(report, "Production Performance Breakdown (avg of {ITERATIONS} frames):").unwrap();
     writeln!(
         report,
-        "  Average Frame Time:  {:.3} ms (avg of {ITERATIONS} runs)",
-        milliseconds / ITERATIONS as f64
+        "  Our Renderer (CPU, excl GPU): {avg_cpu_ms:.3} ms / frame ({cpu_fps:.1} FPS)"
+    )
+    .unwrap();
+    writeln!(
+        report,
+        "  GPU Draw Call Execution:      {avg_gpu_ms:.3} ms / frame"
+    )
+    .unwrap();
+    writeln!(
+        report,
+        "  Total Full Frame Time:        {avg_total_ms:.3} ms / frame ({total_fps:.1} FPS)"
     )
     .unwrap();
     writeln!(report, "----------------------------------------").unwrap();
     Ok(report)
 }
 
-fn select_viewport(tracks: &[Track]) -> Option<Viewport> {
-    if tracks.is_empty() {
-        return None;
-    }
-    let count = VIEWPORT_TRACKS.min(tracks.len());
-    let mut best_start = 0;
-    let mut best_events = tracks[..count]
-        .iter()
-        .map(|track| track.event_indices.len())
-        .sum();
-    for start in 1..=tracks.len() - count {
-        let events = tracks[start..start + count]
-            .iter()
-            .map(|track| track.event_indices.len())
-            .sum();
-        if events > best_events {
-            best_start = start;
-            best_events = events;
-        }
-    }
-    let selected = &tracks[best_start..best_start + count];
-    let threads = selected
-        .iter()
-        .filter(|track| track.kind == TrackType::Thread)
-        .count();
-    let counters = selected
-        .iter()
-        .filter(|track| track.kind == TrackType::Counter)
-        .count();
-    Some(Viewport {
-        start: best_start,
-        count,
-        events: best_events,
-        threads,
-        counters,
-    })
-}
-
-fn measure_frames(iterations: usize, mut render: impl FnMut() -> usize) -> f64 {
-    std::hint::black_box(render());
-    let started = Instant::now();
-    for _ in 0..iterations {
-        std::hint::black_box(render());
-    }
-    started.elapsed().as_secs_f64() * 1000.0
-}
-
-fn render_frame(
-    renderer: &mut TrackRenderer,
-    tracks: &[Track],
-    data: &TraceData,
-    viewport_start: f64,
-    viewport_end: f64,
-) -> usize {
-    let mut block_count = 0_usize;
-    for track in tracks {
-        let count = if track.kind == TrackType::Thread {
-            renderer
-                .thread_blocks(
-                    track,
-                    data,
-                    viewport_start,
-                    viewport_end,
-                    VIEWPORT_WIDTH,
-                    0.0,
-                    None,
-                )
-                .len()
-        } else {
-            renderer
-                .counter_blocks(
-                    track,
-                    data,
-                    viewport_start,
-                    viewport_end,
-                    VIEWPORT_WIDTH,
-                    0.0,
-                    None,
-                )
-                .len()
-        };
-        block_count = block_count.wrapping_add(count);
-    }
-    block_count
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{ITERATIONS, benchmark, measure_frames, select_viewport};
-    use std::cell::Cell;
-    use std::fs;
-    use std::path::PathBuf;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use ztracing::trace::{Track, TrackType};
-
-    static NEXT_FILE: AtomicUsize = AtomicUsize::new(0);
-
-    fn temporary(name: &str, contents: &[u8]) -> PathBuf {
-        let directory = std::env::var_os("TEST_TMPDIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(std::env::temp_dir);
-        let path = directory.join(format!(
-            "trace_renderer_benchmark_{}_{}",
-            NEXT_FILE.fetch_add(1, Ordering::Relaxed),
-            name
-        ));
-        fs::write(&path, contents).unwrap();
-        path
-    }
+    use super::*;
 
     #[test]
-    fn viewport_ties_keep_the_first_block() {
-        let tracks = (0..26)
-            .map(|_| Track {
-                event_indices: vec![0],
-                ..Track::default()
-            })
-            .collect::<Vec<_>>();
-        let viewport = select_viewport(&tracks).unwrap();
-        assert_eq!(viewport.start, 0);
-        assert_eq!(viewport.count, 25);
-        assert_eq!(viewport.events, 25);
-    }
-
-    #[test]
-    fn one_frame_is_warmed_before_measurement() {
-        let calls = Cell::new(0);
-        measure_frames(3, || {
-            calls.set(calls.get() + 1);
-            0
-        });
-        assert_eq!(calls.get(), 4);
-    }
-
-    #[test]
-    fn empty_trace_is_rejected() {
-        let path = temporary("empty.json", b"[]");
-        let error = benchmark(&path).unwrap_err();
-        assert!(error.contains("has no renderable tracks"));
-        fs::remove_file(path).unwrap();
-    }
-
-    #[test]
-    fn mixed_track_report_preserves_workload_and_units() {
-        let path = temporary(
-            "mixed.json",
-            br#"[
-                {"name":"thread","ph":"X","pid":1,"tid":1,"ts":0,"dur":100},
-                {"name":"counter","ph":"C","pid":1,"tid":1,"ts":10,"args":{"value":1}},
-                {"name":"counter","ph":"C","pid":1,"tid":1,"ts":90,"args":{"value":2}}
-            ]"#,
-        );
+    fn headless_benchmark_runs_without_panicking() {
+        let path = std::env::var_os("TEST_TMPDIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join("simple_test_trace.json");
+        let content = br#"[{"name":"a","ph":"X","ts":0,"dur":10,"pid":1,"tid":1}]"#;
+        std::fs::write(&path, content).unwrap();
         let report = benchmark(&path).unwrap();
-        assert!(report.contains("Total Tracks:          2"));
-        assert!(report.contains("Viewport Size:         2 tracks"));
-        assert!(report.contains("  Thread Tracks:       1"));
-        assert!(report.contains("  Counter Tracks:      1"));
-        assert!(report.contains("  Total Viewport Events: 3"));
-        assert!(report.contains("  Hottest Track Block: index 0 to 1"));
-        assert!(report.contains("  Total Time:"));
-        assert!(report.contains(" ms"));
-        assert!(report.contains(&format!("(avg of {ITERATIONS} runs)")));
-        fs::remove_file(path).unwrap();
-    }
-
-    #[test]
-    fn viewport_reports_exact_track_types() {
-        let tracks = [
-            Track {
-                kind: TrackType::Thread,
-                event_indices: vec![0],
-                ..Track::default()
-            },
-            Track {
-                kind: TrackType::Counter,
-                event_indices: vec![1],
-                ..Track::default()
-            },
-        ];
-        let viewport = select_viewport(&tracks).unwrap();
-        assert_eq!(viewport.threads, 1);
-        assert_eq!(viewport.counters, 1);
+        assert!(report.contains("HEADLESS PRODUCTION RENDERER BENCHMARK"));
+        assert!(report.contains("FPS"));
+        let _ = std::fs::remove_file(path);
     }
 }

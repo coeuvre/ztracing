@@ -21,27 +21,35 @@ impl Runtime {
         runtime
     }
 
-    pub fn update<S, B>(&mut self, should_render: S, begin_frame: B) -> bool
+    pub fn update<S, B>(&mut self, should_render: S, begin_frame: B) -> Option<(f64, f64)>
     where
         S: FnOnce(&App) -> bool,
         B: FnOnce(),
     {
         self.app.poll_completions();
         if !should_render(&self.app) {
-            return false;
+            return None;
         }
         begin_frame();
+        let cpu_start = std::time::Instant::now();
         let frame = self.imgui.frame();
         self.app.draw(&frame);
         let draw = frame.render();
         if self.app.take_theme_changed() {
             self.imgui.apply_theme(&self.app.theme);
         }
+        let cpu_ms = cpu_start.elapsed().as_secs_f64() * 1000.0;
+
+        let gpu_start = std::time::Instant::now();
         clear_frame();
         // SAFETY: the frontend made its GL context current and initialized the
         // shared renderer before entering this function.
-        unsafe { imgui_impl_webgl_render_draw_data(draw) }
-        true
+        unsafe {
+            imgui_impl_webgl_render_draw_data(draw);
+        }
+        let gpu_ms = gpu_start.elapsed().as_secs_f64() * 1000.0;
+
+        Some((cpu_ms, gpu_ms))
     }
 
     pub fn on_theme_changed(&mut self, dark: bool) {

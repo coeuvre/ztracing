@@ -12,17 +12,24 @@
 
 // clang-format off
 EM_JS(bool, js_is_software_renderer, (), {
-  var canvas = document.createElement('canvas');
-  var gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-  if (!gl) return false;
-  var ext = gl.getExtension('WEBGL_debug_renderer_info');
-  if (ext) {
-    var renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
-    if (renderer) {
-      return /software|swiftshader|llvmpipe/i.test(renderer);
+  try {
+    var gl = (typeof GL !== "undefined" && GL.currentContext && GL.currentContext.GLctx)
+        ? GL.currentContext.GLctx
+        : null;
+    if (!gl) {
+      var canvas = document.querySelector("#canvas") || document.createElement("canvas");
+      gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
     }
+    if (!gl) return false;
+    var ext = gl.getExtension("WEBGL_debug_renderer_info");
+    var renderer = ext ? (gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || "") : "";
+    var vendor = ext ? (gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) || "") : "";
+    var stdRenderer = gl.getParameter(gl.RENDERER) || "";
+    var combined = (renderer + " " + vendor + " " + stdRenderer);
+    return /software|swiftshader|llvmpipe|softpipe|swrast|warp|subzero/i.test(combined);
+  } catch (e) {
+    return false;
   }
-  return false;
 });
 // clang-format on
 
@@ -614,4 +621,37 @@ void imgui_impl_wasm_new_frame() {
   bd->last_time = current_time;
 
   imgui_impl_wasm_update_mouse_cursor();
+}
+
+extern "C" {
+int ztracing_create_webgl_context(const char* canvas_selector) {
+  if (!canvas_selector) return 0;
+  EmscriptenWebGLContextAttributes attrs;
+  emscripten_webgl_init_context_attributes(&attrs);
+  attrs.majorVersion = 2;
+  attrs.minorVersion = 0;
+  attrs.alpha = EM_FALSE;
+  attrs.antialias = EM_FALSE;
+  attrs.premultipliedAlpha = EM_FALSE;
+  attrs.depth = EM_FALSE;
+  attrs.stencil = EM_FALSE;
+  attrs.powerPreference = EM_WEBGL_POWER_PREFERENCE_HIGH_PERFORMANCE;
+
+  EMSCRIPTEN_WEBGL_CONTEXT_HANDLE ctx =
+      emscripten_webgl_create_context(canvas_selector, &attrs);
+  if (ctx <= 0) {
+    fprintf(stderr,
+            "failed to create webgl context for selector '%s' (error: %d)\n",
+            canvas_selector, (int)ctx);
+    return 0;
+  }
+  emscripten_webgl_make_context_current(ctx);
+  return (int)ctx;
+}
+
+void ztracing_destroy_webgl_context(int context) {
+  if (context > 0) {
+    emscripten_webgl_destroy_context((EMSCRIPTEN_WEBGL_CONTEXT_HANDLE)context);
+  }
+}
 }

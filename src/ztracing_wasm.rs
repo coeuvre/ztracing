@@ -101,7 +101,7 @@ pub extern "C" fn ztracing_update() {
         let Some(runtime) = runtime.as_mut() else {
             return;
         };
-        runtime.update(
+        let _ = runtime.update(
             |app| {
                 if app.loading.request_update {
                     unsafe { imgui_impl_wasm_request_update() }
@@ -125,7 +125,7 @@ pub extern "C" fn ztracing_set_font_data(data: *const u8, size: i32) {
         let Some(runtime) = runtime.as_mut() else {
             return;
         };
-        let dpi = unsafe { imgui_impl_wasm_get_dpi_scale() };
+        let dpi = ztracing::platform::dpi_scale();
         let font = unsafe { std::slice::from_raw_parts(data, size as usize) };
         runtime.set_font(font, dpi);
         unsafe { imgui_impl_wasm_request_update() }
@@ -269,7 +269,6 @@ unsafe extern "C" {
     fn imgui_impl_wasm_new_frame();
     fn imgui_impl_wasm_request_update();
     fn imgui_impl_wasm_need_update() -> i32;
-    fn imgui_impl_wasm_get_dpi_scale() -> f32;
     fn imgui_impl_webgl_init() -> i32;
     fn imgui_impl_webgl_shutdown();
     fn imgui_impl_webgl_new_frame();

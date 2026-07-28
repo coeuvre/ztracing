@@ -5,6 +5,17 @@ use super::data::TraceData;
 use crate::string_interner::StringId;
 
 pub const BLOCK_SIZE: usize = 1024;
+pub const PYRAMID_FANOUT: usize = 16;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PyramidNode {
+    pub min_timestamp: i64,
+    pub max_timestamp: i64,
+    pub max_duration: i64,
+    pub dominant_event_index: usize,
+    pub event_count: u32,
+    pub max_depth: u32,
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub enum TrackType {
@@ -27,9 +38,24 @@ pub struct Track {
     pub counter_series: Vec<StringId>,
     pub counter_palette_indices: Vec<u8>,
     pub block_max_durations: Vec<i64>,
+    pub pyramid_levels: Vec<Vec<PyramidNode>>,
     pub counter_max_total: f64,
     pub max_duration: i64,
     pub max_depth: u32,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct SortKey {
+    pub(crate) ts: i64,
+    pub(crate) dur: i64,
+    pub(crate) index: usize,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct StackEvent {
+    pub(crate) end: i64,
+    pub(crate) depth: u32,
+    pub(crate) track_index: usize,
 }
 
 impl Track {
@@ -61,6 +87,7 @@ impl Track {
             counter_series: Vec::new(),
             counter_palette_indices: Vec::new(),
             block_max_durations: Vec::new(),
+            pyramid_levels: Vec::new(),
             counter_max_total: 0.0,
             max_duration: 0,
             max_depth: 0,
@@ -72,28 +99,41 @@ impl Track {
         self.update_max_duration(data);
         if self.kind == TrackType::Thread {
             self.calculate_depths(data);
+            self.build_pyramid(data);
         } else {
             self.depths.resize(self.event_indices.len(), 0);
             self.self_durations.resize(self.event_indices.len(), 0);
             self.finish_counter(data);
         }
-        self.event_indices.shrink_to_fit();
-        self.depths.shrink_to_fit();
-        self.self_durations.shrink_to_fit();
-        self.counter_series.shrink_to_fit();
-        self.counter_palette_indices.shrink_to_fit();
-        self.block_max_durations.shrink_to_fit();
     }
 
     pub fn sort_events(&mut self, data: &TraceData) {
-        self.event_indices.sort_unstable_by(|&left, &right| {
-            let a = &data.events[left];
-            let b = &data.events[right];
-            a.timestamp
-                .cmp(&b.timestamp)
-                .then_with(|| b.duration.cmp(&a.duration))
-                .then_with(|| left.cmp(&right))
+        if self.event_indices.len() <= 1 {
+            return;
+        }
+
+        let mut keys: Vec<SortKey> = self
+            .event_indices
+            .iter()
+            .map(|&index| {
+                let e = &data.events[index];
+                SortKey {
+                    ts: e.timestamp,
+                    dur: e.duration,
+                    index,
+                }
+            })
+            .collect();
+
+        keys.sort_unstable_by(|a, b| {
+            a.ts.cmp(&b.ts)
+                .then_with(|| b.dur.cmp(&a.dur))
+                .then_with(|| a.index.cmp(&b.index))
         });
+
+        for (slot, key) in self.event_indices.iter_mut().zip(&keys) {
+            *slot = key.index;
+        }
     }
 
     pub fn update_max_duration(&mut self, data: &TraceData) {
@@ -113,12 +153,6 @@ impl Track {
     }
 
     pub fn calculate_depths(&mut self, data: &TraceData) {
-        #[derive(Clone, Copy)]
-        struct StackEvent {
-            end: i64,
-            depth: u32,
-            track_index: usize,
-        }
         self.depths.resize(self.event_indices.len(), 0);
         self.self_durations.resize(self.event_indices.len(), 0);
         let mut stack: Vec<StackEvent> = Vec::new();
@@ -172,6 +206,80 @@ impl Track {
             .collect();
     }
 
+    pub fn build_pyramid(&mut self, data: &TraceData) {
+        self.pyramid_levels.clear();
+        if self.event_indices.len() <= PYRAMID_FANOUT {
+            return;
+        }
+
+        let mut level1 = Vec::with_capacity(self.event_indices.len().div_ceil(PYRAMID_FANOUT));
+        for (chunk_idx, chunk) in self.event_indices.chunks(PYRAMID_FANOUT).enumerate() {
+            let mut min_ts = i64::MAX;
+            let mut max_ts = i64::MIN;
+            let mut max_dur = -1_i64;
+            let mut dom_idx = chunk[0];
+            let mut max_d = 0_u32;
+
+            let start_pos = chunk_idx * PYRAMID_FANOUT;
+            for (offset, &event_index) in chunk.iter().enumerate() {
+                let event = &data.events[event_index];
+                let end = event.timestamp.saturating_add(event.duration);
+                min_ts = min_ts.min(event.timestamp);
+                max_ts = max_ts.max(end);
+                if event.duration > max_dur {
+                    max_dur = event.duration;
+                    dom_idx = event_index;
+                }
+                if let Some(&d) = self.depths.get(start_pos + offset) {
+                    max_d = max_d.max(d);
+                }
+            }
+            level1.push(PyramidNode {
+                min_timestamp: min_ts,
+                max_timestamp: max_ts,
+                max_duration: max_dur,
+                dominant_event_index: dom_idx,
+                event_count: chunk.len() as u32,
+                max_depth: max_d,
+            });
+        }
+        self.pyramid_levels.push(level1);
+
+        while self.pyramid_levels.last().map_or(0, |lvl| lvl.len()) > PYRAMID_FANOUT {
+            let prev_level = self.pyramid_levels.last().unwrap();
+            let mut next_level = Vec::with_capacity(prev_level.len().div_ceil(PYRAMID_FANOUT));
+
+            for chunk in prev_level.chunks(PYRAMID_FANOUT) {
+                let mut min_ts = i64::MAX;
+                let mut max_ts = i64::MIN;
+                let mut max_dur = -1_i64;
+                let mut dom_idx = chunk[0].dominant_event_index;
+                let mut total_count = 0_u32;
+                let mut max_d = 0_u32;
+
+                for node in chunk {
+                    min_ts = min_ts.min(node.min_timestamp);
+                    max_ts = max_ts.max(node.max_timestamp);
+                    if node.max_duration > max_dur {
+                        max_dur = node.max_duration;
+                        dom_idx = node.dominant_event_index;
+                    }
+                    total_count += node.event_count;
+                    max_d = max_d.max(node.max_depth);
+                }
+                next_level.push(PyramidNode {
+                    min_timestamp: min_ts,
+                    max_timestamp: max_ts,
+                    max_duration: max_dur,
+                    dominant_event_index: dom_idx,
+                    event_count: total_count,
+                    max_depth: max_d,
+                });
+            }
+            self.pyramid_levels.push(next_level);
+        }
+    }
+
     pub fn visible_start(&self, data: &TraceData, viewport_start: i64) -> usize {
         if self.event_indices.is_empty() {
             return 0;
@@ -209,10 +317,15 @@ pub fn organize_tracks(data: &TraceData) -> (Vec<Track>, i64, i64) {
     let metadata_phase = data.find(b"M");
     let mut tracks = Vec::<Track>::new();
     let mut lookup = HashMap::<TrackKey, usize>::new();
-    let mut event_tracks = vec![None; data.events.len()];
+    let mut last_key: Option<TrackKey> = None;
+    let mut last_track_index: usize = 0;
     let mut minimum = 0;
     let mut maximum = 0;
     let mut have_range = false;
+
+    // Compact index array to store assigned track index per event (u16::MAX for metadata).
+    let mut event_track_ids = vec![u16::MAX; data.events.len()];
+    let mut counts = Vec::<usize>::new();
 
     for (event_index, event) in data.events.iter().enumerate() {
         let counter = event.phase == counter_phase && counter_phase != StringId(0);
@@ -232,21 +345,31 @@ pub fn organize_tracks(data: &TraceData) -> (Vec<Track>, i64, i64) {
                 id: StringId(0),
             }
         };
-        let track_index = *lookup.entry(key).or_insert_with(|| {
-            let index = tracks.len();
-            tracks.push(Track::new(
-                if counter {
-                    TrackType::Counter
-                } else {
-                    TrackType::Thread
-                },
-                key.process_id,
-                key.thread_id,
-                key.name,
-                key.id,
-            ));
+
+        let track_index = if last_key == Some(key) {
+            last_track_index
+        } else {
+            let index = *lookup.entry(key).or_insert_with(|| {
+                let idx = tracks.len();
+                tracks.push(Track::new(
+                    if counter {
+                        TrackType::Counter
+                    } else {
+                        TrackType::Thread
+                    },
+                    key.process_id,
+                    key.thread_id,
+                    key.name,
+                    key.id,
+                ));
+                counts.push(0);
+                idx
+            });
+            last_key = Some(key);
+            last_track_index = index;
             index
-        });
+        };
+
         let track = &mut tracks[track_index];
         if metadata {
             match data.string(event.name) {
@@ -271,7 +394,8 @@ pub fn organize_tracks(data: &TraceData) -> (Vec<Track>, i64, i64) {
                 _ => {}
             }
         } else {
-            event_tracks[event_index] = Some(track_index);
+            event_track_ids[event_index] = track_index as u16;
+            counts[track_index] += 1;
             if !have_range {
                 minimum = event.timestamp;
                 maximum = event.timestamp.saturating_add(event.duration);
@@ -282,23 +406,22 @@ pub fn organize_tracks(data: &TraceData) -> (Vec<Track>, i64, i64) {
             }
         }
     }
-    let mut counts = vec![0; tracks.len()];
-    for track in event_tracks.iter().flatten() {
-        counts[*track] += 1;
-    }
+
+    // Pre-reserve exact capacity for every track's event_indices vector (eliminates reallocations)
     for (track, count) in tracks.iter_mut().zip(counts) {
         track.event_indices.reserve(count);
     }
-    for (event_index, track) in event_tracks.into_iter().enumerate() {
-        if let Some(track) = track {
-            tracks[track].event_indices.push(event_index);
+
+    // Pass 2: Grouping into contiguous pre-reserved vectors
+    for (event_index, &track_id) in event_track_ids.iter().enumerate() {
+        if track_id != u16::MAX {
+            tracks[track_id as usize].event_indices.push(event_index);
         }
     }
     for track in &mut tracks {
         track.finish(data);
     }
     tracks.sort_by(|a, b| compare_tracks(a, b, data));
-    tracks.shrink_to_fit();
     (tracks, minimum, maximum)
 }
 
@@ -372,14 +495,14 @@ mod tests {
         tid: i32,
         ts: i64,
         dur: i64,
-        args: Vec<TraceArg>,
+        args: Vec<TraceArg<'_>>,
     ) {
         let mut matcher = EventMatcher::default();
         data.add_event(
             &TraceEvent {
-                phase: phase.to_vec(),
-                name: name.to_vec(),
-                id: id.to_vec(),
+                phase,
+                name,
+                id,
                 process_id: pid,
                 thread_id: tid,
                 timestamp: ts,
@@ -390,10 +513,10 @@ mod tests {
             &mut matcher,
         )
     }
-    fn string_arg(key: &[u8], value: &[u8]) -> TraceArg {
+    fn string_arg<'a>(key: &'a [u8], value: &'a [u8]) -> TraceArg<'a> {
         TraceArg {
-            key: key.to_vec(),
-            value: value.to_vec(),
+            key,
+            value,
             number: 0.0,
         }
     }
@@ -691,8 +814,8 @@ mod tests {
             150,
             0,
             vec![TraceArg {
-                key: b"val".to_vec(),
-                value: b"10".to_vec(),
+                key: b"val",
+                value: b"10",
                 number: 10.0,
             }],
         );
@@ -728,8 +851,8 @@ mod tests {
             150,
             0,
             vec![TraceArg {
-                key: b"foo".to_vec(),
-                value: b"10".to_vec(),
+                key: b"foo",
+                value: b"10",
                 number: 10.0,
             }],
         );
@@ -758,13 +881,13 @@ mod tests {
             0,
             vec![
                 TraceArg {
-                    key: b"z".to_vec(),
-                    value: b"2".to_vec(),
+                    key: b"z",
+                    value: b"2",
                     number: 2.0,
                 },
                 TraceArg {
-                    key: b"a".to_vec(),
-                    value: b"3".to_vec(),
+                    key: b"a",
+                    value: b"3",
                     number: 3.0,
                 },
             ],
@@ -779,8 +902,8 @@ mod tests {
             200,
             0,
             vec![TraceArg {
-                key: b"z".to_vec(),
-                value: b"10".to_vec(),
+                key: b"z",
+                value: b"10",
                 number: 10.0,
             }],
         );

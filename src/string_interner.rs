@@ -21,6 +21,8 @@ pub(crate) struct StringInterner {
     entries: Vec<StringEntry>,
     lookup: Vec<LookupEntry>,
     lookup_size: usize,
+    last_hash: u32,
+    last_id: StringId,
 }
 
 impl StringInterner {
@@ -28,10 +30,13 @@ impl StringInterner {
         if value.is_empty() {
             return StringId(0);
         }
+        let hash = fnv1a(value);
+        if hash == self.last_hash && self.last_id != StringId(0) && self.get(self.last_id) == value {
+            return self.last_id;
+        }
         if self.lookup.is_empty() {
             self.resize_lookup(16);
         }
-        let hash = fnv1a(value);
         let mut slot = hash as usize & (self.lookup.len() - 1);
         loop {
             let entry = self.lookup[slot];
@@ -39,6 +44,8 @@ impl StringInterner {
                 break;
             }
             if entry.hash == hash && self.get(entry.reference) == value {
+                self.last_hash = hash;
+                self.last_id = entry.reference;
                 return entry.reference;
             }
             slot = (slot + 1) & (self.lookup.len() - 1);
@@ -59,6 +66,8 @@ impl StringInterner {
         if self.lookup_size * 2 > self.lookup.len() {
             self.resize_lookup(self.lookup.len() * 2);
         }
+        self.last_hash = hash;
+        self.last_id = reference;
         reference
     }
 
@@ -127,11 +136,11 @@ impl StringInterner {
     }
 }
 
+#[inline(always)]
 fn fnv1a(bytes: &[u8]) -> u32 {
     let mut hash = 2_166_136_261_u32;
     for &byte in bytes {
-        hash ^= u32::from(byte);
-        hash = hash.wrapping_mul(16_777_619);
+        hash = (hash ^ u32::from(byte)).wrapping_mul(16_777_619);
     }
     hash
 }

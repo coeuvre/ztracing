@@ -1,6 +1,10 @@
-pub fn duration(microseconds: f64, interval_microseconds: f64) -> String {
+use std::fmt::Write;
+
+pub fn duration_into(out: &mut String, microseconds: f64, interval_microseconds: f64) {
+    out.clear();
     if microseconds == 0.0 {
-        return "0".to_owned();
+        out.push('0');
+        return;
     }
     let interval = if interval_microseconds.abs() == 0.0 {
         microseconds.abs()
@@ -14,14 +18,21 @@ pub fn duration(microseconds: f64, interval_microseconds: f64) -> String {
     } else {
         (microseconds, "us")
     };
-    let mut number = format!("{value:.2}");
-    while number.ends_with('0') {
-        number.pop();
+    let _ = write!(out, "{value:.2}");
+    while out.ends_with('0') {
+        out.pop();
     }
-    if number.ends_with('.') {
-        number.pop();
+    if out.ends_with('.') {
+        out.pop();
     }
-    format!("{number} {unit}")
+    out.push(' ');
+    out.push_str(unit);
+}
+
+pub fn duration(microseconds: f64, interval_microseconds: f64) -> String {
+    let mut s = String::with_capacity(16);
+    duration_into(&mut s, microseconds, interval_microseconds);
+    s
 }
 
 pub fn tick_interval(duration: f64, width: f64, minimum_tick_width: f64) -> f64 {

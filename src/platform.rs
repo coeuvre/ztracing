@@ -54,6 +54,34 @@ pub fn is_dark_mode() -> bool {
     }
 }
 
+pub fn is_software_renderer() -> bool {
+    #[cfg(target_os = "emscripten")]
+    {
+        // SAFETY: the JavaScript bridge takes no arguments and returns 0 or 1.
+        unsafe { ztracing_platform_is_software_renderer() != 0 }
+    }
+    #[cfg(not(target_os = "emscripten"))]
+    {
+        false
+    }
+}
+
+pub fn dpi_scale() -> f32 {
+    if is_software_renderer() {
+        1.0
+    } else {
+        #[cfg(target_os = "emscripten")]
+        {
+            // SAFETY: the JavaScript bridge takes no arguments and returns device pixel ratio.
+            unsafe { ztracing_platform_get_device_pixel_ratio() }
+        }
+        #[cfg(not(target_os = "emscripten"))]
+        {
+            1.0
+        }
+    }
+}
+
 pub fn is_mac() -> bool {
     #[cfg(target_os = "emscripten")]
     {
@@ -132,6 +160,8 @@ unsafe extern "C" {
     fn ztracing_platform_is_main_thread() -> i32;
     fn ztracing_platform_is_dark_mode() -> i32;
     fn ztracing_platform_is_mac() -> i32;
+    fn ztracing_platform_is_software_renderer() -> i32;
+    fn ztracing_platform_get_device_pixel_ratio() -> f32;
     fn ztracing_platform_open_file_dialog();
     fn ztracing_platform_set_setting(key: *const c_char, value: *const c_char);
     fn ztracing_platform_get_setting(key: *const c_char, value: *mut c_char, length: i32) -> i32;
@@ -165,5 +195,15 @@ mod tests {
         assert!(matches_registered_thread(Some(&registered), registered));
         assert!(!matches_registered_thread(Some(&registered), worker));
         assert!(!matches_registered_thread(None, registered));
+    }
+
+    #[test]
+    fn default_dpi_scale_is_one() {
+        assert_eq!(dpi_scale(), 1.0);
+    }
+
+    #[test]
+    fn default_software_renderer_is_false() {
+        assert!(!is_software_renderer());
     }
 }

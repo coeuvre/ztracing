@@ -1,11 +1,13 @@
 //! Small byte-oriented JSON tokenizer used by the streaming trace parser.
 
+/// Represents a parsed JSON numeric value, either an integer (`i64`) or a float (`f64`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Number {
     Integer(i64),
     Float(f64),
 }
 
+/// Token emitted by `Reader` during byte-level JSON scanning.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Token<'a> {
     ObjectStart,
@@ -21,12 +23,16 @@ pub enum Token<'a> {
     Comma,
 }
 
+/// Error conditions returned during JSON parsing.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Error {
+    /// Insufficient data in buffer; caller should feed more bytes.
     NeedMore,
+    /// Invalid JSON syntax encountered.
     Invalid,
 }
 
+/// Zero-allocation, streaming JSON reader operating over an immutable byte slice.
 #[derive(Clone, Copy, Debug)]
 pub struct Reader<'a> {
     input: &'a [u8],
@@ -35,6 +41,7 @@ pub struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
+    /// Creates a new JSON reader for the provided byte slice starting at `position`.
     pub fn new(input: &'a [u8], position: usize, eof: bool) -> Self {
         Self {
             input,
@@ -43,18 +50,22 @@ impl<'a> Reader<'a> {
         }
     }
 
+    /// Returns the current byte offset position within the input buffer.
     pub fn position(&self) -> usize {
         self.position
     }
 
+    /// Sets the current byte offset position of the reader.
     pub fn set_position(&mut self, position: usize) {
         self.position = position;
     }
 
+    /// Returns a reference to the underlying input byte slice.
     pub fn input(&self) -> &'a [u8] {
         self.input
     }
 
+    /// Returns `true` if the reader position has reached or passed the end of the input buffer.
     pub fn is_done(&self) -> bool {
         self.position >= self.input.len()
     }
@@ -67,15 +78,23 @@ impl<'a> Reader<'a> {
         }
     }
 
-    fn skip_whitespace(&mut self) {
-        while matches!(
-            self.input.get(self.position),
-            Some(b' ' | b'\n' | b'\r' | b'\t')
-        ) {
-            self.position += 1;
+    /// Advances the reader past any ASCII whitespace bytes.
+    #[inline]
+    pub fn skip_whitespace(&mut self) {
+        // In minified JSON, >99% of characters are non-whitespace (> 0x20).
+        // An inline guard turns whitespace scanning into a single fast comparison.
+        if self.position < self.input.len() && self.input[self.position] > b' ' {
+            return;
         }
+        let rest = &self.input[self.position..];
+        let count = rest
+            .iter()
+            .position(|&b| !matches!(b, b' ' | b'\n' | b'\r' | b'\t'))
+            .unwrap_or(rest.len());
+        self.position += count;
     }
 
+    /// Scans and returns the next token from the input.
     pub fn next(&mut self) -> Result<Token<'a>, Error> {
         self.skip_whitespace();
         let Some(&byte) = self.input.get(self.position) else {
@@ -97,6 +116,43 @@ impl<'a> Reader<'a> {
         }
     }
 
+    /// Skips whitespace and expects a colon (`:`).
+    #[inline]
+    pub fn expect_colon(&mut self) -> Result<(), Error> {
+        self.skip_whitespace();
+        if self.position < self.input.len() {
+            if self.input[self.position] == b':' {
+                self.position += 1;
+                Ok(())
+            } else {
+                Err(Error::Invalid)
+            }
+        } else {
+            Err(self.incomplete())
+        }
+    }
+
+    /// Skips whitespace and expects either a comma (`,`) or object end (`}`).
+    /// Returns `true` if object end (`}`) was matched.
+    #[inline]
+    pub fn expect_comma_or_object_end(&mut self) -> Result<bool, Error> {
+        self.skip_whitespace();
+        if self.position < self.input.len() {
+            let b = self.input[self.position];
+            if b == b',' {
+                self.position += 1;
+                Ok(false)
+            } else if b == b'}' {
+                self.position += 1;
+                Ok(true)
+            } else {
+                Err(Error::Invalid)
+            }
+        } else {
+            Err(self.incomplete())
+        }
+    }
+
     fn single(&mut self, token: Token<'a>) -> Result<Token<'a>, Error> {
         self.position += 1;
         Ok(token)
@@ -114,27 +170,60 @@ impl<'a> Reader<'a> {
         Ok(token)
     }
 
+    /// Fast-path string extraction that checks for leading quotes
+    /// directly without general `Token` enum allocation.
+    #[inline]
+    pub fn read_string(&mut self) -> Result<&'a [u8], Error> {
+        // Fast-path string extraction that checks for leading quotes
+        // directly without general Token enum allocation.
+        self.skip_whitespace();
+        if self.position < self.input.len() {
+            if self.input[self.position] == b'"' {
+                self.string_slice()
+            } else {
+                Err(Error::Invalid)
+            }
+        } else {
+            Err(self.incomplete())
+        }
+    }
+
     fn string(&mut self) -> Result<Token<'a>, Error> {
+        self.string_slice().map(Token::String)
+    }
+
+    #[inline]
+    fn string_slice(&mut self) -> Result<&'a [u8], Error> {
         let start = self.position + 1;
-        let mut cursor = start;
-        while let Some(&byte) = self.input.get(cursor) {
-            match byte {
-                b'"' => {
-                    let value = &self.input[start..cursor];
-                    self.position = cursor + 1;
-                    return Ok(Token::String(value));
-                }
-                b'\\' => {
-                    cursor += 1;
-                    if cursor >= self.input.len() {
-                        return Err(self.incomplete());
+        let rest = &self.input[start..];
+        let mut offset = 0;
+        while offset < rest.len() {
+            let rel = rest[offset..].iter().position(|&b| b == b'"' || b == b'\\');
+            match rel {
+                Some(p) => {
+                    let pos = offset + p;
+                    if rest[pos] == b'"' {
+                        self.position = start + pos + 1;
+                        return Ok(&rest[..pos]);
                     }
-                    cursor += 1;
+                    offset = pos + 2;
                 }
-                _ => cursor += 1,
+                None => break,
             }
         }
         Err(self.incomplete())
+    }
+
+    /// Fast-path number extraction that parses a number without general `Token` enum allocation.
+    #[inline]
+    pub fn read_number(&mut self) -> Result<Number, Error> {
+        self.skip_whitespace();
+        let tok = self.number()?;
+        if let Token::Number { value, .. } = tok {
+            Ok(value)
+        } else {
+            Err(Error::Invalid)
+        }
     }
 
     fn number(&mut self) -> Result<Token<'a>, Error> {
@@ -203,11 +292,12 @@ impl<'a> Reader<'a> {
         }
 
         let source = &self.input[start..cursor];
-        let text = std::str::from_utf8(source).map_err(|_| Error::Invalid)?;
+        // SAFETY: `source` consists exclusively of ASCII numeric/sign/exponent bytes verified by the scanner above.
+        let text = unsafe { std::str::from_utf8_unchecked(source) };
         let value = if is_float {
             Number::Float(text.parse().map_err(|_| Error::Invalid)?)
         } else {
-            Number::Integer(text.parse().unwrap_or_else(|_| {
+            Number::Integer(parse_i64_fast(source).unwrap_or_else(|| {
                 if source.first() == Some(&b'-') {
                     i64::MIN
                 } else {
@@ -218,6 +308,30 @@ impl<'a> Reader<'a> {
         self.position = cursor;
         Ok(Token::Number { value, source })
     }
+}
+
+#[inline]
+fn parse_i64_fast(source: &[u8]) -> Option<i64> {
+    let (is_neg, digits) = match source.first()? {
+        b'-' => (true, &source[1..]),
+        _ => (false, source),
+    };
+    if digits.is_empty() {
+        return None;
+    }
+    let mut val: i64 = 0;
+    // For numbers with <= 18 digits (e.g., timestamps, process/thread IDs),
+    // overflow cannot occur within i64::MAX. The unchecked loop eliminates overflow checks per digit.
+    if digits.len() <= 18 {
+        for &b in digits {
+            val = val * 10 + i64::from(b - b'0');
+        }
+    } else {
+        for &b in digits {
+            val = val.checked_mul(10)?.checked_add(i64::from(b - b'0'))?;
+        }
+    }
+    Some(if is_neg { -val } else { val })
 }
 
 #[cfg(test)]
