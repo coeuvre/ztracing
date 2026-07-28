@@ -1,4 +1,5 @@
 #![cfg(target_os = "emscripten")]
+#![no_main]
 
 use base::allocation::CountingAllocator;
 use base::logging::{Level, LogWriter, set_writer};
@@ -7,14 +8,12 @@ use base::{debug, error};
 #[global_allocator]
 static ALLOCATOR: CountingAllocator = CountingAllocator;
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char};
 use std::fmt;
 use ztracing::runtime::Runtime;
 
 use ztracing::ffi_buffer;
-
-fn main() {}
 
 use ztracing::imgui::Context;
 
@@ -39,7 +38,6 @@ fn ffi_string(message: String) -> CString {
 
 thread_local! {
     static RUNTIME: RefCell<Option<Runtime>> = const { RefCell::new(None) };
-    static ANIMATION_STARTED: Cell<bool> = const { Cell::new(false) };
 }
 
 #[unsafe(no_mangle)]
@@ -83,17 +81,6 @@ pub extern "C" fn ztracing_init(canvas: *const c_char) -> i32 {
     0
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn ztracing_start() {
-    if RUNTIME.with_borrow(Option::is_none) {
-        return;
-    }
-    ANIMATION_STARTED.with(|started| {
-        if !started.replace(true) {
-            unsafe { ztracing_start_animation_loop() }
-        }
-    })
-}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn ztracing_update() {
@@ -264,7 +251,6 @@ unsafe extern "C" {
     fn ztracing_js_log(level: i32, message: *const c_char);
     fn ztracing_create_webgl_context(selector: *const c_char) -> i32;
     fn ztracing_destroy_webgl_context(context: i32);
-    fn ztracing_start_animation_loop();
     fn imgui_impl_wasm_init(selector: *const c_char) -> i32;
     fn imgui_impl_wasm_new_frame();
     fn imgui_impl_wasm_request_update();

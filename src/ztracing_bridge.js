@@ -67,9 +67,5 @@ mergeInto(LibraryManager.library, {
       }
     };
     input.click();
-  },
-  ztracing_start_animation_loop: function() {
-    function frame() { Module._ztracing_update(); requestAnimationFrame(frame); }
-    requestAnimationFrame(frame);
   }
 });

@@ -148,9 +148,10 @@ test('production threaded WASM handles growth, cancellation, and replacement', a
           () => Module.ccall(
               'ztracing_init', 'number', ['string'], ['#canvas'])),
       0);
+  // Verify startup idempotency by calling ztracing_start twice.
   await page.evaluate(() => {
-    Module._ztracing_start();
-    Module._ztracing_start();
+    Module.ztracing_start({canvasSelector: '#canvas'});
+    Module.ztracing_start({canvasSelector: '#canvas'});
   });
 
   await page.evaluate(async () => {

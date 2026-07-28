@@ -124,7 +124,7 @@ cc_library(
         "-sASSERTIONS=1",
         "-sSTACK_OVERFLOW_CHECK=1",
         "-sEXPORTED_RUNTIME_METHODS=['ccall','HEAPU8','HEAPF32','UTF8ToString','wasmMemory']",
-        "-sEXPORTED_FUNCTIONS=['_ztracing_init','_ztracing_start','_ztracing_update','_ztracing_set_font_data','_ztracing_malloc','_ztracing_free','_ztracing_begin_session','_ztracing_set_error','_ztracing_handle_file_chunk','_ztracing_get_buffered_bytes','_ztracing_is_loading_active','_ztracing_on_theme_changed']",
+        "-sEXPORTED_FUNCTIONS=['_ztracing_init','_ztracing_update','_ztracing_set_font_data','_ztracing_malloc','_ztracing_free','_ztracing_begin_session','_ztracing_set_error','_ztracing_handle_file_chunk','_ztracing_get_buffered_bytes','_ztracing_is_loading_active','_ztracing_on_theme_changed']",
     ],
     target_compatible_with = ["@@platforms//os:emscripten"],
 )

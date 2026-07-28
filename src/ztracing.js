@@ -419,7 +419,19 @@ async function startApplication(options) {
   }
 
   // 3. Enter main loop
-  Module.ccall('ztracing_start', null, [], []);
+  startAnimationLoop();
+}
+
+let animationStarted = false;
+
+function startAnimationLoop() {
+  if (animationStarted || typeof requestAnimationFrame !== 'function') return;
+  animationStarted = true;
+  function frame() {
+    Module._ztracing_update();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 }
 
 /**
@@ -436,6 +448,6 @@ async function startApplication(options) {
 Module['ztracing_start'] = function(options) {
   if (!startPromise) startPromise = startApplication(options);
   return startPromise;
-}
+};
 
 })();
