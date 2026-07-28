@@ -106,8 +106,16 @@ fn derive(
         } else {
             col(0, 0, 0, 15)
         },
-        event_border_selected: fg,
-        event_border_focused: accent,
+        event_border_selected: if dark {
+            adjust(fg, 1.35)
+        } else {
+            adjust(fg, 0.5)
+        },
+        event_border_focused: if dark {
+            adjust(accent, 1.5)
+        } else {
+            adjust(accent, 0.8)
+        },
         event_focused_bg: alpha(accent, 51),
         track_text: fg,
         track_header_bg: sidebar,
@@ -147,7 +155,7 @@ fn derive(
         ui_button_hovered: adjust(button, if dark { 1.05 } else { 0.95 }),
         ui_button_active: adjust(button, 0.8),
         ui_button_fg: col(255, 255, 255, 255),
-        ui_header_hovered: adjust(sidebar, if dark { 1.2 } else { 0.96 }),
+        ui_header_hovered: adjust(sidebar, if dark { 2.2 } else { 0.88 }),
         ui_header_active: alpha(accent, if dark { 51 } else { 26 }),
         ui_selection_bg: alpha(accent, if dark { 38 } else { 26 }),
         ui_text_disabled: disabled,
@@ -213,5 +221,47 @@ mod tests {
         assert_eq!(offset_of!(Theme, vertical_minimap_bg), 108);
         assert_eq!(offset_of!(Theme, ui_bg), 124);
         assert_eq!(offset_of!(Theme, event_palette), 172);
+    }
+
+    #[test]
+    fn dark_theme_header_hover_has_visible_contrast() {
+        let theme = dark();
+        let bg_r = (theme.ui_bg & 0xff) as i32;
+        let hover_r = (theme.ui_header_hovered & 0xff) as i32;
+        assert!((hover_r - bg_r).abs() >= 25);
+    }
+
+    #[test]
+    fn light_theme_header_hover_has_visible_contrast() {
+        let theme = light();
+        let bg_r = (theme.ui_bg & 0xff) as i32;
+        let hover_r = (theme.ui_header_hovered & 0xff) as i32;
+        assert!((hover_r - bg_r).abs() >= 25);
+    }
+
+    #[test]
+    fn event_border_selected_has_high_contrast() {
+        let dark_theme = dark();
+        let light_theme = light();
+        let dark_bg_r = (dark_theme.viewport_bg & 0xff) as i32;
+        let dark_selected_r = (dark_theme.event_border_selected & 0xff) as i32;
+        assert!((dark_selected_r - dark_bg_r).abs() >= 150);
+
+        let light_bg_r = (light_theme.viewport_bg & 0xff) as i32;
+        let light_selected_r = (light_theme.event_border_selected & 0xff) as i32;
+        assert!((light_selected_r - light_bg_r).abs() >= 150);
+    }
+
+    #[test]
+    fn event_border_focused_has_high_contrast() {
+        let dark_theme = dark();
+        let light_theme = light();
+        let dark_bg_g = ((dark_theme.viewport_bg >> 8) & 0xff) as i32;
+        let dark_focused_g = ((dark_theme.event_border_focused >> 8) & 0xff) as i32;
+        assert!((dark_focused_g - dark_bg_g).abs() >= 150);
+
+        let light_bg_g = ((light_theme.viewport_bg >> 8) & 0xff) as i32;
+        let light_focused_g = ((light_theme.event_border_focused >> 8) & 0xff) as i32;
+        assert!((light_focused_g - light_bg_g).abs() >= 50);
     }
 }

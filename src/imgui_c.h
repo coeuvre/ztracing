@@ -236,8 +236,12 @@ ig_vec2_t ig_get_io_mouse_clicked_pos(int button);
 ig_vec2_t ig_get_io_mouse_delta(void);
 float ig_get_io_mouse_drag_threshold(void);
 ig_vec2_t ig_get_io_mouse_pos(void);
+float ig_get_io_mouse_wheel(void);
+float ig_get_io_mouse_wheel_h(void);
 bool ig_get_io_key_shift(void);
 bool ig_get_io_key_ctrl(void);
+bool ig_get_io_key_alt(void);
+bool ig_get_io_key_super(void);
 bool ig_get_io_want_text_input(void);
 
 // Windows, Child Windows & Tooltips

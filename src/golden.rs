@@ -1,7 +1,7 @@
 //! Golden image tests for the headless viewer.
 
 use crate::headless::HeadlessApp;
-use crate::imgui::{KEY_ENTER, KEY_F, KEY_SLASH, MOD_CTRL, MOD_SHIFT};
+use crate::imgui::{KEY_ENTER, KEY_F, KEY_SLASH, MOD_CTRL, MOD_SHIFT, MOD_SUPER};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -373,6 +373,50 @@ fn search_highlights_golden() {
     finish_pending_search(&mut headless);
     // Render the first results frame before ImGui column autofit widens fixed columns.
     assert_golden(&headless, "search_highlights_golden");
+}
+
+#[test]
+fn primary_shortcut_opens_details_and_search() {
+    let _guard = IMGUI.lock().unwrap_or_else(|error| error.into_inner());
+    let mut headless = HeadlessApp::create(1024, 768).unwrap();
+    let trace = r#"[{"name":"SearchTarget","cat":"ui","ph":"B","pid":1,"tid":1,"ts":1000},{"name":"SearchTarget","cat":"ui","ph":"E","pid":1,"tid":1,"ts":2000}]"#;
+    load_trace(&mut headless, trace);
+    let primary_mod = if crate::platform::is_mac() {
+        MOD_SUPER
+    } else {
+        MOD_CTRL
+    };
+    headless.key_shortcut(KEY_F, primary_mod);
+    headless.update();
+    headless.update();
+    assert!(headless.runtime.app.viewer.show_details());
+    assert!(
+        headless.runtime.app.search.focus_input || headless.runtime.app.search.query.is_empty()
+    );
+}
+
+#[test]
+fn non_primary_shortcut_does_not_trigger_search() {
+    let _guard = IMGUI.lock().unwrap_or_else(|error| error.into_inner());
+    let mut headless = HeadlessApp::create(1024, 768).unwrap();
+    let trace = r#"[{"name":"SearchTarget","cat":"ui","ph":"B","pid":1,"tid":1,"ts":1000},{"name":"SearchTarget","cat":"ui","ph":"E","pid":1,"tid":1,"ts":2000}]"#;
+    load_trace(&mut headless, trace);
+    headless.runtime.app.viewer.set_show_details(false);
+
+    // Non-primary modifier (SUPER on Linux, CTRL on Mac under ConfigMacOSXBehaviors)
+    let non_primary_mod = if crate::platform::is_mac() {
+        MOD_CTRL
+    } else {
+        MOD_SUPER
+    };
+    headless.key_shortcut(KEY_F, non_primary_mod);
+    headless.update();
+    assert!(!headless.runtime.app.search.focus_input);
+
+    // Plain key press without modifiers
+    headless.key_shortcut(KEY_F, 0);
+    headless.update();
+    assert!(!headless.runtime.app.search.focus_input);
 }
 
 #[test]

@@ -389,6 +389,19 @@ static bool imgui_wants_key(ImGuiKey key,
     return false;
   }
 
+  // Custom app shortcuts (must be captured regardless of WantCaptureKeyboard
+  // so the browser does not intercept Cmd+F on Mac or Ctrl+F on Linux/Windows,
+  // or Shift+?):
+  bool is_primary_modifier =
+      js_is_mac() ? key_event->metaKey : key_event->ctrlKey;
+  if (is_primary_modifier && key == ImGuiKey_F) {
+    return true;
+  }
+
+  if (key_event->shiftKey && key == ImGuiKey_Slash) {
+    return true;
+  }
+
   ImGuiIO& io = ImGui::GetIO();
 
   // 1. If a text input is active, we want to capture all typing, editing, and
@@ -423,7 +436,7 @@ static bool imgui_wants_key(ImGuiKey key,
   }
 
   // 2. If we want to capture keyboard (even if not text input), we want
-  // navigation and custom shortcuts
+  // navigation keys
   if (io.WantCaptureKeyboard) {
     // Navigation keys
     if (io.ConfigFlags & ImGuiConfigFlags_NavEnableKeyboard) {
@@ -435,18 +448,6 @@ static bool imgui_wants_key(ImGuiKey key,
           key == ImGuiKey_Escape || key == ImGuiKey_Tab) {
         return true;
       }
-    }
-
-    // Custom app shortcuts:
-    // - Cmd+F / Ctrl+F for Search
-    bool has_cmd_or_ctrl = key_event->metaKey || key_event->ctrlKey;
-    if (has_cmd_or_ctrl && key == ImGuiKey_F) {
-      return true;
-    }
-
-    // - Shift+Slash ('?') for Cheatsheet
-    if (key_event->shiftKey && key == ImGuiKey_Slash) {
-      return true;
     }
   }
 

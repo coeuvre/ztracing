@@ -276,6 +276,7 @@ ig_font_t* ig_get_font(void) {
 
 // IO getters
 float ig_get_io_mouse_wheel(void) { return ImGui::GetIO().MouseWheel; }
+float ig_get_io_mouse_wheel_h(void) { return ImGui::GetIO().MouseWheelH; }
 
 ig_vec2_t ig_get_io_mouse_clicked_pos(int button) {
   ImVec2 pos = ImGui::GetIO().MouseClickedPos[button];
@@ -299,6 +300,10 @@ ig_vec2_t ig_get_io_mouse_pos(void) {
 bool ig_get_io_key_shift(void) { return ImGui::GetIO().KeyShift; }
 
 bool ig_get_io_key_ctrl(void) { return ImGui::GetIO().KeyCtrl; }
+
+bool ig_get_io_key_alt(void) { return ImGui::GetIO().KeyAlt; }
+
+bool ig_get_io_key_super(void) { return ImGui::GetIO().KeySuper; }
 
 bool ig_get_io_want_text_input(void) { return ImGui::GetIO().WantTextInput; }
 

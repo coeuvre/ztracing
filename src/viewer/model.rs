@@ -1,8 +1,7 @@
 use crate::format;
 use crate::imgui::{
-    HOVER_PROPERTIES_TABLE_FLAGS, MOD_SUPER, MOUSE_CURSOR_RESIZE_EW,
-    TABLE_COLUMN_FLAGS_WIDTH_FIXED, WINDOW_FLAGS_NO_MOVE, WINDOW_FLAGS_NO_SCROLL_WITH_MOUSE,
-    WINDOW_FLAGS_NO_SCROLLBAR,
+    HOVER_PROPERTIES_TABLE_FLAGS, MOUSE_CURSOR_RESIZE_EW, TABLE_COLUMN_FLAGS_WIDTH_FIXED,
+    WINDOW_FLAGS_NO_MOVE, WINDOW_FLAGS_NO_SCROLL_WITH_MOUSE, WINDOW_FLAGS_NO_SCROLLBAR,
 };
 use crate::trace::data::TraceData;
 use crate::trace::heatmap::BUCKET_COUNT;
@@ -106,6 +105,7 @@ struct Input {
     mouse_x: f32,
     mouse_y: f32,
     mouse_wheel: f32,
+    mouse_wheel_h: f32,
     click_x: f32,
     mouse_delta_x: f32,
     drag_delta_x: f32,
@@ -230,8 +230,11 @@ impl Viewer {
         let available = frame.content_available();
         let ruler_height = frame.frame_height();
         let tracks_width = (available.x - VERTICAL_MINIMAP_WIDTH).max(1.0);
-        let primary_modifier =
-            crate::platform::primary_modifier_down(frame.ctrl_down(), frame.key_down(MOD_SUPER));
+        let control_key_down = if crate::platform::is_mac() {
+            frame.super_down()
+        } else {
+            frame.ctrl_down()
+        };
         let draw = frame.draw_list();
         draw.rect_filled(
             position,
@@ -257,7 +260,7 @@ impl Viewer {
             y: position.y + ruler_height,
         });
         let mut child_flags = WINDOW_FLAGS_NO_MOVE | WINDOW_FLAGS_NO_SCROLLBAR;
-        if primary_modifier {
+        if control_key_down || frame.shift_down() {
             child_flags |= WINDOW_FLAGS_NO_SCROLL_WITH_MOUSE;
         }
         if let Some(child) = frame.begin_child(
@@ -292,6 +295,7 @@ impl Viewer {
                     mouse_y: mouse.y,
                     click_x: click.x,
                     mouse_wheel: frame.mouse_wheel(),
+                    mouse_wheel_h: frame.mouse_wheel_h(),
                     mouse_delta_x: delta.x,
                     drag_delta_x: drag.x,
                     drag_delta_y: drag.y,
@@ -300,7 +304,7 @@ impl Viewer {
                     mouse_clicked: frame.mouse_clicked(),
                     mouse_double_clicked: frame.mouse_double_clicked(),
                     mouse_released: frame.mouse_released(),
-                    ctrl_down: primary_modifier,
+                    ctrl_down: control_key_down,
                     shift_down: frame.shift_down(),
                     ruler_active,
                     ruler_activated,
@@ -526,7 +530,13 @@ impl Viewer {
                                 } else {
                                     theme.event_border
                                 };
-                                let thickness = if block.focused { 3.0 } else { 1.0 };
+                                let thickness = if block.focused {
+                                    3.0
+                                } else if block.selected {
+                                    2.0
+                                } else {
+                                    1.0
+                                };
                                 list.line(
                                     crate::imgui::Vec2 { x: block.x1, y },
                                     crate::imgui::Vec2 { x: block.x2, y },
@@ -1002,7 +1012,7 @@ impl Viewer {
             let (border_col, thickness) = if block.focused {
                 (theme.event_border_focused, 3.0)
             } else if block.selected {
-                (theme.event_border_selected, 1.0)
+                (theme.event_border_selected, 2.0)
             } else {
                 (theme.event_border, 1.0)
             };
@@ -1636,6 +1646,29 @@ impl Viewer {
                 }
                 self.viewport.end = self.viewport.start + new_duration;
                 duration = new_duration
+            } else {
+                let horizontal_wheel = if input.mouse_wheel_h != 0.0 {
+                    -input.mouse_wheel_h
+                } else if input.shift_down && input.mouse_wheel != 0.0 {
+                    input.mouse_wheel
+                } else {
+                    0.0
+                };
+                if horizontal_wheel != 0.0 {
+                    let pan_amount = f64::from(-horizontal_wheel * 0.1) * duration;
+                    self.viewport.start += pan_amount;
+                    if self.selection_active {
+                        let low = self.selection_start.min(self.selection_end);
+                        let high = self.selection_start.max(self.selection_end);
+                        if self.viewport.start > low {
+                            self.viewport.start = low
+                        }
+                        if self.viewport.start + duration < high {
+                            self.viewport.start = high - duration
+                        }
+                    }
+                    self.viewport.end = self.viewport.start + duration;
+                }
             }
             if input.mouse_down && !input.mouse_clicked && self.drag_mode == DragMode::None {
                 let delta = f64::from(input.mouse_delta_x / width) * duration;
@@ -1901,7 +1934,11 @@ impl Viewer {
             if x >= origin_x && x <= origin_x + width {
                 if tick_idx < self.ruler_ticks.len() {
                     self.ruler_ticks[tick_idx].x = x;
-                    format::duration_into(&mut self.ruler_ticks[tick_idx].label, relative, interval);
+                    format::duration_into(
+                        &mut self.ruler_ticks[tick_idx].label,
+                        relative,
+                        interval,
+                    );
                 } else {
                     let mut label = String::with_capacity(16);
                     format::duration_into(&mut label, relative, interval);
@@ -1972,6 +2009,96 @@ mod tests {
         );
         assert!(viewer.viewport.end - viewer.viewport.start < 1_000_000.0);
         assert!(((viewer.viewport.start + viewer.viewport.end) * 0.5 - 500_000.0).abs() < 1.0)
+    }
+
+    #[test]
+    fn scroll_wheel_without_ctrl_does_not_zoom() {
+        let mut viewer = Viewer::default();
+        let initial_viewport = Viewport {
+            minimum: 0,
+            maximum: 1_000_000,
+            start: 0.0,
+            end: 1_000_000.0,
+        };
+        viewer.viewport = initial_viewport.clone();
+        viewer.step(
+            &TraceData::new(),
+            &Input {
+                canvas_width: 1000.0,
+                mouse_x: 500.0,
+                mouse_wheel: 1.0,
+                ctrl_down: false,
+                tracks_hovered: true,
+                ..Input::default()
+            },
+        );
+        assert_eq!(viewer.viewport.start, initial_viewport.start);
+        assert_eq!(viewer.viewport.end, initial_viewport.end);
+    }
+
+    #[test]
+    fn shift_scroll_pans_viewport_horizontally() {
+        let mut viewer = Viewer::default();
+        viewer.viewport = Viewport {
+            minimum: 0,
+            maximum: 1_000_000,
+            start: 100_000.0,
+            end: 200_000.0,
+        };
+
+        // Scroll wheel down with Shift -> Panning right
+        viewer.step(
+            &TraceData::new(),
+            &Input {
+                canvas_width: 1000.0,
+                mouse_wheel: -1.0,
+                shift_down: true,
+                ctrl_down: false,
+                tracks_hovered: true,
+                ..Input::default()
+            },
+        );
+        assert!(viewer.viewport.start > 100_000.0);
+        assert_eq!(viewer.viewport.end - viewer.viewport.start, 100_000.0);
+
+        // Scroll wheel up with Shift -> Panning left
+        viewer.step(
+            &TraceData::new(),
+            &Input {
+                canvas_width: 1000.0,
+                mouse_wheel: 1.0,
+                shift_down: true,
+                ctrl_down: false,
+                tracks_hovered: true,
+                ..Input::default()
+            },
+        );
+        assert_eq!(viewer.viewport.start, 100_000.0);
+        assert_eq!(viewer.viewport.end, 200_000.0);
+    }
+
+    #[test]
+    fn horizontal_wheel_input_pans_viewport() {
+        let mut viewer = Viewer::default();
+        viewer.viewport = Viewport {
+            minimum: 0,
+            maximum: 1_000_000,
+            start: 100_000.0,
+            end: 200_000.0,
+        };
+
+        // Trackpad / browser native horizontal wheel input (mouse_wheel_h)
+        viewer.step(
+            &TraceData::new(),
+            &Input {
+                canvas_width: 1000.0,
+                mouse_wheel_h: 1.0,
+                tracks_hovered: true,
+                ..Input::default()
+            },
+        );
+        assert!(viewer.viewport.start > 100_000.0);
+        assert_eq!(viewer.viewport.end - viewer.viewport.start, 100_000.0);
     }
 
     #[test]

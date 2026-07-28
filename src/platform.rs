@@ -139,11 +139,7 @@ pub fn get_setting(key: &str) -> Option<String> {
 }
 
 pub fn primary_modifier_down(control_down: bool, super_down: bool) -> bool {
-    select_primary_modifier(is_mac(), control_down, super_down)
-}
-
-fn select_primary_modifier(is_mac: bool, control_down: bool, super_down: bool) -> bool {
-    if is_mac { super_down } else { control_down }
+    control_down && !super_down
 }
 
 pub fn open_file_dialog() {
@@ -179,11 +175,16 @@ mod tests {
     }
 
     #[test]
-    fn primary_modifier_uses_command_on_mac_and_control_elsewhere() {
-        assert!(select_primary_modifier(true, false, true));
-        assert!(!select_primary_modifier(true, true, false));
-        assert!(select_primary_modifier(false, true, false));
-        assert!(!select_primary_modifier(false, false, true));
+    fn primary_modifier_down_uses_imgui_primary_modifier_mapping() {
+        // Under ImGui ConfigMacOSXBehaviors:
+        // Physical Cmd -> control_down = true, super_down = false.
+        // Physical Ctrl -> control_down = false, super_down = true.
+        // Primary modifier matches control_down = true && super_down = false.
+
+        assert!(primary_modifier_down(true, false)); // Primary modifier (Cmd on Mac, Ctrl on Linux)
+        assert!(!primary_modifier_down(false, true)); // Non-primary modifier (Ctrl on Mac, Super on Linux)
+        assert!(!primary_modifier_down(false, false)); // Neither modifier
+        assert!(!primary_modifier_down(true, true)); // Both modifiers
     }
 
     #[test]

@@ -355,6 +355,9 @@ impl Frame<'_> {
     pub fn mouse_wheel(&self) -> f32 {
         unsafe { ffi::ig_get_io_mouse_wheel() }
     }
+    pub fn mouse_wheel_h(&self) -> f32 {
+        unsafe { ffi::ig_get_io_mouse_wheel_h() }
+    }
     pub fn mouse_down(&self) -> bool {
         unsafe { ffi::ig_is_mouse_down(0) }
     }
@@ -378,6 +381,12 @@ impl Frame<'_> {
     }
     pub fn shift_down(&self) -> bool {
         unsafe { ffi::ig_get_io_key_shift() }
+    }
+    pub fn alt_down(&self) -> bool {
+        unsafe { ffi::ig_get_io_key_alt() }
+    }
+    pub fn super_down(&self) -> bool {
+        unsafe { ffi::ig_get_io_key_super() }
     }
     pub fn key_down(&self, key: i32) -> bool {
         unsafe { ffi::ig_is_key_down(key) }
@@ -1120,6 +1129,7 @@ mod ffi {
         pub fn ig_get_io_mouse_delta() -> Vec2;
         pub fn ig_get_mouse_drag_delta(button: i32, threshold: f32) -> Vec2;
         pub fn ig_get_io_mouse_wheel() -> f32;
+        pub fn ig_get_io_mouse_wheel_h() -> f32;
         pub fn ig_is_mouse_down(button: i32) -> bool;
         pub fn ig_is_mouse_clicked(button: i32, repeat: bool) -> bool;
         pub fn ig_is_mouse_double_clicked(button: i32) -> bool;
@@ -1130,6 +1140,8 @@ mod ffi {
         pub fn ig_get_io_mouse_drag_threshold() -> f32;
         pub fn ig_get_io_key_ctrl() -> bool;
         pub fn ig_get_io_key_shift() -> bool;
+        pub fn ig_get_io_key_alt() -> bool;
+        pub fn ig_get_io_key_super() -> bool;
         pub fn ig_is_key_down(key: i32) -> bool;
         pub fn ig_invisible_button(label: *const c_char, size: Vec2) -> bool;
         pub fn ig_is_item_active() -> bool;

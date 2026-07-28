@@ -1,7 +1,7 @@
 use crate::colors::{self, Theme};
 use crate::imgui::{
-    CHEATSHEET_TABLE_FLAGS, COL_POPUP_BG, COND_APPEARING, Frame, KEY_ENTER,
-    MAIN_VIEWPORT_WINDOW_FLAGS, MOD_SUPER, MULTI_SELECT_TABLE_FLAGS, SELECTABLE_SPAN_OVERLAP,
+    CHEATSHEET_TABLE_FLAGS, COL_POPUP_BG, COND_APPEARING, Frame, KEY_ENTER, KEY_F, KEY_SLASH,
+    MAIN_VIEWPORT_WINDOW_FLAGS, MULTI_SELECT_TABLE_FLAGS, SELECTABLE_SPAN_OVERLAP,
     SHORTCUTS_POPUP_FLAGS, TABLE_COLUMN_FLAGS_WIDTH_FIXED, TABLE_COLUMN_FLAGS_WIDTH_STRETCH,
     TABLE_FLAGS_NO_SAVED_SETTINGS, TableSort, Vec2, WINDOW_FLAGS_NO_FOCUS_ON_APPEARING,
     WINDOW_FLAGS_NO_MOVE, WINDOW_FLAGS_NO_RESIZE, WINDOW_FLAGS_NO_SCROLLBAR,
@@ -506,11 +506,11 @@ impl App {
             }
         }
         let primary_modifier =
-            platform::primary_modifier_down(frame.ctrl_down(), frame.key_down(MOD_SUPER));
-        if !frame.want_text_input() && frame.key_pressed(551) && primary_modifier {
+            platform::primary_modifier_down(frame.ctrl_down(), frame.super_down());
+        if frame.key_pressed(KEY_F) && primary_modifier {
             self.focus_search();
         }
-        if !frame.want_text_input() && frame.key_pressed(600) && frame.shift_down() {
+        if !frame.want_text_input() && frame.key_pressed(KEY_SLASH) && frame.shift_down() {
             self.show_shortcuts = !self.show_shortcuts;
         }
         if let Some(menu_bar) = frame.begin_main_menu_bar() {
