@@ -1,6 +1,7 @@
 pub mod app;
 pub mod cli_table;
 pub mod colors;
+pub mod ffi_buffer;
 pub mod format;
 #[cfg(all(test, target_os = "linux"))]
 mod golden;

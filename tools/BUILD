@@ -1,4 +1,4 @@
-load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
+load("//rules:rust.bzl", "rust_binary", "rust_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -7,7 +7,6 @@ rust_binary(
     srcs = ["trace_benchmark.rs"],
     crate_name = "trace_benchmark",
     crate_root = "trace_benchmark.rs",
-    edition = "2024",
     deps = [
         "//base:base",
         "//src:ztracing_lib",
@@ -19,7 +18,6 @@ rust_test(
     srcs = ["trace_benchmark.rs"],
     crate_name = "trace_benchmark_test",
     crate_root = "trace_benchmark.rs",
-    edition = "2024",
     deps = [
         "//base:base",
         "//src:ztracing_lib",
@@ -31,7 +29,6 @@ rust_binary(
     srcs = ["trace_renderer_benchmark.rs"],
     crate_name = "trace_renderer_benchmark",
     crate_root = "trace_renderer_benchmark.rs",
-    edition = "2024",
     deps = [
         "//base:base",
         "//src:ztracing_lib",
@@ -51,7 +48,6 @@ rust_test(
     srcs = ["trace_renderer_benchmark.rs"],
     crate_name = "trace_renderer_benchmark_test",
     crate_root = "trace_renderer_benchmark.rs",
-    edition = "2024",
     deps = [
         "//base:base",
         "//src:ztracing_lib",

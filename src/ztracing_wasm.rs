@@ -12,7 +12,7 @@ use std::ffi::{CStr, CString, c_char};
 use std::fmt;
 use ztracing::runtime::Runtime;
 
-mod ffi_buffer;
+use ztracing::ffi_buffer;
 
 fn main() {}
 

@@ -274,20 +274,8 @@ ig_font_t* ig_get_font(void) {
   return reinterpret_cast<ig_font_t*>(ImGui::GetFont());
 }
 
-ig_vec2_t ig_font_calc_text_size_a(const ig_font_t* font, float size,
-                                   float max_width, float wrap_width,
-                                   const char* text_begin,
-                                   const char* text_end) {
-  ImVec2 val =
-      const_cast<ImFont*>(reinterpret_cast<const ImFont*>(font))
-          ->CalcTextSizeA(size, max_width, wrap_width, text_begin, text_end);
-  return {val.x, val.y};
-}
-
 // IO getters
 float ig_get_io_mouse_wheel(void) { return ImGui::GetIO().MouseWheel; }
-
-float ig_get_io_mouse_wheel_h(void) { return ImGui::GetIO().MouseWheelH; }
 
 ig_vec2_t ig_get_io_mouse_clicked_pos(int button) {
   ImVec2 pos = ImGui::GetIO().MouseClickedPos[button];
@@ -313,12 +301,6 @@ bool ig_get_io_key_shift(void) { return ImGui::GetIO().KeyShift; }
 bool ig_get_io_key_ctrl(void) { return ImGui::GetIO().KeyCtrl; }
 
 bool ig_get_io_want_text_input(void) { return ImGui::GetIO().WantTextInput; }
-
-// Style getters
-ig_vec2_t ig_get_style_window_padding(void) {
-  ImVec2 padding = ImGui::GetStyle().WindowPadding;
-  return {padding.x, padding.y};
-}
 
 // Windows, Child Windows & Tooltips
 bool ig_begin(const char* name, bool* p_open, ig_window_flags_t flags) {
@@ -543,11 +525,6 @@ void* ig_input_text_callback_data_get_user_data(
   return reinterpret_cast<ImGuiInputTextCallbackData*>(data)->UserData;
 }
 
-int ig_input_text_callback_data_get_event_flag(
-    const ig_input_text_callback_data_t* data) {
-  return reinterpret_cast<const ImGuiInputTextCallbackData*>(data)->EventFlag;
-}
-
 int ig_input_text_callback_data_get_buf_size(
     const ig_input_text_callback_data_t* data) {
   return reinterpret_cast<const ImGuiInputTextCallbackData*>(data)->BufSize;
@@ -674,46 +651,9 @@ void ig_draw_list_set_flags(ig_draw_list_t* draw_list,
 }
 
 // Standard Text
-ig_vec2_t ig_calc_text_size(const char* text) {
-  ImVec2 size = ImGui::CalcTextSize(text);
-  return {size.x, size.y};
-}
-
 ig_vec2_t ig_calc_text_size_range(const char* text, size_t text_len) {
   ImVec2 size = ImGui::CalcTextSize(text, text + text_len);
   return {size.x, size.y};
-}
-
-void ig_text(const char* fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  ImGui::TextV(fmt, args);
-  va_end(args);
-}
-
-void ig_text_colored(ig_vec4_t col, const char* fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  ImGui::TextColoredV(ImVec4(col.x, col.y, col.z, col.w), fmt, args);
-  va_end(args);
-}
-
-void ig_text_disabled(const char* fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  ImGui::TextDisabledV(fmt, args);
-  va_end(args);
-}
-
-void ig_text_unformatted(const char* text, const char* text_end) {
-  ImGui::TextUnformatted(text, text_end);
-}
-
-void ig_text_wrapped(const char* fmt, ...) {
-  va_list args;
-  va_start(args, fmt);
-  ImGui::TextWrappedV(fmt, args);
-  va_end(args);
 }
 
 void ig_text_unformatted_range(const char* text, size_t text_len) {
@@ -742,9 +682,6 @@ void ig_text_disabled_range(const char* text, size_t text_len) {
 }
 
 // Color helpers
-uint32_t ig_color_convert_float4_to_u32(ig_vec4_t in) {
-  return ImGui::ColorConvertFloat4ToU32(ImVec4(in.x, in.y, in.z, in.w));
-}
 
 ig_vec4_t ig_color_convert_u32_to_float4(uint32_t in) {
   ImVec4 val = ImGui::ColorConvertU32ToFloat4(in);
@@ -860,9 +797,6 @@ void ig_begin_group(void) { ImGui::BeginGroup(); }
 void ig_end_group(void) { ImGui::EndGroup(); }
 
 // Style push/pop
-void ig_push_style_color(ig_col_t idx, ig_vec4_t col) {
-  ImGui::PushStyleColor(idx, ImVec4(col.x, col.y, col.z, col.w));
-}
 
 void ig_push_style_color_u32(ig_col_t idx, uint32_t col) {
   ImGui::PushStyleColor(idx, col);
@@ -873,10 +807,6 @@ void ig_pop_style_color(int count) { ImGui::PopStyleColor(count); }
 void ig_push_style_var_float(ig_style_var_t idx, float val) {
   ImGui::PushStyleVar(idx, val);
 }
-
-void ig_style_colors_dark(void) { ImGui::StyleColorsDark(); }
-
-void ig_style_colors_light(void) { ImGui::StyleColorsLight(); }
 
 void ig_style_apply_theme(const struct Theme* theme) {
   g_ui_button_fg = theme->ui_button_fg;

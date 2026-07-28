@@ -5,7 +5,23 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "src/imgui_types.h"
+typedef struct ig_vec2 {
+  float x, y;
+} ig_vec2_t;
+
+typedef struct ig_vec4 {
+  float x, y, z, w;
+} ig_vec4_t;
+
+#ifdef __cplusplus
+#include "third_party/imgui/imgui.h"
+#else
+typedef uint32_t ImU32;
+#endif
+
+#define IG_COL32(R, G, B, A)                                              \
+  (((uint32_t)(A) << 24) | ((uint32_t)(B) << 16) | ((uint32_t)(G) << 8) | \
+   ((uint32_t)(R) << 0))
 
 #ifdef __cplusplus
 extern "C" {
@@ -216,14 +232,6 @@ float ig_get_frame_height(void);
 float ig_get_font_size(void);
 float ig_get_text_line_height(void);
 ig_font_t* ig_get_font(void);
-ig_vec2_t ig_font_calc_text_size_a(const ig_font_t* font, float size,
-                                   float max_width, float wrap_width,
-                                   const char* text_begin,
-                                   const char* text_end);
-
-// IO getters
-float ig_get_io_mouse_wheel(void);
-float ig_get_io_mouse_wheel_h(void);
 ig_vec2_t ig_get_io_mouse_clicked_pos(int button);
 ig_vec2_t ig_get_io_mouse_delta(void);
 float ig_get_io_mouse_drag_threshold(void);
@@ -231,9 +239,6 @@ ig_vec2_t ig_get_io_mouse_pos(void);
 bool ig_get_io_key_shift(void);
 bool ig_get_io_key_ctrl(void);
 bool ig_get_io_want_text_input(void);
-
-// Style getters
-ig_vec2_t ig_get_style_window_padding(void);
 
 // Windows, Child Windows & Tooltips
 bool ig_begin(const char* name, bool* p_open, ig_window_flags_t flags);
@@ -294,15 +299,12 @@ void ig_begin_group(void);
 void ig_end_group(void);
 
 // Style push/pop
-void ig_push_style_color(ig_col_t idx, ig_vec4_t col);
 void ig_push_style_color_u32(ig_col_t idx, uint32_t col);
 void ig_pop_style_color(int count);
 void ig_push_style_var(ig_style_var_t idx, ig_vec2_t val);
 void ig_push_style_var_float(ig_style_var_t idx, float val);
 void ig_pop_style_var(int count);
 
-void ig_style_colors_dark(void);
-void ig_style_colors_light(void);
 struct Theme;
 void ig_style_apply_theme(const struct Theme* theme);
 
@@ -368,8 +370,6 @@ bool ig_input_text(const char* label, char* buf, size_t buf_size,
 
 void* ig_input_text_callback_data_get_user_data(
     ig_input_text_callback_data_t* data);
-int ig_input_text_callback_data_get_event_flag(
-    const ig_input_text_callback_data_t* data);
 int ig_input_text_callback_data_get_buf_size(
     const ig_input_text_callback_data_t* data);
 void ig_input_text_callback_data_set_buf(ig_input_text_callback_data_t* data,
@@ -422,23 +422,13 @@ void ig_draw_list_set_flags(ig_draw_list_t* draw_list,
                             ig_draw_list_flags_t flags);
 
 // Standard Text
-ig_vec2_t ig_calc_text_size(const char* text);
 ig_vec2_t ig_calc_text_size_range(const char* text, size_t text_len);
-void ig_text(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
-void ig_text_colored(ig_vec4_t col, const char* fmt, ...)
-    __attribute__((format(printf, 2, 3)));
-void ig_text_disabled(const char* fmt, ...)
-    __attribute__((format(printf, 1, 2)));
-void ig_text_unformatted(const char* text, const char* text_end);
-void ig_text_wrapped(const char* fmt, ...)
-    __attribute__((format(printf, 1, 2)));
 void ig_text_unformatted_range(const char* text, size_t text_len);
 void ig_text_wrapped_range(const char* text, size_t text_len);
 void ig_text_colored_range(ig_vec4_t col, const char* text, size_t text_len);
 void ig_text_disabled_range(const char* text, size_t text_len);
 
 // Color helpers
-uint32_t ig_color_convert_float4_to_u32(ig_vec4_t in);
 ig_vec4_t ig_color_convert_u32_to_float4(uint32_t in);
 
 #ifdef __cplusplus

@@ -15,8 +15,7 @@ COMMON_COPTS = [
 ]
 
 WASM_SIMD_COPTS = select({
-    "//src:wasm_build": ["-msimd128"],
-    "//src:wasm_and_headless_build": ["-msimd128"],
+    "//rules:wasm_build": ["-msimd128"],
     "//conditions:default": [],
 })
 
